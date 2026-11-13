@@ -10,3 +10,6 @@ pnpm-debug.log*
 !.env.example
 coverage/
 .vite/
+
+# Build output
+dist/
