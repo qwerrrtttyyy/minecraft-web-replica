@@ -9,7 +9,8 @@ import { FACES } from '../world/faces';
  */
 
 const TILE = 16;
-const GRID = 8;
+/** 16×16 = 256 槽：内置方块 + 扩展方块 + 运行时 registerTile 仍有富余 */
+const GRID = 16;
 const SIZE = TILE * GRID;
 
 /** 像素画布 */
@@ -698,8 +699,157 @@ function builtinPainters(): Record<string, Painter> {
       }
       for (let i = 0; i < 3; i++) p.set(6 + ((rng() * 3) | 0), 7, 0x5f411f);
     },
+    // ---- v1.4.0 追加矿石 / 地表 / 植物 ----
+    copper_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0xb87333, 6, 5);
+      blob(p, rng, 0xe08a4b, 4, 3);
+    },
+    emerald_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x1fae62, 6, 5);
+      blob(p, rng, 0x6ef0a8, 4, 3);
+    },
+    lapis_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x2a52b8, 6, 5);
+      blob(p, rng, 0x5c86e8, 4, 3);
+    },
+    redstone_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0xb3271f, 7, 5);
+      blob(p, rng, 0xe8554a, 5, 3);
+    },
+    clay: (p, rng) => {
+      fillNoise(p, rng, 0xa2a6b4, 7);
+      blob(p, rng, 0x8f93a2, 8, 4);
+      blob(p, rng, 0xb6bac8, 6, 3);
+      for (let y = 0; y < TILE; y += 5) {
+        for (let x = 0; x < TILE; x++) if (rng() < 0.5) p.set(x, y, jitter(0x969aa8, rng, 5));
+      }
+    },
+    podzol_top: (p, rng) => {
+      fillNoise(p, rng, 0x6b4a2c, 10);
+      blob(p, rng, 0x8a5a2e, 9, 4);
+      blob(p, rng, 0x9c6a38, 6, 3);
+      blob(p, rng, 0x4f3720, 5, 3);
+    },
+    podzol_side: (p, rng) => {
+      dirt(p, rng);
+      for (let x = 0; x < TILE; x++) {
+        const depth = 3 + ((rng() * 3) | 0);
+        for (let y = 0; y < depth; y++) p.set(x, y, jitter(0x6b4a2c, rng, 8));
+        if (rng() < 0.4) p.set(x, depth, jitter(0x5a3c22, rng, 6));
+      }
+    },
+    granite: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x9a6b62, 10, 3);
+      blob(p, rng, 0xb0867c, 6, 2);
+      for (let i = 0; i < 10; i++) {
+        p.set((rng() * TILE) | 0, (rng() * TILE) | 0, jitter(0x8a5a52, rng, 8));
+      }
+    },
+    cactus: (p, rng) => {
+      fillNoise(p, rng, 0x3f7a2f, 8);
+      // 纵向棱线与浅色小刺
+      for (const x of [0, 1, 7, 8, 14, 15]) {
+        for (let y = 0; y < TILE; y++) {
+          p.set(x, y, jitter(x % 7 === 0 ? 0x2c5a22 : 0x35682a, rng, 5));
+        }
+      }
+      for (let i = 0; i < 12; i++) {
+        const x = 2 + ((rng() * 12) | 0);
+        const y = 1 + ((rng() * 14) | 0);
+        p.set(x, y, 0xe8e8c8);
+        if (rng() < 0.4) p.set(x, y - 1, 0xf5f5d8);
+      }
+    },
+    sugar_cane: (p, rng) => {
+      p.clear();
+      for (const x0 of [3, 6, 10, 13]) {
+        const top = 1 + ((rng() * 3) | 0);
+        for (let y = top; y < TILE; y++) {
+          const node = y % 5 === 0;
+          p.set(x0, y, jitter(node ? 0xd8e8a0 : 0x9fd06a, rng, 7));
+          p.set(x0 + 1, y, jitter(node ? 0xb8cc80 : 0x7fb04e, rng, 6));
+        }
+        // 一两片斜叶
+        const ly = 4 + ((rng() * 8) | 0);
+        p.set(x0 - 1, ly, 0x8fc45e);
+        p.set(x0 + 2, ly + 2, 0x8fc45e);
+      }
+    },
+    fern: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 5; i++) {
+        const x0 = 3 + i * 2;
+        const h = 5 + ((rng() * 8) | 0);
+        for (let k = 0; k < h; k++) {
+          const y = 15 - k;
+          const x = x0 + Math.round(Math.sin(k * 0.6 + i) * 1.2);
+          p.set(x, y, k === h - 1 ? 0x8fbe57 : i % 2 ? 0x4f8f2c : 0x5aa236);
+          if (k > 2 && k % 2 === 0) {
+            p.set(x - 1, y, 0x3f7a24);
+            p.set(x + 1, y, 0x3f7a24);
+          }
+        }
+      }
+    },
   };
 }
+
+/**
+ * 新增的两个方块侧面纹理。
+ * 定义在此处、并在构造函数中放到全部既有纹理之后注册，是为了让既有 64 张 tile
+ * 的图集索引保持 0..63 完全不变。图集为 16×16=256 格、UV 按 GRID 动态计算，
+ * 新增两张不会触发扩容，也不影响任何既有纹理的渲染。
+ */
+
+/** 南瓜侧面：橙色底 + 纵向棱纹 + 顶部短梗，呼应 pumpkin_face / pumpkin_top */
+const pumpkinSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xd97318, 10);
+  // 暗色沟槽 + 相邻浅色高光，形成一条条纵向棱纹
+  for (const x of [2, 6, 10, 14]) {
+    for (let y = 0; y < TILE; y++) {
+      p.set(x, y, jitter(0xb85c10, rng, 5));
+      if (x + 1 < TILE && rng() < 0.75) p.set(x + 1, y, jitter(0xeb8b28, rng, 6));
+    }
+  }
+  // 与 pumpkin_top 同色的顶部短梗
+  rect(p, 7, 0, 2, 2, 0x3f7a24);
+  p.set(7, 0, 0x2f5c1b);
+  p.set(8, 0, 0x2f5c1b);
+  p.set(7, 1, 0x4f8f2c);
+};
+
+/** 书架侧面：木质边框（横梁 + 立柱）+ 两排彩色书脊 */
+const bookshelfSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x6b4f2e, 6);
+  rect(p, 2, 2, 12, 12, 0x3a2a18); // 书架内格阴影
+  const spines = [0x9c3b2e, 0x2f4f8a, 0x3f7a34, 0xb08028, 0x6a3f9e, 0xb0552a, 0x2f7a78, 0x8a2f44];
+  for (const [yBase, yTop] of [[13, 9], [6, 2]] as const) {
+    let x = 2;
+    while (x < 14) {
+      const w = 2 + ((rng() * 2) | 0);
+      const c = spines[(rng() * spines.length) | 0];
+      const top = yTop + ((rng() * 2) | 0); // 书高参差
+      for (let yy = top; yy <= yBase; yy++)
+        for (let xx = x; xx < x + w && xx < 14; xx++) p.set(xx, yy, jitter(c, rng, 8));
+      for (let yy = top; yy <= yBase; yy++) p.set(x, yy, 0x241809); // 书脊左缘暗线
+      for (let xx = x; xx < x + w && xx < 14; xx++) p.set(xx, top, jitter(c, rng, 18)); // 书页/标题带
+      x += w;
+    }
+  }
+  const frame = 0x5f4a2a;
+  rect(p, 0, 0, TILE, 2, frame);
+  rect(p, 0, 7, TILE, 2, frame);
+  rect(p, 0, 14, TILE, 2, frame);
+  rect(p, 0, 0, 2, TILE, frame);
+  rect(p, 14, 0, 2, TILE, frame);
+  for (const y of [0, 7, 14])
+    for (let x = 2; x < 14; x++) if (rng() < 0.8) p.set(x, y, jitter(0x8a6a3e, rng, 5));
+};
 
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
@@ -736,6 +886,9 @@ export class TextureAtlas {
     this.painters.set('green_wool', woolPainter(0x3f7a2f));
     this.painters.set('purple_wool', woolPainter(0x7a3f9e));
     this.painters.set('black_wool', woolPainter(0x24242a));
+    // 新增：放在全部既有纹理之后注册，既有 64 张 tile 的索引保持不变
+    this.painters.set('pumpkin_side', pumpkinSidePainter);
+    this.painters.set('bookshelf_side', bookshelfSidePainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

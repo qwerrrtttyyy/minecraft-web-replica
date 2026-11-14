@@ -24,6 +24,8 @@ const entries = [
   'src/world/generator.ts',
   'src/world/blocks.ts',
   'src/world/light.ts',
+  'src/world/world.ts',
+  'src/world/workerPool.ts',
   'src/world/noise.ts',
   'src/world/faces.ts',
   'src/world/meshTypes.ts',

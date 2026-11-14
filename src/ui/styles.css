@@ -150,15 +150,19 @@ img { image-rendering: pixelated; }
 
 .crosshair {
   position: absolute; left: 50%; top: 50%;
-  width: 20px; height: 20px;
+  width: 16px; height: 16px;
   transform: translate(-50%, -50%);
-  mix-blend-mode: difference;
+  pointer-events: none;
 }
-.crosshair::before, .crosshair::after {
-  content: ''; position: absolute; background: #fff;
+/* 原版准星：2px 粗白臂 + 1px 黑色描边，中心 2px 镂空 */
+.ch-arm {
+  position: absolute; display: block; background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .85);
 }
-.crosshair::before { left: 9px; top: 1px; width: 2px; height: 18px; }
-.crosshair::after { left: 1px; top: 9px; width: 18px; height: 2px; }
+.ch-up    { left: 7px; top: 0;    width: 2px; height: 7px; }
+.ch-down  { left: 7px; bottom: 0; width: 2px; height: 7px; }
+.ch-left  { top: 7px;  left: 0;   height: 2px; width: 7px; }
+.ch-right { top: 7px;  right: 0;  height: 2px; width: 7px; }
 
 .underwater {
   position: absolute; inset: 0;
@@ -207,10 +211,12 @@ img { image-rendering: pixelated; }
   max-width: 100vw;
 }
 .item-name {
-  color: #fff; font-size: 13px; font-weight: 700;
-  text-shadow: 2px 2px 0 #2a2a2a;
+  color: #fff; font-size: 14px; font-weight: 400;
+  /* 原版选中物品名：无背景，四向深灰描边保证任何画面上都可读 */
+  text-shadow: 1px 1px 0 #3f3f3f, -1px 1px 0 #3f3f3f,
+               1px -1px 0 #3f3f3f, -1px -1px 0 #3f3f3f;
   opacity: 0; transition: opacity .25s;
-  background: rgba(10, 10, 14, .35); padding: 3px 12px;
+  padding: 0 4px 3px;
 }
 .item-name.show { opacity: 1; }
 .hotbar {
@@ -226,6 +232,10 @@ img { image-rendering: pixelated; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   border: 1px solid rgba(90, 90, 90, .5);
+  background: rgba(0, 0, 0, .18);
+  /* 原版物品槽：左上暗、右下亮的凹陷立体感 */
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, .5),
+              inset -2px -2px 0 rgba(255, 255, 255, .07);
 }
 .hotbar-slot .slot-icon { width: 36px; height: 36px; pointer-events: none; }
 .hotbar-slot .slot-num {
@@ -234,10 +244,14 @@ img { image-rendering: pixelated; }
   text-shadow: 1px 1px 0 #1a1a1a; pointer-events: none;
 }
 .hotbar-slot.selected {
-  outline: 3px solid #ececec;
-  outline-offset: 0px;
+  /* 原版选中框：向外扩 2px 的白色细框 + 黑色外描边，槽位本身不放大 */
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, .72),
+              inset 2px 2px 0 rgba(0, 0, 0, .5),
+              inset -2px -2px 0 rgba(255, 255, 255, .07);
   z-index: 2;
-  background: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .06);
 }
 
 .hint-bar {
@@ -423,12 +437,16 @@ img { image-rendering: pixelated; }
   transform: translateX(-50%); margin-bottom: 5px;
 }
 .stat-pip { position: relative; width: 16px; height: 16px; }
-.pip-empty { position: absolute; inset: 0; width: 100%; height: 100%; fill: #2a2a2a; opacity: .8; }
+.pip-empty { position: absolute; inset: 0; width: 100%; height: 100%; fill: #141414; opacity: .9; }
 .pip-fill { position: absolute; left: 0; top: 0; height: 100%; width: 100%; overflow: hidden; }
-.pip-fill svg { width: 16px; height: 16px; display: block; }
-.stat-heart .pip-fill svg { fill: #d94a44; }
-.stat-hunger .pip-fill svg { fill: #cf8a3c; }
-.stat-breath .pip-fill svg { fill: #9fe0f2; }
+/* 原版状态图标：实心色 + 深色描边 + 1px 投影 */
+.pip-fill svg {
+  width: 16px; height: 16px; display: block;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, .9));
+}
+.stat-heart .pip-fill svg { fill: #e02f27; stroke: #4a0b08; stroke-width: 1.1px; }
+.stat-hunger .pip-fill svg { fill: #c47a2c; stroke: #42280d; stroke-width: 1.1px; }
+.stat-breath .pip-fill svg { fill: #9fe0f2; stroke: #1b4256; stroke-width: 1.1px; }
 .stat-pip.low { animation: pipPulse .8s ease-in-out infinite; }
 @keyframes pipPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14) translateY(-1px); } }
 .stat-heart.dead .pip-fill { filter: grayscale(1); }

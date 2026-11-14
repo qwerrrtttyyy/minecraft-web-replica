@@ -9,6 +9,11 @@ import { LightEngine } from './light';
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 
+/** 分桶内的编辑记录：坐标在 recordEdit 时解析一次，避免 ensureChunk 反复 split(',') */
+interface BlockEdit {
+  x: number; y: number; z: number; id: BlockId;
+}
+
 export class Chunk {
   readonly data = new Uint8Array(CS * CS * H);
   /** 天空光（0~15），由 LightEngine 维护 */
@@ -43,8 +48,8 @@ export class World {
   readonly dirty = new Set<string>();
   /** 天空光 / 方块光传播引擎（区块生成与方块变化时增量更新） */
   readonly light: LightEngine;
-  /** 编辑差分按 chunkKey 分桶：ensureChunk 从 O(全档编辑数) 降到 O(本区块编辑数) */
-  private editsByChunk = new Map<string, Map<string, BlockId>>();
+  /** 编辑差分按 chunkKey 分桶，值为已解析的数值坐标：ensureChunk 不再逐条 split 字符串 */
+  private editsByChunk = new Map<string, Map<string, BlockEdit>>();
   private bedrockId: BlockId;
 
   constructor(
@@ -63,14 +68,19 @@ export class World {
   /** 记录一条玩家编辑，同时维护分桶索引（幂等：同坐标后写覆盖前写） */
   private recordEdit(k: string, id: BlockId): void {
     this.edits.set(k, id);
-    const [x, , z] = k.split(',').map(Number);
+    // 字符串坐标只在这里解析一次；手写切片避免 split+map 每次分配临时数组
+    const i1 = k.indexOf(',');
+    const i2 = k.indexOf(',', i1 + 1);
+    const x = +k.slice(0, i1);
+    const y = +k.slice(i1 + 1, i2);
+    const z = +k.slice(i2 + 1);
     const ck = chunkKey(Math.floor(x / CS), Math.floor(z / CS));
     let bucket = this.editsByChunk.get(ck);
     if (!bucket) {
       bucket = new Map();
       this.editsByChunk.set(ck, bucket);
     }
-    bucket.set(k, id);
+    bucket.set(k, { x, y, z, id });
   }
 
   /** 批量载入存档差分（组装根调用，禁止绕过本方法直接写 edits） */
@@ -88,15 +98,15 @@ export class World {
     }
     if (!chunk.generated) {
       this.generator.generateChunk(cx, cz, chunk.data);
-      // 应用玩家编辑差分（分桶后不再扫描全档）
+      // 应用玩家编辑差分（分桶后不再扫描全档，也不再逐条 split 坐标字符串）
       const x0 = cx * CS;
       const z0 = cz * CS;
       const bucket = this.editsByChunk.get(key);
       if (bucket) {
-        for (const [k, id] of bucket) {
-          const [x, y, z] = k.split(',').map(Number);
-          if (x >= x0 && x < x0 + CS && z >= z0 && z < z0 + CS && y >= 0 && y < H) {
-            chunk.data[chunk.idx(x - x0, y, z - z0)] = id;
+        for (const e of bucket.values()) {
+          if (e.x >= x0 && e.x < x0 + CS && e.z >= z0 && e.z < z0 + CS &&
+              e.y >= 0 && e.y < H) {
+            chunk.data[chunk.idx(e.x - x0, e.y, e.z - z0)] = e.id;
           }
         }
       }

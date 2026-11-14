@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import * as THREE from 'three';
 import { Engine } from './core/engine';
-import { VERSION } from './core/version';
+import { VERSION, RELEASE } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
@@ -206,7 +206,9 @@ async function boot() {
       .then((bytes) => {
         // 仅当没有更新的保存、且快照之后没有新编辑时才清脏；
         // 否则异步 provider 的旧回调会吞掉新编辑的脏标记。
-        if (seq === saveSeq && version === dirtyVersion) dirtySave = false;
+        // 过期保存的结果不能覆盖最新状态：仅最新一次保存才更新成功时间与事件
+        if (seq !== saveSeq) return;
+        if (version === dirtyVersion) dirtySave = false;
         lastSaveOkAt = Date.now();
         events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : JSON.stringify(data).length });
       })
@@ -770,7 +772,7 @@ async function boot() {
       ? `正常（${diag.checked} 项）`
       : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
     return [
-      `Minecraft TS ${VERSION} · three.js r170`,
+      `Minecraft TS ${RELEASE} (${VERSION}) · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,

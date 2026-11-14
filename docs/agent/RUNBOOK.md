@@ -18,11 +18,14 @@ npm run test:light
 npm run test:mesher
 npm run test:services
 npm run test:diagnostics
+npm run test:worker-pool
+npm run test:edits
+npm run test:terrain-system
 npm run verify          # 含 build + 浏览器实景 + 视觉回归
 ```
 
-`test:snapshot` 必须先于 `test:logic / test:light / test:mesher / test:services /
-test:diagnostics`，因为后四者 require 生成出来的 CJS 快照。
+`test:snapshot` 必须先于全部 require CJS 快照的纯逻辑测试
+（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system`）。
 
 浏览器实景在 Linux 无 GPU 环境下：
 
@@ -39,6 +42,14 @@ xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run t
 
 新增检查项时，同时更新 `test/diagnostics-check.cjs`，并在注入异常的快照上断言对应
 `issue.id`，确保检查项本身不会静默失效。
+
+## 地形与方块
+
+- 方块 id 只能末尾追加；新增内置方块后同步更新 `test/terrain-system-check.cjs`
+  的 id 断言与 `docs/TESTING.md`。
+- 地表 / 装饰规则统一写进 `src/world/generator.ts` 的 `BIOME_PROFILES`，
+  不要在地形阶段里散落 `if (biome === ...)`。
+- 新增生成阶段会改变 `TERRAIN_STAGES` 契约，必须同时更新阶段顺序断言。
 
 ## 常见问题
 

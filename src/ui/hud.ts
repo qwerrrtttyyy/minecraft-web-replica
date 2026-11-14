@@ -253,6 +253,10 @@ export class HUD {
     this.gameHud = h('div', 'game-hud');
 
     this.crosshair = h('div', 'crosshair');
+    // 原版准星：白色十字、中心留 2px 空隙，四臂独立以便逐臂加黑色描边
+    for (const dir of ['up', 'right', 'down', 'left']) {
+      this.crosshair.appendChild(h('i', `ch-arm ch-${dir}`));
+    }
     this.gameHud.appendChild(this.crosshair);
 
     // 挖掘进度条（准星下方）

@@ -11,7 +11,7 @@ npm run typecheck       # tsc --noEmit，必须 0 error
 npm run build           # 类型检查 + 单文件构建
 npm run test:snapshot   # 从当前 TS 源码生成 CJS 测试快照（必须先跑）
 npm run test:logic && npm run test:light && npm run test:mesher
-npm run test:services && npm run test:diagnostics
+npm run test:services && npm run test:diagnostics && npm run test:terrain-system
 npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要 Chromium）
 ```
 
@@ -20,10 +20,14 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 
 ## 硬规则
 
-- **版本单一来源**：`src/core/version.ts` 的 `VERSION` 是唯一来源，`package.json` 与 README
-  必须一致；`npm run check:version` 会机械校验。
-- **方块 id 只追加**：内置方块 id 1..44 不能调整，否则旧存档 `edits` 差分指向错误方块。
-  新方块 id 必须 1..255（`Uint8Array` 存储）。
+- **版本双轨单一来源**：`src/core/version.ts` 是唯一来源——`VERSION`（非正式版 `X.Y.Z`）与
+  `RELEASE`（正式版 `vN`）分开维护；`package.json` 只跟 `VERSION` 一致，README 必须含两行版本标记。
+  `npm run check:version` 机械校验双轨格式、一致性与源码唯一版本源。日常迭代只动 `VERSION`，
+  `RELEASE` 仅在发布正式版时推进，Git 标签同步打 `vN`（历史迭代标签 `1.3.0` / `1.3.1` 不带 `v`）。
+- **方块 id 只追加**：内置方块 id 1..56 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+  新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
+- **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
+  `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止
   import three / World / TextureAtlas。主线程与 Worker 共用同一份 `mesher.ts`。
 - **Worker 配置失效**：注册方块 / 纹理后必须让 `ChunkManager.invalidateConfig()` 重建并
@@ -40,6 +44,10 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
 - **诊断**：新增高风险不变量时，优先在 `src/diagnostics/RuntimeDiagnostics.ts` 增加检查，
   并在 `test/diagnostics-check.cjs` 补一条注入式回归。
+- **Worker 池构造**：`createWorkerPool()` 任一构造失败必须整体 terminate 并回退主线程，
+  禁止留下「部分实例 + worker 模式」的残池；用 `test:worker-pool` 注入式回归验证。
+- **编辑差分**：分桶值存已解析的数值坐标（`BlockEdit`），字符串 key 只在 `recordEdit` 解析一次；
+  `ensureChunk` 不再逐条 `split(',')`。改动用 `test:edits` 覆盖负坐标与跨区块边界。
 
 ## 常见排查
 

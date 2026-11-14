@@ -25,6 +25,11 @@ export class Sky implements System {
   private moon: THREE.Mesh;
   private stars: THREE.Points;
   private starMat: THREE.PointsMaterial;
+  /** 第二层星点：与 stars 用不同相位闪烁，避免整片星空同步明灭 */
+  private starsB: THREE.Points;
+  private starMatB: THREE.PointsMaterial;
+  /** 原版 8 相月贴图，按累计游戏天数循环 */
+  private moonTextures: THREE.CanvasTexture[] = [];
   private clouds: THREE.Mesh;
   /** 云块网格以世界格为锚点，玩家移动 / 云漂移过大时整体重建（接缝按世界格对齐） */
   private cloudCell = 12;
@@ -134,32 +139,43 @@ export class Sky implements System {
       new THREE.MeshBasicMaterial({ map: makeSunTexture(), transparent: true, fog: false, depthWrite: false }),
     );
     this.sun.renderOrder = -8;
+    this.moonTextures = Array.from({ length: 8 }, (_, i) => makeMoonTexture(i));
     this.moon = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 24),
-      new THREE.MeshBasicMaterial({ map: makeMoonTexture(), transparent: true, fog: false, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ map: this.moonTextures[0], transparent: true, fog: false, depthWrite: false }),
     );
     this.moon.renderOrder = -8;
     this.group.add(this.sun, this.moon);
 
     // 星空
     const rng = mulberry32(20261113);
-    const starPos: number[] = [];
+    const starPosA: number[] = [];
+    const starPosB: number[] = [];
     const starCount = isMobile ? 450 : 750;
     for (let i = 0; i < starCount; i++) {
       const az = rng() * Math.PI * 2;
       const el = Math.asin(rng() * 0.98);
       const r = 430;
-      starPos.push(Math.cos(az) * Math.cos(el) * r, Math.sin(el) * r, Math.sin(az) * Math.cos(el) * r);
+      (i % 2 === 0 ? starPosA : starPosB).push(
+        Math.cos(az) * Math.cos(el) * r, Math.sin(el) * r, Math.sin(az) * Math.cos(el) * r,
+      );
     }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
-    this.starMat = new THREE.PointsMaterial({
-      color: 0xdde6ff, size: 2.2, sizeAttenuation: false, transparent: true,
-      opacity: 0, fog: false, depthWrite: false,
-    });
-    this.stars = new THREE.Points(starGeo, this.starMat);
-    this.stars.renderOrder = -9;
-    this.group.add(this.stars);
+    const makeStarLayer = (pos: number[], size: number) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({
+        color: 0xdde6ff, size, sizeAttenuation: false, transparent: true,
+        opacity: 0, fog: false, depthWrite: false,
+      });
+      const pts = new THREE.Points(geo, mat);
+      pts.renderOrder = -9;
+      return { pts, mat };
+    };
+    const layerA = makeStarLayer(starPosA, 2.2);
+    const layerB = makeStarLayer(starPosB, 1.6);
+    this.stars = layerA.pts; this.starMat = layerA.mat;
+    this.starsB = layerB.pts; this.starMatB = layerB.mat;
+    this.group.add(this.stars, this.starsB);
 
     // 体素云
     this.cloudSize = isMobile ? 36 : 48;
@@ -201,9 +217,9 @@ export class Sky implements System {
     const col: number[] = [];
     const idx: number[] = [];
     const y = 80;
-    const thick = 3.2;
+    const thick = 1.4;
     // 逐面烘焙明暗（顶亮 / 底暗 / 侧面区分 x、z 轴），让方块云读成有厚度的体素而非白色纸片
-    const shade = [1, 0.58, 0.72, 0.86, 0.66, 0.8];
+    const shade = [1, 0.74, 0.82, 0.88, 0.78, 0.84];
     const addBox = (x0: number, z0: number) => {
       const x1 = x0 + cell, z1 = z0 + cell, y0 = y, y1 = y + thick;
       const faces = [
@@ -259,6 +275,22 @@ export class Sky implements System {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  /** 供视觉回归断言使用的只读快照（不依赖私有字段名） */
+  visualState() {
+    return {
+      moonPhases: this.moonTextures.length,
+      moonPhase: Math.floor(this.localTime / this.dayLength) % 8,
+      starLayers: 2,
+      starOpacity: [this.starMat.opacity, this.starMatB.opacity],
+      sunScale: this.sun.scale.x,
+      moonScale: this.moon.scale.x,
+      cloudOpacity: (this.clouds.material as THREE.MeshBasicMaterial).opacity,
+      fogNear: this.fog.near,
+      fogFar: this.fog.far,
+      daylight: this.daylight,
+    };
+  }
+
   update(dt: number, _elapsed: number) {
     this.localTime += dt;
     const elapsed = this.localTime;
@@ -294,12 +326,29 @@ export class Sky implements System {
     this.sun.lookAt(this.group.position);
     this.moon.position.copy(sunDir).multiplyScalar(-400);
     this.moon.lookAt(this.group.position);
-    this.starMat.opacity = (1 - this.daylight) * 0.9;
+    // 地平线附近的大气折射感：日月略放大，太阳染暖、月亮压暗
+    const horizonGlow = 1 - smoothstep(0, 0.38, Math.abs(elev));
+    this.sun.scale.setScalar(1 + horizonGlow * 0.45);
+    this.moon.scale.setScalar(1 + horizonGlow * 0.3);
+    (this.sun.material as THREE.MeshBasicMaterial).color.set(0xffffff).lerp(this.cSunset, horizonGlow * 0.65);
+    (this.moon.material as THREE.MeshBasicMaterial).color.set(0xffffff).lerp(this.cDuskTop, horizonGlow * 0.45);
+    // 月相：累计游戏天数每过一天推进一相，8 相循环（满月 → 新月 → 满月）
+    const phase = Math.floor(elapsed / this.dayLength) % 8;
+    const moonMat = this.moon.material as THREE.MeshBasicMaterial;
+    if (moonMat.map !== this.moonTextures[phase]) {
+      moonMat.map = this.moonTextures[phase];
+      moonMat.needsUpdate = true;
+    }
+    // 两组星以不同相位缓慢闪烁
+    const starVis = (1 - this.daylight) * 0.9;
+    this.starMat.opacity = starVis * (0.84 + 0.16 * Math.sin(elapsed * 1.7));
+    this.starMatB.opacity = starVis * (0.84 + 0.16 * Math.sin(elapsed * 2.3 + 1.9));
     this.stars.rotation.y = elapsed * 0.004;
+    this.starsB.rotation.y = elapsed * 0.004 + 0.35;
 
     // 云漂移：以世界格为锚点重建，移动/漂移超过 1/4 网格宽度才重建，接缝连续
     const cam = this.camera.position;
-    this.cloudDrift = elapsed * 1.3;
+    this.cloudDrift = elapsed * 0.55;
     const patchRadius = (this.cloudSize * this.cloudCell) / 4;
     if (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
         Math.abs(cam.z - this.cloudOriginZ) > patchRadius) {
@@ -312,17 +361,20 @@ export class Sky implements System {
     );
     const cloudMat = this.clouds.material as THREE.MeshBasicMaterial;
     // 日落/日出时把云染向霞光色，夜里压暗；水下淡出以免穿帮
-    cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.35 + this.daylight * 0.45);
-    cloudMat.color.lerp(this.tmpSun, dusk * 0.25);
-    cloudMat.color.multiplyScalar(0.45 + this.daylight * 0.55);
-    cloudMat.opacity = (0.32 + this.daylight * 0.5) * (1 - sub * 0.9);
+    // 原版云：白天接近纯白、夜间压暗，且不过度跟随天色偏蓝
+    cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.55 + this.daylight * 0.45);
+    cloudMat.color.lerp(this.tmpSun, dusk * 0.22);
+    cloudMat.color.multiplyScalar(0.5 + this.daylight * 0.5);
+    cloudMat.opacity = (0.28 + this.daylight * 0.6) * (1 - sub * 0.9);
     this.clouds.visible = sub < 0.99;
 
     // 雾：水下切换为近距蓝雾；世界亮度由区块 shader 的天空光 / 方块光分别处理
     const R = this.getRenderDistance() * 16;
     this.fog.color.copy(this.tmpHorizon).lerp(this.cUnderFog, sub);
-    this.fog.near = lerp(R * 0.55, 2, sub);
-    this.fog.far = lerp(R * 0.98, R * 0.42, sub);
+    this.fog.color.lerp(this.tmpSun, dusk * 0.1 * (1 - sub));
+    // 远景更早雾化，海面与天穹之间不再硬切
+    this.fog.near = lerp(R * 0.42, 2, sub);
+    this.fog.far = lerp(R * 0.92, R * 0.42, sub);
 
     // 实体光照
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);
@@ -357,16 +409,46 @@ function makeSunTexture(): THREE.CanvasTexture {
   return t;
 }
 
-function makeMoonTexture(): THREE.CanvasTexture {
+function makeMoonTexture(phase = 0): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 16; c.height = 16;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#d8dde2';
-  ctx.fillRect(0, 0, 16, 16);
-  ctx.fillStyle = '#b8bfc8';
-  for (const [x, y, s] of [[3, 4, 3], [9, 2, 2], [10, 9, 3], [5, 11, 2], [12, 5, 2]]) ctx.fillRect(x, y, s, s);
-  ctx.fillStyle = '#eef1f4';
-  ctx.fillRect(2, 2, 4, 3);
+  const p = ((phase % 8) + 8) % 8;
+  // 像素化月盘（半径约 7），逐格判定是否在圆内
+  const disc: boolean[][] = [];
+  for (let y = 0; y < 16; y++) {
+    disc[y] = [];
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 7.5;
+      disc[y][x] = dx * dx + dy * dy <= 50;
+    }
+  }
+  // 8 相：0 满月 → 4 新月 → 7 复圆；前四相阴影自右向左推进，后三相自左向右退去
+  const shadowCols = [0, 3, 6, 10, 16, 10, 6, 3][p];
+  const fromRight = p <= 4;
+  const isShaded = (x: number) => fromRight ? x >= 16 - shadowCols : x < shadowCols;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      if (!disc[y][x]) continue;
+      ctx.fillStyle = isShaded(x) ? '#454c58' : '#e6ebf2';
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  // 亮面陨石坑与左上高光（只画在月盘内的亮面）
+  ctx.fillStyle = '#c3cbd6';
+  for (const [cx, cy, size] of [[3, 4, 3], [9, 2, 2], [10, 9, 3], [5, 11, 2], [12, 5, 2]]) {
+    for (let y = cy; y < cy + size; y++) {
+      for (let x = cx; x < cx + size; x++) {
+        if (disc[y]?.[x] && !isShaded(x)) ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+  ctx.fillStyle = '#f6f8fb';
+  for (let y = 2; y < 5; y++) {
+    for (let x = 2; x < 6; x++) {
+      if (disc[y][x] && !isShaded(x)) ctx.fillRect(x, y, 1, 1);
+    }
+  }
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
