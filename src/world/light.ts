@@ -150,11 +150,16 @@ export class LightEngine {
       }
     }
 
-    // 天空光：遮挡变化时重算整列
-    if (newCost > oldCost) {
-      this.clearSkyColumn(x, z, y);
+    // 天空光：判据必须是「竖向衰减」而不是遮光性——空气与树叶/水的 opacity 同为 1，
+    // 但列衰减 0 vs 1，若只比 opacity，树叶落进光井时亮度不会下降。
+    const oldCol = this.columnCost(oldId);
+    const newCol = this.columnCost(newId);
+    if (newCol > oldCol) {
+      // 变暗：逐格回收「依赖这一格」的旧光。只清本列会漏掉水平扩散出去的格子
+      // （封住天窗房间依旧亮堂），只回收起点又会漏掉光井里等亮度的整列梯度。
+      this.removeSkyColumn(x, z, y);
       if (newCost < 16) this.refillSkyColumn(x, z, y);
-    } else if (newCost < oldCost || newCost < 16) {
+    } else if (newCol < oldCol) {
       this.refillSkyColumn(x, z, y);
     }
 
@@ -221,6 +226,11 @@ export class LightEngine {
       const z = q[head++];
       const level = q[head++];
       if (level <= 1) continue;
+      // 队列里可能记录的是回收之前的旧亮度（先播种、后被 removeLight 调低），
+      // 这类陈旧种子会把已经暗下去的格子重新点亮，必须在出队时校验当前值。
+      const sc = this.chunkAt(x >> 4, z >> 4);
+      if (!sc || !sc.lit) continue;
+      if (sc.sky[sc.idx(x & 15, y, z & 15)] < level) continue;
       for (const [dx, dy, dz] of DIRS) {
         const nx = x + dx;
         const ny = y + dy;
@@ -250,6 +260,10 @@ export class LightEngine {
       const z = q[head++];
       const level = q[head++];
       if (level <= 1) continue;
+      // 同 runSky：出队时校验本格当前亮度，丢弃回收前留下的陈旧种子
+      const sc = this.chunkAt(x >> 4, z >> 4);
+      if (!sc || !sc.lit) continue;
+      if (sc.block[sc.idx(x & 15, y, z & 15)] < level) continue;
       for (const [dx, dy, dz] of DIRS) {
         const nx = x + dx;
         const ny = y + dy;
@@ -312,27 +326,19 @@ export class LightEngine {
     }
   }
 
-  /** 放置遮挡方块：清空这一列的天空光（直到原本已无光的位置） */
-  private clearSkyColumn(x: number, z: number, fromY: number) {
+  /**
+   * 遮挡变强时沿列逐格回收天空光。
+   * 光井里相邻两格常常「等亮度」（都是 15），removeLight 的严格小于判据无法沿列推进，
+   * 因此这里沿列逐格调用 removeLight，既收掉列内梯度，也让每格各自回收水平依赖。
+   */
+  private removeSkyColumn(x: number, z: number, fromY: number) {
     const chunk = this.chunkAt(x >> 4, z >> 4);
     if (!chunk || !chunk.lit) return;
     const lx = x & 15;
     const lz = z & 15;
     for (let y = fromY; y >= 0; y--) {
-      const idx = chunk.idx(lx, y, lz);
-      const level = chunk.sky[idx];
-      if (level === 0) break;
-      chunk.sky[idx] = 0;
-      this.touched.add(chunkKey(chunk.cx, chunk.cz));
-      // 水平方向的光可以重新填进来
-      for (const [dx, dz] of HORIZ) {
-        const nx = x + dx;
-        const nz = z + dz;
-        const nc = this.chunkAt(nx >> 4, nz >> 4);
-        if (!nc || !nc.lit) continue;
-        const nl = nc.sky[nc.idx(nx & 15, y, nz & 15)];
-        if (nl > 1) this.skyQ.push(nx, y, nz, nl);
-      }
+      if (chunk.sky[chunk.idx(lx, y, lz)] === 0) break;
+      this.removeLight(true, x, y, z);
     }
   }
 

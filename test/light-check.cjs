@@ -102,4 +102,60 @@ ok('放石头清掉自身天空光', before === 15 && covered === 0, `${before}�
 ok('移除石头后天空光恢复', restored === 15, `restored=${restored}`);
 ok('光照变化会标记区块脏', world.dirty.size > 0);
 
+// ---- 遮挡回收：封住天窗后，房间内的天空光必须整体退掉（含跨区块） ----
+// 回归 v1.3.1：旧实现只清「本列」，水平扩散出去的格子保留旧亮度，
+// 表现为封死天窗后房间依旧亮堂；同时列内等亮度梯度（都是 15）也收不掉。
+const roofY2 = SURFACE + 5;
+for (const [cx, cz] of [[2, 2], [3, 2]]) makeChunk(cx, cz);
+const at = (gx, gz) => chunks.get(key(gx >> 4, gz >> 4));
+const gsky = (gx, y, gz) => { const c = at(gx, gz); return c.sky[c.idx(gx & 15, y, gz & 15)]; };
+/** 模拟 world.setBlock：先落 data，再走增量光照 */
+function gedit(gx, y, gz, v) {
+  const c = at(gx, gz);
+  const old = c.data[c.idx(gx & 15, y, gz & 15)];
+  c.data[c.idx(gx & 15, y, gz & 15)] = v;
+  light.updateBlock(gx, y, gz, old, v);
+}
+// 房间：x 44~52（跨 48 处的区块边界）、z 36~38、y SURFACE+1~+4，外壳石，天窗开在 (52,·,37)
+for (let gx = 43; gx <= 53; gx++) {
+  for (let gz = 35; gz <= 39; gz++) {
+    for (let y = SURFACE; y <= roofY2; y++) {
+      const inner = gx >= 44 && gx <= 52 && gz >= 36 && gz <= 38 && y > SURFACE && y < roofY2;
+      at(gx, gz).data[at(gx, gz).idx(gx & 15, y, gz & 15)] = inner ? 0 : stone;
+    }
+  }
+}
+for (let y = roofY2; y < H; y++) at(52, 37).data[at(52, 37).idx(52 & 15, y, 37 & 15)] = 0;
+light.initChunk(chunks.get(key(2, 2)));
+light.initChunk(chunks.get(key(3, 2)));
+
+const shaftFloor = gsky(52, SURFACE + 1, 37);
+const roomNear = gsky(48, SURFACE + 1, 37);
+const roomFar = gsky(44, SURFACE + 1, 37);
+ok('天窗井底为露天亮度', shaftFloor === 15, `got=${shaftFloor}`);
+ok('密封房间由天窗点亮（跨区块）', roomNear > 0 && roomFar < roomNear,
+  `near=${roomNear} far=${roomFar}`);
+
+gedit(52, roofY2, 37, stone);
+let residual = 0;
+for (let gx = 44; gx <= 52; gx++) {
+  for (let gz = 36; gz <= 38; gz++) {
+    for (let y = SURFACE + 1; y < roofY2; y++) if (gsky(gx, y, gz) > 0) residual++;
+  }
+}
+ok('封住天窗后房间内无残留天空光', residual === 0, `残留 ${residual} 格`);
+ok('封住天窗后井底天空光归零', gsky(52, SURFACE + 1, 37) === 0);
+
+gedit(52, roofY2, 37, 0);
+ok('重新挖开后天窗亮度可恢复（幂等）',
+  gsky(52, SURFACE + 1, 37) === shaftFloor && gsky(48, SURFACE + 1, 37) === roomNear &&
+  gsky(44, SURFACE + 1, 37) === roomFar,
+  `${gsky(52, SURFACE + 1, 37)}/${gsky(48, SURFACE + 1, 37)}/${gsky(44, SURFACE + 1, 37)}`);
+
+// 半透明介质落进光井：衰减判据要用「列衰减」，空气→树叶 opacity 相同但列衰减 +1
+gedit(52, roofY2 + 1, 37, reg.byNameGet('oak_leaves').id);
+ok('树叶落进光井使井底变暗', gsky(52, SURFACE + 1, 37) === 14, `got=${gsky(52, SURFACE + 1, 37)}`);
+gedit(52, roofY2 + 1, 37, 0);
+ok('取走树叶后井底回到 15', gsky(52, SURFACE + 1, 37) === 15);
+
 console.log(`PASS 光照回归：${passed} 组断言全部通过`);
