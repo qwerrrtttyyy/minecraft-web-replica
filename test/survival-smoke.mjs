@@ -190,7 +190,7 @@ try {
     plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
     emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
   }));
-  ok('版本号单一来源为 1.3.0', svc.version === '1.3.0', svc.version);
+  ok('版本号单一来源为 1.3.1', svc.version === '1.3.1', svc.version);
   ok('服务容器注册了事件/插件/API/内置依赖',
     ['events', 'plugins', 'api', 'builtin-deps'].every((k) => svc.services.includes(k)), svc.services.join(','));
   ok('内置插件全部启用', svc.plugins.length === 2 && svc.plugins.every((s) => s.endsWith(':enabled')),

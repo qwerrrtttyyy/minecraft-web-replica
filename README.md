@@ -15,6 +15,10 @@
 **v1.3.0 光照升级**：移植**天空光 / 方块光**双通道（0~15），火把与南瓜灯能真正照亮洞穴；
 光照随顶点进入 shader，昼夜与点光源不增加 draw call，Greedy 只在光照一致的面之间合并。
 
+**v1.3.1 集成复核**：合并画面润色与光照 / 新方块 / 图集移植，并修掉移植带入的**天空光不回收**
+与**重复放置白扣背包**两处真实缺陷；`test:visual` 视觉回归纳入 `npm run verify` 与 CI，
+补上 MIT LICENSE。逐条改动见文末「v1.3.1 集成复核与修复记录」。
+
 **v1.2.0 架构革新**：把**事件**与**插件**相关的 API 从 `main.ts` 中彻底独立为服务层
 （`ServiceContainer` + `EventService` + `PluginService`），`CraftAPI` 退化为薄门面，
 横切逻辑下沉为可启用/停用的一等公民插件；同时修复流式加载竞态与多项实测缺陷，
@@ -560,6 +564,67 @@ v1.3.0 把网格化搬进单个 Blob Worker，解除了主线程阻塞，但单 
 | 地平线霞光带 | 同上 | 日出/日落的暖色被压向贴近地平线的窄带，并与太阳**方位**对齐（此前是全向泛光），黄昏天空不再整片糊成橙色 |
 | 体素云立体化 | `Sky.buildClouds()` | 逐面烘焙顶点色（顶亮 / 底暗 / 侧面区分 x、z 轴）并开启 `depthWrite`，云从半透明「华夫格纸片」读成有厚度的体素板；夜间按日照压暗、黄昏染向霞光色 |
 | 水下大气 | `Sky.update()` / `setUnderwater()`，`main.ts` 的 `ui` 系统接线 | 相机没入水中时，雾色切向深水蓝并收敛到 `near=2 / far=0.42R`，世界亮度乘上蓝色偏移，天穹与云同步压暗淡出；入/出水用约 0.2s 指数过渡，不硬切 |
+
+## v1.3.1 集成复核与修复记录（画面润色 + 光照移植）
+
+v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组画面润色、trae 分支的
+**光照 / 新方块 / 图集美术 / 视觉回归**移植，以及集成复核中修掉的真实缺陷收进一个可回归的版本；
+版本仍是单一来源（`package.json` / `src/core/version.ts` / `CraftAPI.version` / F3 / README），
+由 `scripts/check-version.mjs` 在 `npm run verify` 中机械校验。
+
+### 新增
+
+| 项 | 位置 | 说明 |
+|---|---|---|
+| 天空光 / 方块光双通道 | `src/world/light.ts`、`src/world/mesher.ts` | 0~15 双通道 BFS（列初始化 + 阴影边界播种 + 跨区块边界种子），火把与南瓜灯真正照亮洞穴；亮度按面格进顶点属性，昼夜与点光源不增加 draw call，Greedy 只在贴图与亮度完全一致的面之间合并 |
+| 18 个新方块 | `src/world/blocks.ts` | 火把、南瓜灯、石砖系、苔石、黑曜石、砂砾、沙岩、冰、云杉 / 白桦木板、工作台、蘑菇、枯草、四色羊毛，**追加为 id 27~44**，1~26 不变，旧存档的编辑记录依旧有效 |
+| 图集美术重绘 | `src/gfx/atlas.ts` | 树叶簇、草 / 石 / 水 / 砖的逐像素重绘 + 新方块对应贴图；图集 8×8=64 槽位仍有富余，`registerTile()` 可注入自定义纹理 |
+| 视觉回归测试 | `test/visual-check.mjs`、`npm run test:visual` | headless Chromium + swiftshader 截图比对，9 项断言（白天非纯色 / 夜间明显变暗且仍有细节 / 火把方块光与邻格发光 / 移除后归零 / 火光区域更亮 / 方块展示墙颜色丰富 / 无运行时错误），已挂进 `verify` 与 CI |
+| MIT LICENSE | `LICENSE` | 明确授权与免责 |
+
+### 改进
+
+| 项 | 位置 | 效果 |
+|---|---|---|
+| 天穹去色带 | `src/gfx/sky.ts` | smootherstep 曲线替换 `pow(h, 0.58)` 并叠加逐像素哈希抖动，消除大面积天空上的同心色带 |
+| 地平线霞光方位化 | `src/gfx/sky.ts` | 日出 / 日落暖色压向贴近地平线的窄带并与**太阳方位**对齐，黄昏不再整片糊成橙色 |
+| 体素云立体化 | `src/gfx/sky.ts` | 逐面烘焙顶点色 + `depthWrite`，夜间按日照压暗、黄昏染向霞光色 |
+| 水下大气 | `src/gfx/sky.ts`、`src/main.ts` | 入水切深水蓝雾并收敛 `near/far`，天穹与云淡出，入 / 出水约 0.2s 指数过渡 |
+| 光照回归覆盖 | `test/light-check.cjs` | 断言 14 → 21：跨区块密封天窗、遮光回收、幂等往返；`test:snapshot` 把 `light.ts` 纳入快照编译 |
+| 生存初始配置 | `src/main.ts` | 创造栏补入火把，生存初始背包补 8 个火把，新方块开箱可用 |
+
+### 修复
+
+| 缺陷 | 位置 | 说明 |
+|---|---|---|
+| 堵死光源后天空光不回收 | `src/world/light.ts` | 旧实现只把本列清零再把水平邻居塞回队列：既漏掉光井里**等亮度**（相邻都是 15）的整列梯度，也漏掉回收后仍残留的水平依赖格。实测密封天窗封死后房间内残留 108 格亮光；树叶 / 水落进光井时因 `opacity` 同为 1，判据根本不触发。改为以「竖向衰减」`columnCost` 判据 + 沿列逐格 `removeLight` + BFS 出队时校验当前亮度丢弃陈旧种子 |
+| 重复放置同一方块白扣背包 | `src/player/player.ts` | 火把这类非实心方块不会被「目标格已实心」拦住，而 `setBlock` 对同 id 返回 false 什么都不做，`consume` 却已经扣过——实测 10 个火把对着火把放置后变 9 个、世界上没多出任何东西。放置前先拦住同 id 目标格 |
+| 方块 id 越界静默截断 | `src/world/blocks.ts` | 注册时校验 `1~255`，越界 id 会被 `Uint8Array` 截断成另一个方块，现在直接抛错 |
+| `world.dirty` 无界增长 | `src/world/chunkManager.ts` | 派发半径外的脏键直接丢弃，靠近时由自愈入队补回；实测 400 次远端编辑后键数仍有界 |
+| 存档写入失败被吞 | `src/save/save.ts`、`src/main.ts` | `save()` 返回写入字节数供 `save:done`，仅在写入成功后清脏标记、失败保留并重试；新建世界 / 导入存档后补挂 `beforeunload`，续档会复活已失效的存档 |
+| 模式切换双轨 | `src/main.ts`、`CraftAPI` | 菜单与 `CraftAPI.setMode` 统一走 `applyMode`，不再有两套各自维护的状态 |
+| 视角与指针锁 | `src/main.ts` | 指针锁在用户手势内申请；加载后丢弃残留的 look delta，避免进场瞬间视角甩动 |
+| 实体上下浮动 | `src/entity/` | 浮动写回的是偏移量而非绝对 Y；`player:move` 事件节流 |
+| 视觉检查火把取样歧义 | `test/visual-check.mjs` | 改在光照无歧义的邻格采样，消除偶发误判 |
+| 放置消耗断言偶发失败 | `test/survival-smoke.mjs` | 按住右键跨过 `placeTimer=0.24s` 连放 2 次是预期行为，断言放宽为「确实消耗」并补一条确定性回归 |
+
+### 复核结论（未发现问题之处）
+
+- 合并未残留冲突标记与重复代码；Worker 池、`meshSource` / `SnapshotMeshSource` 回退、`tiledAtlas`
+  与 `injectLight` 的 `onBeforeCompile` 链式接线（含 `customProgramCacheKey`）在移植后依旧自洽。
+- 负坐标区块的 `>>4` / `&15` 位运算、`costCache` 哨兵、跨区块边界播种几何、方块光回收路径复核无误。
+- 光照不落盘、按世界数据确定性重算：火把 / 南瓜灯等编辑重载后亮度一致，重载无页面错误。
+
+### 验证结果
+
+| 项 | 结果 |
+|---|---|
+| `check:version` / `typecheck` | 版本一致，`tsc --noEmit` 0 error |
+| `test:snapshot` / `test:logic` / `test:light` | 快照编译通过；logic + terrain 全绿；光照 21/21 |
+| `test:mesher` / `test:services` | 43 / 31 项全部通过（网格输出逐面等价，未受光照修复影响） |
+| `test:smoke`（实景） | 88/88，含新增的同 id 放置回归 |
+| `test:visual` | 9/9 |
+| `build` | `dist/index.html` 659 kB（单文件） |
 
 ---
 

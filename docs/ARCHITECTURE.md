@@ -341,7 +341,7 @@ v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发
 | 版本 | 目标 | 可机械检查的验收标准 |
 |---|---|---|
 | v1.3.0 | Worker 池（least-busy 派发） | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升 |
-| v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 14 项断言；mesher 面覆盖与光照逐格一致 |
+| v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 21 项断言（v1.3.1 补遮光回收、跨区块天窗与幂等往返回归）；mesher 面覆盖与光照逐格一致 |
 | v1.4.0 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
 | v1.4.1 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
 | v1.4.2 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
