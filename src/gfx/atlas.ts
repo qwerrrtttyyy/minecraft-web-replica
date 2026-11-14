@@ -358,6 +358,67 @@ function builtinPainters(): Record<string, Painter> {
       blob(p, rng, 0x35b9c4, 6, 5);
       blob(p, rng, 0x8ff0ef, 4, 3);
     },
+    // 光源方块：火把 / 南瓜灯
+    torch: (p, rng) => {
+      p.clear();
+      for (let y = 7; y < 16; y++) {
+        p.set(7, y, 0x6b4a2a);
+        p.set(8, y, 0x7d5a34);
+      }
+      p.set(6, 10, 0x4a3018);
+      p.set(9, 10, 0x4a3018);
+      p.set(7, 6, 0xffd95e);
+      p.set(8, 6, 0xffb83a);
+      p.set(7, 5, 0xfff0a8);
+      p.set(8, 5, 0xffd95e);
+      p.set(7, 4, 0xfff6d0);
+      p.set(8, 4, 0xffe58a);
+      p.set(6, 6, jitter(0xd9881f, rng, 10));
+      p.set(9, 6, jitter(0xc4761a, rng, 10));
+    },
+    pumpkin_top: (p, rng) => {
+      fillNoise(p, rng, 0xd97318, 10);
+      for (let y = 0; y < TILE; y++) {
+        for (let x = 0; x < TILE; x++) {
+          const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+          if (d > 6.5) p.set(x, y, jitter(0xa9530d, rng, 6));
+          else if (((d | 0) % 3) === 1) p.set(x, y, jitter(0xeb8b28, rng, 6));
+        }
+      }
+      rect(p, 7, 6, 2, 3, 0x3f7a24);
+      p.set(7, 5, 0x2f5c1b);
+      p.set(8, 5, 0x2f5c1b);
+    },
+    pumpkin_bottom: (p, rng) => {
+      fillNoise(p, rng, 0xc46714, 9);
+      for (let y = 0; y < TILE; y++) {
+        for (let x = 0; x < TILE; x++) {
+          const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+          if (d > 6.5) p.set(x, y, jitter(0x9c4a0c, rng, 6));
+          else if (((d | 0) % 4) === 2) p.set(x, y, jitter(0xd97a1e, rng, 6));
+        }
+      }
+    },
+    pumpkin_face: (p, rng) => {
+      fillNoise(p, rng, 0xd97318, 10);
+      for (const x of [2, 6, 10, 14]) {
+        for (let y = 0; y < TILE; y++) p.set(x, y, jitter(0xb85c10, rng, 5));
+      }
+      // 雕刻的眼睛与锯齿嘴（内部暖色表示灯光）
+      rect(p, 3, 5, 3, 2, 0x2a1608);
+      rect(p, 10, 5, 3, 2, 0x2a1608);
+      p.set(4, 5, 0xffcc55);
+      p.set(11, 5, 0xffcc55);
+      for (let x = 3; x <= 12; x++) p.set(x, 10, 0x2a1608);
+      p.set(4, 9, 0x2a1608);
+      p.set(7, 9, 0x2a1608);
+      p.set(10, 9, 0x2a1608);
+      p.set(5, 11, 0x2a1608);
+      p.set(8, 11, 0x2a1608);
+      p.set(11, 11, 0x2a1608);
+      p.set(4, 6, 0xffd166);
+      p.set(11, 6, 0xffd166);
+    },
   };
 }
 

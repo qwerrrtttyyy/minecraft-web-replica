@@ -3,9 +3,9 @@
  * 运行：node test/terrain-check.cjs
  */
 const assert = require('assert');
-const { DefaultGenerator, DEFAULT_TERRAIN } = require('./terrain-logic/world/generator.js');
-const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
-const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require('./terrain-logic/core/types.js');
+const { DefaultGenerator, DEFAULT_TERRAIN } = require('./.build/world/generator.js');
+const { BlockRegistry, registerBuiltinBlocks } = require('./.build/world/blocks.js');
+const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require('./.build/core/types.js');
 
 const idx = (x, y, z) => (y * CS + z) * CS + x;
 const log = (...a) => console.log(...a);

@@ -28,7 +28,9 @@ export class Engine {
   private fpsCount = 0;
 
   constructor(container: HTMLElement) {
-    this.isMobile = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    // 粗指针优先；触摸设备再要求「无悬停」，避免触摸屏笔记本被当成手机
+    this.isMobile = matchMedia('(pointer: coarse)').matches ||
+      (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
     this.renderer = new THREE.WebGLRenderer({
       antialias: false,
       powerPreference: 'high-performance',

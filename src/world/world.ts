@@ -1,20 +1,33 @@
 import * as THREE from 'three';
-import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
+import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, clamp, type BlockId } from '../core/types';
 import type { EventBus } from '../core/events';
 import type { BlockRegistry } from './blocks';
 import { AIR } from './blocks';
 import type { IWorldGenerator } from './generator';
+import { LightEngine } from './light';
 
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 
 export class Chunk {
   readonly data = new Uint8Array(CS * CS * H);
+  /** 天空光（0~15），由 LightEngine 维护 */
+  readonly sky = new Uint8Array(CS * CS * H);
+  /** 方块光（0~15），由 LightEngine 维护 */
+  readonly block = new Uint8Array(CS * CS * H);
   generated = false;
+  /** 光照是否已初始化 */
+  lit = false;
   constructor(readonly cx: number, readonly cz: number) {}
   idx(x: number, y: number, z: number) {
     return (y * CS + z) * CS + x;
   }
+}
+
+interface EditEntry {
+  /** 生成器原始方块；-1 表示旧存档载入、尚未与生成结果比对 */
+  original: BlockId;
+  current: BlockId;
 }
 
 export interface RayHit {
@@ -30,10 +43,11 @@ export interface RayHit {
  */
 export class World {
   readonly chunks = new Map<string, Chunk>();
-  /** 玩家改动差分：key -> blockId，存档只保存这些 */
-  readonly edits = new Map<string, BlockId>();
+  /** 玩家改动差分：按区块分桶，只遍历本区块的编辑 */
+  private editsByChunk = new Map<string, Map<number, EditEntry>>();
   /** 待重新网格化的区块 */
   readonly dirty = new Set<string>();
+  readonly light: LightEngine;
   private bedrockId: BlockId;
 
   constructor(
@@ -42,6 +56,7 @@ export class World {
     readonly events: EventBus,
   ) {
     this.bedrockId = registry.byNameGet('bedrock')?.id ?? 3;
+    this.light = new LightEngine(this);
   }
 
   getChunk(cx: number, cz: number): Chunk | undefined {
@@ -58,16 +73,17 @@ export class World {
     }
     if (!chunk.generated) {
       this.generator.generateChunk(cx, cz, chunk.data);
-      // 应用玩家编辑差分
-      const x0 = cx * CS;
-      const z0 = cz * CS;
-      for (const [k, id] of this.edits) {
-        const [x, y, z] = k.split(',').map(Number);
-        if (x >= x0 && x < x0 + CS && z >= z0 && z < z0 + CS && y >= 0 && y < H) {
-          chunk.data[chunk.idx(x - x0, y, z - z0)] = id;
+      // 应用玩家编辑差分：只遍历本区块那一桶
+      const bucket = this.editsByChunk.get(key);
+      if (bucket) {
+        for (const [index, e] of bucket) {
+          if (e.original < 0) e.original = chunk.data[index];
+          chunk.data[index] = e.current;
         }
       }
       chunk.generated = true;
+      // 生成后立刻初始化天空光/方块光（编辑已经在上面应用）
+      this.light.initChunk(chunk);
       // 邻接已网格化区块需要重绘边界面
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const nk = chunkKey(cx + dx, cz + dz);
@@ -109,13 +125,97 @@ export class World {
     const old = chunk.data[chunk.idx(lx, y, lz)];
     if (old === id) return false;
     chunk.data[chunk.idx(lx, y, lz)] = id;
-    if (record) this.edits.set(blockKey(x, y, z), id);
+    if (record) this.recordEdit(chunkKey(cx, cz), chunk.idx(lx, y, lz), old, id);
+    // 光照增量更新（会把受影响的区块标脏）
+    this.light.updateBlock(x, y, z, old, id);
     this.dirty.add(chunkKey(cx, cz));
     if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
     if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
     if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
     return true;
+  }
+
+  // ---------- 编辑差分（按区块分桶） ----------
+
+  private recordEdit(ck: string, index: number, oldId: BlockId, newId: BlockId) {
+    let bucket = this.editsByChunk.get(ck);
+    if (!bucket) {
+      bucket = new Map();
+      this.editsByChunk.set(ck, bucket);
+    }
+    const entry = bucket.get(index);
+    if (!entry) {
+      bucket.set(index, { original: oldId, current: newId });
+    } else {
+      entry.current = newId;
+      // 改回生成器的原始方块后，这条差分已经没有存在价值
+      if (entry.original >= 0 && entry.current === entry.original) bucket.delete(index);
+    }
+    if (bucket.size === 0) this.editsByChunk.delete(ck);
+  }
+
+  get editCount(): number {
+    let n = 0;
+    for (const bucket of this.editsByChunk.values()) n += bucket.size;
+    return n;
+  }
+
+  /** 从存档载入差分（旧格式：'x,y,z' -> blockId） */
+  loadEdits(entries: [string, BlockId][]) {
+    for (const [k, id] of entries) {
+      if (typeof k !== 'string' || typeof id !== 'number') continue;
+      const [x, y, z] = k.split(',').map(Number);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (y < 0 || y >= H) continue;
+      const cx = Math.floor(x / CS);
+      const cz = Math.floor(z / CS);
+      const ck = chunkKey(cx, cz);
+      let bucket = this.editsByChunk.get(ck);
+      if (!bucket) {
+        bucket = new Map();
+        this.editsByChunk.set(ck, bucket);
+      }
+      const lx = x - cx * CS;
+      const lz = z - cz * CS;
+      bucket.set((y * CS + lz) * CS + lx, { original: -1, current: id });
+    }
+  }
+
+  /** 导出为存档格式（'x,y,z' -> blockId），保持 v2 存档兼容 */
+  serializeEdits(): [string, BlockId][] {
+    const out: [string, BlockId][] = [];
+    for (const [ck, bucket] of this.editsByChunk) {
+      const [cx, cz] = ck.split(',').map(Number);
+      for (const [index, e] of bucket) {
+        const y = (index / (CS * CS)) | 0;
+        const rest = index - y * CS * CS;
+        const lz = (rest / CS) | 0;
+        const lx = rest - lz * CS;
+        out.push([`${cx * CS + lx},${y},${cz * CS + lz}`, e.current]);
+      }
+    }
+    return out;
+  }
+
+  /** 渲染用天空光（未加载区块按露天处理，避免边界发黑） */
+  getSkyLight(x: number, y: number, z: number): number {
+    if (y >= H) return 15;
+    if (y < 0) return 0;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const c = this.chunks.get(chunkKey(cx, cz));
+    if (!c || !c.lit) return 15;
+    return c.sky[c.idx(x - cx * CS, y, z - cz * CS)];
+  }
+
+  getBlockLight(x: number, y: number, z: number): number {
+    if (y >= H || y < 0) return 0;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const c = this.chunks.get(chunkKey(cx, cz));
+    if (!c || !c.lit) return 0;
+    return c.block[c.idx(x - cx * CS, y, z - cz * CS)];
   }
 
   /**

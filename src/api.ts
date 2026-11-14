@@ -123,7 +123,7 @@ export interface APIDeps {
 
 export function createCraftAPI(d: APIDeps): CraftAPI {
   return {
-    version: '1.1.0',
+    version: '1.2.0',
     registerBlock(input) {
       for (const t of [input.tiles.top, input.tiles.bottom, input.tiles.side]) {
         if (!d.atlas.hasTile(t)) throw new Error(`纹理未注册: ${t}（先用 registerTile 注册）`);

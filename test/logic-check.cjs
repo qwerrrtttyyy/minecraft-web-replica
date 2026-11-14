@@ -1,6 +1,6 @@
 const assert = require('assert');
-const { SurvivalState, ITEMS, MAX_HUNGER } = require('./logic/player/survival.js');
-const { EventBus } = require('./logic/core/events.js');
+const { SurvivalState, ITEMS, MAX_HUNGER } = require('./.build/player/survival.js');
+const { EventBus } = require('./.build/core/events.js');
 
 const registry = {
   get: (id) => ({ id, name: id === 5 ? 'dirt' : 'air' }),

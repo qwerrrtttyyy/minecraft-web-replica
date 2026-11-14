@@ -1,8 +1,13 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const URL = 'file:///root/mc-build/dist/index.html';
-const SHOTS = '/root/mc-build/shots';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const URL = `file://${path.join(ROOT, 'dist', 'index.html')}`;
+const SHOTS = path.join(ROOT, 'test', 'artifacts');
+fs.mkdirSync(SHOTS, { recursive: true });
+const CHROME = process.env.CHROME_PATH ?? '/usr/local/bin/chromium';
 const results = [];
 const errors = [];
 const ok = (name, pass, extra = '') => {
@@ -11,7 +16,7 @@ const ok = (name, pass, extra = '') => {
 };
 
 const browser = await puppeteer.launch({
-  executablePath: '/usr/bin/google-chrome',
+  executablePath: CHROME,
   headless: 'new',
   args: [
     '--no-sandbox', '--disable-dev-shm-usage',
@@ -103,13 +108,13 @@ const interact = await page.evaluate(() => {
   p.pitch = 0;
   p.update(0.016);
   const targeted = p.target && p.target.x === tx && p.target.z === tz;
-  p.doBreak();
+  p.breakBlock();
   const broken = mc.world.getBlock(tx, ty, tz) === 0;
   p.pitch = -0.6;
   p.update(0.016);
-  const editsBefore = mc.world.edits.size;
+  const editsBefore = mc.world.editCount;
   p.doPlace();
-  const placed = mc.world.edits.size > editsBefore;
+  const placed = mc.world.editCount > editsBefore;
   return { targeted, broken, placed };
 });
 ok('准星瞄准+破坏方块', interact.targeted && interact.broken, JSON.stringify(interact));
@@ -142,7 +147,7 @@ const tnt = await page.evaluate(() => {
   const tx = Math.floor(p.pos.x) + 3, tz = Math.floor(p.pos.z) + 1;
   const ty = Math.floor(p.pos.y);
   mc.world.setBlock(tx, ty, tz, mc.registry.byNameGet('tnt').id);
-  const before = mc.world.edits.size;
+  const before = mc.world.editCount;
   window.__exploded = null;
   window.CraftAPI.on('explosion', (e) => { window.__exploded = e; });
   mc.igniteTnt(tx, ty, tz);
@@ -156,7 +161,7 @@ const tnt2 = await page.evaluate(({ tx, ty, tz }) => {
   for (let dx = -3; dx <= 3; dx++) for (let dy = -2; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) {
     if (mc.world.getBlock(tx + dx, ty + dy, tz + dz) === 0) air++;
   }
-  return { gone: mc.world.getBlock(tx, ty, tz) === 0, air, edits: mc.world.edits.size, mode: mc.mode, tntLeft: mc.world.getBlock(tx, ty, tz) };
+  return { gone: mc.world.getBlock(tx, ty, tz) === 0, air, edits: mc.world.editCount, mode: mc.mode, tntLeft: mc.world.getBlock(tx, ty, tz) };
 }, tnt);
 await page.screenshot({ path: `${SHOTS}/05-explosion.png` });
 ok('TNT 点燃并爆炸', tnt2.gone && tnt2.edits > tnt.before + 10, `edits=${tnt2.edits} air=${tnt2.air}`);

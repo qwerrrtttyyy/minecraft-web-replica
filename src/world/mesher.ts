@@ -14,6 +14,8 @@ export interface GeoArrays {
   positions: number[];
   uvs: number[];
   colors: number[];
+  /** 每顶点 2 个数：天空光 / 方块光（0~1） */
+  lights: number[];
   indices: number[];
 }
 
@@ -24,7 +26,7 @@ export interface ChunkMeshData {
   water: GeoArrays | null;
 }
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], colors: [], indices: [] });
+const newGeo = (): GeoArrays => ({ positions: [], uvs: [], colors: [], lights: [], indices: [] });
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 
@@ -52,6 +54,7 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
     uvCorners: number[][],
     brightness: number[],
     flip: boolean,
+    light: readonly [number, number],
   ) => {
     const base = g.positions.length / 3;
     const [u0, v0, u1, v1] = uvRect;
@@ -60,6 +63,7 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
       g.uvs.push(u0 + (u1 - u0) * uvCorners[i][0], v0 + (v1 - v0) * uvCorners[i][1]);
       const b = brightness[i];
       g.colors.push(b, b, b);
+      g.lights.push(light[0], light[1]);
     }
     if (flip) g.indices.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
     else g.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -87,9 +91,13 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
           ];
           const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
           const bright = [0.95, 0.95, 1, 1];
+          const light: [number, number] = [
+            world.getSkyLight(x0 + lx, y, z0 + lz) / 15,
+            world.getBlockLight(x0 + lx, y, z0 + lz) / 15,
+          ];
           for (const q of quads) {
-            pushQuad(pass, q, [0, 1, 0], uvR, uvs, bright, false);
-            pushQuad(pass, [q[3], q[2], q[1], q[0]], [0, 1, 0], uvR, [uvs[3], uvs[2], uvs[1], uvs[0]], bright, false);
+            pushQuad(pass, q, [0, 1, 0], uvR, uvs, bright, false, light);
+            pushQuad(pass, [q[3], q[2], q[1], q[0]], [0, 1, 0], uvR, [uvs[3], uvs[2], uvs[1], uvs[0]], bright, false, light);
           }
           continue;
         }
@@ -135,7 +143,12 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
             bright.push(face.shade * AO_LEVELS[ao[i]]);
           }
           const flip = ao[0] + ao[2] < ao[1] + ao[3];
-          pushQuad(pass, verts, face.normal, uvR, uvC, bright, flip);
+          // 采样面外侧空气格的光照（跨区块也能取到）
+          const light: [number, number] = [
+            world.getSkyLight(x0 + lx + nx, y + ny, z0 + lz + nz) / 15,
+            world.getBlockLight(x0 + lx + nx, y + ny, z0 + lz + nz) / 15,
+          ];
+          pushQuad(pass, verts, face.normal, uvR, uvC, bright, flip, light);
         }
       }
     }

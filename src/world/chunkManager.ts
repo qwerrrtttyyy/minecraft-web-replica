@@ -18,10 +18,32 @@ const buildGeo = (a: GeoArrays): THREE.BufferGeometry => {
   // 四个通道都是 MeshBasicMaterial，法线不被使用，不再上传可省约 25% 顶点内存
   g.setAttribute('uv', new THREE.Float32BufferAttribute(a.uvs, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(a.colors, 3));
+  g.setAttribute('aLight', new THREE.Float32BufferAttribute(a.lights, 2));
   g.setIndex(a.indices);
   g.computeBoundingSphere();
   return g;
 };
+
+/** 把天空光/方块光注入 MeshBasicMaterial：天空光随昼夜变化，方块光恒定 */
+interface ChunkShader {
+  uniforms: Record<string, THREE.IUniform>;
+  vertexShader: string;
+  fragmentShader: string;
+}
+
+function injectLight(shader: ChunkShader, daylight: { value: number }) {
+  shader.uniforms.uDaylight = daylight;
+  shader.vertexShader = 'attribute vec2 aLight;\nvarying vec2 vLight;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\n  vLight = aLight;',
+  );
+  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\n' + shader.fragmentShader.replace(
+    '#include <color_fragment>',
+    `#include <color_fragment>
+    float lit = max(vLight.x * uDaylight, vLight.y);
+    diffuseColor.rgb *= 0.07 + 0.93 * lit;`,
+  );
+}
 
 /**
  * 区块流式加载：按玩家位置生成 / 网格化 / 卸载，
@@ -31,6 +53,8 @@ export class ChunkManager implements System {
   readonly name = 'chunks';
   renderDistance: number;
   readonly materials: { opaque: THREE.MeshBasicMaterial; emissive: THREE.MeshBasicMaterial; transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial };
+  /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
+  readonly lightUniform = { value: 1 };
   private waterTime = { value: 0 };
   private meshes = new Map<string, ChunkMeshes>();
   private centerX = 0;
@@ -58,9 +82,14 @@ export class ChunkManager implements System {
         depthWrite: false, side: THREE.DoubleSide,
       }),
     };
-    // 水面微波动画（世界坐标驱动，跨区块连续）
+    // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
+    for (const mat of [this.materials.opaque, this.materials.transparent]) {
+      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform);
+    }
+    // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
+      injectLight(shader, this.lightUniform);
       shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -110,16 +139,26 @@ export class ChunkManager implements System {
         // 新生成区块必须自己入队网格化，不能只依赖"邻居生成时顺带标脏"的副作用
         this.world.dirty.add(key);
         if (performance.now() - genStart > 4) break;
+      } else if (!this.meshes.has(key)) {
+        // 已生成但还没有网格（例如脏标记曾被清理），重新入队
+        this.world.dirty.add(key);
       }
     }
 
     // 2) 网格化（整帧累计限时 6ms，近处优先）
     if (this.world.dirty.size > 0) {
-      const list = [...this.world.dirty]
-        .map((k) => k.split(',').map(Number) as [number, number])
-        .filter(([x, z]) => Math.abs(x - cx) <= R + 1 && Math.abs(z - cz) <= R + 1)
-        .sort((a, b) =>
-          (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
+      const list: [number, number][] = [];
+      for (const key of this.world.dirty) {
+        const [x, z] = key.split(',').map(Number);
+        if (Math.abs(x - cx) > R + 1 || Math.abs(z - cz) > R + 1) {
+          // 远处脏标记直接丢弃，避免长期累积；靠近时会由第 1 步重新入队
+          this.world.dirty.delete(key);
+          continue;
+        }
+        list.push([x, z]);
+      }
+      list.sort((a, b) =>
+        (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
       const meshStart = performance.now();
       for (const [x, z] of list) {
         const key = chunkKey(x, z);
@@ -141,6 +180,12 @@ export class ChunkManager implements System {
         this.world.chunks.delete(key);
         this.world.dirty.delete(key);
       }
+    }
+    // 生成过但从未网格化的远处区块也一并清理，防止内存增长
+    for (const [key, chunk] of this.world.chunks) {
+      if (this.meshes.has(key)) continue;
+      const [x, z] = [chunk.cx, chunk.cz];
+      if (Math.abs(x - cx) > limit || Math.abs(z - cz) > limit) this.world.chunks.delete(key);
     }
   }
 

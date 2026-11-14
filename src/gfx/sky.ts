@@ -39,11 +39,15 @@ export class Sky implements System {
   private tmpTop = new THREE.Color();
   private tmpHorizon = new THREE.Color();
   private tmpSun = new THREE.Color();
+  private tmpSunDir = new THREE.Vector3();
+  private cDuskTop = new THREE.Color(0x4a5a8a);
+  private cSunDusk = new THREE.Color(0xff8a3c);
+  private cSunWarm = new THREE.Color(0xffb066);
+  private cWhite = new THREE.Color(0xffffff);
 
   constructor(
     private scene: THREE.Scene,
     private camera: THREE.PerspectiveCamera,
-    private worldMaterials: { opaque: THREE.MeshBasicMaterial; transparent: THREE.MeshBasicMaterial },
     private getRenderDistance: () => number,
     private events: EventBus,
     isMobile: boolean,
@@ -196,7 +200,7 @@ export class Sky implements System {
     this.localTime += dt;
     const elapsed = this.localTime;
     this.dayTime = (this.dayTime + dt / this.dayLength) % 1;
-    const sunDir = this.sunDirection(new THREE.Vector3());
+    const sunDir = this.sunDirection(this.tmpSunDir);
     const elev = sunDir.y;
     this.daylight = smoothstep(-0.14, 0.16, elev);
     const dusk = clamp(1 - Math.abs(elev) / 0.32, 0, 1);
@@ -204,14 +208,14 @@ export class Sky implements System {
     this.tmpTop.copy(this.cNightTop).lerp(this.cDayTop, this.daylight);
     this.tmpHorizon.copy(this.cNightHorizon).lerp(this.cDayHorizon, this.daylight);
     this.tmpHorizon.lerp(this.cDusk, dusk * 0.75);
-    this.tmpTop.lerp(new THREE.Color(0x4a5a8a), dusk * 0.25);
+    this.tmpTop.lerp(this.cDuskTop, dusk * 0.25);
 
     const u = this.domeMat.uniforms;
     (u.uTop.value as THREE.Color).copy(this.tmpTop);
     (u.uHorizon.value as THREE.Color).copy(this.tmpHorizon);
     (u.uSunDir.value as THREE.Vector3).copy(sunDir);
     u.uDaylight.value = this.daylight;
-    this.tmpSun.set(0xfff2c0).lerp(new THREE.Color(0xff8a3c), dusk);
+    this.tmpSun.set(0xfff2c0).lerp(this.cSunDusk, dusk);
     (u.uSunColor.value as THREE.Color).copy(this.tmpSun);
 
     // 跟随相机
@@ -233,25 +237,21 @@ export class Sky implements System {
       this.cloudBaseZ - this.group.position.z,
     );
     (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.5 + this.daylight * 0.32;
-    (this.clouds.material as THREE.MeshBasicMaterial).color.copy(this.tmpHorizon).lerp(new THREE.Color(0xffffff), 0.55 + this.daylight * 0.45);
+    (this.clouds.material as THREE.MeshBasicMaterial).color.copy(this.tmpHorizon).lerp(this.cWhite, 0.55 + this.daylight * 0.45);
 
-    // 雾与世界亮度
+    // 雾（世界亮度由区块 shader 的天空光/方块光分别处理）
     const R = this.getRenderDistance() * 16;
     this.fog.color.copy(this.tmpHorizon);
     this.fog.near = R * 0.55;
     this.fog.far = R * 0.98;
-    const b = 0.27 + this.daylight * 0.73;
-    const night = 1 - this.daylight;
-    this.worldMaterials.opaque.color.setRGB(b * (1 - 0.16 * night), b * (1 - 0.08 * night), b);
-    this.worldMaterials.transparent.color.copy(this.worldMaterials.opaque.color);
 
     // 实体光照
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);
     this.sunLight.target.position.copy(cam);
     this.sunLight.intensity = 0.18 + this.daylight * 1.0;
-    this.sunLight.color.set(0xffffff).lerp(new THREE.Color(0xffb066), dusk * 0.8);
+    this.sunLight.color.set(0xffffff).lerp(this.cSunWarm, dusk * 0.8);
     this.hemi.intensity = 0.32 + this.daylight * 0.5;
-    this.hemi.color.copy(this.tmpTop).lerp(new THREE.Color(0xffffff), 0.4);
+    this.hemi.color.copy(this.tmpTop).lerp(this.cWhite, 0.4);
 
     this.emitAcc += dt;
     if (this.emitAcc > 0.5) {

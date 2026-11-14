@@ -58,6 +58,13 @@ export class EventBus {
   emit<K extends keyof GameEvents>(type: K, payload: GameEvents[K]): void {
     const set = this.map.get(type as string);
     if (!set) return;
-    for (const fn of [...set]) (fn as Handler<GameEvents[K]>)(payload);
+    for (const fn of [...set]) {
+      // 单个监听器异常不应中断整帧更新链路
+      try {
+        (fn as Handler<GameEvents[K]>)(payload);
+      } catch (e) {
+        console.error(`[EventBus] ${String(type)} 监听器异常`, e);
+      }
+    }
   }
 }

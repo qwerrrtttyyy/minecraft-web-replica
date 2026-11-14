@@ -192,7 +192,10 @@ export class Entity implements PhysicsBody {
     if (moving) this.phase += dt * 7;
     this.model.group.position.copy(this.pos);
     this.model.group.rotation.y = this.yaw + Math.PI;
-    this.model.animate(this.phase, moving && (Math.abs(this.vel.x) + Math.abs(this.vel.z)) > 0.2);
+    const animating = moving && (Math.abs(this.vel.x) + Math.abs(this.vel.z)) > 0.2;
+    this.model.animate(this.phase, animating);
+    // 上下浮动必须叠加在实体位置上，不能由 animate() 直接写绝对坐标
+    if (animating) this.model.group.position.y += Math.abs(Math.sin(this.phase)) * 0.02;
   }
 }
 
@@ -242,6 +245,7 @@ export class EntityManager {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
     this.scene.remove(e.model.group);
+    disposeModel(e.model.group);
     this.events.emit('entity:despawn', { type: e.type.id, id: e.id });
   }
 
@@ -311,6 +315,17 @@ export class EntityManager {
     }
     return best;
   }
+}
+
+/** 释放实体模型占用的 GPU 资源（几何体 + 材质） */
+function disposeModel(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.dispose();
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) m.dispose();
+  });
 }
 
 /** 射线与竖直 AABB 求交（脚底为原点），返回进入距离 */

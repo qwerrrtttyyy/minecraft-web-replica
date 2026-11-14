@@ -74,6 +74,8 @@ export class BlockRegistry {
   register(input: BlockInput): BlockDefinition {
     if (this.byName.has(input.name)) throw new Error(`方块名重复: ${input.name}`);
     const id = input.id ?? this.nextId;
+    // 区块数据用 Uint8Array 存储，id 超过 255 会被静默截断成别的方块
+    if (id < 1 || id > 255) throw new Error(`方块 id 超出 1~255: ${id}`);
     if (this.byId.has(id)) throw new Error(`方块 id 重复: ${id}`);
     const def: BlockDefinition = { ...input, id, drops: input.drops ?? [{ name: 'self' }] };
     this.byId.set(id, def);
@@ -158,4 +160,13 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('iron_ore', '铁矿石', {}, { hardness: 3 });
   cube('gold_ore', '金矿石', {}, { hardness: 3 });
   cube('diamond_ore', '钻石矿石', {}, { hardness: 4 });
+
+  // 光源方块：火把（可放置在地面，走镂空十字面）与南瓜灯（完整方块）
+  reg.register({
+    name: 'torch', label: '火把', shape: 'cross', solid: false, opaque: false, liquid: false,
+    transparentPass: false, lightEmission: 14, hardness: 0.1, sound: 'wood',
+    tiles: { top: 'torch', bottom: 'torch', side: 'torch' },
+  });
+  cube('jack_o_lantern', '南瓜灯', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_face' },
+    { lightEmission: 15, sound: 'wood', hardness: 1 });
 }

@@ -1,13 +1,20 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:build && npm run test:logic && npm run test:terrain && npm run test:light",
+    "test:build": "tsc -p tsconfig.test.json",
+    "test:logic": "node test/logic-check.cjs",
+    "test:terrain": "node test/terrain-check.cjs",
+    "test:light": "node test/light-check.cjs",
+    "test:smoke": "node test/survival-smoke.mjs"
   },
   "dependencies": {
     "three": "0.170.0"

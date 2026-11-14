@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "rootDir": "src",
+    "outDir": "test/.build",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/core/types.ts",
+    "src/core/events.ts",
+    "src/world/blocks.ts",
+    "src/world/faces.ts",
+    "src/world/noise.ts",
+    "src/world/generator.ts",
+    "src/world/light.ts",
+    "src/player/survival.ts"
+  ]
+}

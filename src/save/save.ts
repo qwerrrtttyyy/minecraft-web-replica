@@ -36,7 +36,8 @@ interface LegacySave {
 
 export interface ISaveProvider {
   load(): Promise<SaveData | null>;
-  save(data: SaveData): Promise<void>;
+  /** 返回写入的字节数（可选），用于 save:done 事件 */
+  save(data: SaveData): Promise<number | void>;
   clear(): Promise<void>;
 }
 
@@ -78,8 +79,10 @@ export class LocalStorageProvider implements ISaveProvider {
     }
   }
 
-  async save(data: SaveData): Promise<void> {
-    localStorage.setItem(this.key, JSON.stringify(data));
+  async save(data: SaveData): Promise<number> {
+    const json = JSON.stringify(data);
+    localStorage.setItem(this.key, json);
+    return json.length;
   }
 
   async clear(): Promise<void> {
