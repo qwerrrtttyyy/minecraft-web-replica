@@ -1,0 +1,368 @@
+/**
+ * v1.2.0 服务层纯逻辑回归（Node，无浏览器 / 无 three）。
+ * 运行前需先执行 `npm run test:snapshot` 从当前 TS 源码生成快照。
+ */
+const assert = require('assert');
+
+const { ServiceContainer, token } = require('./logic/services/ServiceContainer.js');
+const { EventService, EventBus } = require('./logic/services/events/EventService.js');
+const { EventChannel } = require('./logic/services/events/EventChannel.js');
+const { PluginService, scopeAPI } = require('./logic/services/plugins/PluginService.js');
+const { validateSave, LocalStorageProvider } = require('./logic/save/save.js');
+const shim = require('./logic/core/events.js');
+
+const results = [];
+let failures = 0;
+const ok = (name, fn) => {
+  try {
+    fn();
+    results.push({ name, pass: true });
+    console.log(`PASS  ${name}`);
+  } catch (e) {
+    failures++;
+    results.push({ name, pass: false, error: e.message });
+    console.log(`FAIL  ${name} — ${e.message}`);
+  }
+};
+// CommonJS 不支持顶层 await：异步用例先收集，文件末尾统一等待再汇总
+const pending = [];
+const okAsync = (name, fn) => {
+  pending.push(
+    Promise.resolve().then(fn).then(
+      () => { results.push({ name, pass: true }); console.log(`PASS  ${name}`); },
+      (e) => {
+        failures++;
+        results.push({ name, pass: false, error: e.message });
+        console.log(`FAIL  ${name} — ${e.message}`);
+      },
+    ),
+  );
+};
+
+// ---------- 服务容器 ----------
+ok('容器 provide/require 往返', () => {
+  const c = new ServiceContainer();
+  const t = token('a');
+  const v = { n: 1 };
+  assert.strictEqual(c.provide(t, v), v);
+  assert.strictEqual(c.require(t), v);
+});
+ok('容器 optional / has / keys', () => {
+  const c = new ServiceContainer();
+  const a = token('a'), b = token('b');
+  c.provide(a, 1);
+  assert.strictEqual(c.optional(b), undefined);
+  assert.strictEqual(c.has(a), true);
+  assert.deepStrictEqual(c.keys(), ['a']);
+});
+ok('容器拒绝重复注册', () => {
+  const c = new ServiceContainer();
+  const t = token('a');
+  c.provide(t, 1);
+  assert.throws(() => c.provide(t, 2), /重复注册/);
+});
+ok('容器 require 未注册服务直接抛错', () => {
+  const c = new ServiceContainer();
+  assert.throws(() => c.require(token('missing')), /未注册/);
+});
+ok('容器逆序 dispose', () => {
+  const c = new ServiceContainer();
+  const order = [];
+  c.provide(token('first'), { dispose: () => order.push('first') });
+  c.provide(token('second'), { dispose: () => order.push('second') });
+  c.dispose();
+  assert.deepStrictEqual(order, ['second', 'first']);
+  assert.throws(() => c.provide(token('x'), 1), /已销毁/);
+});
+
+// ---------- 事件服务 ----------
+ok('on/emit 派发', () => {
+  const ev = new EventService();
+  let got = null;
+  ev.on('game:start', (p) => { got = p; });
+  ev.emit('game:start', { seed: 42 });
+  assert.strictEqual(got.seed, 42);
+});
+ok('off 取消订阅', () => {
+  const ev = new EventService();
+  let n = 0;
+  const fn = () => n++;
+  ev.on('game:pause', fn);
+  ev.off('game:pause', fn);
+  ev.emit('game:pause', { paused: true });
+  assert.strictEqual(n, 0);
+});
+ok('同一事件多个订阅者均收到', () => {
+  const ev = new EventService();
+  let a = 0, b = 0;
+  ev.on('game:start', () => a++);
+  ev.on('game:start', () => b++);
+  ev.emit('game:start', { seed: 1 });
+  assert.strictEqual(a + b, 2);
+});
+ok('订阅者抛错被隔离，不阻断其他订阅者', () => {
+  const ev = new EventService();
+  const errors = [];
+  ev.setErrorHandler((i) => errors.push(i));
+  let survived = 0;
+  ev.on('block:break', () => { throw new Error('插件炸了'); }, 'bad-plugin');
+  ev.on('block:break', () => { survived++; }, 'good-plugin');
+  ev.emit('block:break', { x: 0, y: 1, z: 0, block: 1 });
+  assert.strictEqual(survived, 1);
+  assert.strictEqual(errors.length, 1);
+  assert.strictEqual(errors[0].label, 'bad-plugin');
+});
+ok('stats 记录派发次数与订阅数', () => {
+  const ev = new EventService();
+  const off = ev.on('game:start', () => {});
+  ev.emit('game:start', { seed: 1 });
+  ev.emit('game:start', { seed: 2 });
+  const s = ev.stats();
+  assert.strictEqual(s.emitted['game:start'], 2);
+  assert.strictEqual(s.subscribers, 1);
+  off();
+  assert.strictEqual(ev.stats().subscribers, 0);
+});
+ok('onAny 全局观测', () => {
+  const ev = new EventService();
+  const seen = [];
+  const off = ev.onAny((t) => seen.push(t));
+  ev.emit('save:done', { bytes: 10 });
+  off();
+  ev.emit('save:done', { bytes: 11 });
+  assert.deepStrictEqual(seen, ['save:done']);
+});
+ok('once 只触发一次', () => {
+  const ev = new EventService();
+  let n = 0;
+  ev.once('game:start', () => n++);
+  ev.emit('game:start', { seed: 1 });
+  ev.emit('game:start', { seed: 2 });
+  assert.strictEqual(n, 1);
+});
+ok('EventChannel 作用域订阅可一次性清理', () => {
+  const ev = new EventService();
+  const ch = new EventChannel(ev, 'demo:plugin');
+  ch.on('block:place', () => {});
+  ch.on('block:break', () => {});
+  assert.strictEqual(ev.stats().subscribers, 2);
+  assert.ok(ev.stats().channels.includes('demo:plugin'));
+  ch.dispose();
+  assert.strictEqual(ev.stats().subscribers, 0);
+  assert.ok(!ev.stats().channels.includes('demo:plugin'));
+  assert.throws(() => ch.on('block:place', () => {}), /已关闭/);
+});
+ok('事件环深度保护', () => {
+  const ev = new EventService();
+  const errors = [];
+  ev.setErrorHandler((i) => errors.push(i));
+  let n = 0;
+  ev.on('game:pause', () => { n++; ev.emit('game:pause', { paused: true }); });
+  ev.emit('game:pause', { paused: true });
+  assert.ok(n <= 17, `递归次数 ${n}`);
+  assert.ok(errors.some((e) => String(e.error).includes('深度')));
+});
+ok('dispose 后不再派发', () => {
+  const ev = new EventService();
+  let n = 0;
+  ev.on('game:start', () => n++);
+  ev.dispose();
+  ev.emit('game:start', { seed: 1 });
+  assert.strictEqual(n, 0);
+});
+ok('兼容垫片仍导出 EventBus 别名', () => {
+  assert.strictEqual(shim.EventBus, shim.EventService);
+  assert.strictEqual(typeof shim.EventChannel, 'function');
+});
+okAsync('waitFor 收到事件后 resolve', async () => {
+  const ev = new EventService();
+  const p = ev.waitFor('game:start', 1000);
+  ev.emit('game:start', { seed: 7 });
+  assert.strictEqual((await p).seed, 7);
+});
+okAsync('waitFor 超时 reject', async () => {
+  const ev = new EventService();
+  await assert.rejects(() => ev.waitFor('game:start', 25), /超时/);
+});
+
+// ---------- 插件服务 ----------
+const fakeApi = () => ({
+  version: '1.2.0',
+  world: { setBlock: () => true, getBlock: () => 0 },
+  player: { teleport() {}, setFly() {}, break() {}, place() {} },
+  save: { import() {}, setProvider() {} },
+  registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
+  on() { return () => {}; }, off() {}, emit() {},
+});
+const makePluginService = () => {
+  const ev = new EventService();
+  const c = new ServiceContainer();
+  const base = fakeApi();
+  const ps = new PluginService(ev, c, () => base);
+  return { ev, c, ps, base };
+};
+
+okAsync('插件注册与启用发出生命周期事件', async () => {
+  const { ev, ps } = makePluginService();
+  const seen = [];
+  ev.on('plugin:registered', () => seen.push('registered'));
+  ev.on('plugin:enabled', () => seen.push('enabled'));
+  let setup = 0;
+  ps.register({ manifest: { id: 'demo:a', version: '1.0.0' }, setup() { setup++; } });
+  await ps.enable('demo:a');
+  assert.strictEqual(setup, 1);
+  assert.deepStrictEqual(seen, ['registered', 'enabled']);
+  assert.strictEqual(ps.get('demo:a').state, 'enabled');
+});
+ok('插件拒绝非法 id 与重复注册', () => {
+  const { ps } = makePluginService();
+  assert.throws(() => ps.register({ manifest: { id: '' }, setup() {} }), /非法/);
+  ps.register({ manifest: { id: 'demo:a' }, setup() {} });
+  assert.throws(() => ps.register({ manifest: { id: 'demo:a' }, setup() {} }), /重复注册/);
+});
+okAsync('插件依赖递归启用', async () => {
+  const { ps } = makePluginService();
+  const order = [];
+  ps.register({ manifest: { id: 'demo:base' }, setup() { order.push('base'); } });
+  ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() { order.push('child'); } });
+  await ps.enable('demo:child');
+  assert.deepStrictEqual(order, ['base', 'child']);
+});
+okAsync('循环依赖被拦截且不冒泡', async () => {
+  const { ps } = makePluginService();
+  ps.register({ manifest: { id: 'demo:a', dependencies: ['demo:b'] }, setup() {} });
+  ps.register({ manifest: { id: 'demo:b', dependencies: ['demo:a'] }, setup() {} });
+  await ps.enable('demo:a');
+  assert.ok(['failed', 'disabled'].includes(ps.get('demo:a').state));
+});
+okAsync('setup 抛错被隔离为 failed 并发出 plugin:error', async () => {
+  const { ev, ps } = makePluginService();
+  const errs = [];
+  ev.on('plugin:error', (p) => errs.push(p));
+  ps.register({ manifest: { id: 'demo:boom' }, setup() { throw new Error('init failed'); } });
+  await ps.enable('demo:boom');
+  assert.strictEqual(ps.get('demo:boom').state, 'failed');
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].error.includes('init failed'));
+});
+okAsync('插件停用后订阅与 teardown 自动清理', async () => {
+  const { ev, ps } = makePluginService();
+  let teardown = 0;
+  ps.register({
+    manifest: { id: 'demo:scope' },
+    setup(ctx) {
+      ctx.events.on('block:break', () => {});
+      ctx.onDispose(() => teardown++);
+      return () => teardown++;
+    },
+  });
+  const before = ev.stats().subscribers;
+  await ps.enable('demo:scope');
+  assert.strictEqual(ev.stats().subscribers, before + 1);
+  ps.disable('demo:scope');
+  assert.strictEqual(ev.stats().subscribers, before);
+  assert.strictEqual(teardown, 2);
+  assert.strictEqual(ps.get('demo:scope').state, 'disabled');
+});
+okAsync('插件 unload 后从注册表移除', async () => {
+  const { ps } = makePluginService();
+  ps.register({ manifest: { id: 'demo:temp' }, setup() {} });
+  await ps.enable('demo:temp');
+  ps.unload('demo:temp');
+  assert.strictEqual(ps.get('demo:temp'), undefined);
+});
+ok('权限裁剪：未声明 world:write 时 setBlock 抛错', () => {
+  const base = fakeApi();
+  const scoped = scopeAPI(base, []);
+  assert.throws(() => scoped.world.setBlock(1, 2, 3, 4), /缺少权限 world:write/);
+  assert.throws(() => scoped.registerBlock({}), /缺少权限 blocks:register/);
+  assert.throws(() => scoped.save.import({}), /缺少权限 save:write/);
+  assert.strictEqual(scoped.world.getBlock(1, 2, 3), 0); // 读能力保留
+});
+ok('权限裁剪：声明后写能力放行', () => {
+  const base = fakeApi();
+  const scoped = scopeAPI(base, ['world:write', 'blocks:register', 'api:emit']);
+  assert.strictEqual(scoped.world.setBlock(1, 2, 3, 4), true);
+  assert.doesNotThrow(() => scoped.registerBlock({}));
+  assert.doesNotThrow(() => scoped.emit('game:start', { seed: 1 }));
+});
+ok('插件 dispose 停用全部插件', () => {
+  const { ps } = makePluginService();
+  ps.register({ manifest: { id: 'demo:x' }, setup() {} });
+  ps.register({ manifest: { id: 'demo:y' }, setup() {} });
+  ps.dispose();
+  assert.strictEqual(ps.list().length, 2);
+  assert.ok(ps.list().every((p) => p.state === 'disabled'));
+});
+
+// ---------- 存档校验 ----------
+const validSave = () => ({
+  version: 2,
+  seed: 12345,
+  mode: 'survival',
+  edits: [['1,2,3', 5]],
+  player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
+  survival: {
+    health: 20, hunger: 20, breath: 15,
+    inventory: [['i:apple', 2]], spawn: { x: 1, y: 2, z: 3 },
+  },
+  dayTime: 0.32,
+  hotbar: Array.from({ length: 9 }, () => null),
+  slot: 0,
+  settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
+  savedAt: 1700000000000,
+});
+ok('validateSave 接受合法档', () => assert.strictEqual(validateSave(validSave()), true));
+ok('validateSave 拒绝各类坏档', () => {
+  const bad = [
+    (d) => { d.version = 1; },
+    (d) => { d.seed = 'abc'; },
+    (d) => { d.mode = 'hardcore'; },
+    (d) => { d.edits = 'oops'; },
+    (d) => { d.edits = [['1,2,3', 'x']]; },
+    (d) => { delete d.player.pitch; },
+    (d) => { d.player.fly = 'yes'; },
+    (d) => { d.survival.inventory = [['i:apple']]; },
+    (d) => { d.survival.spawn = null; },
+    (d) => { d.hotbar = Array.from({ length: 8 }, () => null); },
+    (d) => { d.hotbar[0] = { kind: 'block', id: 'x' }; },
+    (d) => { d.slot = 12; },
+    (d) => { d.settings.fov = 'wide'; },
+    (d) => { delete d.savedAt; },
+    (d) => { d.dayTime = NaN; },
+  ];
+  for (const mutate of bad) {
+    const d = validSave();
+    mutate(d);
+    assert.strictEqual(validateSave(d), false, `应拒绝：${mutate.toString().slice(0, 60)}`);
+  }
+  assert.strictEqual(validateSave(null), false);
+  assert.strictEqual(validateSave('{}'), false);
+});
+okAsync('v1 旧存档自动升级并补齐 9 格快捷栏', async () => {
+  const store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = v; },
+    removeItem: (k) => { delete store[k]; },
+  };
+  const legacy = {
+    version: 1, seed: 7, edits: [],
+    player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
+    dayTime: 0.3, hotbar: [1, 2, 3], slot: 0,
+    settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
+    savedAt: 1,
+  };
+  store['minecraft-ts-save-v1'] = JSON.stringify(legacy);
+  const loaded = await new LocalStorageProvider().load();
+  assert.ok(loaded, '旧档应能加载');
+  assert.strictEqual(loaded.version, 2);
+  assert.strictEqual(loaded.mode, 'creative');
+  assert.strictEqual(loaded.hotbar.length, 9);
+  assert.strictEqual(validateSave(loaded), true);
+});
+
+Promise.all(pending).then(() => {
+  console.log(`\n合计 ${results.length} 项，失败 ${failures} 项`);
+  process.exit(failures > 0 ? 1 : 0);
+});

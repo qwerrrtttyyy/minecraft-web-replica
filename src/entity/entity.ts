@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { EventBus } from '../core/events';
+import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
 import { buildPig, buildSheep, buildZombie, type MobModel } from './models';
@@ -61,7 +61,7 @@ export class Entity implements PhysicsBody {
   private phase = 0;
   readonly model: MobModel;
 
-  constructor(readonly type: EntityType, x: number, y: number, z: number, private events: EventBus) {
+  constructor(readonly type: EntityType, x: number, y: number, z: number, private events: EventService) {
     this.width = type.width;
     this.height = type.height;
     this.pos.set(x, y, z);
@@ -204,7 +204,7 @@ export class EntityManager {
   /** 掉落回调，由主装配接到生存背包 */
   onDrop: ((name: string, count: number) => void) | null = null;
 
-  constructor(private world: World, private scene: THREE.Scene, private events: EventBus) {
+  constructor(private world: World, private scene: THREE.Scene, private events: EventService) {
     this.registerType({
       id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
       health: 8, drops: [{ name: 'item:porkchop' }],
@@ -242,6 +242,8 @@ export class EntityManager {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
     this.scene.remove(e.model.group);
+    // 模型材质/几何是每个实例新建的，离场时必须释放，否则反复刷新种群会持续泄漏 GPU 资源
+    disposeModel(e.model.group);
     this.events.emit('entity:despawn', { type: e.type.id, id: e.id });
   }
 
@@ -342,4 +344,28 @@ function rayBox(origin: THREE.Vector3, dir: THREE.Vector3, feet: THREE.Vector3, 
     if (tmin > tmax) return null;
   }
   return tmin;
+}
+
+/**
+ * 释放一个实体模型的 GPU 资源。
+ * 模型在 build() 时为每个实例新建 BoxGeometry / MeshLambertMaterial（部分带 CanvasTexture），
+ * 且 eyeL.clone() 这类复例会共享同一份 geometry / material，因此先去重再 dispose。
+ */
+function disposeModel(root: THREE.Object3D): void {
+  const geos = new Set<THREE.BufferGeometry>();
+  const mats = new Set<THREE.Material>();
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+    if (mesh.geometry) geos.add(mesh.geometry);
+    const m = mesh.material;
+    if (Array.isArray(m)) for (const one of m) mats.add(one);
+    else if (m) mats.add(m);
+  });
+  for (const g of geos) g.dispose();
+  for (const m of mats) {
+    const map = (m as THREE.MeshLambertMaterial).map;
+    if (map) map.dispose();
+    m.dispose();
+  }
 }

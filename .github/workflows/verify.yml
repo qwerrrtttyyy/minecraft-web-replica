@@ -1,0 +1,32 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: 安装 Chromium / Xvfb / Mesa 软件渲染
+        run: sudo apt-get update && sudo apt-get install -y chromium xvfb libgl1-mesa-dri mesa-utils
+      - run: npm ci
+      # verify = 版本一致性 + 类型检查 + 构建 + 快照重建 + 逻辑回归 + 服务单测 + 浏览器实景
+      # 浏览器测试在 Xvfb 下以 headful + Mesa llvmpipe 运行，要求 100% PASS
+      - name: 全量核验
+        run: xvfb-run -a -s "-screen 0 1280x760x24" npm run verify
+        env:
+          CHROME_PATH: /usr/bin/chromium
+          MC_HEADLESS: '0'
+          MC_GL: desktop
+      - name: 上传实景截图与结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test/artifacts

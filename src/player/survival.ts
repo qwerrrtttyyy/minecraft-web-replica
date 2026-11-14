@@ -1,4 +1,4 @@
-import type { EventBus } from '../core/events';
+import type { EventService } from '../services/events';
 import type { GameMode, Vec3Like } from '../core/types';
 import { clamp } from '../core/types';
 import type { BlockId } from '../core/types';
@@ -78,7 +78,7 @@ export class SurvivalState {
   private drownAcc = 0;
   private iframes = 0;
 
-  constructor(private events: EventBus, private registry: BlockRegistry) {}
+  constructor(private events: EventService, private registry: BlockRegistry) {}
 
   get isSurvival() {
     return this.mode === 'survival';

@@ -74,6 +74,20 @@ interface ColumnBase {
 }
 
 const CACHE_LIMIT = 8192;
+
+/**
+ * 缓存超限时淘汰最旧的四分之一，而不是整表清空。
+ * 整表清空会把邻区块仍会复用的高度/群系全部丢掉，制造周期性噪声重算尖峰。
+ */
+function evictOldest<K, V>(cache: Map<K, V>): void {
+  if (cache.size < CACHE_LIMIT) return;
+  let drop = cache.size >> 2;
+  if (drop < 1) drop = 1;
+  for (const k of cache.keys()) {
+    cache.delete(k);
+    if (--drop <= 0) break;
+  }
+}
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 /** 树冠半径 2，额外留 2 格扫描邻区块的树 */
@@ -203,7 +217,7 @@ export class DefaultGenerator implements IWorldGenerator {
     if (cached !== undefined) return cached;
     const [wx, wz] = this.warped(x, z);
     const h = this.rawHeight(x, z, wx, wz);
-    if (this.heightCache.size > CACHE_LIMIT) this.heightCache.clear();
+    evictOldest(this.heightCache);
     this.heightCache.set(key, h);
     return h;
   }
@@ -237,7 +251,7 @@ export class DefaultGenerator implements IWorldGenerator {
     else biome = 'plains';
 
     const info: ColumnBase = { height, biome, temperature, humidity };
-    if (this.baseCache.size > CACHE_LIMIT) this.baseCache.clear();
+    evictOldest(this.baseCache);
     this.baseCache.set(key, info);
     return info;
   }

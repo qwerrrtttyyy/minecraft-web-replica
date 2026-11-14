@@ -1,23 +1,27 @@
 import * as THREE from 'three';
-import type { EventBus, GameEvents } from './core/events';
-import type { Engine } from './core/engine';
-import type { BlockRegistry, BlockInput, BlockDefinition } from './world/blocks';
-import type { World } from './world/world';
-import type { IWorldGenerator, BiomeId, ColumnInfo } from './world/generator';
-import type { Player } from './player/player';
-import type { EntityManager, EntityType } from './entity/entity';
-import type { Sky } from './gfx/sky';
-import type { ChunkManager } from './world/chunkManager';
-import type { TextureAtlas } from './gfx/atlas';
-import type { ISaveProvider, SaveData } from './save/save';
-import type { SoundEngine } from './audio/sound';
-import type { SurvivalState } from './player/survival';
-import type { GameMode } from './core/types';
+import type { EventService, GameEvents, EventChannel, EventStats, AnyEventHandler } from '../services/events';
+import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
+import { VERSION } from '../core/version';
+import type { Engine } from '../core/engine';
+import type { BlockRegistry, BlockInput, BlockDefinition } from '../world/blocks';
+import type { World } from '../world/world';
+import type { IWorldGenerator, BiomeId, ColumnInfo } from '../world/generator';
+import type { Player } from '../player/player';
+import type { EntityManager, EntityType } from '../entity/entity';
+import type { Sky } from '../gfx/sky';
+import type { ChunkManager } from '../world/chunkManager';
+import type { TextureAtlas } from '../gfx/atlas';
+import type { ISaveProvider, SaveData } from '../save/save';
+import type { SoundEngine } from '../audio/sound';
+import type { SurvivalState } from '../player/survival';
+import type { GameMode } from '../core/types';
 
 /**
- * 公开扩展 API（挂载到 window.CraftAPI）。
- * 未来功能（新方块 / 新生物 / 新地形 / 云存档 / 玩法脚本）都从这里接入，
- * 无需修改引擎源码。详见 README.md。
+ * 公开扩展门面（挂载到 window.CraftAPI）。
+ *
+ * v1.2.0 起它不再自己实现扩展机制，而只是「服务层」的薄适配：
+ * 事件能力来自 EventService，插件能力来自 PluginService，业务能力来自组装根注入的依赖。
+ * 旧版 22 项能力（on/off/emit/registerBlock/... /engine/blocks）签名完全保留。
  */
 export interface CraftAPI {
   version: string;
@@ -33,6 +37,24 @@ export interface CraftAPI {
   on<K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void): () => void;
   off<K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void): void;
   emit<K extends keyof GameEvents>(type: K, payload: GameEvents[K]): void;
+
+  /** v1.2.0：事件服务视图（作用域订阅、异步等待、派发统计、全局观测） */
+  events: {
+    scope(ns: string): EventChannel;
+    stats(): EventStats;
+    onAny(fn: AnyEventHandler): () => void;
+    waitFor<K extends keyof GameEvents>(type: K, timeoutMs?: number): Promise<GameEvents[K]>;
+  };
+
+  /** v1.2.0：插件服务（注册 / 启用 / 停用 / 卸载 / 列表） */
+  plugins: {
+    register(def: PluginDefinition): PluginRecord;
+    enable(id: string): Promise<void>;
+    disable(id: string): void;
+    unload(id: string): void;
+    list(): PluginRecord[];
+  };
+
   world: {
     seed(): number;
     getBlock(x: number, y: number, z: number): number;
@@ -96,7 +118,8 @@ export interface CraftAPI {
 
 export interface APIDeps {
   engine: Engine;
-  events: EventBus;
+  events: EventService;
+  plugins: PluginService;
   registry: BlockRegistry;
   atlas: TextureAtlas;
   world: World;
@@ -123,7 +146,7 @@ export interface APIDeps {
 
 export function createCraftAPI(d: APIDeps): CraftAPI {
   return {
-    version: '1.1.0',
+    version: VERSION,
     registerBlock(input) {
       for (const t of [input.tiles.top, input.tiles.bottom, input.tiles.side]) {
         if (!d.atlas.hasTile(t)) throw new Error(`纹理未注册: ${t}（先用 registerTile 注册）`);
@@ -134,6 +157,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     },
     registerTile(name, painter) {
       d.atlas.registerTile(name, painter);
+      d.onBlockRegistered();
     },
     registerEntity(type) {
       d.entities.registerType(type);
@@ -144,6 +168,19 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     on: (t, fn) => d.events.on(t, fn),
     off: (t, fn) => d.events.off(t, fn),
     emit: (t, p) => d.events.emit(t, p),
+    events: {
+      scope: (ns) => d.events.scope(ns),
+      stats: () => d.events.stats(),
+      onAny: (fn) => d.events.onAny(fn),
+      waitFor: (t, ms) => d.events.waitFor(t, ms),
+    },
+    plugins: {
+      register: (def) => d.plugins.register(def),
+      enable: (id) => d.plugins.enable(id),
+      disable: (id) => d.plugins.disable(id),
+      unload: (id) => d.plugins.unload(id),
+      list: () => d.plugins.list(),
+    },
     world: {
       seed: () => d.world.generator.seed,
       getBlock: (x, y, z) => d.world.getBlock(x, y, z),

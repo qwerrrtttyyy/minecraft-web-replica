@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import * as THREE from 'three';
 import { Engine } from './core/engine';
-import { EventBus } from './core/events';
+import { VERSION } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
@@ -19,8 +19,17 @@ import { EntityManager } from './entity/entity';
 import { PrimedTnt } from './entity/tnt';
 import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
-import { LocalStorageProvider, type ISaveProvider, type SaveData } from './save/save';
+import { LocalStorageProvider, validateSave, type ISaveProvider, type SaveData } from './save/save';
 import { createCraftAPI } from './api';
+import { createServices, TOKENS } from './services';
+import type { BuiltinDeps } from './plugins/builtin/deps';
+import { builtinPlugins } from './plugins/builtin';
+
+/**
+ * 组装根（composition root）。
+ * v1.2.0 起只负责：创建服务层 → 构造业务对象 → 注入依赖 → 注册/启用插件 → 启动主循环。
+ * 事件接线、UI 反馈、存档追踪等横切逻辑全部下沉到 services/ 与 plugins/。
+ */
 
 type Mode = 'title' | 'loading' | 'playing' | 'paused' | 'dead';
 
@@ -40,7 +49,7 @@ async function boot() {
     return;
   }
 
-  const events = new EventBus();
+  const { container, events, plugins } = createServices();
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
   const atlas = new TextureAtlas();
@@ -93,8 +102,15 @@ async function boot() {
 
   // ---- 世界 ----
   const world = new World(registry, new DefaultGenerator(seed, registry), events);
-  if (saved) for (const [k, id] of saved.edits) world.edits.set(k, id);
-  const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance);
+  if (saved) world.loadEdits(saved.edits);
+  // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
+  const qs = new URLSearchParams(location.search);
+  const workersParam = qs.get('workers');
+  const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
+    forceMainThread: qs.get('mesher') === 'main',
+    greedy: qs.get('greedy') !== '0',
+    workers: workersParam != null ? Number(workersParam) : undefined,
+  });
   const sky = new Sky(engine.scene, engine.camera, chunks.materials, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events);
@@ -301,7 +317,7 @@ async function boot() {
     getCount: (s) => survival.countStack(s),
   });
   hud.setSound(settings.sound);
-  hud.refreshTitleButtons(!!saved);
+  hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
 
   const cycleCamera = () => {
@@ -407,6 +423,8 @@ async function boot() {
       mode = 'paused';
       input.enabled = false;
       input.exitLock();
+      // 方块库与菜单一样属于暂停态，必须发事件（v1.1.2 遗漏，插件依赖此钩子）
+      events.emit('game:pause', { paused: true });
     }
     hud.showMenu(false);
     hud.showPalette(true);
@@ -431,7 +449,7 @@ async function boot() {
     hud.showPalette(false);
     hud.showHelp(false);
     hud.showTitle(true);
-    hud.refreshTitleButtons(true);
+    hud.refreshTitleButtons(true, survival.mode);
   }
 
   /** 死亡 → 重生（物品保留） */
@@ -499,66 +517,61 @@ async function boot() {
     touch?.setUseMode(!s ? 'none' : s.kind === 'item' ? 'item' : 'block');
   }
 
-  // ---- 事件 → UI ----
-  events.on('hotbar:select', ({ index, block }) => {
-    hud.updateHotbar();
-    player.setHeldStack(hotbar.slots[index]);
-    syncUseMode();
-    if (block !== AIR) hud.showItemName(registry.get(block).label);
-    else {
-      const s = hotbar.slots[index];
-      if (s && s.kind === 'item') hud.showItemName(ITEMS[s.id as string]?.label ?? '');
-    }
+  // ---- 服务装配：横切逻辑下沉，boot() 不再持有事件接线 ----
+  const builtinDeps: BuiltinDeps = {
+    hud, sound, player, survival, registry, hotbar,
+    buzz,
+    parseKey,
+    syncUseMode,
+    markDirty: () => { dirtySave = true; },
+    saveNow,
+    onDeath: () => {
+      // 状态机属于组装根，UI / 音效 / 触感由插件负责
+      mode = 'dead';
+      input.enabled = false;
+      input.exitLock();
+      touch?.setVisible(false);
+      saveNow();
+    },
+  };
+  container.provide(TOKENS.BuiltinDeps, builtinDeps);
+
+  const api = createCraftAPI({
+    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival,
+    getSaveProvider: () => provider,
+    setSaveProvider: (p) => { provider = p; },
+    collectSave,
+    applySave: async (data) => {
+      if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
+      await provider.save(data);
+      location.reload();
+    },
+    igniteTnt: (x, y, z) => igniteTnt(x, y, z, true),
+    onBlockRegistered: () => {
+      hud.rebuildPalette();
+      // 新方块/新纹理会改变网格化的元数据，必须让 Worker 重新加载 config
+      chunks.invalidateConfig();
+    },
+    setRenderDistance: (v) => { settings.renderDistance = clamp(v, 2, 8); chunks.setRenderDistance(settings.renderDistance); },
+    setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
+    setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
+    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); },
+    setMode: (m) => {
+      survival.mode = m;
+      gameMode = m;
+      rebuildHotbar();
+      hud.setSurvival(survival);
+      hud.updateHotbar();
+    },
+    respawn,
+    parseStack: parseKey,
   });
-  events.on('block:break', () => { dirtySave = true; buzz(10); });
-  events.on('block:place', () => { dirtySave = true; buzz(10); });
-  events.on('player:move', () => { dirtySave = true; });
-  events.on('inventory:change', ({ key, count }) => {
-    if (count <= 0) {
-      const stack = parseKey(key);
-      let clearedCurrent = false;
-      hotbar.slots = hotbar.slots.map((s, i) => {
-        if (s && s.kind === stack.kind && s.id === stack.id) {
-          if (i === hotbar.index) clearedCurrent = true;
-          return null;
-        }
-        return s;
-      });
-      if (clearedCurrent) {
-        player.setHeldStack(null);
-        syncUseMode();
-      }
-    }
-    if (count > 0 && survival.isSurvival) {
-      const stack = parseKey(key);
-      const exists = hotbar.slots.some((s) => s && s.kind === stack.kind && s.id === stack.id);
-      if (!exists) {
-        const empty = hotbar.slots.findIndex((s) => s === null);
-        if (empty >= 0) hotbar.slots[empty] = stack;
-      }
-    }
-    hud.updateHotbar();
-    dirtySave = true;
-  });
-  events.on('save:done', () => {
-    hud.noteSaved(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
-  });
-  events.on('survival:damage', () => {
-    hud.flashHurt();
-    sound.hurt();
-    player.shake(0.22);
-    buzz(45);
-  });
-  events.on('survival:death', ({ cause }) => {
-    hud.showDeath(cause);
-    mode = 'dead';
-    input.enabled = false;
-    input.exitLock();
-    touch?.setVisible(false);
-    buzz(90);
-    saveNow();
-  });
-  events.on('entity:hurt', () => { buzz(12); });
+  container.provide(TOKENS.CraftAPI, api);
+  (window as unknown as Record<string, unknown>).CraftAPI = api;
+  events.emit('service:ready', { services: container.keys() });
+
+  for (const def of builtinPlugins) plugins.register(def);
+  await Promise.all(builtinPlugins.map((p) => plugins.enable(p.manifest.id)));
 
   // ---- 输入边缘事件 ----
   function processEdges() {
@@ -633,7 +646,7 @@ async function boot() {
     const t = player.target;
     const targetStr = t ? `${registry.get(t.block).label} (${t.x}, ${t.y}, ${t.z})` : '无';
     return [
-      `Minecraft TS 1.1.0 · three.js r170`,
+      `Minecraft TS ${VERSION} · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
@@ -768,38 +781,12 @@ async function boot() {
     if (document.hidden && mode === 'playing') openMenu();
   });
 
-  // ---- 公开扩展 API ----
-  const api = createCraftAPI({
-    engine, events, registry, atlas, world, player, entities, sky, chunks, sound, survival,
-    getSaveProvider: () => provider,
-    setSaveProvider: (p) => { provider = p; },
-    collectSave,
-    applySave: async (data) => {
-      await provider.save(data);
-      location.reload();
-    },
-    igniteTnt: (x, y, z) => igniteTnt(x, y, z, true),
-    onBlockRegistered: () => hud.rebuildPalette(),
-    setRenderDistance: (v) => { settings.renderDistance = clamp(v, 2, 8); chunks.setRenderDistance(settings.renderDistance); },
-    setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
-    setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
-    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); },
-    setMode: (m) => {
-      survival.mode = m;
-      gameMode = m;
-      rebuildHotbar();
-      hud.setSurvival(survival);
-      hud.updateHotbar();
-    },
-    respawn,
-    parseStack: parseKey,
-  });
-  (window as unknown as Record<string, unknown>).CraftAPI = api;
-  // 内部调试钩子（自动化测试 / 控制台把玩用）
+  // ---- 内部调试钩子（自动化测试 / 控制台把玩用）----
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, tntList, survival,
+    services: container, events, plugins, api,
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
   };
 }

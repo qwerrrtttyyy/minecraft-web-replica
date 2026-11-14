@@ -198,12 +198,21 @@ export class HUD {
     for (const b of this.modeBtns) b.classList.toggle('active', b.dataset.mode === mode);
   }
 
-  /** 根据是否存在存档刷新标题按钮 */
-  refreshTitleButtons(hasSave: boolean) {
+  private continueMode: GameMode | null = null;
+
+  /**
+   * 根据是否存在存档刷新标题按钮。
+   * v1.2.0：有存档时把模式高亮同步为存档的真实模式，
+   * 修复 v1.1.2「标题高亮生存、点继续却进入创造」的误导。
+   */
+  refreshTitleButtons(hasSave: boolean, savedMode?: GameMode) {
     this.titleButtons.innerHTML = '';
+    this.continueMode = hasSave ? (savedMode ?? 'survival') : null;
+    if (savedMode) this.setSelectedMode(savedMode);
     if (hasSave) {
-      this.titleButtons.appendChild(this.mcButton('继续游戏', () => this.opts.onStart(true, this.selectedMode), 'mc-btn-big'));
-      // 「新的世界」必须走 onNewWorld 并带上当前选择，否则会沿用旧存档的模式
+      const label = this.continueMode === 'creative' ? '继续游戏（创造）' : '继续游戏（生存）';
+      // 继续游戏传存档模式；「新的世界」用当前选择（用户可另行切换）
+      this.titleButtons.appendChild(this.mcButton(label, () => this.opts.onStart(true, this.continueMode ?? this.selectedMode), 'mc-btn-big'));
       this.titleButtons.appendChild(this.mcButton('新的世界', () => this.opts.onNewWorld(undefined, this.selectedMode)));
     } else {
       this.titleButtons.appendChild(this.mcButton('进入世界', () => this.opts.onStart(false, this.selectedMode), 'mc-btn-big'));

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
-import type { EventBus } from '../core/events';
+import type { EventService } from '../services/events';
 import type { BlockRegistry } from './blocks';
 import { AIR } from './blocks';
 import type { IWorldGenerator } from './generator';
@@ -34,18 +34,38 @@ export class World {
   readonly edits = new Map<string, BlockId>();
   /** 待重新网格化的区块 */
   readonly dirty = new Set<string>();
+  /** 编辑差分按 chunkKey 分桶：ensureChunk 从 O(全档编辑数) 降到 O(本区块编辑数) */
+  private editsByChunk = new Map<string, Map<string, BlockId>>();
   private bedrockId: BlockId;
 
   constructor(
     readonly registry: BlockRegistry,
     public generator: IWorldGenerator,
-    readonly events: EventBus,
+    readonly events: EventService,
   ) {
     this.bedrockId = registry.byNameGet('bedrock')?.id ?? 3;
   }
 
   getChunk(cx: number, cz: number): Chunk | undefined {
     return this.chunks.get(chunkKey(cx, cz));
+  }
+
+  /** 记录一条玩家编辑，同时维护分桶索引（幂等：同坐标后写覆盖前写） */
+  private recordEdit(k: string, id: BlockId): void {
+    this.edits.set(k, id);
+    const [x, , z] = k.split(',').map(Number);
+    const ck = chunkKey(Math.floor(x / CS), Math.floor(z / CS));
+    let bucket = this.editsByChunk.get(ck);
+    if (!bucket) {
+      bucket = new Map();
+      this.editsByChunk.set(ck, bucket);
+    }
+    bucket.set(k, id);
+  }
+
+  /** 批量载入存档差分（组装根调用，禁止绕过本方法直接写 edits） */
+  loadEdits(entries: Iterable<readonly [string, BlockId]>): void {
+    for (const [k, id] of entries) this.recordEdit(k, id);
   }
 
   /** 确保区块数据已生成（惰性），并应用存档差分 */
@@ -58,13 +78,16 @@ export class World {
     }
     if (!chunk.generated) {
       this.generator.generateChunk(cx, cz, chunk.data);
-      // 应用玩家编辑差分
+      // 应用玩家编辑差分（分桶后不再扫描全档）
       const x0 = cx * CS;
       const z0 = cz * CS;
-      for (const [k, id] of this.edits) {
-        const [x, y, z] = k.split(',').map(Number);
-        if (x >= x0 && x < x0 + CS && z >= z0 && z < z0 + CS && y >= 0 && y < H) {
-          chunk.data[chunk.idx(x - x0, y, z - z0)] = id;
+      const bucket = this.editsByChunk.get(key);
+      if (bucket) {
+        for (const [k, id] of bucket) {
+          const [x, y, z] = k.split(',').map(Number);
+          if (x >= x0 && x < x0 + CS && z >= z0 && z < z0 + CS && y >= 0 && y < H) {
+            chunk.data[chunk.idx(x - x0, y, z - z0)] = id;
+          }
         }
       }
       chunk.generated = true;
@@ -109,7 +132,7 @@ export class World {
     const old = chunk.data[chunk.idx(lx, y, lz)];
     if (old === id) return false;
     chunk.data[chunk.idx(lx, y, lz)] = id;
-    if (record) this.edits.set(blockKey(x, y, z), id);
+    if (record) this.recordEdit(blockKey(x, y, z), id);
     this.dirty.add(chunkKey(cx, cz));
     if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));

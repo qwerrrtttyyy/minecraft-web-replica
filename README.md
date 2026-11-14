@@ -7,6 +7,16 @@
 **v1.1.0 新增**：完整可玩的**生存模式**（生命 / 饥饿 / 挖掘耗时 / 掉落背包 / 僵尸 / 死亡重生），
 以及面向手机的**性能与交互优化**（动态分辨率、更低渲染距离与粒子预算、触控震动反馈与大按钮布局）。
 
+**v1.3.0 渲染管线升级**：区块网格化整体迁入 **Web Worker 池**（`?worker&inline` Blob Worker，单文件
+`file://` 下可直接运行；默认按 `navigator.hardwareConcurrency` 起多 Worker 池、least-busy 派发、
+任一 Worker 失败即整体回退主线程），并实现 **Greedy Meshing**——按面方向做 mask
+贪心合并，quad 数下降约 40%，且保证「每个面格的贴图与亮度完全不变」。
+
+**v1.2.0 架构革新**：把**事件**与**插件**相关的 API 从 `main.ts` 中彻底独立为服务层
+（`ServiceContainer` + `EventService` + `PluginService`），`CraftAPI` 退化为薄门面，
+横切逻辑下沉为可启用/停用的一等公民插件；同时修复流式加载竞态与多项实测缺陷，
+并把浏览器实景测试纳入 `npm run verify` 与 CI。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
 > 非官方学习项目，与 Mojang / Microsoft 无关。所有纹理均为代码逐像素绘制，不含任何原版资源。
 
 ## 快速开始
@@ -68,52 +78,54 @@ npm run build    # 类型检查 + 构建为单文件 dist/index.html（可直接
 - **触控体验**：按钮加大（`pointer:coarse` 媒体查询）、摇杆推满疾跑、破坏键长按持续挖、放置键随手持物切换为“进食”图标、关键操作（受伤/破坏/放置/死亡）触发 `navigator.vibrate` 震动反馈、`env(safe-area-inset-*)` 适配刘海与手势条、560px 与横屏 520px 两套紧凑布局。
 - **交互修正**：拖动视角与按钮区域分离（右侧空白拖动），首次点击不会“只锁定指针不干活”。
 
-## 架构
+## 架构（v1.3.0）
 
 ```
 src/
-├── core/            引擎主循环、类型常量、类型安全事件总线
-│   ├── engine.ts    渲染器 / 场景 / 相机 / 系统调度 / 自适应尺寸
-│   ├── events.ts    GameEvents 事件表（所有玩法钩子）
-│   └── types.ts     System 接口、常量、工具函数
-├── world/           体素世界
-│   ├── blocks.ts    方块注册表 + 内置 26 种方块（含 4 种矿石）
-│   ├── world.ts     区块容器、方块读写、编辑差分、DDA 射线
-│   ├── generator.ts IWorldGenerator 接口 + 默认地形（群系/域扭曲/脊线山脉/洞穴/矿脉/跨区块树）
-│   ├── noise.ts     可播种 2D/3D 值噪声 + fBm + ridged fBm
-│   ├── mesher.ts    隐藏面剔除 + 逐顶点 AO + 三渲染通道
-│   ├── chunkManager.ts  按玩家位置流式生成/网格化/卸载（每帧限时）
-│   └── faces.ts     立方体面几何定义（网格与图标共用）
-├── gfx/             渲染表现
-│   ├── atlas.ts     程序化 16×16 像素纹理图集 + 等距物品图标
-│   ├── sky.ts       渐变天穹 / 方形日月 / 星空 / 体素云 / 昼夜循环
-│   └── particles.ts 粒子池（方块碎屑、爆炸）
-├── player/          玩家
-│   ├── player.ts    物理、第一/第三人称、挖掘计时、放置/进食、攻击生物、手持物品
-│   ├── survival.ts  生存状态机：生命 / 饥饿 / 氧气 / 背包 / 伤害 / 死亡重生
-│   └── physics.ts   共享 AABB 体素碰撞（玩家与实体共用）
-├── entity/          实体系统
-│   ├── entity.ts    Entity / EntityManager / 随机漫步 AI / 僵尸 / 战斗掉落 / 夜间种群维持
-│   ├── models.ts    史蒂夫风格玩家模型、猪、羊
-│   └── tnt.ts       点燃的 TNT 实体
-├── input/           统一输入层（键鼠 / 触控映射到同一动作状态）
-│   └── touch.ts     虚拟摇杆、视角拖动、动作按钮、震动反馈
-├── ui/              HUD、标题屏、方块库、菜单、样式（原版风）
-├── audio/           WebAudio 程序化音效（零资源）
-├── save/            ISaveProvider 接口 + localStorage 实现
-├── api.ts           window.CraftAPI 公开扩展接口
-└── main.ts          装配与游戏状态机
+├── core/                    引擎内核（不含业务横切逻辑）
+│   ├── engine.ts            渲染器 / 场景 / 相机 / 系统调度 / 自适应尺寸
+│   ├── types.ts             System 接口、常量、工具函数
+│   ├── version.ts           ★ 全项目唯一版本来源
+│   └── events.ts            兼容垫片：再导出 services/events（旧代码 / 测试快照用）
+├── services/                ★ 服务层：插件与事件能力独立于此
+│   ├── ServiceContainer.ts  类型安全服务注册表（provide/require/逆序 dispose）
+│   ├── events/
+│   │   ├── GameEvents.ts    事件契约表（支持声明合并扩展）
+│   │   ├── EventService.ts  事件服务：错误隔离 / once / waitFor / onAny / stats / 深度保护
+│   │   └── EventChannel.ts  命名空间订阅作用域（插件卸载即自动清理）
+│   └── plugins/
+│       ├── PluginContext.ts manifest / permissions / PluginContext 契约
+│       └── PluginService.ts 注册 / 依赖解析 / 权限裁剪 / 启停 / 生命周期事件
+├── api/                     ★ 公开门面（薄适配层，旧 22 项能力签名不变）
+│   ├── CraftAPI.ts          window.CraftAPI 实现 + plugins / events 命名空间
+│   └── index.ts
+├── plugins/
+│   ├── builtin/             一等公民内置插件（默认启用）
+│   │   ├── autosave.ts      存档脏标记追踪
+│   │   ├── hudFeedback.ts   事件 → HUD / 音效 / 触感
+│   │   └── deps.ts          内置插件依赖契约（TOKENS.BuiltinDeps）
+│   └── example/welcome.ts   插件开发示例（默认不启用）
+├── world/  gfx/  player/  entity/  input/  ui/  audio/  save/   业务模块
+└── main.ts                  ★ 组装根：只做「建服务 → 注入 → 启插件 → 启动循环」
 ```
+
+依赖方向单向：`main.ts → services → api(类型) → 业务模块`；插件只依赖服务容器与
+`PluginContext`，不 import 引擎内部实现。
 
 ### 关键设计
 
+- **服务化扩展点**：事件不再是散落的 `new EventBus()`，插件不再是一堆自由函数。
+  两者都有身份、生命周期、依赖与权限，统一由 `ServiceContainer` 装配。
+- **插件可热插拔**：`CraftAPI.plugins.register/enable/disable/unload`，停用自动撤销
+  事件订阅、执行 teardown；初始化失败隔离为 `failed` 并发出 `plugin:error`。
+- **事件错误隔离**：单个订阅者抛错不再中断同事件其他订阅者或整帧逻辑。
 - **数据驱动**：方块全部经 `BlockRegistry` 注册，渲染 / 碰撞 / 音效 / 图标只查属性，不硬编码 id。
-- **三通道网格**：不透明（含镂空植物，alphaTest）/ 自发光（萤石夜晚恒亮）/ 半透明（水、玻璃）。
-- **烘焙光照**：面定向明暗 + 逐顶点 AO 写入顶点色，世界用 `MeshBasicMaterial`，
-  无实时阴影开销；昼夜只改材质颜色与雾色，实体用 Lambert 受太阳/半球光照明。
-- **性能预算**：像素比封顶（桌面 2 / 移动 1.5）、每帧限时生成与网格化、远处区块自动卸载、
-  几何体与材质复用、粒子单 draw call。
-- **存档差分**：只记录玩家改动过的方块 + 玩家状态，localStorage 即可，体积通常 < 100KB。
+- **三通道网格**：不透明（含镂空植物，alphaTest）/ 自发光 / 半透明（水、玻璃）。
+- **烘焙光照**：面定向明暗 + 逐顶点 AO 写入顶点色，世界用 `MeshBasicMaterial`，无实时阴影开销。
+- **流式加载背压 + 自愈**：dirty 积压超 24 暂停生成；视距内「已生成但无网格」的区块
+  每帧自动重新入队；卸载按 `world.chunks` 遍历，杜绝幽灵区块与内存泄漏。
+- **性能预算**：像素比封顶、每帧限时生成与网格化、编辑差分按 chunkKey 分桶、粒子单 draw call。
+- **存档差分 + 全量校验**：只记录玩家改动；`validateSave()` 一次校验所有字段，坏档当作无存档。
 
 ## 地形生成（v1.1.2）
 
@@ -209,11 +221,45 @@ CraftAPI.player.breakBlock();               // 直接破坏准星方块（走掉
 CraftAPI.engine.addSystem({ update(dt, t) { /* 每帧调用 */ } });
 ```
 
-事件表（`src/core/events.ts`）：`block:break / block:place / block:ignite / explosion /
-player:spawn / player:move / player:camera / hotbar:select / time:change /
-chunk:generated / chunk:meshed / entity:spawn / entity:despawn / entity:dead / game:start /
-game:pause / save:done / inventory:change / survival:damage / survival:death / survival:respawn /
-survival:eat`。
+事件契约位于 `src/services/events/GameEvents.ts`（`src/core/events.ts` 保留兼容再导出）。
+除原有玩法事件外，v1.2.0 新增 `chunk:unloaded` / `stream:backpressure` / `service:ready` /
+`plugin:registered` / `plugin:enabled` / `plugin:disabled` / `plugin:error`，
+并支持用 TypeScript 声明合并追加自定义事件类型。
+
+### v1.2.0：插件与事件成为独立服务
+
+`CraftAPI` 之上新增两组服务入口（旧 22 项能力签名完全不变）：
+
+```js
+// 1) 插件：有 id / 版本 / 依赖 / 权限 / 生命周期，可热插拔
+CraftAPI.plugins.register({
+  manifest: {
+    id: 'demo:mining-log', version: '1.0.0',
+    permissions: ['api:emit'], dependencies: [],
+  },
+  setup(ctx) {
+    // ctx.events 是命名空间通道，停用插件时订阅自动撤销
+    ctx.events.on('block:break', (e) => ctx.log('破坏方块', e.block));
+    ctx.onDispose(() => ctx.log('已停用'));
+    return () => ctx.log('teardown');   // 也可直接返回清理函数
+  },
+});
+await CraftAPI.plugins.enable('demo:mining-log');
+CraftAPI.plugins.list();                    // [{ manifest, state: 'enabled' }]
+CraftAPI.plugins.disable('demo:mining-log');
+CraftAPI.plugins.unload('demo:mining-log');
+
+// 2) 事件服务：异步等待 / 全局观测 / 派发统计 / 作用域订阅
+await CraftAPI.events.waitFor('chunk:meshed', 3000);
+const off = CraftAPI.events.onAny((type, payload) => console.log(type, payload));
+CraftAPI.events.stats();                    // { emitted, subscribers, channels }
+CraftAPI.events.scope('demo:ns');           // 返回 EventChannel，dispose() 一键清理
+```
+
+权限白名单 `world:write` / `player:write` / `save:write` / `api:emit` / `blocks:register`：
+未声明的写能力在插件上下文里会被拦截并抛错，读能力默认开放。
+内置插件 `core:autosave`、`core:hud-feedback` 就是用同一套契约实现的，见
+`src/plugins/builtin/`。完整契约与迁移路径见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ### 已预留的未来方向
 
@@ -227,18 +273,39 @@ survival:eat`。
 
 ## 测试
 
-仓库自带无头浏览器冒烟测试（Chromium + 软件 WebGL，桌面端 + 移动端共 64 项断言）：
+一条命令完成全量核验（版本一致性 → 类型检查 → 构建 → 重建测试快照 → 纯逻辑回归 → 浏览器实景）：
 
 ```bash
-npm run build
-node test/survival-smoke.mjs     # 结果写入 test/artifacts/results.json 与截图
-node test/capture.mjs            # 只抓视觉截图
-node test/logic-check.cjs        # 生存状态机纯逻辑回归（无需浏览器 / WebGL）
-node test/terrain-check.cjs      # 地形生成纯逻辑回归（15 组断言 + 性能基准）
+npm run verify
 ```
 
+| 命令 | 内容 |
+|---|---|
+| `npm run check:version` | `package.json` / `version.ts` / README 版本号机械校验 |
+| `npm run typecheck` / `build` | TypeScript strict + 单文件 `dist/index.html` |
+| `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
+| `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
+| `npm run test:mesher` | **网格等价与收益**：快照保真、Greedy 面覆盖逐格等价、quad 下降比例 |
+| `npm run test:services` | 服务容器 / 事件服务 / 插件服务 / 存档校验 31 项 |
+| `npm run test:smoke` | Chromium 实景（桌面 + 移动端），结果与截图写入 `test/artifacts/` |
+
+Linux 无 GPU 环境用软件渲染跑实景（v1.1.2 声称「本环境无法初始化 WebGL」其实是缺
+`--disable-gpu-sandbox` 与 `--enable-unsafe-swiftshader`）：
+
+```bash
+CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
+  xvfb-run -a -s "-screen 0 1280x760x24" npm run verify
+```
+
+`.github/workflows/verify.yml` 按此配置接入 CI，要求浏览器测试 **100% PASS**。
+断言总数以 `test/artifacts/results.json` 实际输出为准——文档不再手写会过时的数字。
+
 覆盖：模式选择、血量/鸡腿/氧气 HUD、挖掘进度与掉落入包补位、放置与消耗、伤害与死亡重生、
-进食、夜间僵尸生成与攻击、模式切换、存档 v2 与继续游戏、移动端摇杆/长按挖掘/按钮语义/安全区布局。
+进食、夜间僵尸生成与攻击、模式切换、存档 v2 与继续游戏、移动端摇杆/长按挖掘/按钮语义/安全区布局；
+v1.2.0 另加版本一致性、服务容器注册、内置插件启用、事件派发统计、插件热注册/停用清理，
+以及传送后「流式加载队列收敛且生成的区块都有网格」的轮询断言（取代固定 sleep）。
+v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益，以及 `?mesher=main&greedy=0`
+的**降级路径仍能正常出网格**（Worker 在受限环境创建失败时的兜底）。
 
 ## 技术栈
 
@@ -279,7 +346,137 @@ node test/terrain-check.cjs      # 地形生成纯逻辑回归（15 组断言 + 
 
 对应做法：水下地层 `fade = 0` 不挖洞穴；河道深度乘 `smoothstep(SEA_LEVEL-1, SEA_LEVEL+4, h)` 平滑淡出。两项均已固化为回归断言，另补充「40 个 seed 出生点均为陆地」「旧 22 方块 id 未变 / 矿石 id 23–26」「存在成片海洋」等兼容性断言。
 
-核验结果：`tsc --noEmit`（strict）0 error；`vite build` 通过；`logic-check.cjs` 8 组 + `terrain-check.cjs` 23 组全通过；图集 31/64 格未溢出。浏览器实景冒烟测试因本环境无法初始化 WebGL 上下文仍未执行。
+核验结果：`tsc --noEmit`（strict）0 error；`vite build` 通过；`logic-check.cjs` 8 组 + `terrain-check.cjs` 23 组全通过；图集 31/64 格未溢出。浏览器实景冒烟测试当时未执行——v1.2.0 已定位到真实原因（缺少 `--disable-gpu-sandbox` / `--enable-unsafe-swiftshader` 两个 flag，并非环境不支持 WebGL）并跑通。
+
+## v1.2.0 架构革新与修复记录
+
+### 架构
+
+| 变化 | 说明 |
+|---|---|
+| `services/ServiceContainer.ts` | 类型安全服务注册表（provide / require / 逆序 dispose） |
+| `services/events/` | EventService：错误隔离 / once / waitFor / onAny / stats / 递归深度保护；EventChannel 命名空间作用域 |
+| `services/plugins/` | PluginService：注册 / 依赖解析 / 权限裁剪 / 启停 / 生命周期事件；PluginContext 契约 |
+| `api/` | CraftAPI 退化为薄门面，新增 `plugins` / `events` 命名空间，旧 22 项能力签名完全不变 |
+| `plugins/builtin/` | `core:autosave`、`core:hud-feedback` 从 800 行 `boot()` 抽出，成为一等公民插件 |
+| `core/events.ts` | 兼容垫片（旧代码与纯逻辑测试快照仍可用） |
+| `main.ts` / `core/version.ts` | 前者退化为组装根；后者成为全项目唯一版本来源 |
+
+### 修复与优化
+
+| 项 | 内容 |
+|---|---|
+| 幽灵区块竞态 | 删除 `initialLoad()` 末尾的 `dirty.clear()`；预载期间主循环让开；每帧兜底把「已生成但无网格」的区块重新入队 |
+| 流式加载 | dirty 积压 > 24 触发背压暂停生成；卸载改按 `world.chunks` 遍历，未网格化区块同样释放 |
+| Pointer Lock | `requestPointerLock()` 返回的 Promise 加 `.catch()`；实现 iframe / 无头环境的拖拽视角降级（v1.1.2 里 `lockFailed`/`dragging` 是死代码） |
+| 版本一致性 | `version.ts` 单一来源 + `check-version` 机械校验，修复包名 / package.json / CraftAPI / F3 四处漂移 |
+| 存档 | `validateSave()` 全量字段校验，供 `load()` 与 `CraftAPI.save.import()` 共用 |
+| 存档差分 | `edits` 按 chunkKey 分桶，`ensureChunk()` 从 O(全档编辑数) 降到 O(本区块编辑数) |
+| UI / 状态机 | 有存档时标题模式高亮同步真实模式；`openPalette()` 补发 `game:pause` |
+| 测试工程化 | 快照自动从源码编译、`npm run verify`、31 项服务单测、流式断言改轮询、CI 要求 100% PASS |
+
+## v1.3.0 渲染管线升级记录
+
+### Worker 化
+
+| 项 | 内容 |
+|---|---|
+| 数据契约 | `meshTypes.ts`：`MeshSource` 接口 + `MeshConfig`（方块元数据 + UV 表）+ `MeshSnapshot`（1 格 halo，18×80×18 `Uint8Array`）+ `PackedGeo`（Transferable） |
+| 同一份算法 | `mesher.ts` 只依赖 `MeshSource`；主线程 `WorldMeshSource` 与 Worker `SnapshotMeshSource` 共用，杜绝两套实现漂移 |
+| 调度 | `?worker&inline` Blob Worker；请求代次（generation）去重、在途结果丢弃、每帧只投递预算内任务 |
+| 降级 | Worker 创建/运行失败自动切主线程同步网格化；`?mesher=main` 可强制验证 |
+| 卸载 | 区块卸载时取消在途任务，避免回传已删除区块的几何 |
+
+### Greedy Meshing
+
+| 项 | 内容 |
+|---|---|
+| 合并条件 | 按面方向建 mask，key = 方块 id + AO 档位；**仅四角 AO 完全相等才合并**，保证合并后双线性插值与原逐面结果一致（`flip` 恒为 false，三角化方向也不变） |
+| 特殊方块 | cross 植物、液体（水面降顶）、玻璃、自发光、AO 不均的面一律走原逐面路径 |
+| UV 平铺 | 合并面局部 UV 为 `0..w / 0..h`，`tiledAtlas.ts` 用 `onBeforeCompile` 注入 `fract(vMapUv)`，避免图集越界或拉伸 |
+| 对照开关 | `?greedy=0` 关闭合并，用于基准与回归对照 |
+
+### 实测
+
+| 核验 | 结果 |
+|---|---|
+| 面覆盖等价（3 种子 × 2 区块 × 4 通道） | 逐格一致，亮度差 `0.0e+0` |
+| 快照 vs 直读数据源 | 逐字节一致（两种 greedy 设置） |
+| quad 数 | 11,526 → 6,978（**-39.5%**），最大合并面 105 格 |
+| 浏览器实景 | 网格化 `mesherMode=worker`，`gen=89 / mesh=89 / dirty=0`，无幽灵区块 |
+
+### 已知限制（带排期）
+
+- Greedy 使单区块网格化 CPU 增加约 40%（多一次按面扫描 + 每个可见面一次 AO 计算）；因已移出主线程，
+  渲染不再被阻塞。v1.3.0 已按 `navigator.hardwareConcurrency` 起 **Worker 池**（least-busy 派发，
+  `?workers=N` 可覆盖）解除单 Worker 吞吐上限，8 核环境流式加载收敛随核数线性提升。
+- 透明通道未按距离排序，重叠玻璃可能闪烁。
+- 无 AABB 脱困：被方块挤住时需手动挖开。
+- 软件渲染下 FPS 约 10，引擎把 `dt` 钳制到 0.05 防穿墙，游戏时间流速约为真实的一半；
+  不影响真实浏览器，但自动化测试必须按条件轮询而非固定 sleep。
+
+## v1.3.0 网格化 Worker 池记录
+
+v1.3.0 把网格化搬进单个 Blob Worker，解除了主线程阻塞，但单 Worker 仍是流式加载吞吐的上限
+（多核机器只有一个核在干活）。v1.3.0 把单 Worker 升级为**多 Worker 池**：
+
+| 项 | 内容 |
+|---|---|
+| 池大小 | 默认 `min(navigator.hardwareConcurrency - 1, 4)`（留 1 核给主线程，至多 4）；`?workers=N` 可覆盖，夹紧 1..8，便于基准对照 |
+| 派发 | `pickWorker()` 选「在途任务数最少」的 Worker（least-busy），避免重区块堆积在某一核 |
+| 计数 | 请求带 `wid`，Worker 原样回显；`drainResults` 按 `wid` 回退在途计数，保证计数与派发一致 |
+| 降级 | 任一 Worker 构造或运行失败 → `fallbackToMain()` 终止整池并同步补算；`?mesher=main` 仍可强制 |
+| 零改动 | `mesher.ts` / `mesh.worker.ts` / 契约（`MeshSource` / `MeshSnapshot` / `PackedGeo`）完全不动，池只是调度层 |
+
+### 实测（v1.3.0 实景）
+
+| 核验 | 结果 |
+|---|---|
+| 网格化默认在 Worker 池 | `mesherMode=worker`，`workerCount=4`（8 核机） |
+| 流式收敛 | `gen=89 / mesh=89 / dirty=0`，无幽灵区块 |
+| Greedy 收益不受影响 | `quads=223546 / merged=169465`，亮度差 `0.0e+0` |
+| 降级路径 | `?mesher=main&greedy=0` 仍正常出网格（`mesh=89 / merged=0`），无运行时错误 |
+| 回归 | 版本一致 / tsc 0 error / 构建单文件 638KB / 逻辑 23 / mesher 43 / 服务 31 / 实景 87 全部 0 失败 |
+
+## v1.3.0 性能优化记录
+
+同一版本号下的纯性能优化：玩法、确定性、公共 API 与网格输出均不变。
+验收口径为「优化前后网格输出逐字节一致」——3 个种子 × 9 个区块 × greedy/legacy 两种配置，
+共 270/270 项哈希完全一致。
+
+| 优化点 | 内容 |
+|---|---|
+| `buildMeshSnapshot` | 中心 16×16 按 y 行整段 `set`，halo 直接读 3×3 邻居的 `chunk.data`，移除逐格 `world.getBlock` 的字符串 key 查找 |
+| 方块注册表 | 稠密 id 数组 + `opaque`/`solid` 字节标志快路径；自定义 id ≥ 65536 自动回退 `Map`，避免稀疏大数组 |
+| Worker 数据源 | `SnapshotMeshSource` 预计算 id → 遮光字节表，AO 每面 12 次采样不再走 `def()` 属性链 |
+| mesher 分配 | 逐面 / 逐顶点临时数组改为模块级 scratch，`pushQuad` 直接写入通道数组；AO 写入预分配 `Int32Array` |
+| 生成器缓存 | 超限时淘汰最旧 1/4，而不是 `clear()` 整表，消除邻区块复用时周期性重算尖峰 |
+| 天空 | 每帧不再 `new Vector3` / `new Color`，复用临时对象 |
+| 实体 | 离场时释放每个实例新建的 geometry / material / texture，修复反复刷新种群的 GPU 资源泄漏 |
+
+### A/B 基准
+
+5 轮交替执行取全局最小值；本机为 3 核共享环境，绝对值受负载影响，只看相对变化。
+
+| 项 | 优化前 | 优化后 | 变化 |
+|---|---:|---:|---:|
+| `buildMeshSnapshot` | 0.928 ms/区块 | 0.173 ms/区块 | **-81%** |
+| mesher 逐面（legacy） | 7.20 ms | 6.64 ms | -7.8% |
+| mesher greedy | 10.03 ms | 8.68 ms | -13.5% |
+| `BlockRegistry.isOpaque` | 25.1 ns | 8.1 ns | -68% |
+| `BlockRegistry.isSolid` | 25.2 ns | 6.7 ns | -73% |
+| `BlockRegistry.get` | 24.1 ns | 18.2 ns | -24% |
+| `World.isSolidAt` | 149.4 ns | 111.5 ns | -25% |
+| `World.getBlock` | 基本持平 | 基本持平 | — |
+
+### 回归结果
+
+| 项 | 结果 |
+|---|---|
+| 网格输出哈希 | 270/270 逐字节一致 |
+| 版本一致 / 类型检查 | `check:version` 通过，`tsc --noEmit` 0 error |
+| 逻辑 / mesher / 服务 | 23 / 43 / 31 项全部通过 |
+| 构建 | `dist/index.html` 641.05 kB（单文件） |
 
 ---
 

@@ -35,6 +35,14 @@ export class Input {
   /** 指针锁定不可用时（iframe / 无头环境）退化为拖拽视角 */
   private lockFailed = false;
   private dragging = false;
+  /**
+   * 锁定刚生效时要丢弃一次 mousemove。
+   * Chromium 在 pointerlock 建立的瞬间会补发一个「合成 movement」
+   * （实测可达上百像素），导致刚点进游戏视角就猛地一沉 —— 玩家感知为「镜头乱跳」。
+   */
+  private ignoreNextMove = false;
+  private lastClientX = 0;
+  private lastClientY = 0;
 
   constructor(private canvas: HTMLCanvasElement, readonly isMobile: boolean) {
     addEventListener('keydown', (e) => this.onKey(e, true));
@@ -48,7 +56,13 @@ export class Input {
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled || this.isMobile) return;
       // 首次点击同时完成锁定与操作，避免"点一下只锁定"的空响应
-      if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
+      if (document.pointerLockElement !== canvas && e.button === 0) {
+        this.requestLock();
+        // 同时准备拖拽降级：iframe / 无用户手势下锁定会被拒，本次拖动仍可转视角
+        this.dragging = true;
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
+      }
       if (e.button === 0) this.breakHeld = true;
       else if (e.button === 2) this.placeHeld = true;
       else if (e.button === 1) {
@@ -57,13 +71,24 @@ export class Input {
       }
     });
     addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.breakHeld = false;
+      if (e.button === 0) {
+        this.breakHeld = false;
+        this.dragging = false;
+      }
       if (e.button === 2) this.placeHeld = false;
     });
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === canvas) {
-        this.lookX += e.movementX;
-        this.lookY += e.movementY;
+        if (this.ignoreNextMove) { this.ignoreNextMove = false; return; }
+        // 单帧位移上限：合成事件或驱动异常时防止视角瞬移
+        this.lookX += Math.max(-400, Math.min(400, e.movementX));
+        this.lookY += Math.max(-400, Math.min(400, e.movementY));
+      } else if (this.dragging) {
+        // Pointer Lock 不可用时的降级路径（v1.1.2 里 lockFailed/dragging 是死代码）
+        this.lookX += e.clientX - this.lastClientX;
+        this.lookY += e.clientY - this.lastClientY;
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
       }
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -75,6 +100,12 @@ export class Input {
 
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === canvas;
+      if (locked) {
+        this.lockFailed = false;
+        this.dragging = false;
+        // 锁定生效的第一帧丢弃浏览器补发的合成位移
+        if (!this.wasLocked) this.ignoreNextMove = true;
+      }
       // 仅当"曾经锁定过"再丢失时才暂停，避免锁定请求被拒时误暂停
       if (!this.isMobile && this.enabled && !locked && this.wasLocked) {
         this.breakHeld = false;
@@ -187,8 +218,24 @@ export class Input {
     return this.placeHeld || this.touchPlace;
   }
 
+  /** 供调试面板 / 自动化测试判断当前是否处于拖拽降级 */
+  get pointerLockFailed(): boolean {
+    return this.lockFailed;
+  }
+
   requestLock() {
-    if (!this.isMobile) this.canvas.requestPointerLock?.();
+    if (this.isMobile || document.pointerLockElement === this.canvas) return;
+    try {
+      // 现代浏览器返回 Promise；无用户手势 / iframe 下会 reject。
+      // v1.1.2 未捕获该 reject，冒出 NotAllowedError 未处理异常。
+      const result = this.canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => { this.lockFailed = true; });
+      }
+    } catch {
+      // 同步抛错（旧实现）也要转入降级，而不是冒泡成页面异常
+      this.lockFailed = true;
+    }
   }
 
   exitLock() {

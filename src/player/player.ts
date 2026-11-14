@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, lerp, SEA_LEVEL, type BlockId, type System } from '../core/types';
-import type { EventBus } from '../core/events';
+import type { EventService } from '../services/events';
 import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
@@ -88,7 +88,7 @@ export class Player implements System, PhysicsBody {
     private input: Input,
     private registry: BlockRegistry,
     private atlas: TextureAtlas,
-    private events: EventBus,
+    private events: EventService,
     private sound: SoundEngine,
     private particles: Particles,
     private survival: SurvivalState,

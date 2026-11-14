@@ -10,7 +10,9 @@ import fs from 'node:fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist/index.html')}`;
-const CHROME = process.env.CHROME_PATH ?? '/usr/local/bin/chromium';
+const CHROME = process.env.CHROME_PATH ??
+  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
+    .find((p) => fs.existsSync(p)) ?? '/usr/local/bin/chromium';
 const OUT = path.join(ROOT, 'test', 'artifacts');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -23,7 +25,7 @@ const ok = (name, cond, detail = '') => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function openPage(browser, mobile) {
+async function openPage(browser, mobile, url = URL_UNDER_TEST) {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -36,7 +38,7 @@ async function openPage(browser, mobile) {
   } else {
     await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
   }
-  await page.goto(URL_UNDER_TEST, { waitUntil: 'load' });
+  await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 25000 });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'load' });
@@ -51,15 +53,27 @@ async function startGame(page) {
   await sleep(700);
 }
 
+/**
+ * 渲染后端可配置：
+ * - 默认 headless + SwiftShader（开发机有 GPU/ANGLE 时可用）
+ * - Linux 无 GPU：MC_HEADLESS=0 MC_GL=desktop + xvfb-run（Mesa llvmpipe）
+ * 这样浏览器实景测试不再被写成「本环境无法执行」，可直接进 CI。
+ */
+const HEADLESS = process.env.MC_HEADLESS !== '0';
+// 这两个 flag 在软件渲染 / Xvfb 下是必需的：缺少 --disable-gpu-sandbox 会出现
+// "BindToCurrentSequence failed"，导致 WebGL 上下文创建失败（曾误判为「环境不支持」）。
+const GL_BASE = ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox'];
+const GL_ARGS = (process.env.MC_GL ?? 'swiftshader') === 'desktop'
+  ? [...GL_BASE, '--use-gl=desktop']
+  : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
+
 const browser = await puppeteer.launch({
   executablePath: CHROME,
-  headless: true,
+  headless: HEADLESS,
   args: [
     '--no-sandbox',
     '--disable-dev-shm-usage',
-    '--enable-unsafe-swiftshader',
-    '--use-gl=angle',
-    '--use-angle=swiftshader',
+    ...GL_ARGS,
     '--allow-file-access-from-files',
     '--window-size=1280,760',
   ],
@@ -98,13 +112,30 @@ try {
       const p = window.__mc.player.pos;
       window.__mc.player.teleport(p.x + 320, p.y, p.z + 320);
     });
-    await sleep(3000);
-    const q = await uiPage.evaluate(() => ({
-      gen: window.__mc.world.chunks.size,
-      mesh: window.__mc.chunks.meshCount,
-      dirty: window.__mc.world.dirty.size,
-    }));
-    ok('流式加载：生成的区块都有网格', q.gen > 0 && q.mesh >= q.gen - 1,
+    // 轮询等待队列收敛，取代固定 sleep(3000)。v1.1.2 的失败源于采样过早，
+    // 断言本身也不该用「睡多久」来赌时序。
+    const q = await uiPage.evaluate(async () => {
+      const mc = window.__mc;
+      let lastGen = -1;
+      let stable = 0;
+      for (let i = 0; i < 75; i++) {
+        const gen = mc.world.chunks.size;
+        const mesh = mc.chunks.meshCount;
+        const dirty = mc.world.dirty.size;
+        if (dirty === 0 && mesh >= gen - 1 && gen === lastGen) {
+          if (++stable >= 3) return { gen, mesh, dirty, converged: true };
+        } else {
+          stable = 0;
+        }
+        lastGen = gen;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return {
+        gen: mc.world.chunks.size, mesh: mc.chunks.meshCount,
+        dirty: mc.world.dirty.size, converged: false,
+      };
+    });
+    ok('流式加载：生成的区块都有网格且队列收敛', q.converged && q.gen > 0,
       `gen=${q.gen} mesh=${q.mesh} dirty=${q.dirty}`);
 
     const terra = await uiPage.evaluate(() => {
@@ -138,6 +169,57 @@ try {
 
   ok('进入游戏（默认生存）', (await page.evaluate(() => window.__mc.mode)) === 'playing');
   ok('游戏模式为 survival', (await page.evaluate(() => window.__mc.survival.mode)) === 'survival');
+
+  // ---- v1.3.0：Worker 池网格化 / Greedy Meshing ----
+  const mesh = await page.evaluate(() => ({
+    mode: window.__mc.chunks.mesherMode,
+    workers: window.__mc.chunks.workerCount,
+    greedy: window.__mc.chunks.greedy,
+    stats: window.__mc.chunks.meshStats,
+  }));
+  ok('网格化默认在 Worker 中执行', mesh.mode === 'worker', mesh.mode);
+  ok('网格化启用 Worker 池（≥1）', mesh.mode === 'worker' && mesh.workers >= 1, `workers=${mesh.workers}`);
+  ok('Greedy Meshing 默认启用', mesh.greedy === true);
+  ok('合并已产生实际收益', mesh.stats.quads > 0 && mesh.stats.merged > 0,
+    `quads=${mesh.stats.quads} merged=${mesh.stats.merged}`);
+
+  // ---- v1.2.0 服务层 / 插件服务 实景断言 ----
+  const svc = await page.evaluate(() => ({
+    version: CraftAPI.version,
+    services: window.__mc.services.keys(),
+    plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
+    emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
+  }));
+  ok('版本号单一来源为 1.3.0', svc.version === '1.3.0', svc.version);
+  ok('服务容器注册了事件/插件/API/内置依赖',
+    ['events', 'plugins', 'api', 'builtin-deps'].every((k) => svc.services.includes(k)), svc.services.join(','));
+  ok('内置插件全部启用', svc.plugins.length === 2 && svc.plugins.every((s) => s.endsWith(':enabled')),
+    svc.plugins.join(','));
+  ok('事件服务记录了 game:start 派发', svc.emittedStart >= 1, `n=${svc.emittedStart}`);
+
+  const plug = await page.evaluate(async () => {
+    const before = CraftAPI.events.stats().subscribers;
+    const def = {
+      manifest: { id: 'test:probe', version: '1.0.0' },
+      setup(ctx) {
+        ctx.events.on('block:break', () => { window.__probeHits = (window.__probeHits || 0) + 1; });
+      },
+    };
+    CraftAPI.plugins.register(def);
+    await CraftAPI.plugins.enable('test:probe');
+    const during = CraftAPI.events.stats().subscribers;
+    CraftAPI.emit('block:break', { x: 0, y: 1, z: 0, block: 1 });
+    const hits = window.__probeHits || 0;
+    CraftAPI.plugins.disable('test:probe');
+    const after = CraftAPI.events.stats().subscribers;
+    CraftAPI.plugins.unload('test:probe');
+    return { before, during, after, hits, list: CraftAPI.plugins.list().map((p) => p.manifest.id) };
+  });
+  ok('插件可热注册并收到事件', plug.hits === 1, JSON.stringify(plug));
+  ok('插件停用后订阅自动清理', plug.after === plug.before,
+    `${plug.before}→${plug.during}→${plug.after}`);
+  ok('插件卸载后从注册表移除', !plug.list.includes('test:probe'));
+
   ok('生命/饥饿 HUD 可见', await page.$eval('.stats-wrap', (el) => el.style.display !== 'none' && el.offsetParent !== null));
   ok('心形与鸡腿各 10 格',
     (await page.$$eval('.stat-heart .stat-pip', (e) => e.length)) === 10 &&
@@ -159,8 +241,12 @@ try {
   const mineCell = await page.evaluate(() => {
     const mc = window.__mc;
     const p = mc.player.pos;
-    const x = Math.floor(p.x), y = Math.floor(p.y) + 1, z = Math.floor(p.z) - 3;
-    mc.world.setBlock(x, y, z, mc.registry.byNameGet('stone').id);
+    // 与眼睛同高、正前方 3 格：水平射线不会被地形/树冠干扰
+    // （v1.1.2 把方块放在脚下高度，实际准星打到下方地面，断言却读了上一帧的旧 target）
+    const x = Math.floor(p.x), y = Math.floor(p.y + 1.62), z = Math.floor(p.z) - 3;
+    const stone = mc.registry.byNameGet('stone').id;
+    for (let dz = 1; dz <= 3; dz++) mc.world.setBlock(x, y, Math.floor(p.z) - dz, 0);
+    mc.world.setBlock(x, y, z, stone);
     return { x, y, z };
   });
   await sleep(150);
@@ -171,6 +257,8 @@ try {
     const dx = c.x + 0.5 - ex, dy = c.y + 0.5 - ey, dz = c.z + 0.5 - ez;
     mc.player.yaw = Math.atan2(-dx, -dz);
     mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    // 立即重算准星，避免「准星命中」断言读到设置视角之前的旧值
+    mc.player.update(0.016);
   }, mineCell);
   await sleep(250);
   const aim = await page.evaluate(() => {
@@ -182,6 +270,23 @@ try {
 
   await page.mouse.move(640, 380);
   await page.mouse.down({ button: 'left' });
+  // 指针锁定生效的瞬间，Chromium 可能补发一个合成 movement（应用侧已丢弃首个事件），
+  // 这里再兜一层：若准星已偏离，重新对准同一格，避免环境差异造成假失败。
+  await sleep(200);
+  const aimDrift = await page.evaluate((c) => {
+    const t = window.__mc.player.target;
+    return !t || t.x !== c.x || t.y !== c.y || t.z !== c.z;
+  }, mineCell);
+  if (aimDrift) {
+    await page.evaluate((c) => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      const dx = c.x + 0.5 - p.x, dy = c.y + 0.5 - (p.y + 1.62), dz = c.z + 0.5 - p.z;
+      mc.player.yaw = Math.atan2(-dx, -dz);
+      mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      mc.player.update(0.016);
+    }, mineCell);
+  }
   let midProgress = null;
   let sawMid = false;
   let barVisible = false;
@@ -201,6 +306,16 @@ try {
       }
     }
     if (st.block === 0) { brokenId = 0; break; }
+  }
+  // 软件渲染下 FPS 可能只有 10，而引擎把 dt 钳制到 0.05（防穿墙），
+  // 游戏时间流速约为真实的一半。固定循环次数会差最后一帧，
+  // 这里补一段「按条件轮询」的等待，而不是继续赌 sleep 时长。
+  if (brokenId !== 0) {
+    const broke = await page.waitForFunction(
+      (c) => window.__mc.world.getBlock(c.x, c.y, c.z) === 0,
+      { timeout: 20000, polling: 100 }, mineCell,
+    ).then(() => true).catch(() => false);
+    if (broke) brokenId = 0;
   }
   await page.mouse.up({ button: 'left' });
   await sleep(250);
@@ -453,6 +568,33 @@ try {
   await mpage.screenshot({ path: path.join(OUT, 'mobile-game.png') });
   ok('移动端无运行时错误', merrors.length === 0, merrors.slice(0, 3).join(' | '));
   await mpage.close();
+
+  // ==================== 降级路径：?mesher=main&greedy=0 ====================
+  // Worker 在 file:// 或受限环境下可能创建失败，必须保证同步路径仍可玩。
+  {
+    const url = `${URL_UNDER_TEST}${URL_UNDER_TEST.includes('?') ? '&' : '?'}mesher=main&greedy=0`;
+    const { page: fb, errors: ferr } = await openPage(browser, false, url);
+    await fb.evaluate(() => window.__mc.startGame(false));
+    await fb.waitForFunction('window.__mc.mode === "playing"', { timeout: 40000 });
+    const fbState = await fb.evaluate(async () => {
+      const mc = window.__mc;
+      for (let i = 0; i < 50; i++) {
+        if (mc.chunks.meshCount > 0 && mc.world.dirty.size === 0) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return {
+        mode: mc.chunks.mesherMode,
+        greedy: mc.chunks.greedy,
+        mesh: mc.chunks.meshCount,
+        stats: mc.chunks.meshStats,
+      };
+    });
+    ok('可强制主线程同步网格化', fbState.mode === 'main', fbState.mode);
+    ok('可关闭 Greedy 做对照', fbState.greedy === false);
+    ok('同步路径仍能产出网格', fbState.mesh > 0, `mesh=${fbState.mesh} merged=${fbState.stats.merged}`);
+    ok('降级路径无运行时错误', ferr.length === 0, ferr.slice(0, 3).join(' | '));
+    await fb.close();
+  }
 } catch (e) {
   ok('测试脚本未崩溃', false, e.message);
 } finally {

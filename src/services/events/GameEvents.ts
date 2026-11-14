@@ -1,0 +1,55 @@
+import type { BlockId, Vec3Like } from '../../core/types';
+
+/**
+ * 游戏事件表：事件服务的唯一契约。
+ *
+ * 扩展方可在任意 .d.ts / .ts 里用「声明合并」追加自定义事件：
+ *
+ * ```ts
+ * declare module './services/events/GameEvents' {
+ *   interface GameEvents { 'my:thing': { value: number } }
+ * }
+ * ```
+ *
+ * 所有 gameplay 钩子都经过事件服务派发，插件不得直接调用彼此的内部方法。
+ */
+export interface GameEvents {
+  'block:break': { x: number; y: number; z: number; block: BlockId };
+  'block:place': { x: number; y: number; z: number; block: BlockId };
+  'block:ignite': { x: number; y: number; z: number };
+  'explosion': { center: Vec3Like; radius: number };
+  'player:spawn': { position: Vec3Like };
+  'player:move': { position: Vec3Like };
+  'player:camera': { mode: number };
+  'hotbar:select': { index: number; block: BlockId };
+  'time:change': { dayTime: number; daylight: number };
+  'chunk:generated': { cx: number; cz: number };
+  'chunk:meshed': { cx: number; cz: number };
+  /** v1.2.0 新增：区块卸载（内存回收可观测） */
+  'chunk:unloaded': { cx: number; cz: number };
+  /** v1.2.0 新增：生成队列触发背压 */
+  'stream:backpressure': { dirty: number };
+  'entity:spawn': { type: string; id: number };
+  'entity:despawn': { type: string; id: number };
+  'entity:dead': { type: string; id: number };
+  'entity:hurt': { type: string; id: number; hp: number; maxHp: number };
+  /** 生存模式：任何来源的掉血 */
+  'survival:damage': { amount: number; health: number; cause: string };
+  /** 生存模式：死亡 */
+  'survival:death': { cause: string };
+  /** 生存模式：重生 */
+  'survival:respawn': { position: Vec3Like };
+  /** 生存模式：进食 */
+  'survival:eat': { item: string; hunger: number };
+  /** 生存模式：背包变化（kind: block/item） */
+  'inventory:change': { key: string; count: number };
+  'game:start': { seed: number };
+  'game:pause': { paused: boolean };
+  'save:done': { bytes: number };
+  /** v1.2.0 新增：服务与插件生命周期 */
+  'service:ready': { services: string[] };
+  'plugin:registered': { id: string };
+  'plugin:enabled': { id: string };
+  'plugin:disabled': { id: string };
+  'plugin:error': { id: string; error: string };
+}

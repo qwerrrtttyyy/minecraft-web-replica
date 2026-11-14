@@ -51,6 +51,9 @@ export type BlockInput = Omit<BlockDefinition, 'id' | 'drops'> & {
 
 export const AIR: BlockId = 0;
 
+/** 数组快通道的最大 id；更大的自定义 id 回退到 Map，避免稀疏大数组 */
+const FAST_ID_LIMIT = 65536;
+
 /**
  * 方块注册表（扩展点：CraftAPI.registerBlock）。
  * 所有 gameplay 与渲染都通过注册表查询方块属性，不硬编码 id。
@@ -59,6 +62,11 @@ export class BlockRegistry {
   private byId = new Map<BlockId, BlockDefinition>();
   private byName = new Map<string, BlockDefinition>();
   private nextId = 1;
+  /** 稠密 id → 定义：热路径（物理 / 射线 / 网格配置）避免 Map 查找 */
+  private byIdArr: (BlockDefinition | undefined)[] = [];
+  /** 预计算标志位，isOpaque/isSolid 只读一个字节 */
+  private opaqueFlags = new Uint8Array(64);
+  private solidFlags = new Uint8Array(64);
 
   readonly air: BlockDefinition = {
     id: AIR, name: 'air', label: '空气', shape: 'cube', solid: false, opaque: false,
@@ -69,6 +77,19 @@ export class BlockRegistry {
   constructor() {
     this.byId.set(AIR, this.air);
     this.byName.set('air', this.air);
+    this.byIdArr[AIR] = this.air;
+  }
+
+  private ensureFlagCapacity(id: number) {
+    if (id < this.opaqueFlags.length) return;
+    let n = this.opaqueFlags.length;
+    while (n <= id) n <<= 1;
+    const opaque = new Uint8Array(n);
+    opaque.set(this.opaqueFlags);
+    this.opaqueFlags = opaque;
+    const solid = new Uint8Array(n);
+    solid.set(this.solidFlags);
+    this.solidFlags = solid;
   }
 
   register(input: BlockInput): BlockDefinition {
@@ -78,11 +99,21 @@ export class BlockRegistry {
     const def: BlockDefinition = { ...input, id, drops: input.drops ?? [{ name: 'self' }] };
     this.byId.set(id, def);
     this.byName.set(def.name, def);
+    if (id >= 0 && id < FAST_ID_LIMIT) {
+      this.ensureFlagCapacity(id);
+      this.byIdArr[id] = def;
+      this.opaqueFlags[id] = def.opaque ? 1 : 0;
+      this.solidFlags[id] = def.solid ? 1 : 0;
+    }
     if (id >= this.nextId) this.nextId = id + 1;
     return def;
   }
 
   get(id: BlockId): BlockDefinition {
+    if (id >= 0 && id < FAST_ID_LIMIT) {
+      const fast = this.byIdArr[id];
+      if (fast) return fast;
+    }
     return this.byId.get(id) ?? this.air;
   }
 
@@ -95,10 +126,12 @@ export class BlockRegistry {
   }
 
   isOpaque(id: BlockId): boolean {
+    if (id >= 0 && id < this.opaqueFlags.length) return this.opaqueFlags[id] === 1;
     return this.get(id).opaque;
   }
 
   isSolid(id: BlockId): boolean {
+    if (id >= 0 && id < this.solidFlags.length) return this.solidFlags[id] === 1;
     return this.get(id).solid;
   }
 }
