@@ -31,17 +31,22 @@ interface ChunkShader {
   fragmentShader: string;
 }
 
-function injectLight(shader: ChunkShader, daylight: { value: number }) {
+function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
   shader.uniforms.uDaylight = daylight;
+  shader.uniforms.uSunTint = sunTint;
   shader.vertexShader = 'attribute vec2 aLight;\nvarying vec2 vLight;\n' + shader.vertexShader.replace(
     '#include <begin_vertex>',
     '#include <begin_vertex>\n  vLight = aLight;',
   );
-  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\n' + shader.fragmentShader.replace(
+  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + shader.fragmentShader.replace(
     '#include <color_fragment>',
     `#include <color_fragment>
-    float lit = max(vLight.x * uDaylight, vLight.y);
-    diffuseColor.rgb *= 0.07 + 0.93 * lit;`,
+    float skyPart = vLight.x * uDaylight;
+    float lit = max(skyPart, vLight.y);
+    float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
+    vec3 skyTint = mix(vec3(0.56, 0.65, 0.94), vec3(1.0), clamp(uDaylight * 1.35, 0.0, 1.0));
+    vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
+    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;`,
   );
 }
 
@@ -55,6 +60,8 @@ export class ChunkManager implements System {
   readonly materials: { opaque: THREE.MeshBasicMaterial; emissive: THREE.MeshBasicMaterial; transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial };
   /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
   readonly lightUniform = { value: 1 };
+  /** 太阳颜色，日出/日落时给天空光染色 */
+  readonly sunTint = { value: new THREE.Color(1, 1, 1) };
   private waterTime = { value: 0 };
   private meshes = new Map<string, ChunkMeshes>();
   private centerX = 0;
@@ -84,12 +91,12 @@ export class ChunkManager implements System {
     };
     // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
     for (const mat of [this.materials.opaque, this.materials.transparent]) {
-      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform);
+      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint);
     }
     // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
-      injectLight(shader, this.lightUniform);
+      injectLight(shader, this.lightUniform, this.sunTint);
       shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>

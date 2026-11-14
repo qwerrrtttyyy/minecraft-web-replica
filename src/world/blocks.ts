@@ -29,6 +29,8 @@ export interface BlockDefinition {
   opaque: boolean;
   /** 非遮光方块是否剔除与自身同材质的相邻面（树叶等，减少内部面） */
   cullSame?: boolean;
+  /** 逐方块亮度抖动幅度（0~1），用于打散大面积重复纹理 */
+  colorVariance?: number;
   /** 液体：可游泳穿过，不可被准星选中 */
   liquid: boolean;
   /** 是否走透明渲染通道（水、玻璃） */
@@ -114,12 +116,13 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     const t = { top: name, bottom: name, side: name, ...tiles };
     reg.register({
       name, label, shape: 'cube', solid: true, opaque: true, liquid: false,
-      transparentPass: false, lightEmission: 0, hardness: 1, sound: 'stone', tiles: t, ...extra,
+      transparentPass: false, lightEmission: 0, hardness: 1, sound: 'stone', colorVariance: 0.06,
+      tiles: t, ...extra,
     });
   };
 
   cube('grass', '草方块', { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
-    { sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }] });
+    { sound: 'dirt', hardness: 0.6, colorVariance: 0.1, drops: [{ name: 'dirt' }] });
   cube('dirt', '泥土', {}, { sound: 'dirt', hardness: 0.5 });
   cube('stone', '石头', {}, { hardness: 1.5, drops: [{ name: 'cobblestone' }] });
   cube('cobblestone', '圆石', {}, { hardness: 2 });
@@ -127,13 +130,13 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('oak_log', '橡木原木', { top: 'log_top', bottom: 'log_top', side: 'log_side' }, { sound: 'wood', hardness: 2 });
   cube('oak_planks', '橡木木板', {}, { sound: 'wood', hardness: 2 });
   cube('oak_leaves', '橡树树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, colorVariance: 0.14,
     drops: [{ name: 'oak_leaves', chance: 0.5 }, { name: 'item:apple', chance: 0.2 }],
   });
-  cube('glass', '玻璃', {}, { opaque: false, transparentPass: true, sound: 'glass', hardness: 0.3, drops: [] });
+  cube('glass', '玻璃', {}, { opaque: false, transparentPass: true, sound: 'glass', hardness: 0.3, colorVariance: 0, drops: [] });
   cube('bricks', '红砖块', {}, { hardness: 2 });
   cube('water', '水', {}, {
-    solid: false, opaque: false, liquid: true, transparentPass: true, sound: 'liquid', hardness: 100, drops: [],
+    solid: false, opaque: false, liquid: true, transparentPass: true, sound: 'liquid', hardness: 100, colorVariance: 0, drops: [],
   });
   cube('bedrock', '基岩', {}, { hardness: Infinity, drops: [] });
   cube('glowstone', '萤石', {}, { lightEmission: 15, sound: 'glass', hardness: 0.3 });
@@ -148,7 +151,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   const plant = (name: string, label: string) =>
     reg.register({
       name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
-      transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
+      transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', colorVariance: 0.1,
       tiles: { top: name, bottom: name, side: name },
     });
   plant('tall_grass', '草丛');
@@ -164,9 +167,9 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   // 光源方块：火把（可放置在地面，走镂空十字面）与南瓜灯（完整方块）
   reg.register({
     name: 'torch', label: '火把', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 14, hardness: 0.1, sound: 'wood',
+    transparentPass: false, lightEmission: 14, hardness: 0.1, sound: 'wood', colorVariance: 0.05,
     tiles: { top: 'torch', bottom: 'torch', side: 'torch' },
   });
   cube('jack_o_lantern', '南瓜灯', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_face' },
-    { lightEmission: 15, sound: 'wood', hardness: 1 });
+    { lightEmission: 15, sound: 'wood', hardness: 1, colorVariance: 0.04 });
 }

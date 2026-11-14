@@ -25,6 +25,8 @@ export class Sky implements System {
   private cloudBaseZ = 0;
   readonly sunLight: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+  /** 当前太阳颜色（日出/日落偏暖），区块 shader 用它给天空光染色 */
+  readonly sunTint = new THREE.Color(0xffffff);
   private fog: THREE.Fog;
   private group = new THREE.Group();
   private emitAcc = 0;
@@ -217,6 +219,7 @@ export class Sky implements System {
     u.uDaylight.value = this.daylight;
     this.tmpSun.set(0xfff2c0).lerp(this.cSunDusk, dusk);
     (u.uSunColor.value as THREE.Color).copy(this.tmpSun);
+    this.sunTint.copy(this.tmpSun);
 
     // 跟随相机
     this.group.position.copy(this.camera.position);
@@ -236,8 +239,11 @@ export class Sky implements System {
       -this.group.position.y,
       this.cloudBaseZ - this.group.position.z,
     );
-    (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.5 + this.daylight * 0.32;
-    (this.clouds.material as THREE.MeshBasicMaterial).color.copy(this.tmpHorizon).lerp(this.cWhite, 0.55 + this.daylight * 0.45);
+    // 云在夜里压暗并偏蓝，黄昏时跟着地平线余晖走，避免夜里一片发光的白板
+    (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.32 + this.daylight * 0.5;
+    (this.clouds.material as THREE.MeshBasicMaterial).color
+      .copy(this.tmpHorizon)
+      .lerp(this.cWhite, 0.15 + this.daylight * 0.55);
 
     // 雾（世界亮度由区块 shader 的天空光/方块光分别处理）
     const R = this.getRenderDistance() * 16;

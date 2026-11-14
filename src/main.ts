@@ -654,8 +654,12 @@ async function boot() {
   function cinematic(t: number) {
     const c = player.pos;
     const a = t * 0.05;
-    engine.camera.position.set(c.x + Math.cos(a) * 17, c.y + 9 + Math.sin(t * 0.021) * 2.5, c.z + Math.sin(a) * 17);
-    engine.camera.lookAt(c.x, c.y + 2.5, c.z);
+    engine.camera.position.set(
+      c.x + Math.cos(a) * 18,
+      c.y + 10 + Math.sin(t * 0.021) * 2.5,
+      c.z + Math.sin(a) * 18,
+    );
+    engine.camera.lookAt(c.x, c.y + 3, c.z);
   }
 
   // ---- 调试面板 ----
@@ -731,12 +735,15 @@ async function boot() {
       // 昼夜强度写进区块 shader；手持物按眼睛所在格的光照变暗/变亮
       const daylight = 0.16 + 0.84 * sky.daylight;
       chunks.lightUniform.value = daylight;
+      chunks.sunTint.value.copy(sky.sunTint);
       const eyeX = Math.floor(player.pos.x);
       const eyeY = Math.floor(player.pos.y + 1.62);
       const eyeZ = Math.floor(player.pos.z);
       const skyL = world.getSkyLight(eyeX, eyeY, eyeZ) / 15;
       const blockL = world.getBlockLight(eyeX, eyeY, eyeZ) / 15;
-      player.heldMaterial.color.setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL));
+      player.heldMaterial.color
+        .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
+        .multiply(sky.sunTint);
       const hlTarget = mode === 'playing' && player.target &&
         registry.get(player.target.block).shape !== 'cross' ? player.target : null;
       highlight.set(hlTarget);

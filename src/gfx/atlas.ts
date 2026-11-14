@@ -81,9 +81,19 @@ function builtinPainters(): Record<string, Painter> {
     blob(p, rng, 0x966c4e, 6, 4);
   };
   const stoneBase: Painter = (p, rng) => {
-    fillNoise(p, rng, 0x7f7f7f, 9);
-    blob(p, rng, 0x6e6e6e, 7, 9);
-    blob(p, rng, 0x8c8c8c, 4, 5);
+    fillNoise(p, rng, 0x7c7f82, 9);
+    blob(p, rng, 0x6a6d70, 7, 9);
+    blob(p, rng, 0x8c8f92, 4, 5);
+    // 几道短裂纹，避免大面积石墙过于均匀
+    for (let i = 0; i < 3; i++) {
+      let x = 2 + ((rng() * 12) | 0);
+      let y = 2 + ((rng() * 10) | 0);
+      for (let k = 0; k < 4; k++) {
+        p.set(x, y, jitter(0x626568, rng, 5));
+        x += ((rng() * 3) | 0) - 1;
+        y += 1;
+      }
+    }
   };
   const redTnt = (p: Px, rng: () => number) => {
     fillNoise(p, rng, 0xd5451b, 8);
@@ -91,17 +101,24 @@ function builtinPainters(): Record<string, Painter> {
   };
   return {
     grass_top: (p, rng) => {
-      fillNoise(p, rng, 0x91bd59, 12);
-      blob(p, rng, 0x7ca84b, 10, 3);
-      blob(p, rng, 0xa3cb6b, 6, 2);
+      fillNoise(p, rng, 0x7ba848, 10);
+      blob(p, rng, 0x6b9a3e, 10, 3);
+      blob(p, rng, 0x8fbe57, 8, 3);
+      // 短草叶，让大草地不至于只有噪声
+      for (let i = 0; i < 18; i++) {
+        const x = (rng() * TILE) | 0;
+        const y = (rng() * TILE) | 0;
+        p.set(x, y, jitter(0x9ccb63, rng, 8));
+        if (rng() < 0.5) p.set(x, y + 1, jitter(0x76a646, rng, 7));
+      }
     },
     dirt,
     grass_side: (p, rng) => {
       dirt(p, rng);
       for (let x = 0; x < TILE; x++) {
         const depth = 2 + ((rng() * 3) | 0);
-        for (let y = 0; y < depth; y++) p.set(x, y, jitter(0x7fb24e, rng, 10));
-        if (rng() < 0.4) p.set(x, depth, jitter(0x6e9c42, rng, 8));
+        for (let y = 0; y < depth; y++) p.set(x, y, jitter(0x7ba848, rng, 10));
+        if (rng() < 0.4) p.set(x, depth, jitter(0x6b9a3e, rng, 8));
       }
     },
     stone: stoneBase,
@@ -163,15 +180,32 @@ function builtinPainters(): Record<string, Painter> {
       }
     },
     oak_leaves: (p, rng) => {
-      for (let y = 0; y < TILE; y++) {
-        for (let x = 0; x < TILE; x++) {
-          const r = rng();
-          if (r < 0.13) continue; // 镂空
-          const base = r < 0.45 ? 0x3e7a22 : r < 0.8 ? 0x4c8f2b : 0x5aa236;
-          p.set(x, y, jitter(base, rng, 8));
+      p.clear();
+      const tones = [0x2f5f1c, 0x3f7a24, 0x4f8f2c, 0x5aa236];
+      // 4×4 的叶簇：同一簇内色调统一，边缘随机镂空，整体不再是椒盐噪声
+      for (let cy = 0; cy < 4; cy++) {
+        for (let cx = 0; cx < 4; cx++) {
+          const base = tones[(rng() * tones.length) | 0];
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              const edge = x === 0 || y === 0 || x === 3 || y === 3;
+              if (edge && rng() < 0.18) continue;
+              p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
+            }
+          }
+          if (rng() < 0.55) {
+            p.set(cx * 4 + 1 + ((rng() * 2) | 0), cy * 4 + 1 + ((rng() * 2) | 0),
+              jitter(0x6fb545, rng, 8));
+          }
         }
       }
-      blob(p, rng, 0x336619, 6, 4);
+      // 少量透光孔与底部暗部
+      for (let i = 0; i < 6; i++) {
+        p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0, 0);
+      }
+      for (let x = 0; x < TILE; x++) {
+        if (rng() < 0.35) p.set(x, 15, jitter(0x2a5418, rng, 6));
+      }
     },
     glass: (p) => {
       p.clear();
@@ -203,12 +237,17 @@ function builtinPainters(): Record<string, Painter> {
       }
     },
     water: (p, rng) => {
-      fillNoise(p, rng, 0x3f76e4, 6);
-      for (let i = 0; i < 7; i++) {
+      fillNoise(p, rng, 0x3569d1, 7);
+      for (let i = 0; i < 8; i++) {
         const y = (rng() * TILE) | 0;
         const x = (rng() * 10) | 0;
         const len = 4 + ((rng() * 5) | 0);
-        for (let k = 0; k < len; k++) p.set(x + k, y, jitter(0x5187ee, rng, 5));
+        for (let k = 0; k < len; k++) p.set(x + k, y, jitter(0x4b86e8, rng, 5));
+      }
+      for (let i = 0; i < 3; i++) {
+        const y = 2 + ((rng() * 12) | 0);
+        const x = 2 + ((rng() * 10) | 0);
+        p.set(x, y, jitter(0x274f9f, rng, 4));
       }
     },
     bedrock: (p, rng) => {
@@ -361,20 +400,26 @@ function builtinPainters(): Record<string, Painter> {
     // 光源方块：火把 / 南瓜灯
     torch: (p, rng) => {
       p.clear();
+      // 4px 宽的木棍，远处和 48px 图标都能看清
       for (let y = 7; y < 16; y++) {
+        p.set(6, y, 0x4a3018);
         p.set(7, y, 0x6b4a2a);
         p.set(8, y, 0x7d5a34);
+        p.set(9, y, 0x4a3018);
       }
-      p.set(6, 10, 0x4a3018);
-      p.set(9, 10, 0x4a3018);
-      p.set(7, 6, 0xffd95e);
-      p.set(8, 6, 0xffb83a);
-      p.set(7, 5, 0xfff0a8);
-      p.set(8, 5, 0xffd95e);
+      // 火焰：下宽上窄
+      for (let y = 4; y <= 7; y++) {
+        const w = y <= 5 ? 1 : 2;
+        for (let x = 7 - w; x <= 8 + w; x++) {
+          p.set(x, y, jitter(y <= 5 ? 0xffd95e : 0xff9a2a, rng, 12));
+        }
+      }
       p.set(7, 4, 0xfff6d0);
       p.set(8, 4, 0xffe58a);
-      p.set(6, 6, jitter(0xd9881f, rng, 10));
-      p.set(9, 6, jitter(0xc4761a, rng, 10));
+      p.set(7, 3, 0xffe58a);
+      p.set(8, 3, 0xffb83a);
+      p.set(6, 7, 0x8a4a12);
+      p.set(9, 7, 0x8a4a12);
     },
     pumpkin_top: (p, rng) => {
       fillNoise(p, rng, 0xd97318, 10);

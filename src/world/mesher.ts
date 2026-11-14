@@ -46,6 +46,13 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
   };
   const opaqueAt = (x: number, y: number, z: number): boolean => reg.isOpaque(getId(x, y, z));
 
+  /** 逐方块亮度抖动：让大片同类方块不至于完全重复 */
+  const varianceAt = (x: number, y: number, z: number): number => {
+    let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+
   const pushQuad = (
     g: GeoArrays,
     verts: number[][],
@@ -75,6 +82,8 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
         const id = data[(y * CS + lz) * CS + lx];
         if (id === AIR) continue;
         const def = reg.get(id);
+        const variance = def.colorVariance ?? 0;
+        const blockTint = variance > 0 ? 1 + (varianceAt(x0 + lx, y, z0 + lz) - 0.5) * variance : 1;
         const pass: GeoArrays = def.lightEmission > 0
           ? (out.emissive ??= newGeo())
           : def.liquid
@@ -90,7 +99,7 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
             [[lx + 0.85, y, lz + 0.15], [lx + 0.15, y, lz + 0.85], [lx + 0.15, y + 1, lz + 0.85], [lx + 0.85, y + 1, lz + 0.15]],
           ];
           const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
-          const bright = [0.95, 0.95, 1, 1];
+          const bright = [0.95 * blockTint, 0.95 * blockTint, blockTint, blockTint];
           const light: [number, number] = [
             world.getSkyLight(x0 + lx, y, z0 + lz) / 15,
             world.getBlockLight(x0 + lx, y, z0 + lz) / 15,
@@ -140,7 +149,7 @@ export function meshChunk(world: World, atlas: TextureAtlas, cx: number, cz: num
             if (lowerWaterTop && cy === 1) cy -= 0.12;
             verts.push([lx + c[0], y + cy, lz + c[2]]);
             uvC.push([c[3], c[4]]);
-            bright.push(face.shade * AO_LEVELS[ao[i]]);
+            bright.push(face.shade * AO_LEVELS[ao[i]] * blockTint);
           }
           const flip = ao[0] + ao[2] < ao[1] + ao[3];
           // 采样面外侧空气格的光照（跨区块也能取到）

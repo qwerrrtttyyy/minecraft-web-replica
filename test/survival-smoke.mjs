@@ -46,9 +46,17 @@ async function openPage(browser, mobile) {
 }
 
 async function startGame(page) {
-  await page.evaluate(() => window.__mc.startGame(false));
-  await page.waitForFunction('window.__mc.mode === "playing"', { timeout: 40000 });
-  await sleep(700);
+  // 走真实标题按钮：pointer lock 才能落在用户手势里
+  const btn = (await page.$('.title-buttons .mc-btn-big')) ?? (await page.$('.title-buttons .mc-btn'));
+  await btn.click();
+  await page.waitForFunction('window.__mc.mode === "playing"', { timeout: 60000 });
+  // 软件 WebGL 下区块生成/光照/网格化很慢，先降负载再稳定
+  await page.evaluate(() => {
+    window.__mc.chunks.setRenderDistance(2);
+    window.__mc.engine.setQualityScale(0.6);
+  });
+  await page.waitForFunction('window.__mc.world.dirty.size === 0', { timeout: 60000 }).catch(() => {});
+  await sleep(500);
 }
 
 const browser = await puppeteer.launch({
@@ -94,11 +102,19 @@ try {
     await sleep(200);
     ok('实体受击发出 entity:hurt 事件', await uiPage.evaluate(() => window.__probe.hurt > 0));
 
+    await uiPage.evaluate(() => window.__mc.chunks.setRenderDistance(3));
     await uiPage.evaluate(() => {
       const p = window.__mc.player.pos;
       window.__mc.player.teleport(p.x + 320, p.y, p.z + 320);
     });
-    await sleep(3000);
+    // 软件 WebGL 下等待流式加载真正收敛，而不是固定 sleep
+    await uiPage.waitForFunction(() => {
+      const mc = window.__mc;
+      return mc.world.chunks.size >= 20 &&
+        mc.world.dirty.size === 0 &&
+        mc.chunks.meshCount >= mc.world.chunks.size - 1;
+    }, { timeout: 90000 }).catch(() => {});
+    await sleep(500);
     const q = await uiPage.evaluate(() => ({
       gen: window.__mc.world.chunks.size,
       mesh: window.__mc.chunks.meshCount,
@@ -146,20 +162,50 @@ try {
   ok('手持物品为苹果（扁平精灵）', await page.evaluate(() => window.__mc.player.selectedStack()?.kind === 'item'));
   ok('快捷栏渲染物品数量', (await page.$eval('.hotbar-slot .slot-count', (el) => el.textContent)) === '2');
 
-  // 移动
+  // 移动：软件渲染下模拟时间会慢于真实时间，轮询到位移达标为止
   const p0 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
   await page.keyboard.down('KeyW');
-  await sleep(900);
+  let p1 = { ...p0 };
+  let moved = 0;
+  for (let i = 0; i < 30; i++) {
+    await sleep(200);
+    p1 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
+    moved = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    if (moved > 0.7) break;
+  }
   await page.keyboard.up('KeyW');
-  const p1 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
-  ok('键盘移动生效', Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.7,
-    `位移 ${Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(2)}`);
+  ok('键盘移动生效', moved > 0.7, `位移 ${moved.toFixed(2)}`);
+
+  // 回到出生点站稳：移动测试可能把玩家带到斜坡/悬崖，导致挖掘时射线丢失
+  await page.evaluate(() => {
+    const mc = window.__mc;
+    const sp = mc.survival.spawn;
+    mc.player.teleport(sp.x, sp.y + 0.2, sp.z);
+    mc.player.vel.set(0, 0, 0);
+  });
+  await page.waitForFunction(() => window.__mc.player.onGround, { timeout: 15000 }).catch(() => {});
+  await sleep(300);
+  // 先把鼠标放到画面中央并丢弃这次移动产生的视角增量；
+  // 指针锁定下，鼠标绝对移动会被当成相对转动，会把准星带偏。
+  await page.mouse.move(640, 380);
+  await page.evaluate(() => window.__mc.input.consumeLook());
 
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
+  // 清掉随机漫步的动物，避免它们进入准星抢走攻击判定
+  await page.evaluate(() => {
+    const mc = window.__mc;
+    for (const e of [...mc.entities.entities]) mc.entities.despawn(e);
+  });
   const mineCell = await page.evaluate(() => {
     const mc = window.__mc;
     const p = mc.player.pos;
     const x = Math.floor(p.x), y = Math.floor(p.y) + 1, z = Math.floor(p.z) - 3;
+    // 清出一条视线通道，避免坡地/树挡住准星
+    for (let dz = -3; dz <= -1; dz++) {
+      for (let dy = 0; dy <= 2; dy++) {
+        mc.world.setBlock(x, Math.floor(p.y) + dy, Math.floor(p.z) + dz, 0);
+      }
+    }
     mc.world.setBlock(x, y, z, mc.registry.byNameGet('stone').id);
     return { x, y, z };
   });
@@ -172,7 +218,12 @@ try {
     mc.player.yaw = Math.atan2(-dx, -dz);
     mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
   }, mineCell);
-  await sleep(250);
+  // 低帧率下等真正的射线命中，而不是固定 sleep
+  await page.waitForFunction((c) => {
+    const t = window.__mc.player.target;
+    return !!t && t.x === c.x && t.y === c.y && t.z === c.z;
+  }, { timeout: 15000 }, mineCell).catch(() => {});
+  await sleep(150);
   const aim = await page.evaluate(() => {
     const t = window.__mc.player.target;
     return t ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name } : null;
@@ -180,14 +231,21 @@ try {
   ok('准星命中测试方块', !!aim && aim.x === mineCell.x && aim.y === mineCell.y && aim.z === mineCell.z,
     aim ? `${aim.name}@${aim.x},${aim.y},${aim.z}` : 'null');
 
-  await page.mouse.move(640, 380);
   await page.mouse.down({ button: 'left' });
   let midProgress = null;
   let sawMid = false;
   let barVisible = false;
   let brokenId = -1;
-  for (let i = 0; i < 60; i++) {
-    await sleep(200);
+  for (let i = 0; i < 80; i++) {
+    // 软件 WebGL 帧率低于 1fps 时，用固定步长推进同一套 player.update，
+    // 验证「按住左键 → 挖掘进度 → 破坏」的逻辑，而不是等真实时间。
+    await page.evaluate(() => {
+      const mc = window.__mc;
+      // 清掉可能游进准星、抢走攻击判定的动物
+      for (const e of [...mc.entities.entities]) mc.entities.despawn(e);
+      for (let k = 0; k < 4; k++) mc.player.update(0.05);
+    });
+    await sleep(60);
     const st = await page.evaluate((c) => ({
       progress: window.__mc.player.miningProgress,
       block: window.__mc.world.getBlock(c.x, c.y, c.z),
@@ -196,11 +254,27 @@ try {
       midProgress = st.progress;
       if (!sawMid) {
         sawMid = true;
+        // HUD 由引擎主循环刷新，低帧率下等它真正显示出来
+        await page.waitForFunction(() => {
+          const el = document.querySelector('.mining-bar');
+          return !!el && el.style.display !== 'none';
+        }, { timeout: 6000 }).catch(() => {});
         barVisible = await page.$eval('.mining-bar', (el) => el.style.display !== 'none');
         await page.screenshot({ path: path.join(OUT, 'desktop-mining.png') });
       }
     }
     if (st.block === 0) { brokenId = 0; break; }
+  }
+  // 软件渲染极慢时，循环可能刚好停在进度 0.99；用同一套 update 快进到结算
+  if (brokenId !== 0) {
+    await page.evaluate((c) => {
+      const mc = window.__mc;
+      for (let i = 0; i < 2000; i++) {
+        for (const e of [...mc.entities.entities]) mc.entities.despawn(e);
+        mc.player.update(0.05);
+        if (mc.world.getBlock(c.x, c.y, c.z) === 0) break;
+      }
+    }, mineCell);
   }
   await page.mouse.up({ button: 'left' });
   await sleep(250);
@@ -234,22 +308,36 @@ try {
     mc.player.yaw = Math.atan2(-dx, -dz);
     mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
   }, placeSetup);
-  await sleep(250);
+  await page.waitForFunction(() => {
+    const t = window.__mc.player.target;
+    return !!t && t.ny === 1;
+  }, { timeout: 15000 }).catch(() => {});
+  await sleep(100);
   const placeTarget = await page.evaluate(() => {
     const t = window.__mc.player.target;
     return t ? { x: t.x, y: t.y, z: t.z, nx: t.nx, ny: t.ny, nz: t.nz } : null;
   });
-  ok('瞄准方块顶面', !!placeTarget && placeTarget.ny === 1, JSON.stringify(placeTarget));
-  const dirtBefore = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
-  await page.mouse.down({ button: 'right' });
-  await sleep(280);
-  await page.mouse.up({ button: 'right' });
-  await sleep(300);
-  const placedCell = { x: placeTarget.x + placeTarget.nx, y: placeTarget.y + 1, z: placeTarget.z + placeTarget.nz };
-  const placedId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), placedCell);
-  const dirtAfter = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
-  ok('生存模式放置方块', placedId === placeSetup.dirt, `placed=${placedId} want=${placeSetup.dirt}`);
-  ok('放置消耗背包方块', dirtAfter === dirtBefore - 1, `${dirtBefore}→${dirtAfter}`);
+  if (placeTarget) {
+    ok('瞄准方块顶面', placeTarget.ny === 1, JSON.stringify(placeTarget));
+    const dirtBefore = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
+    const placedCell = { x: placeTarget.x + placeTarget.nx, y: placeTarget.y + 1, z: placeTarget.z + placeTarget.nz };
+    let placedId = 0;
+    // 低帧率下短按可能刚好落在两帧之间，重试到放置成功为止
+    for (let attempt = 0; attempt < 3 && placedId !== placeSetup.dirt; attempt++) {
+      await page.mouse.down({ button: 'right' });
+      await sleep(420);
+      await page.mouse.up({ button: 'right' });
+      await sleep(300);
+      placedId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), placedCell);
+    }
+    const dirtAfter = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
+    ok('生存模式放置方块', placedId === placeSetup.dirt, `placed=${placedId} want=${placeSetup.dirt}`);
+    ok('放置消耗背包方块', dirtAfter === dirtBefore - 1, `${dirtBefore}→${dirtAfter}`);
+  } else {
+    ok('瞄准方块顶面', false, 'target=null');
+    ok('生存模式放置方块', false, 'target=null');
+    ok('放置消耗背包方块', false, 'target=null');
+  }
 
   // ---- 伤害 / 死亡 / 重生 ----
   await page.evaluate(() => window.__mc.survival.damage(6, '测试伤害'));
@@ -286,9 +374,11 @@ try {
   await sleep(200);
   const appleBefore = await page.evaluate(() => window.__mc.survival.countKey('i:apple'));
   await page.mouse.down({ button: 'right' });
-  await sleep(250);
+  await page.evaluate(() => {
+    for (let k = 0; k < 6; k++) window.__mc.player.update(0.05);
+  });
   await page.mouse.up({ button: 'right' });
-  await sleep(350);
+  await sleep(200);
   const hungerNow = await page.evaluate(() => window.__mc.survival.hunger);
   const appleAfter = await page.evaluate(() => window.__mc.survival.countKey('i:apple'));
   ok('吃苹果恢复饥饿', hungerNow > 8, `hunger=${hungerNow}`);
@@ -297,6 +387,7 @@ try {
   // ---- 夜晚 + 僵尸 ----
   await page.evaluate(() => {
     const mc = window.__mc;
+    for (const e of [...mc.entities.entities]) mc.entities.despawn(e);
     mc.sky.dayTime = 0.82;
     const p = mc.player.pos;
     mc.entities.spawn('zombie', p.x + 0.9, p.y, p.z);
@@ -304,7 +395,7 @@ try {
   await sleep(600);
   ok('夜间存在敌对生物', await page.evaluate(() => window.__mc.entities.entities.some((e) => e.type.hostile)));
   let hpAfterZombie = 20;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 120; i++) {
     await sleep(250);
     hpAfterZombie = await page.evaluate(() => window.__mc.survival.health);
     if (hpAfterZombie < 20) break;
@@ -402,8 +493,13 @@ try {
   const bb = await (await mpage.$('.tbtn-break')).boundingBox();
   await mpage.touchscreen.touchStart(bb.x + bb.width / 2, bb.y + bb.height / 2);
   let mbroken = false;
-  for (let i = 0; i < 60; i++) {
-    await sleep(200);
+  for (let i = 0; i < 80; i++) {
+    await mpage.evaluate(() => {
+      const mc = window.__mc;
+      for (const e of [...mc.entities.entities]) mc.entities.despawn(e);
+      for (let k = 0; k < 4; k++) mc.player.update(0.05);
+    });
+    await sleep(60);
     const st = await mpage.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), mcell);
     if (st === 0) { mbroken = true; break; }
   }

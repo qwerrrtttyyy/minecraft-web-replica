@@ -14,6 +14,7 @@
     "test:logic": "node test/logic-check.cjs",
     "test:terrain": "node test/terrain-check.cjs",
     "test:light": "node test/light-check.cjs",
+    "test:visual": "node test/visual-check.mjs",
     "test:smoke": "node test/survival-smoke.mjs"
   },
   "dependencies": {

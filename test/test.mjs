@@ -53,7 +53,8 @@ const titleInfo = await page.evaluate(() => ({
 }));
 ok('标题屏元素', titleInfo.logo && titleInfo.buttons.length >= 1 && titleInfo.canvasW === 1280, JSON.stringify(titleInfo.buttons) + ` chunks=${titleInfo.chunks}`);
 
-// 进入世界
+// 进入世界（这个套件验证方块库 / 放置 / 快捷栏，统一用创造模式）
+await page.click('.mode-btn[data-mode="creative"]');
 await page.evaluate(() => {
   [...document.querySelectorAll('.title-buttons .mc-btn')].find((b) => b.textContent.includes('进入世界') || b.textContent.includes('继续游戏'))?.click();
 });
@@ -130,7 +131,7 @@ const palette = await page.evaluate(() => ({
 await page.screenshot({ path: `${SHOTS}/03-palette.png` });
 ok('方块库（E）', palette.open && palette.cells >= 20, `cells=${palette.cells}`);
 await page.keyboard.press('Escape');
-await sleep(300);
+await page.waitForFunction('window.__mc.mode === "playing"', { timeout: 8000 }).catch(() => {});
 ok('Esc 关闭方块库并回到游戏', await page.evaluate(() => window.__mc.mode === 'playing'));
 
 // 第三人称 + 角色模型
@@ -233,7 +234,11 @@ await mob.goto(URL, { waitUntil: 'load', timeout: 60000 });
 await mob.waitForFunction('window.__mc && window.__mc.mode === "title"', { timeout: 90000 });
 await sleep(1500);
 await mob.screenshot({ path: `${SHOTS}/10-mobile-title.png` });
-await mob.evaluate(() => { [...document.querySelectorAll('.title-buttons .mc-btn')][0]?.click(); });
+await mobileCreativeAndStart();
+async function mobileCreativeAndStart() {
+  await mob.evaluate(() => document.querySelector('.mode-btn[data-mode="creative"]')?.click());
+  await mob.evaluate(() => { [...document.querySelectorAll('.title-buttons .mc-btn')][0]?.click(); });
+}
 await mob.waitForFunction('window.__mc.mode === "playing"', { timeout: 90000 });
 await sleep(3500);
 await mob.screenshot({ path: `${SHOTS}/11-mobile-game.png` });
@@ -277,6 +282,8 @@ const mobBreak = await mob.evaluate(async () => {
   p.pitch = 0; p.update(0.016);
   const btn = document.querySelector('[data-role="break"]');
   btn.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, pointerType: 'touch', bubbles: true, cancelable: true }));
+  // 软件渲染帧率太低，用固定步长推进同一套 update，确保按钮语义被实际执行
+  for (let i = 0; i < 10; i++) p.update(0.05);
   await new Promise((r) => setTimeout(r, 600));
   btn.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, pointerType: 'touch', bubbles: true, cancelable: true }));
   return mc.world.getBlock(tx, ty, tz) === 0;
