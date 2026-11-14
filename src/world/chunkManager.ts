@@ -49,12 +49,40 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   g.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(p.uvs, 2));
   g.setAttribute('color', new THREE.BufferAttribute(p.colors, 3));
+  // 每顶点天空光 / 方块光，shader 与昼夜系数、太阳色一起决定最终亮度
+  g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
   // 每个顶点的图集 tile 区域，shader 用 fract(局部UV) 平铺
   g.setAttribute('aTileRect', new THREE.BufferAttribute(p.tiles, 4));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
   return g;
 };
+
+/** 把天空光/方块光注入 MeshBasicMaterial：天空光随昼夜变化，方块光恒定 */
+interface ChunkShader {
+  uniforms: Record<string, THREE.IUniform>;
+  vertexShader: string;
+  fragmentShader: string;
+}
+
+function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
+  shader.uniforms.uDaylight = daylight;
+  shader.uniforms.uSunTint = sunTint;
+  shader.vertexShader = 'attribute vec2 aLight;\nvarying vec2 vLight;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\n\tvLight = aLight;',
+  );
+  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + shader.fragmentShader.replace(
+    '#include <color_fragment>',
+    `#include <color_fragment>
+    float skyPart = vLight.x * uDaylight;
+    float lit = max(skyPart, vLight.y);
+    float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
+    vec3 skyTint = mix(vec3(0.56, 0.65, 0.94), vec3(1.0), clamp(uDaylight * 1.35, 0.0, 1.0));
+    vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
+    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;`,
+  );
+}
 
 /**
  * 区块流式加载：按玩家位置生成 / 网格化 / 卸载。
@@ -75,6 +103,10 @@ export class ChunkManager implements System {
     opaque: THREE.MeshBasicMaterial; emissive: THREE.MeshBasicMaterial;
     transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial;
   };
+  /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
+  readonly lightUniform = { value: 1 };
+  /** 太阳颜色，日出/日落时给天空光染色 */
+  readonly sunTint = { value: new THREE.Color(1, 1, 1) };
   private waterTime = { value: 0 };
   private meshes = new Map<string, ChunkMeshes>();
   private centerX = 0;
@@ -120,9 +152,14 @@ export class ChunkManager implements System {
         depthWrite: false, side: THREE.DoubleSide,
       }),
     };
-    // 水面微波动画（世界坐标驱动，跨区块连续）
+    // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
+    for (const mat of [this.materials.opaque, this.materials.transparent]) {
+      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint);
+    }
+    // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
+      injectLight(shader, this.lightUniform, this.sunTint);
       shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -270,7 +307,7 @@ export class ChunkManager implements System {
       const snapshot = buildMeshSnapshot(this.world, cx, cz);
       this.workers[wid].postMessage(
         { type: 'mesh', cx, cz, generation, snapshot, wid },
-        [snapshot.data.buffer],
+        [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer],
       );
     }
     return promise;
@@ -375,11 +412,18 @@ export class ChunkManager implements System {
 
     // 2) 派发网格任务（近处优先，每帧限量，避免消息风暴）
     if (this.world.dirty.size > 0) {
-      const list = [...this.world.dirty]
-        .map((k) => k.split(',').map(Number) as [number, number])
-        .filter(([x, z]) => Math.abs(x - cx) <= margin && Math.abs(z - cz) <= margin)
-        .sort((a, b) =>
-          (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
+      const list: [number, number][] = [];
+      for (const key of this.world.dirty) {
+        const [x, z] = key.split(',').map(Number);
+        if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
+          // 远处脏标记直接丢弃，避免长期累积；靠近时会由第 0 步重新入队
+          this.world.dirty.delete(key);
+          continue;
+        }
+        list.push([x, z]);
+      }
+      list.sort((a, b) =>
+        (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
       let dispatched = 0;
       for (const [x, z] of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME) break;

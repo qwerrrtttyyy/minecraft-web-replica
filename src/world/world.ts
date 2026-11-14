@@ -4,13 +4,20 @@ import type { EventService } from '../services/events';
 import type { BlockRegistry } from './blocks';
 import { AIR } from './blocks';
 import type { IWorldGenerator } from './generator';
+import { LightEngine } from './light';
 
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 
 export class Chunk {
   readonly data = new Uint8Array(CS * CS * H);
+  /** 天空光（0~15），由 LightEngine 维护 */
+  readonly sky = new Uint8Array(CS * CS * H);
+  /** 方块光（0~15），由 LightEngine 维护 */
+  readonly block = new Uint8Array(CS * CS * H);
   generated = false;
+  /** 光照是否已初始化 */
+  lit = false;
   constructor(readonly cx: number, readonly cz: number) {}
   idx(x: number, y: number, z: number) {
     return (y * CS + z) * CS + x;
@@ -34,6 +41,8 @@ export class World {
   readonly edits = new Map<string, BlockId>();
   /** 待重新网格化的区块 */
   readonly dirty = new Set<string>();
+  /** 天空光 / 方块光传播引擎（区块生成与方块变化时增量更新） */
+  readonly light: LightEngine;
   /** 编辑差分按 chunkKey 分桶：ensureChunk 从 O(全档编辑数) 降到 O(本区块编辑数) */
   private editsByChunk = new Map<string, Map<string, BlockId>>();
   private bedrockId: BlockId;
@@ -44,6 +53,7 @@ export class World {
     readonly events: EventService,
   ) {
     this.bedrockId = registry.byNameGet('bedrock')?.id ?? 3;
+    this.light = new LightEngine(this);
   }
 
   getChunk(cx: number, cz: number): Chunk | undefined {
@@ -91,6 +101,8 @@ export class World {
         }
       }
       chunk.generated = true;
+      // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
+      this.light.initChunk(chunk);
       // 邻接已网格化区块需要重绘边界面
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const nk = chunkKey(cx + dx, cz + dz);
@@ -109,6 +121,27 @@ export class World {
     const chunk = this.chunks.get(chunkKey(cx, cz));
     if (!chunk || !chunk.generated) return AIR;
     return chunk.data[chunk.idx(x - cx * CS, y, z - cz * CS)];
+  }
+
+  /** 渲染用天空光（未加载 / 未初始化区块按露天处理，避免边界发黑） */
+  getSkyLight(x: number, y: number, z: number): number {
+    if (y >= H) return 15;
+    if (y < 0) return 0;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (!chunk || !chunk.lit) return 15;
+    return chunk.sky[chunk.idx(x - cx * CS, y, z - cz * CS)];
+  }
+
+  /** 渲染用方块光（未加载区块为 0） */
+  getBlockLight(x: number, y: number, z: number): number {
+    if (y < 0 || y >= H) return 0;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (!chunk || !chunk.lit) return 0;
+    return chunk.block[chunk.idx(x - cx * CS, y, z - cz * CS)];
   }
 
   /** 物理碰撞用：未加载区块视为实心，防止掉出世界 */
@@ -133,6 +166,8 @@ export class World {
     if (old === id) return false;
     chunk.data[chunk.idx(lx, y, lz)] = id;
     if (record) this.recordEdit(blockKey(x, y, z), id);
+    // 光照增量更新（会把受影响的区块标脏）
+    this.light.updateBlock(x, y, z, old, id);
     this.dirty.add(chunkKey(cx, cz));
     if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));

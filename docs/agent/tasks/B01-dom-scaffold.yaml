@@ -1,0 +1,22 @@
+id: B01
+title: DOM 桩 + 基准测试脚手架
+description: |
+  为阶段 4（视觉回归）搭建浏览器测试脚手架。
+  包括：
+  1. 从 trae 分支移植 test/visual-check.mjs
+  2. 确保 package.json 中 test:visual 脚本
+  3. 更新 verify CI 工作流，让 visual-check 成为必经环节
+  4. 验证脚本语法与依赖（puppeteer-core 已在 devDependencies）
+
+touch:
+  allow:
+    - test/visual-check.mjs
+    - package.json
+    - .github/workflows/*.yml
+  deny:
+    - src/**
+outputs:
+  - test:visual 脚本可用：node test/visual-check.mjs
+  - verify 工作流包含 visual-check
+  - 脚本能在 Xvfb + Mesa llvmpipe 软件渲染下运行
+  - 脚本使用 sessionStorage 指定 seed=2026, mode=creative 复现固定场景

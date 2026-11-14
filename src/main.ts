@@ -59,7 +59,7 @@ async function boot() {
 
   const settings = { sound: true, renderDistance: isMobile ? 3 : 5, sensitivity: 1, fov: 72 };
   const idOf = (n: string) => registry.byNameGet(n)!.id;
-  const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'bricks']
+  const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'torch']
     .map((n) => ({ kind: 'block' as const, id: idOf(n) }));
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
 
@@ -111,7 +111,7 @@ async function boot() {
     greedy: qs.get('greedy') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
   });
-  const sky = new Sky(engine.scene, engine.camera, chunks.materials, () => chunks.renderDistance, events, isMobile);
+  const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events);
 
@@ -121,8 +121,9 @@ async function boot() {
   if (saved?.survival) survival.restore(saved.survival);
   if (!saved) {
     if (gameMode === 'survival') {
-      // 新手补给：2 个苹果，先垫一下饥饿
+      // 新手补给：2 个苹果垫饥饿，8 支火把用于洞穴照明
       survival.addItem('apple', 2);
+      survival.addDrop('torch', 8);
       hotbar.slots = [{ kind: 'item', id: 'apple' }, ...creativeSlots.slice(0, 8).map(() => null)];
       hotbar.index = 0;
     } else {
@@ -159,6 +160,8 @@ async function boot() {
   let debugAcc = 0;
   let wasUnderwater = false;
   let paletteReturn: 'game' | 'menu' = 'game';
+  /** 新世界 / 导入存档触发 reload 时，禁止 beforeunload 用旧状态反写存档 */
+  let suppressUnloadSave = false;
 
   const touch = isMobile ? new TouchControls(input, uiRoot, engine.renderer.domElement) : null;
   touch?.setVisible(false);
@@ -185,9 +188,15 @@ async function boot() {
   const saveNow = () => {
     const data = collectSave();
     provider.save(data)
-      .then(() => events.emit('save:done', { bytes: JSON.stringify(data).length }))
-      .catch((e) => console.warn('存档失败', e));
-    dirtySave = false;
+      .then((bytes) => {
+        dirtySave = false;
+        events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : JSON.stringify(data).length });
+      })
+      .catch((e) => {
+        // 保存失败时保留 dirty 标记，8 秒后重试
+        dirtySave = true;
+        console.warn('存档失败', e);
+      });
     saveAcc = 0;
   };
 
@@ -269,6 +278,7 @@ async function boot() {
       if (chosen === 'survival') {
         // boot 已发过补给，避免重复进入标题再开局时叠加成 4 个苹果
         if (survival.countKey('i:apple') === 0) survival.addItem('apple', 2);
+        if (survival.countKey(`b:${idOf('torch')}`) === 0) survival.addDrop('torch', 8);
         hotbar.slots = [{ kind: 'item', id: 'apple' }, ...Array.from({ length: 8 }, () => null)];
       } else {
         hotbar.slots = [...creativeSlots];
@@ -334,6 +344,8 @@ async function boot() {
   async function startGame(cont: boolean) {
     if (mode !== 'title') return;
     sound.unlock();
+    // 指针锁定必须发生在用户手势的同步调用栈里，不能等 await 之后再请求
+    input.requestLock();
     mode = 'loading';
     hud.showTitle(false);
     hud.setLoading(0, '扩展世界…');
@@ -349,6 +361,8 @@ async function boot() {
     }
     await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3),
       (p) => hud.setLoading(p));
+    // 死亡存档继续游戏时必须复活，否则 player.update 会永久冻结
+    ensureAlive();
     // 防止卡在方块里（换地形算法后的旧存档尤其需要）
     {
       const px = Math.floor(player.pos.x);
@@ -370,11 +384,12 @@ async function boot() {
     touch?.setVisible(true);
     mode = 'playing';
     input.enabled = true;
+    // 丢弃加载期间累积的视角增量，避免进入世界瞬间镜头跳动
+    input.consumeLook();
     hud.setFlyActive(player.fly);
     hud.setSurvival(survival);
     hud.updateHotbar();
     syncUseMode();
-    input.requestLock();
     events.emit('game:start', { seed });
     for (let i = 0; i < 5; i++) entities.trySpawnNear(player.pos);
     if (survival.isSurvival) {
@@ -389,6 +404,8 @@ async function boot() {
   async function newWorld(s?: number, m?: GameMode) {
     sound.unlock();
     await provider.clear();
+    // 清空成功后再禁止卸载保存，避免 beforeunload 把旧状态写回去
+    suppressUnloadSave = true;
     sessionStorage.setItem('mc-ts-new-seed', String(s ?? randomSeed()));
     sessionStorage.setItem('mc-ts-new-mode', m ?? 'survival');
     location.reload();
@@ -452,6 +469,15 @@ async function boot() {
     hud.refreshTitleButtons(true, survival.mode);
   }
 
+  /** 回到游戏前的兜底：死亡存档继续游戏时必须复活 */
+  function ensureAlive() {
+    if (survival.health > 0 && !survival.dead) return;
+    survival.health = MAX_HEALTH;
+    survival.hunger = Math.max(survival.hunger, 10);
+    survival.dead = false;
+    hud.hideDeath();
+  }
+
   /** 死亡 → 重生（物品保留） */
   function respawn() {
     const sp = survival.spawn;
@@ -484,20 +510,21 @@ async function boot() {
     syncUseMode();
   }
 
-  /** 生存 / 创造切换 */
-  function toggleGameMode() {
-    survival.mode = survival.mode === 'survival' ? 'creative' : 'survival';
-    gameMode = survival.mode;
-    if (survival.mode === 'creative') {
-      player.fly = false;
-      if (survival.health <= 0) {
-        survival.health = MAX_HEALTH;
-        survival.dead = false;
-      }
+  /** 统一的模式切换：菜单按钮与 CraftAPI 共用，保证死亡态 / 飞行状态一致 */
+  function applyMode(m: GameMode) {
+    const wasDead = survival.dead || survival.health <= 0;
+    survival.mode = m;
+    gameMode = m;
+    player.fly = false;
+    if (m === 'creative') {
+      if (survival.health <= 0) survival.health = MAX_HEALTH;
     } else {
-      player.fly = false;
       survival.health = Math.max(1, survival.health);
       survival.hunger = Math.max(survival.hunger, 8);
+    }
+    if (wasDead && survival.health > 0) {
+      survival.dead = false;
+      hud.hideDeath();
     }
     rebuildHotbar();
     hud.setFlyActive(player.fly);
@@ -505,10 +532,15 @@ async function boot() {
     hud.setSurvival(survival);
     hud.updateHotbar();
     syncUseMode();
+    dirtySave = true;
+  }
+
+  /** 生存 / 创造切换 */
+  function toggleGameMode() {
+    applyMode(survival.mode === 'survival' ? 'creative' : 'survival');
     hud.toast(survival.mode === 'survival'
       ? '已切换到生存模式：注意生命、饥饿与夜晚的僵尸'
       : '已切换到创造模式：无限方块、可飞行');
-    dirtySave = true;
   }
 
   /** 移动端“放置”键的语义跟随手持物 */
@@ -544,6 +576,8 @@ async function boot() {
     applySave: async (data) => {
       if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
       await provider.save(data);
+      // 导入成功后禁止卸载保存，否则 reload 会把当前状态覆盖到刚导入的存档上
+      suppressUnloadSave = true;
       location.reload();
     },
     igniteTnt: (x, y, z) => igniteTnt(x, y, z, true),
@@ -556,13 +590,7 @@ async function boot() {
     setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
     setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
     setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); },
-    setMode: (m) => {
-      survival.mode = m;
-      gameMode = m;
-      rebuildHotbar();
-      hud.setSurvival(survival);
-      hud.updateHotbar();
-    },
+    setMode: (m) => applyMode(m),
     respawn,
     parseStack: parseKey,
   });
@@ -707,8 +735,18 @@ async function boot() {
   engine.addSystem({
     name: 'ui',
     update: (dt) => {
-      player.heldMaterial.color.copy(chunks.materials.opaque.color);
-      chunks.materials.water.color.copy(chunks.materials.opaque.color);
+      // 昼夜强度写进区块 shader；手持物按眼睛所在格的光照变暗/变亮
+      const daylight = 0.16 + 0.84 * sky.daylight;
+      chunks.lightUniform.value = daylight;
+      chunks.sunTint.value.copy(sky.sunTint);
+      const eyeX = Math.floor(player.pos.x);
+      const eyeY = Math.floor(player.pos.y + 1.62);
+      const eyeZ = Math.floor(player.pos.z);
+      const skyL = world.getSkyLight(eyeX, eyeY, eyeZ) / 15;
+      const blockL = world.getBlockLight(eyeX, eyeY, eyeZ) / 15;
+      player.heldMaterial.color
+        .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
+        .multiply(sky.sunTint);
       const hlTarget = mode === 'playing' && player.target &&
         registry.get(player.target.block).shape !== 'cross' ? player.target : null;
       highlight.set(hlTarget);
@@ -716,6 +754,8 @@ async function boot() {
       if (uw && !wasUnderwater) sound.splash();
       wasUnderwater = uw;
       hud.setUnderwater(uw);
+      // 天空的水下大气：暂停时保持入水状态（sky.update 暂停期间不推进），回档后不闪烁
+      sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
         hud.setSurvival(survival);
         hud.setMining(mode === 'playing' && player.miningProgress !== null && player.miningBlock
@@ -775,7 +815,7 @@ async function boot() {
   engine.start();
 
   addEventListener('beforeunload', () => {
-    if (mode === 'playing' || mode === 'paused') saveNow();
+    if (!suppressUnloadSave && (mode === 'playing' || mode === 'paused')) saveNow();
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && mode === 'playing') openMenu();

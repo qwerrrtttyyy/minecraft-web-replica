@@ -1,7 +1,7 @@
 import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
 import type { BlockRegistry } from './blocks';
 import type { TextureAtlas } from '../gfx/atlas';
-import type { World } from './world';
+import type { World, Chunk } from './world';
 import {
   AIR_MESH_DEF, ZERO_UV,
   type MeshBlockDef, type MeshConfig, type MeshSnapshot,
@@ -73,57 +73,72 @@ export function buildMeshConfig(
  */
 export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSnapshot {
   const data = new Uint8Array(W * H * W);
+  // 未生成邻居按露天处理（与 World.getSkyLight 一致），避免世界边缘发黑
+  const sky = new Uint8Array(W * H * W).fill(15);
+  const block = new Uint8Array(W * H * W);
   const chunk = world.getChunk(cx, cz);
 
-  // 中心区：data[(y*CS + lz)*CS + lx] → data[(y*W + lz+1)*W + lx+1]，每行 16 字节连续
-  if (chunk) {
-    const src = chunk.data;
-    for (let y = 0; y < H; y++) {
-      const srcRow = y * CS * CS;
-      for (let lz = 0; lz < CS; lz++) {
-        const s = srcRow + lz * CS;
-        data.set(src.subarray(s, s + CS), (y * W + lz + 1) * W + 1);
-      }
-    }
-  }
-
-  // halo：3×3 邻居一次取齐；缺失 / 未生成的区块在快照里保持 0（等价于 getBlock 返回空气）
-  const nb: (Uint8Array | null)[] = new Array(9);
+  // 3×3 邻居一次取齐；缺失 / 未生成的区块在快照里保持 0（等价于 getBlock 返回空气）
+  const nb: (Chunk | null)[] = new Array(9);
   for (let dz = -1; dz <= 1; dz++) {
     for (let dx = -1; dx <= 1; dx++) {
       const c = world.getChunk(cx + dx, cz + dz);
-      nb[(dz + 1) * 3 + (dx + 1)] = c && c.generated ? c.data : null;
+      nb[(dz + 1) * 3 + (dx + 1)] = c && c.generated ? c : null;
     }
   }
-  const north = nb[0], northMid = nb[1], northE = nb[2];
-  const midW = nb[3], midE = nb[5];
-  const south = nb[6], southMid = nb[7], southE = nb[8];
 
-  for (let y = 0; y < H; y++) {
-    const yRow = y * CS * CS;
-    const dRow = y * W * W;
-    // 北 / 南整行（左邻 1 格 + 中邻 16 格 + 右邻 1 格）
-    const nBase = dRow;
-    const sBase = dRow + (CS + 1) * W;
-    // 邻居行：北侧 local z = CS-1，南侧 local z = 0
-    const nRow = yRow + (CS - 1) * CS;
-    const sRow = yRow;
-    if (north) data[nBase] = north[nRow + CS - 1];
-    if (northMid) data.set(northMid.subarray(nRow, nRow + CS), nBase + 1);
-    if (northE) data[nBase + CS + 1] = northE[nRow];
-    if (south) data[sBase] = south[sRow + CS - 1];
-    if (southMid) data.set(southMid.subarray(sRow, sRow + CS), sBase + 1);
-    if (southE) data[sBase + CS + 1] = southE[sRow];
-
-    // 西 / 东两列
-    for (let lz = 0; lz < CS; lz++) {
-      const d = dRow + (lz + 1) * W;
-      const s = yRow + lz * CS;
-      if (midW) data[d] = midW[s + CS - 1];
-      if (midE) data[d + CS + 1] = midE[s];
+  const copy = (dst: Uint8Array, arr: (c: Chunk) => Uint8Array) => {
+    // 中心区：每行 16 字节连续
+    if (chunk) {
+      const src = arr(chunk);
+      for (let y = 0; y < H; y++) {
+        const srcRow = y * CS * CS;
+        for (let lz = 0; lz < CS; lz++) {
+          const s = srcRow + lz * CS;
+          dst.set(src.subarray(s, s + CS), (y * W + lz + 1) * W + 1);
+        }
+      }
     }
-  }
-  return { cx, cz, data };
+
+    const north = nb[0] && arr(nb[0]);
+    const northMid = nb[1] && arr(nb[1]);
+    const northE = nb[2] && arr(nb[2]);
+    const midW = nb[3] && arr(nb[3]);
+    const midE = nb[5] && arr(nb[5]);
+    const south = nb[6] && arr(nb[6]);
+    const southMid = nb[7] && arr(nb[7]);
+    const southE = nb[8] && arr(nb[8]);
+
+    for (let y = 0; y < H; y++) {
+      const yRow = y * CS * CS;
+      const dRow = y * W * W;
+      // 北 / 南整行（左邻 1 格 + 中邻 16 格 + 右邻 1 格）
+      const nBase = dRow;
+      const sBase = dRow + (CS + 1) * W;
+      // 邻居行：北侧 local z = CS-1，南侧 local z = 0
+      const nRow = yRow + (CS - 1) * CS;
+      const sRow = yRow;
+      if (north) dst[nBase] = north[nRow + CS - 1];
+      if (northMid) dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1);
+      if (northE) dst[nBase + CS + 1] = northE[nRow];
+      if (south) dst[sBase] = south[sRow + CS - 1];
+      if (southMid) dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1);
+      if (southE) dst[sBase + CS + 1] = southE[sRow];
+
+      // 西 / 东两列
+      for (let lz = 0; lz < CS; lz++) {
+        const d = dRow + (lz + 1) * W;
+        const s = yRow + lz * CS;
+        if (midW) dst[d] = midW[s + CS - 1];
+        if (midE) dst[d + CS + 1] = midE[s];
+      }
+    }
+  };
+
+  copy(data, (c) => c.data);
+  copy(sky, (c) => c.sky);
+  copy(block, (c) => c.block);
+  return { cx, cz, data, sky, block };
 }
 
 /** 主线程同步路径（Worker 不可用时的降级，也用于基准对照） */
@@ -145,6 +160,14 @@ export class WorldMeshSource implements MeshSource {
 
   isOpaque(id: number): boolean {
     return this.def(id).opaque;
+  }
+
+  getSkyLight(lx: number, y: number, lz: number): number {
+    return this.world.getSkyLight(this.x0 + lx, y, this.z0 + lz);
+  }
+
+  getBlockLight(lx: number, y: number, lz: number): number {
+    return this.world.getBlockLight(this.x0 + lx, y, this.z0 + lz);
   }
 
   uv(tile: string): UVRect {

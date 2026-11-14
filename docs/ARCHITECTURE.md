@@ -256,6 +256,7 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 构建 | `npm run build` | 单文件 `dist/index.html` |
 | 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
 | 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
+| 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 14 组 |
 | 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 31 项 |
 | 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件断言 |
 | 一键 | `npm run verify` | 以上全部 |
@@ -277,10 +278,10 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 
 | 类型 | 作用 |
 |---|---|
-| `MeshSource` | mesher 唯一的数据入口：`getId / def / isOpaque / uv / greedy` |
+| `MeshSource` | mesher 唯一的数据入口：`getId / def / isOpaque / getSkyLight / getBlockLight / uv / greedy` |
 | `MeshConfig` | 低频配置（方块元数据 + tile→UV 表 + greedy 开关 + revision），只在注册变化时重建 |
-| `MeshSnapshot` | 单区块 + 1 格 halo 的 `Uint8Array`（18×80×18 ≈ 26KB），索引 `((y*W + lz+1)*W + lx+1)` |
-| `PackedGeo` / `PackedMesh` | 可 Transfer 的 `Float32Array` / `Uint32Array` 几何 |
+| `MeshSnapshot` | 单区块 + 1 格 halo 的 `data / sky / block` 三张 `Uint8Array`（各 18×80×18 ≈ 26KB），索引 `((y*W + lz+1)*W + lx+1)` |
+| `PackedGeo` / `PackedMesh` | 可 Transfer 的 `Float32Array` / `Uint32Array` 几何（含每顶点 `sky/block`） |
 
 同一份 `mesher.ts` 跑两种数据源：
 
@@ -340,10 +341,11 @@ v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发
 | 版本 | 目标 | 可机械检查的验收标准 |
 |---|---|---|
 | v1.3.0 | Worker 池（least-busy 派发） | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升 |
+| v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 14 项断言；mesher 面覆盖与光照逐格一致 |
 | v1.4.0 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
 | v1.4.1 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
-| v1.5.0 | 光照传播服务 | 新服务经 `ServiceContainer` 注入，不修改 main.ts 业务代码 |
+| v1.4.2 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
 | v2.0 | 合成 / 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
-**当前建议**：不要先上合成/护甲/更多怪物。地基（竞态、背压、Worker 池、测试闭环）已补齐，
-下一步做透明排序与光照。
+**当前建议**：不要先上合成/护甲/更多怪物。地基（竞态、背压、Worker 池、测试闭环、光照）已补齐，
+下一步做透明排序。

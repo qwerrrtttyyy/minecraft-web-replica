@@ -79,14 +79,25 @@ function makeWorldReader(gen, bedrockId) {
 
 function buildSnapshot(read, cx, cz) {
   const data = new Uint8Array(W * H * W);
+  const sky = new Uint8Array(W * H * W);
+  const block = new Uint8Array(W * H * W);
   const x0 = cx * CS;
   const z0 = cz * CS;
   for (let lz = -1; lz <= CS; lz++)
     for (let lx = -1; lx <= CS; lx++)
-      for (let y = 0; y < H; y++)
-        data[((y * W) + (lz + 1)) * W + (lx + 1)] = read(x0 + lx, y, z0 + lz);
-  return { cx, cz, data };
+      for (let y = 0; y < H; y++) {
+        const i = ((y * W) + (lz + 1)) * W + (lx + 1);
+        data[i] = read(x0 + lx, y, z0 + lz);
+        // 确定性的假光照：让快照保真与 Greedy 光照一致性都被覆盖
+        sky[i] = fakeSky(x0 + lx, y, z0 + lz);
+        block[i] = fakeBlock(x0 + lx, y, z0 + lz);
+      }
+  return { cx, cz, data, sky, block };
 }
+
+/** 测试用世界坐标光照：大部分区域一致，稀疏暗格用来验证「光照不同不合并」 */
+const fakeSky = (x, y, z) => (y > 32 && x % 5 === 0 && z % 5 === 0 ? 4 : 15);
+const fakeBlock = (x, y, z) => (y > 32 && x % 11 === 0 && z % 11 === 0 ? 7 : 0);
 
 /** 主线程直读数据源（等价于 WorldMeshSource，但不依赖 three） */
 class DirectSource {
@@ -103,6 +114,15 @@ class DirectSource {
     return !!d && d.opaque;
   }
   uv(tile) { return this.config.uv[tile] ?? [0, 0, 0, 0]; }
+  getSkyLight(lx, y, lz) {
+    if (y >= H) return 15;
+    if (y < 0) return 0;
+    return fakeSky(this.x0 + lx, y, this.z0 + lz);
+  }
+  getBlockLight(lx, y, lz) {
+    if (y < 0 || y >= H) return 0;
+    return fakeBlock(this.x0 + lx, y, this.z0 + lz);
+  }
   get greedy() { return this.config.greedy; }
 }
 
@@ -152,10 +172,12 @@ function coverage(mesh) {
       }
       maxSpan = Math.max(maxSpan, Math.round(hi1 - lo1) * Math.round(hi2 - lo2));
       const bright = (g.colors[q * 12] + g.colors[q * 12 + 3] + g.colors[q * 12 + 6] + g.colors[q * 12 + 9]) / 4;
+      const light = [0, 1, 2, 3].map((i) => `${g.lights[q * 8 + i * 2].toFixed(3)},${g.lights[q * 8 + i * 2 + 1].toFixed(3)}`);
+      const lightKey = light.every((v) => v === light[0]) ? light[0] : light.join('|');
       const tile = [0, 1, 2, 3].map((i) => g.tiles[q * 16 + i].toFixed(5)).join(',');
       for (let c2 = Math.floor(lo2 + 1e-6); c2 <= Math.floor(hi2 - 1e-6); c2++) {
         for (let c1 = Math.floor(lo1 + 1e-6); c1 <= Math.floor(hi1 - 1e-6); c1++) {
-          cells.set(`${ch}|${axis}|${sign}|${plane}|${c1}|${c2}`, { bright, tile });
+          cells.set(`${ch}|${axis}|${sign}|${plane}|${c1}|${c2}`, { bright, tile, lightKey });
         }
       }
     }
@@ -172,20 +194,23 @@ function compareCoverage(a, b, label) {
   assert.strictEqual(extra.length, 0, `${label}: 多出 ${extra.length} 个面格，例如 ${extra.slice(0, 3).join(' / ')}`);
   let brightDiff = 0;
   let tileDiff = 0;
+  let lightDiff = 0;
   for (const [k, v] of a) {
     const w = b.get(k);
     brightDiff = Math.max(brightDiff, Math.abs(v.bright - w.bright));
     if (v.tile !== w.tile) tileDiff++;
+    if (v.lightKey !== w.lightKey) lightDiff++;
   }
   assert.ok(brightDiff < 1e-6, `${label}: 亮度差异 ${brightDiff}`);
   assert.strictEqual(tileDiff, 0, `${label}: ${tileDiff} 个面格贴图 tile 不一致`);
+  assert.strictEqual(lightDiff, 0, `${label}: ${lightDiff} 个面格光照不一致`);
   return { cells: a.size, brightDiff };
 }
 
 function sameArrays(a, b) {
   if (!a && !b) return true;
   if (!a || !b) return false;
-  for (const key of ['positions', 'uvs', 'colors', 'tiles', 'indices']) {
+  for (const key of ['positions', 'uvs', 'colors', 'lights', 'tiles', 'indices']) {
     if (a[key].length !== b[key].length) return false;
     for (let i = 0; i < a[key].length; i++) if (a[key][i] !== b[key][i]) return false;
   }
