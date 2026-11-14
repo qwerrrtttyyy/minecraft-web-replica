@@ -16,8 +16,9 @@
     "test:services": "node test/services-check.cjs",
     "test:smoke": "node test/survival-smoke.mjs",
     "test:smoke:xvfb": "xvfb-run -a -s \"-screen 0 1280x760x24\" env MC_HEADLESS=0 MC_GL=desktop node test/survival-smoke.mjs",
-    "verify": "npm run check:version && npm run typecheck && npm run build && npm run test:snapshot && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:smoke",
-    "test:light": "node test/light-check.cjs"
+    "verify": "npm run check:version && npm run typecheck && npm run build && npm run test:snapshot && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:smoke && npm run test:visual",
+    "test:light": "node test/light-check.cjs",
+    "test:visual": "node test/visual-check.mjs"
   },
   "dependencies": {
     "three": "0.170.0"
