@@ -1,17 +1,22 @@
 {
-  "renderDistance": 4,
-  "dayLength": 1000000,
-  "dayTime": 0.32,
+  "version": "1.4.0",
   "baseline": {
-    "fps": 0,
-    "movement": { "dist": 0, "ms": 0 },
-    "build": { "ms": 0, "dirty": 0 },
-    "load": { "ms": 0, "dirty": 0, "mesh": 0, "gen": 0 }
+    "note": "Node-only baseline (no browser) on current main + tuning scripts. Browser FPS not measured because chromium not available in this environment.",
+    "test:snapshot_ms": 44949,
+    "test:logic_ms": 6656,
+    "test:light_ms": 4078,
+    "test:mesher_ms": 7182,
+    "test:services_ms": 1865,
+    "rebuild_ms": 59360
   },
   "tweaks": {
-    "reduceDirtyOnSetBlock": false,
-    "increaseWorkerPool": false,
-    "lowerCloudOpacity": false
+    "reduceDirtyOnSetBlock": "pending",
+    "increaseWorkerPool": "pending",
+    "lowerCloudOpacity": "pending"
   },
-  "note": "Manual tuning baseline and tweak flags; update after running test/tuning-baseline.mjs"
+  "recommendations": [
+    "test:snapshot 44.9s is likely dominated by esbuild/tsc compile; consider caching compiled JS and only rebuilding when source changes",
+    "Consider adding a browser perf baseline script with Chrome/Chromium to measure FPS and chunk load time",
+    "For manual feel tuning, run a local dev server and test with real mouse/keyboard input"
+  ]
 }
