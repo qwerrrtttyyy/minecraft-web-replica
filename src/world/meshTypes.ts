@@ -54,6 +54,10 @@ export interface MeshSource {
   getId(lx: number, y: number, lz: number): BlockId;
   def(id: BlockId): MeshBlockDef;
   isOpaque(id: BlockId): boolean;
+  /** 天空光 0~15（未加载区块按露天返回 15） */
+  getSkyLight(lx: number, y: number, lz: number): number;
+  /** 方块光 0~15 */
+  getBlockLight(lx: number, y: number, lz: number): number;
   uv(tile: string): UVRect;
   readonly greedy: boolean;
 }
@@ -63,6 +67,8 @@ export interface MeshSnapshot {
   cx: number;
   cz: number;
   data: Uint8Array;
+  sky: Uint8Array;
+  block: Uint8Array;
 }
 
 /** 收集期的动态数组几何 */
@@ -71,6 +77,8 @@ export interface GeoArrays {
   /** 局部 UV：普通面 0..1，合并面 0..w / 0..h（shader 内 fract 平铺） */
   uvs: number[];
   colors: number[];
+  /** 每顶点天空光 / 方块光（0~1），shader 据此叠加昼夜与方块光源 */
+  lights: number[];
   /** 每顶点 u0,v0,du,dv：shader 据此把局部 UV 映射回图集 tile */
   tiles: number[];
   indices: number[];
@@ -88,6 +96,7 @@ export interface PackedGeo {
   positions: Float32Array;
   uvs: Float32Array;
   colors: Float32Array;
+  lights: Float32Array;
   tiles: Float32Array;
   indices: Uint32Array;
 }
@@ -122,10 +131,11 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
     const p = new Float32Array(g.positions);
     const u = new Float32Array(g.uvs);
     const c = new Float32Array(g.colors);
+    const l = new Float32Array(g.lights);
     const t = new Float32Array(g.tiles);
     const i = new Uint32Array(g.indices);
-    transfer.push(p.buffer, u.buffer, c.buffer, t.buffer, i.buffer);
-    return { positions: p, uvs: u, colors: c, tiles: t, indices: i };
+    transfer.push(p.buffer, u.buffer, c.buffer, l.buffer, t.buffer, i.buffer);
+    return { positions: p, uvs: u, colors: c, lights: l, tiles: t, indices: i };
   };
   return {
     mesh: {

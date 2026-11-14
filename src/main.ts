@@ -111,7 +111,7 @@ async function boot() {
     greedy: qs.get('greedy') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
   });
-  const sky = new Sky(engine.scene, engine.camera, chunks.materials, () => chunks.renderDistance, events, isMobile);
+  const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events);
 
@@ -735,8 +735,18 @@ async function boot() {
   engine.addSystem({
     name: 'ui',
     update: (dt) => {
-      player.heldMaterial.color.copy(chunks.materials.opaque.color);
-      chunks.materials.water.color.copy(chunks.materials.opaque.color);
+      // 昼夜强度写进区块 shader；手持物按眼睛所在格的光照变暗/变亮
+      const daylight = 0.16 + 0.84 * sky.daylight;
+      chunks.lightUniform.value = daylight;
+      chunks.sunTint.value.copy(sky.sunTint);
+      const eyeX = Math.floor(player.pos.x);
+      const eyeY = Math.floor(player.pos.y + 1.62);
+      const eyeZ = Math.floor(player.pos.z);
+      const skyL = world.getSkyLight(eyeX, eyeY, eyeZ) / 15;
+      const blockL = world.getBlockLight(eyeX, eyeY, eyeZ) / 15;
+      player.heldMaterial.color
+        .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
+        .multiply(sky.sunTint);
       const hlTarget = mode === 'playing' && player.target &&
         registry.get(player.target.block).shape !== 'cross' ? player.target : null;
       highlight.set(hlTarget);

@@ -43,6 +43,25 @@ export class SnapshotMeshSource implements MeshSource {
     return this.opaqueById[id] === 1;
   }
 
+  getSkyLight(lx: number, y: number, lz: number): number {
+    if (y >= WORLD_HEIGHT) return 15;
+    if (y < 0) return 0;
+    const W = SW;
+    const ix = lx + 1;
+    const iz = lz + 1;
+    if (ix < 0 || ix >= W || iz < 0 || iz >= W) return 15;
+    return this.snapshot.sky[((y * W) + iz) * W + ix];
+  }
+
+  getBlockLight(lx: number, y: number, lz: number): number {
+    if (y < 0 || y >= WORLD_HEIGHT) return 0;
+    const W = SW;
+    const ix = lx + 1;
+    const iz = lz + 1;
+    if (ix < 0 || ix >= W || iz < 0 || iz >= W) return 0;
+    return this.snapshot.block[((y * W) + iz) * W + ix];
+  }
+
   uv(tile: string): UVRect {
     return this.config.uv[tile] ?? ZERO_UV;
   }

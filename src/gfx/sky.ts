@@ -25,6 +25,8 @@ export class Sky implements System {
   private cloudBaseZ = 0;
   readonly sunLight: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+  /** 当前太阳颜色（日出/日落偏暖），区块 shader 用它给天空光染色 */
+  readonly sunTint = new THREE.Color(0xffffff);
   private fog: THREE.Fog;
   private group = new THREE.Group();
   private emitAcc = 0;
@@ -49,7 +51,6 @@ export class Sky implements System {
   constructor(
     private scene: THREE.Scene,
     private camera: THREE.PerspectiveCamera,
-    private worldMaterials: { opaque: THREE.MeshBasicMaterial; transparent: THREE.MeshBasicMaterial },
     private getRenderDistance: () => number,
     private events: EventService,
     isMobile: boolean,
@@ -219,6 +220,7 @@ export class Sky implements System {
     u.uDaylight.value = this.daylight;
     this.tmpSun.set(0xfff2c0).lerp(this.cSunset, dusk);
     (u.uSunColor.value as THREE.Color).copy(this.tmpSun);
+    this.sunTint.copy(this.tmpSun);
 
     // 跟随相机
     this.group.position.copy(this.camera.position);
@@ -244,15 +246,11 @@ export class Sky implements System {
       .copy(this.tmpHorizon)
       .lerp(this.cWhite, 0.15 + this.daylight * 0.55);
 
-    // 雾与世界亮度
+    // 雾（世界亮度由区块 shader 的天空光 / 方块光分别处理）
     const R = this.getRenderDistance() * 16;
     this.fog.color.copy(this.tmpHorizon);
     this.fog.near = R * 0.55;
     this.fog.far = R * 0.98;
-    const b = 0.27 + this.daylight * 0.73;
-    const night = 1 - this.daylight;
-    this.worldMaterials.opaque.color.setRGB(b * (1 - 0.16 * night), b * (1 - 0.08 * night), b);
-    this.worldMaterials.transparent.color.copy(this.worldMaterials.opaque.color);
 
     // 实体光照
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);

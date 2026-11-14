@@ -156,30 +156,38 @@ export class Player implements System, PhysicsBody {
 
   // ---------- 出生 / 基础 ----------
 
-  /** 寻找一块陆地出生 */
+  /** 寻找一块陆地出生：优先露天，避免一睁眼就被树冠糊脸 */
   spawn() {
-    for (let r = 0; r < 40; r += 4) {
-      for (let a = 0; a < 8; a++) {
-        const x = Math.round(Math.cos(a * Math.PI / 4) * r);
-        const z = Math.round(Math.sin(a * Math.PI / 4) * r);
-        // 用生成器地形高度，避免把树冠/草丛误判为地面；花草非实心，可以站进去
-        const h = this.world.generator.surfaceHeight(x, z);
-        const top = this.world.getBlock(x, h, z);
-        const above = this.world.getBlock(x, h + 1, z);
-        const above2 = this.world.getBlock(x, h + 2, z);
-        const clear = (id: number) => !this.registry.isSolid(id);
-        if (h > SEA_LEVEL && this.registry.isSolid(top) && clear(above) && clear(above2)) {
-          this.pos.set(x + 0.5, h + 1.02, z + 0.5);
-          this.vel.set(0, 0, 0);
-          this.survival.spawn = { x: x + 0.5, y: h + 1.02, z: z + 0.5 };
-          this.events.emit('player:spawn', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
+    const place = (x: number, h: number, z: number) => {
+      this.pos.set(x + 0.5, h + 1.02, z + 0.5);
+      this.vel.set(0, 0, 0);
+      this.survival.spawn = { x: x + 0.5, y: h + 1.02, z: z + 0.5 };
+      this.events.emit('player:spawn', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
+    };
+    for (const preferOpenSky of [true, false]) {
+      for (let r = 0; r < 40; r += 4) {
+        for (let a = 0; a < 8; a++) {
+          const x = Math.round(Math.cos(a * Math.PI / 4) * r);
+          const z = Math.round(Math.sin(a * Math.PI / 4) * r);
+          // 用生成器地形高度，避免把树冠/草丛误判为地面；花草非实心，可以站进去
+          const h = this.world.generator.surfaceHeight(x, z);
+          const top = this.world.getBlock(x, h, z);
+          const above = this.world.getBlock(x, h + 1, z);
+          const above2 = this.world.getBlock(x, h + 2, z);
+          const clear = (id: number) => !this.registry.isSolid(id);
+          if (h <= SEA_LEVEL || !this.registry.isSolid(top) || !clear(above) || !clear(above2)) continue;
+          // 第一轮只接受正上方能看到天空、且不是沙滩/沙漠/海洋的位置
+          if (preferOpenSky) {
+            if (this.world.getSkyLight(x, h + 1, z) < 15) continue;
+            const biome = this.world.generator.biomeAt?.(x, z);
+            if (biome === 'beach' || biome === 'desert' || biome === 'ocean') continue;
+          }
+          place(x, h, z);
           return;
         }
       }
     }
-    this.pos.set(0.5, this.world.generator.surfaceHeight(0, 0) + 2.02, 0.5);
-    this.survival.spawn = { x: 0.5, y: this.pos.y, z: 0.5 };
-    this.events.emit('player:spawn', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
+    place(0, this.world.generator.surfaceHeight(0, 0), 0);
   }
 
   eyePosition(out: THREE.Vector3): THREE.Vector3 {

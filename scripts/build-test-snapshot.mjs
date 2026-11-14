@@ -23,6 +23,7 @@ const entries = [
   'src/save/save.ts',
   'src/world/generator.ts',
   'src/world/blocks.ts',
+  'src/world/light.ts',
   'src/world/noise.ts',
   'src/world/faces.ts',
   'src/world/meshTypes.ts',
