@@ -59,7 +59,7 @@ async function boot() {
 
   const settings = { sound: true, renderDistance: isMobile ? 3 : 5, sensitivity: 1, fov: 72 };
   const idOf = (n: string) => registry.byNameGet(n)!.id;
-  const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'bricks']
+  const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'torch']
     .map((n) => ({ kind: 'block' as const, id: idOf(n) }));
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
 
@@ -121,8 +121,9 @@ async function boot() {
   if (saved?.survival) survival.restore(saved.survival);
   if (!saved) {
     if (gameMode === 'survival') {
-      // 新手补给：2 个苹果，先垫一下饥饿
+      // 新手补给：2 个苹果垫饥饿，8 支火把用于洞穴照明
       survival.addItem('apple', 2);
+      survival.addDrop('torch', 8);
       hotbar.slots = [{ kind: 'item', id: 'apple' }, ...creativeSlots.slice(0, 8).map(() => null)];
       hotbar.index = 0;
     } else {
@@ -277,6 +278,7 @@ async function boot() {
       if (chosen === 'survival') {
         // boot 已发过补给，避免重复进入标题再开局时叠加成 4 个苹果
         if (survival.countKey('i:apple') === 0) survival.addItem('apple', 2);
+        if (survival.countKey(`b:${idOf('torch')}`) === 0) survival.addDrop('torch', 8);
         hotbar.slots = [{ kind: 'item', id: 'apple' }, ...Array.from({ length: 8 }, () => null)];
       } else {
         hotbar.slots = [...creativeSlots];

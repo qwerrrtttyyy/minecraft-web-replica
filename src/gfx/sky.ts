@@ -238,8 +238,11 @@ export class Sky implements System {
       -this.group.position.y,
       this.cloudBaseZ - this.group.position.z,
     );
-    (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.5 + this.daylight * 0.32;
-    (this.clouds.material as THREE.MeshBasicMaterial).color.copy(this.tmpHorizon).lerp(this.cWhite, 0.55 + this.daylight * 0.45);
+    // 云在夜里压暗并偏蓝，黄昏时跟着地平线余晖走，避免夜里一片发光的白板
+    (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.32 + this.daylight * 0.5;
+    (this.clouds.material as THREE.MeshBasicMaterial).color
+      .copy(this.tmpHorizon)
+      .lerp(this.cWhite, 0.15 + this.daylight * 0.55);
 
     // 雾与世界亮度
     const R = this.getRenderDistance() * 16;
