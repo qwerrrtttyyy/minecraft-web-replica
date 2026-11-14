@@ -18,6 +18,8 @@ npm run test:light
 npm run test:mesher
 npm run test:services
 npm run test:diagnostics
+npm run test:worker-pool
+npm run test:edits
 npm run verify          # 含 build + 浏览器实景 + 视觉回归
 ```
 

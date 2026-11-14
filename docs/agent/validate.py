@@ -1,74 +1,137 @@
 #!/usr/bin/env python3
 """
-任务卡契约验证器
-用法：python3 docs/agent/validate.py
-结果：输出 FAIL/WARN/INFO，退出码 0 表示全部通过
+任务卡契约验证器。
+
+本次修复：旧版 outputs 段只维护一个布尔变量、没有任何断言，每个任务卡必然
+输出「未完成（无检查实现）」并以 0 退出，等于恒通过。现在按 outputs 文本分派到
+真实检查函数，逐条输出 PASS / FAIL，FAIL 计入退出码。
+
+用法：python3 docs/agent/validate.py [--strict]
+  --strict  有 WARN（未覆盖的 output）也返回非零，供 CI 使用。
+退出码 0 表示「所有可检查项通过」，不再表示「契约全部通过」。
 """
 import json
-import os
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
 TASKS_DIR = Path(__file__).parent / "tasks"
 
+
+def read(rel):
+    p = ROOT / rel
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
+def pkg_scripts():
+    try:
+        return json.loads(read("package.json")).get("scripts", {})
+    except json.JSONDecodeError:
+        return {}
+
+
+# (output 关键字, 说明, 检查函数) —— 返回 (ok, 说明)
+CHECKS = [
+    (
+        "test:visual",
+        "package.json 声明 test:visual 且脚本文件存在",
+        lambda: "test:visual" in pkg_scripts() and (ROOT / "test/visual-check.mjs").exists(),
+    ),
+    (
+        "verify 工作流",
+        "verify 脚本包含 test:visual 且 CI 工作流执行 npm run verify",
+        lambda: "test:visual" in pkg_scripts().get("verify", "")
+        and "npm run verify" in read(".github/workflows/verify.yml"),
+    ),
+    (
+        "Xvfb",
+        "CI 使用 xvfb-run + 软件渲染",
+        lambda: "xvfb-run" in read(".github/workflows/verify.yml")
+        and ("swiftshader" in read(".github/workflows/verify.yml")
+             or "MC_GL" in read(".github/workflows/verify.yml")),
+    ),
+    (
+        "sessionStorage",
+        "视觉回归脚本固定 seed=2026 并经 sessionStorage 注入",
+        lambda: "sessionStorage" in read("test/visual-check.mjs")
+        and "2026" in read("test/visual-check.mjs"),
+    ),
+]
+
+
 def find_task_files():
-    if not TASKS_DIR.exists():
-        print("WARN  docs/agent/tasks/ 目录不存在")
-        return []
-    tasks = list(TASKS_DIR.glob("*.yaml")) + list(TASKS_DIR.glob("*.yml"))
+    tasks = sorted(TASKS_DIR.glob("*.yaml")) + sorted(TASKS_DIR.glob("*.yml"))
     if not tasks:
         print("WARN  docs/agent/tasks/ 无任务卡")
     return tasks
 
-def validate_task(path):
-    errors = []
-    warnings = []
-    
-    # 基本 YAML 结构检查（简化版，实际项目可用 ruamel.yaml）
-    content = path.read_text() if hasattr(path, 'read_text') else open(path).read()
-    
-    required_fields = ['id', 'title', 'touch', 'outputs']
-    for field in required_fields:
-        if f'{field}:' not in content:
+
+def outputs_of(content):
+    lines = content.splitlines()
+    out, in_block = [], False
+    for line in lines:
+        if line.strip() == "outputs:":
+            in_block = True
+            continue
+        if in_block:
+            if line.startswith("  - "):
+                out.append(line[4:].strip())
+            elif line.strip() and not line.startswith(" "):
+                break
+    return out
+
+
+def validate_task(path, strict=False):
+    content = path.read_text(encoding="utf-8")
+    errors, warnings = [], []
+
+    for field in ("id", "title", "touch", "outputs"):
+        if f"{field}:" not in content:
             errors.append(f"缺少字段: {field}")
-    
-    # 检查 outputs 格式
-    if 'outputs:' in content:
-        lines = content.split('\n')
-        in_outputs = False
-        for line in lines:
-            if line.strip().startswith('outputs:'):
-                in_outputs = True
-                continue
-            if in_outputs and line and not line.startswith(' ') and not line.startswith('-'):
-                in_outputs = False
-    
+
+    outputs = outputs_of(content)
+    if not outputs:
+        warnings.append("outputs 为空或未解析到列表项")
+
+    for text in outputs:
+        matched = [(kw, desc, fn) for kw, desc, fn in CHECKS if kw in text]
+        if not matched:
+            warnings.append(f"未覆盖的 output: {text}")
+            continue
+        for _kw, desc, fn in matched:
+            try:
+                ok = bool(fn())
+            except Exception as exc:  # noqa: BLE001 - 检查器自身失败应报 FAIL
+                ok, desc = False, f"{desc}（检查器异常: {exc}）"
+            if ok:
+                print(f"PASS  {path.name}: {desc}")
+            else:
+                errors.append(f"{desc} → {text}")
+
+    if not errors and not warnings:
+        print(f"INFO  {path.name}: {len(outputs)} 条 output 全部有对应检查并通过")
+    for w in warnings:
+        print(f"WARN  {path.name}: {w}")
+    for e in errors:
+        print(f"FAIL  {path.name}: {e}")
     return errors, warnings
 
+
 def main():
+    strict = "--strict" in sys.argv[1:]
     tasks = find_task_files()
-    if not tasks:
-        print("INFO  当前无待办任务卡")
-        return 0
-    
-    total_errors = 0
-    total_warnings = 0
-    
+    total_errors = total_warnings = 0
     for task in tasks:
-        errors, warnings = validate_task(task)
-        if errors:
-            print(f"FAIL  {task.name}: {', '.join(errors)}")
-            total_errors += 1
-        if warnings:
-            print(f"WARN  {task.name}: {', '.join(warnings)}")
-            total_warnings += 1
-        if not errors and not warnings:
-            print(f"WARN  {task.name}: 未完成（无检查实现）")
-            total_warnings += 1
-    
+        errors, warnings = validate_task(task, strict)
+        total_errors += len(errors)
+        total_warnings += len(warnings)
+    print(f"\n合计：{len(tasks)} 张任务卡，FAIL {total_errors}，WARN {total_warnings}")
     if total_errors:
         return 1
+    if strict and total_warnings:
+        return 2
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -206,7 +206,9 @@ async function boot() {
       .then((bytes) => {
         // 仅当没有更新的保存、且快照之后没有新编辑时才清脏；
         // 否则异步 provider 的旧回调会吞掉新编辑的脏标记。
-        if (seq === saveSeq && version === dirtyVersion) dirtySave = false;
+        // 过期保存的结果不能覆盖最新状态：仅最新一次保存才更新成功时间与事件
+        if (seq !== saveSeq) return;
+        if (version === dirtyVersion) dirtySave = false;
         lastSaveOkAt = Date.now();
         events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : JSON.stringify(data).length });
       })

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import MeshWorker from './mesh.worker?worker&inline';
+import { createWorkerPool } from './workerPool';
 import { CHUNK_SIZE, chunkKey, type System } from '../core/types';
 import type { EventService } from '../services/events';
 import type { World } from './world';
@@ -176,9 +177,13 @@ export class ChunkManager implements System {
       this.mode = 'main';
     } else {
       const want = ChunkManager.decidePoolSize(options.workers);
-      for (let i = 0; i < want; i++) {
-        try {
-          const w = new MeshWorker();
+      // 构造期失败统一由 createWorkerPool 回滚：不再留下「部分 Worker + worker 模式」的残池
+      const pool = createWorkerPool(MeshWorker, want);
+      if (pool.partial) {
+        console.warn('[mesher] Worker 池构造不完整，整体回退主线程同步网格化');
+        this.fallbackToMain();
+      } else {
+        for (const w of pool.workers) {
           w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
           w.onerror = (e) => {
             console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
@@ -187,13 +192,7 @@ export class ChunkManager implements System {
           this.workers.push(w);
           this.busy.push(0);
           this.workerConfig.push(-1);
-        } catch (err) {
-          console.warn('[mesher] Worker 创建失败，回退主线程同步网格化：', err);
         }
-      }
-      if (this.workers.length === 0) {
-        this.mode = 'main';
-      } else {
         this.poolSize = this.workers.length;
       }
     }
@@ -341,7 +340,10 @@ export class ChunkManager implements System {
   /** 收割 Worker 回传：丢弃过期代次与已卸载区块 */
   private drainResults(): void {
     if (this.pendingResults.length === 0) return;
-    for (const msg of this.pendingResults.splice(0)) {
+    // 交换空数组替代 splice(0)：省掉每帧一次 O(n) 元素拷贝与临时数组分配
+    const batch = this.pendingResults;
+    this.pendingResults = [];
+    for (const msg of batch) {
       // 配置回执不占派发计数，先处理并跳过
       if (msg.type === 'config-ack') {
         if (this.workerConfig[msg.wid] !== undefined) this.workerConfig[msg.wid] = msg.revision;

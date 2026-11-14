@@ -40,6 +40,10 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
 - **诊断**：新增高风险不变量时，优先在 `src/diagnostics/RuntimeDiagnostics.ts` 增加检查，
   并在 `test/diagnostics-check.cjs` 补一条注入式回归。
+- **Worker 池构造**：`createWorkerPool()` 任一构造失败必须整体 terminate 并回退主线程，
+  禁止留下「部分实例 + worker 模式」的残池；用 `test:worker-pool` 注入式回归验证。
+- **编辑差分**：分桶值存已解析的数值坐标（`BlockEdit`），字符串 key 只在 `recordEdit` 解析一次；
+  `ensureChunk` 不再逐条 `split(',')`。改动用 `test:edits` 覆盖负坐标与跨区块边界。
 
 ## 常见排查
 

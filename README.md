@@ -8,8 +8,8 @@
 以及面向手机的**性能与交互优化**（动态分辨率、更低渲染距离与粒子预算、触控震动反馈与大按钮布局）。
 
 **v1.3.0 渲染管线升级**：区块网格化整体迁入 **Web Worker 池**（`?worker&inline` Blob Worker，单文件
-`file://` 下可直接运行；默认按 `navigator.hardwareConcurrency` 起多 Worker 池、least-busy 派发、
-任一 Worker 失败即整体回退主线程），并实现 **Greedy Meshing**——按面方向做 mask
+`file://` 下可直接运行；默认 `min(hardwareConcurrency - 1, 4)` 个 Worker、least-busy 派发，
+构造或运行期任一 Worker 失败都整体回退主线程），并实现 **Greedy Meshing**——按面方向做 mask
 贪心合并，quad 数下降约 40%，且保证「每个面格的贴图与亮度完全不变」。
 
 **v1.3.0 光照升级**：移植**天空光 / 方块光**双通道（0~15），火把与南瓜灯能真正照亮洞穴；
@@ -31,6 +31,10 @@
 并把浏览器实景测试纳入 `npm run verify` 与 CI。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 > 非官方学习项目，与 Mojang / Microsoft 无关。所有纹理均为代码逐像素绘制，不含任何原版资源。
+
+> **文档数字口径**：下文各版本「验证结果 / 实测」里的断言数、quad 数、耗时与体积均为
+> **当时环境的历次记录**，只作演进留档；当前验收一律以 `npm run verify` 的输出与
+> `test/artifacts/results.json` 为准，不要把旧数字当作阈值。
 
 ## 快速开始
 
@@ -321,8 +325,9 @@ CraftAPI.events.scope('demo:ns');           // 返回 EventChannel，dispose() �
   `src/world/blocks.ts` 的 `drops` 字段上继续叠加（见 `CraftAPI.survival`）。
 - 更多生物群系 / 结构：实现 `IWorldGenerator` 即可整体替换。
 - 多人联机：世界读写集中在 `World`，编辑差分天然是同步消息格式。
-- 纹理包：`registerTile` 可运行时重绘图集。
-- Worker 网格化：`meshChunk` 是纯函数，可直接搬进 Web Worker。
+- 纹理包：`registerTile` 可运行时重绘图集，注册后自动刷新 Worker 配置。
+- **Worker 网格化已落地**（v1.3.0 Worker 池 + Greedy；本次修复补齐构造期失败的整体回滚）；
+  后续可做跨区块网格缓存或 GPU 侧合并。
 
 ## 测试
 
@@ -334,14 +339,18 @@ npm run verify
 
 | 命令 | 内容 |
 |---|---|
-| `npm run check:version` | `package.json` / `version.ts` / README 版本号机械校验 |
+| `npm run check:version` | `package.json` / `version.ts` 一致 + README 含当前版本 + 源码唯一版本源扫描 |
 | `npm run typecheck` / `build` | TypeScript strict + 单文件 `dist/index.html` |
 | `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
 | `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
-| `npm run test:light` | 光照 14 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |
+| `npm run test:light` | 光照 21 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |
 | `npm run test:mesher` | **网格等价与收益**：快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例 |
-| `npm run test:services` | 服务容器 / 事件服务 / 插件服务 / 存档校验 31 项 |
+| `npm run test:services` | 服务容器 / 事件服务 / 插件服务 / 存档校验 38 项 |
+| `npm run test:diagnostics` | 运行时诊断组 20 组（健康快照 + 异常注入） |
+| `npm run test:worker-pool` | Worker 池构造失败整体回滚的注入式回归 |
+| `npm run test:edits` | 编辑差分数值分桶：负坐标 / 边界 / 覆盖 / 存档导出 |
 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端），结果与截图写入 `test/artifacts/` |
+| `npm run test:visual` | headless Chromium 截图视觉回归（昼夜 / 火把 / 方块展示墙） |
 
 Linux 无 GPU 环境用软件渲染跑实景（v1.1.2 声称「本环境无法初始化 WebGL」其实是缺
 `--disable-gpu-sandbox` 与 `--enable-unsafe-swiftshader`）：
@@ -352,7 +361,8 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 ```
 
 `.github/workflows/verify.yml` 按此配置接入 CI，要求浏览器测试 **100% PASS**。
-断言总数以 `test/artifacts/results.json` 实际输出为准——文档不再手写会过时的数字。
+断言总数与 benchmark 数字以 `test/artifacts/results.json` 实际输出为准；下文各版本记录里的
+具体数字只代表当时环境，不应作为当前验收口径。
 
 覆盖：模式选择、血量/鸡腿/氧气 HUD、挖掘进度与掉落入包补位、放置与消耗、伤害与死亡重生、
 进食、夜间僵尸生成与攻击、模式切换、存档 v2 与继续游戏、移动端摇杆/长按挖掘/按钮语义/安全区布局；
@@ -377,7 +387,8 @@ v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益�
 - **P2** 树叶同材质内部面剔除、区块网格不再上传无用法线、图集容量溢出报错、DDA 起点零法线命中跳过、存档 v2 字段校验、粒子淡出与帧率无关、摔落阈值对齐「>3 格」、相机 far 随渲染距离收敛、动态分辨率仅在游玩时调整、受伤 / 破坏 / 放置 / 死亡补充震动反馈。
 - 测试新增 4 项回归断言：标题 UI 模式接线、两个事件可订阅、远距离传送后区块均完成网格化。
 
-> 尚未实施（属于较大重构，建议单独排期）：`meshChunk` 搬入 Web Worker、Greedy Meshing、透明通道按距离排序、编辑差分按区块分桶、AABB 脱困。
+> 仍待实施（本次源码复核）：透明通道按距离排序、AABB 脱困，详见「已知限制」。
+> `meshChunk` 搬入 Worker、Greedy Meshing、编辑差分按区块分桶三项已在 v1.2.0~v1.3.0 落地。
 
 ## 地形升级记录（v1.1.2）
 
@@ -427,7 +438,7 @@ v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益�
 | 存档 | `validateSave()` 全量字段校验，供 `load()` 与 `CraftAPI.save.import()` 共用 |
 | 存档差分 | `edits` 按 chunkKey 分桶，`ensureChunk()` 从 O(全档编辑数) 降到 O(本区块编辑数) |
 | UI / 状态机 | 有存档时标题模式高亮同步真实模式；`openPalette()` 补发 `game:pause` |
-| 测试工程化 | 快照自动从源码编译、`npm run verify`、31 项服务单测、流式断言改轮询、CI 要求 100% PASS |
+| 测试工程化 | 快照自动从源码编译、`npm run verify`、31 项服务单测（v1.2.0 当时，v1.3.2 已扩到 38 项）、流式断言改轮询、CI 要求 100% PASS |
 
 ## v1.3.0 渲染管线升级记录
 
@@ -456,7 +467,7 @@ v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益�
 |---|---|
 | 面覆盖等价（3 种子 × 2 区块 × 4 通道） | 逐格一致，亮度差 `0.0e+0` |
 | 快照 vs 直读数据源 | 逐字节一致（两种 greedy 设置） |
-| quad 数 | 11,526 → 6,978（**-39.5%**），最大合并面 105 格 |
+| quad 数 | 11,526 → 6,978（**-39.5%**），最大合并面 105 格（当时 A/B 环境的历史基准，随机型与场景浮动） |
 | 浏览器实景 | 网格化 `mesherMode=worker`，`gen=89 / mesh=89 / dirty=0`，无幽灵区块 |
 
 ### 已知限制（带排期）
