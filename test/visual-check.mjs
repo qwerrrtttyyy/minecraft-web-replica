@@ -152,28 +152,32 @@ try {
     const yaw = mc.player.yaw;
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-    const names = ['grass', 'dirt', 'stone', 'cobblestone', 'sand', 'oak_log', 'oak_planks',
-      'oak_leaves', 'glass', 'bricks', 'glowstone', 'tnt', 'white_wool', 'red_wool',
-      'blue_wool', 'yellow_wool', 'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore',
-      'torch', 'jack_o_lantern'];
+    // 全部内置方块，按材质分组排布
+    const names = ['grass', 'dirt', 'stone', 'cobblestone', 'stone_bricks', 'mossy_cobblestone', 'gravel', 'sand',
+      'sandstone', 'ice', 'obsidian', 'bricks', 'oak_log', 'oak_planks', 'spruce_planks', 'birch_planks',
+      'crafting_table', 'glass', 'glowstone', 'torch', 'jack_o_lantern', 'tnt', 'snow', 'coal_ore',
+      'iron_ore', 'gold_ore', 'diamond_ore', 'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'orange_wool',
+      'green_wool', 'purple_wool', 'black_wool', 'oak_leaves', 'red_mushroom', 'brown_mushroom', 'dead_bush'];
     const baseY = Math.floor(p.y) + 16;
     const wallDist = 7;
+    const cols = 8;
+    const rows = Math.ceil(names.length / cols);
     for (let i = 0; i < names.length; i++) {
-      const col = i % 6, row = (i / 6) | 0;
-      const x = Math.floor(p.x + fx * wallDist + rx * (col - 2.5));
-      const z = Math.floor(p.z + fz * wallDist + rz * (col - 2.5));
+      const col = i % cols, row = (i / cols) | 0;
+      const x = Math.floor(p.x + fx * wallDist + rx * (col - (cols - 1) / 2));
+      const z = Math.floor(p.z + fz * wallDist + rz * (col - (cols - 1) / 2));
       mc.world.setBlock(x, baseY + row, z, mc.registry.byNameGet(names[i]).id);
     }
-    // 飞到墙中心高度，背景只剩天空
+    // 飞到墙中心高度、正对墙面，背景只剩天空
+    const centerY = baseY + rows / 2;
     mc.player.fly = true;
-    mc.player.pos.y = baseY - 1;
+    mc.player.pos.y = centerY - 1.62;
     mc.player.vel.set(0, 0, 0);
-    const dy = baseY + 1.5 - (baseY - 1 + 1.62);
-    mc.player.pitch = Math.atan2(dy, wallDist);
+    mc.player.pitch = 0;
   });
   await page.waitForFunction('window.__mc.world.dirty.size === 0', { timeout: 60000 }).catch(() => {});
   await sleep(900);
-  const wall = await sample(page, 480, 240, 320, 260);
+  const wall = await sample(page, 380, 170, 520, 400);
   await page.screenshot({ path: path.join(OUT, 'visual-blocks.png') });
   ok('方块展示墙颜色丰富', wall.colors > 60, `distinct=${wall.colors}`);
 

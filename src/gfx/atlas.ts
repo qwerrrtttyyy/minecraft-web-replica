@@ -464,6 +464,240 @@ function builtinPainters(): Record<string, Painter> {
       p.set(4, 6, 0xffd166);
       p.set(11, 6, 0xffd166);
     },
+    // ---- 追加建材 ----
+    stone_bricks: (p, rng) => {
+      fillNoise(p, rng, 0x5e5e61, 5); // 砖缝底色
+      const brickRect = (x0: number, y0: number, w: number, h: number) => {
+        for (let y = y0; y < y0 + h; y++) {
+          for (let x = x0; x < x0 + w; x++) {
+            if (x >= TILE || y >= TILE) continue;
+            p.set(x, y, jitter(0x7a7a7e, rng, 7));
+          }
+        }
+        // 顶边受光
+        for (let x = x0; x < x0 + w && x < TILE; x++) p.set(x, y0, jitter(0x8d8d91, rng, 5));
+      };
+      // 上下两行砖，竖缝错开
+      brickRect(0, 1, 7, 6); brickRect(9, 1, 7, 6);
+      brickRect(0, 9, 3, 6); brickRect(5, 9, 6, 6); brickRect(13, 9, 3, 6);
+    },
+    mossy_cobblestone: (p, rng) => {
+      // 先铺圆石，再盖苔藓
+      fillNoise(p, rng, 0x565656, 6);
+      for (let cy = 0; cy < 3; cy++) {
+        for (let cx = 0; cx < 3; cx++) {
+          const x0 = cx * 5 + ((rng() * 2) | 0);
+          const y0 = cy * 5 + ((rng() * 2) | 0);
+          const w = 4 + ((rng() * 2) | 0);
+          const h = 4 + ((rng() * 2) | 0);
+          const base = jitter(0x7e7e7e, rng, 10);
+          for (let y = y0; y < y0 + h; y++) {
+            for (let x = x0; x < x0 + w; x++) {
+              if (x >= TILE || y >= TILE) continue;
+              const corner = (x === x0 || x === x0 + w - 1) && (y === y0 || y === y0 + h - 1);
+              if (!corner) p.set(x, y, jitter(base, rng, 6));
+            }
+          }
+        }
+      }
+      blob(p, rng, 0x4e7a30, 10, 5);
+      blob(p, rng, 0x6a9440, 7, 4);
+      for (let i = 0; i < 14; i++) {
+        p.set((rng() * TILE) | 0, (rng() * TILE) | 0, jitter(0x3f6a26, rng, 8));
+      }
+    },
+    obsidian: (p, rng) => {
+      fillNoise(p, rng, 0x17121f, 7);
+      blob(p, rng, 0x0d0a14, 6, 7);
+      // 紫色晶纹与亮点
+      for (let i = 0; i < 5; i++) {
+        let x = 2 + ((rng() * 11) | 0);
+        let y = 1 + ((rng() * 12) | 0);
+        for (let k = 0; k < 5; k++) {
+          p.set(x, y, jitter(0x3b2b5e, rng, 8));
+          p.set(x + 1, y, jitter(0x2a1f45, rng, 6));
+          x += ((rng() * 3) | 0) - 1;
+          y += ((rng() * 3) | 0) - 1;
+        }
+      }
+      for (let i = 0; i < 6; i++) {
+        p.set(1 + ((rng() * 14) | 0), 1 + ((rng() * 14) | 0), 0x6a5aa0);
+      }
+    },
+    gravel: (p, rng) => {
+      fillNoise(p, rng, 0x8b857c, 11);
+      blob(p, rng, 0x6d675e, 9, 5);
+      blob(p, rng, 0xa59e93, 7, 4);
+      // 几颗分明的碎石子
+      for (let i = 0; i < 6; i++) {
+        const x = 1 + ((rng() * 13) | 0);
+        const y = 1 + ((rng() * 13) | 0);
+        const c = jitter(0x76705f, rng, 9);
+        p.set(x, y, c); p.set(x + 1, y, c); p.set(x, y + 1, c); p.set(x + 1, y + 1, c);
+      }
+    },
+    sandstone: (p, rng) => {
+      fillNoise(p, rng, 0xdcd3a1, 6);
+      blob(p, rng, 0xcfc48e, 6, 4);
+      // 层理：横向浅色带 + 细缝
+      for (const y of [0, 1, 5, 6, 12, 13]) {
+        for (let x = 0; x < TILE; x++) if (rng() < 0.8) p.set(x, y, jitter(0xe6dfb5, rng, 5));
+      }
+      for (const y of [4, 11]) {
+        for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0xbcb183, rng, 5));
+      }
+      for (let i = 0; i < 10; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, jitter(0xc9be86, rng, 6));
+    },
+    ice: (p, rng) => {
+      p.clear();
+      // 半透明冰体
+      for (let y = 0; y < TILE; y++) {
+        for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x9ecdf0, rng, 10), 205);
+      }
+      // 白色裂纹
+      for (let i = 0; i < 4; i++) {
+        let x = (rng() * 14) | 0;
+        let y = (rng() * 14) | 0;
+        for (let k = 0; k < 7; k++) {
+          p.set(x, y, 0xeaf6ff, 245);
+          x += ((rng() * 3) | 0) - 1;
+          y += ((rng() * 3) | 0) - 1;
+        }
+      }
+      for (let i = 0; i < 4; i++) {
+        p.set(1 + ((rng() * 13) | 0), 1 + ((rng() * 13) | 0), 0xffffff, 235);
+      }
+    },
+    spruce_planks: (p, rng) => {
+      fillNoise(p, rng, 0x6b4f2e, 6);
+      for (const y of [3, 7, 11, 15]) {
+        for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x4a361f, rng, 4));
+      }
+      const joints = [5, 12, 3, 9];
+      for (let r = 0; r < 4; r++) {
+        for (let y = r * 4; y < r * 4 + 3; y++) p.set(joints[r], y, 0x553f24);
+      }
+      for (let i = 0; i < 9; i++) {
+        const y = (rng() * TILE) | 0;
+        const x = (rng() * 13) | 0;
+        const len = 2 + ((rng() * 4) | 0);
+        for (let k = 0; k < len; k++) if (y % 4 !== 3) p.set(x + k, y, 0x7d5c37);
+      }
+    },
+    birch_planks: (p, rng) => {
+      fillNoise(p, rng, 0xd6c9a0, 6);
+      for (const y of [3, 7, 11, 15]) {
+        for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0xb3a478, rng, 4));
+      }
+      const joints = [9, 4, 13, 6];
+      for (let r = 0; r < 4; r++) {
+        for (let y = r * 4; y < r * 4 + 3; y++) p.set(joints[r], y, 0xa89a70);
+      }
+      // 白桦特有的深色小斑
+      for (let i = 0; i < 5; i++) {
+        const x = (rng() * 14) | 0;
+        const y = (rng() * 14) | 0;
+        p.set(x, y, 0x6e6350); p.set(x + 1, y, 0x6e6350);
+      }
+      for (let i = 0; i < 8; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0xefe6c6);
+    },
+    crafting_top: (p, rng) => {
+      fillNoise(p, rng, 0x9c7f4e, 7);
+      // 3×3 网格缝
+      for (const g of [5, 10]) {
+        for (let i = 0; i < TILE; i++) {
+          p.set(g, i, 0x5f4a2a);
+          p.set(i, g, 0x5f4a2a);
+        }
+      }
+      for (const g of [6, 11]) {
+        for (let i = 0; i < TILE; i++) {
+          if (rng() < 0.7) { p.set(g, i, 0x74592f); p.set(i, g, 0x74592f); }
+        }
+      }
+      // 每格内一点木纹
+      for (let cy = 0; cy < 3; cy++) {
+        for (let cx = 0; cx < 3; cx++) {
+          const x = cx * 5 + 2;
+          const y = cy * 5 + 2;
+          p.set(x, y, 0xab8d5a);
+          if (rng() < 0.6) p.set(x + 1, y + 1, 0x8a6f42);
+        }
+      }
+    },
+    crafting_side: (p, rng) => {
+      fillNoise(p, rng, 0x9c7f4e, 7);
+      for (const y of [3, 7]) {
+        for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x66502e, rng, 4));
+      }
+      // 下半是工具挂板
+      rect(p, 0, 8, TILE, 8, 0x7d5f36);
+      for (let x = 0; x < TILE; x++) p.set(x, 8, 0x5f4a2a);
+      // 锤子（左）
+      rect(p, 3, 10, 2, 4, 0xb7a98d);
+      rect(p, 2, 10, 4, 1, 0x8f8471);
+      // 锯（右）
+      for (let i = 0; i < 5; i++) {
+        p.set(9 + i, 10 + i, 0xc9c1b4);
+        p.set(9 + i, 11 + i, 0x8f8471);
+      }
+      rect(p, 13, 9, 2, 2, 0x6e5a3a);
+    },
+    // ---- 追加植物 ----
+    red_mushroom: (p, rng) => {
+      p.clear();
+      for (let y = 9; y < 16; y++) {
+        p.set(7, y, 0xe8e2d2); p.set(8, y, 0xd8d2c0);
+      }
+      // 菌盖
+      for (let y = 4; y <= 9; y++) {
+        const w = y >= 8 ? 5 : y >= 6 ? 4 : 3;
+        for (let x = 8 - w; x <= 7 + w; x++) {
+          if (x < 0 || x >= TILE) continue;
+          p.set(x, y, jitter(y <= 5 ? 0xd8483a : 0xc93a2e, rng, 8));
+        }
+      }
+      for (let x = 3; x <= 12; x++) p.set(x, 9, 0xe8d8c8);
+      // 白色斑点
+      for (const [x, y] of [[5, 6], [9, 5], [11, 7], [4, 8]]) {
+        p.set(x, y, 0xf2f0e8); p.set(x + 1, y, 0xf2f0e8);
+      }
+    },
+    brown_mushroom: (p, rng) => {
+      p.clear();
+      for (let y = 10; y < 16; y++) {
+        p.set(7, y, 0xe8e2d2); p.set(8, y, 0xd8d2c0);
+      }
+      for (let y = 5; y <= 10; y++) {
+        const w = y >= 9 ? 5 : y >= 7 ? 4 : 3;
+        for (let x = 8 - w; x <= 7 + w; x++) {
+          if (x < 0 || x >= TILE) continue;
+          const edge = y >= 9 || x <= 8 - w || x >= 7 + w;
+          p.set(x, y, jitter(edge ? 0xa87848 : 0x9c6b3f, rng, 7));
+        }
+      }
+      for (let x = 4; x <= 11; x++) p.set(x, 10, 0xd8c8b0);
+      for (const [x, y] of [[6, 7], [10, 6], [8, 8]]) p.set(x, y, 0xb98a55);
+    },
+    dead_bush: (p, rng) => {
+      p.clear();
+      // 主干
+      for (let y = 8; y < 16; y++) p.set(7, y, 0x6b4a2a);
+      p.set(8, 14, 0x6b4a2a);
+      // 分叉细枝
+      for (let i = 0; i < 7; i++) {
+        let x = 7 + (((rng() * 3) | 0) - 1);
+        let y = 8 + ((rng() * 5) | 0);
+        const dx = rng() < 0.5 ? -1 : 1;
+        for (let k = 0; k < 4 + ((rng() * 3) | 0); k++) {
+          p.set(x, y, rng() < 0.7 ? 0x7d5732 : 0x5f411f);
+          x += rng() < 0.65 ? dx : ((rng() * 3) | 0) - 1;
+          y -= 1;
+          if (x < 1 || x > 14 || y < 1) break;
+        }
+      }
+      for (let i = 0; i < 3; i++) p.set(6 + ((rng() * 3) | 0), 7, 0x5f411f);
+    },
   };
 }
 
@@ -498,6 +732,10 @@ export class TextureAtlas {
     this.painters.set('red_wool', woolPainter(0xa12722));
     this.painters.set('blue_wool', woolPainter(0x35399d));
     this.painters.set('yellow_wool', woolPainter(0xf0af15));
+    this.painters.set('orange_wool', woolPainter(0xd97b1f));
+    this.painters.set('green_wool', woolPainter(0x3f7a2f));
+    this.painters.set('purple_wool', woolPainter(0x7a3f9e));
+    this.painters.set('black_wool', woolPainter(0x24242a));
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

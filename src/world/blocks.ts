@@ -172,4 +172,28 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   });
   cube('jack_o_lantern', '南瓜灯', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_face' },
     { lightEmission: 15, sound: 'wood', hardness: 1, colorVariance: 0.04 });
+
+  // ---- 追加方块（id 29 起，不改动任何已有方块 id，旧存档差分保持有效） ----
+  // 建材
+  cube('stone_bricks', '石砖', {}, { hardness: 2 });
+  cube('mossy_cobblestone', '苔石圆石', {}, { hardness: 2 });
+  cube('obsidian', '黑曜石', {}, { hardness: 12 });
+  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6 });
+  cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
+  cube('ice', '冰', {}, {
+    opaque: false, transparentPass: true, sound: 'glass', hardness: 0.5, colorVariance: 0, drops: [],
+  });
+  cube('spruce_planks', '云杉木板', {}, { sound: 'wood', hardness: 2 });
+  cube('birch_planks', '白桦木板', {}, { sound: 'wood', hardness: 2 });
+  cube('crafting_table', '工作台', { top: 'crafting_top', bottom: 'oak_planks', side: 'crafting_side' },
+    { sound: 'wood', hardness: 3.5 });
+  // 植物（十字面，需放在实心方块上）
+  plant('red_mushroom', '红蘑菇');
+  plant('brown_mushroom', '棕蘑菇');
+  plant('dead_bush', '枯灌木');
+  // 羊毛补充色
+  cube('orange_wool', '橙色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
+  cube('green_wool', '绿色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
+  cube('purple_wool', '紫色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
+  cube('black_wool', '黑色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
 }
