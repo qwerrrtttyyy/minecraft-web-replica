@@ -202,7 +202,9 @@ try {
       'sandstone', 'ice', 'obsidian', 'bricks', 'oak_log', 'oak_planks', 'spruce_planks', 'birch_planks',
       'crafting_table', 'glass', 'glowstone', 'torch', 'jack_o_lantern', 'tnt', 'snow', 'coal_ore',
       'iron_ore', 'gold_ore', 'diamond_ore', 'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'orange_wool',
-      'green_wool', 'purple_wool', 'black_wool', 'oak_leaves', 'red_mushroom', 'brown_mushroom', 'dead_bush'];
+      'green_wool', 'purple_wool', 'black_wool', 'oak_leaves', 'red_mushroom', 'brown_mushroom', 'dead_bush',
+      'copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'clay', 'podzol', 'granite', 'cactus',
+      'sugar_cane', 'fern'];
     const baseY = Math.floor(p.y) + 16;
     const wallDist = 7;
     const cols = 8;

@@ -11,7 +11,7 @@ npm run typecheck       # tsc --noEmit，必须 0 error
 npm run build           # 类型检查 + 单文件构建
 npm run test:snapshot   # 从当前 TS 源码生成 CJS 测试快照（必须先跑）
 npm run test:logic && npm run test:light && npm run test:mesher
-npm run test:services && npm run test:diagnostics
+npm run test:services && npm run test:diagnostics && npm run test:terrain-system
 npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要 Chromium）
 ```
 
@@ -22,8 +22,10 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 
 - **版本单一来源**：`src/core/version.ts` 的 `VERSION` 是唯一来源，`package.json` 与 README
   必须一致；`npm run check:version` 会机械校验。
-- **方块 id 只追加**：内置方块 id 1..44 不能调整，否则旧存档 `edits` 差分指向错误方块。
-  新方块 id 必须 1..255（`Uint8Array` 存储）。
+- **方块 id 只追加**：内置方块 id 1..54 不能调整，否则旧存档 `edits` 差分指向错误方块。
+  新方块 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
+- **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
+  `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止
   import three / World / TextureAtlas。主线程与 Worker 共用同一份 `mesher.ts`。
 - **Worker 配置失效**：注册方块 / 纹理后必须让 `ChunkManager.invalidateConfig()` 重建并

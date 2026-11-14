@@ -9,7 +9,8 @@ import { FACES } from '../world/faces';
  */
 
 const TILE = 16;
-const GRID = 8;
+/** 16×16 = 256 槽：内置方块 + 扩展方块 + 运行时 registerTile 仍有富余 */
+const GRID = 16;
 const SIZE = TILE * GRID;
 
 /** 像素画布 */
@@ -697,6 +698,103 @@ function builtinPainters(): Record<string, Painter> {
         }
       }
       for (let i = 0; i < 3; i++) p.set(6 + ((rng() * 3) | 0), 7, 0x5f411f);
+    },
+    // ---- v1.4.0 追加矿石 / 地表 / 植物 ----
+    copper_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0xb87333, 6, 5);
+      blob(p, rng, 0xe08a4b, 4, 3);
+    },
+    emerald_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x1fae62, 6, 5);
+      blob(p, rng, 0x6ef0a8, 4, 3);
+    },
+    lapis_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x2a52b8, 6, 5);
+      blob(p, rng, 0x5c86e8, 4, 3);
+    },
+    redstone_ore: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0xb3271f, 7, 5);
+      blob(p, rng, 0xe8554a, 5, 3);
+    },
+    clay: (p, rng) => {
+      fillNoise(p, rng, 0xa2a6b4, 7);
+      blob(p, rng, 0x8f93a2, 8, 4);
+      blob(p, rng, 0xb6bac8, 6, 3);
+      for (let y = 0; y < TILE; y += 5) {
+        for (let x = 0; x < TILE; x++) if (rng() < 0.5) p.set(x, y, jitter(0x969aa8, rng, 5));
+      }
+    },
+    podzol_top: (p, rng) => {
+      fillNoise(p, rng, 0x6b4a2c, 10);
+      blob(p, rng, 0x8a5a2e, 9, 4);
+      blob(p, rng, 0x9c6a38, 6, 3);
+      blob(p, rng, 0x4f3720, 5, 3);
+    },
+    podzol_side: (p, rng) => {
+      dirt(p, rng);
+      for (let x = 0; x < TILE; x++) {
+        const depth = 3 + ((rng() * 3) | 0);
+        for (let y = 0; y < depth; y++) p.set(x, y, jitter(0x6b4a2c, rng, 8));
+        if (rng() < 0.4) p.set(x, depth, jitter(0x5a3c22, rng, 6));
+      }
+    },
+    granite: (p, rng) => {
+      stoneBase(p, rng);
+      blob(p, rng, 0x9a6b62, 10, 3);
+      blob(p, rng, 0xb0867c, 6, 2);
+      for (let i = 0; i < 10; i++) {
+        p.set((rng() * TILE) | 0, (rng() * TILE) | 0, jitter(0x8a5a52, rng, 8));
+      }
+    },
+    cactus: (p, rng) => {
+      fillNoise(p, rng, 0x3f7a2f, 8);
+      // 纵向棱线与浅色小刺
+      for (const x of [0, 1, 7, 8, 14, 15]) {
+        for (let y = 0; y < TILE; y++) {
+          p.set(x, y, jitter(x % 7 === 0 ? 0x2c5a22 : 0x35682a, rng, 5));
+        }
+      }
+      for (let i = 0; i < 12; i++) {
+        const x = 2 + ((rng() * 12) | 0);
+        const y = 1 + ((rng() * 14) | 0);
+        p.set(x, y, 0xe8e8c8);
+        if (rng() < 0.4) p.set(x, y - 1, 0xf5f5d8);
+      }
+    },
+    sugar_cane: (p, rng) => {
+      p.clear();
+      for (const x0 of [3, 6, 10, 13]) {
+        const top = 1 + ((rng() * 3) | 0);
+        for (let y = top; y < TILE; y++) {
+          const node = y % 5 === 0;
+          p.set(x0, y, jitter(node ? 0xd8e8a0 : 0x9fd06a, rng, 7));
+          p.set(x0 + 1, y, jitter(node ? 0xb8cc80 : 0x7fb04e, rng, 6));
+        }
+        // 一两片斜叶
+        const ly = 4 + ((rng() * 8) | 0);
+        p.set(x0 - 1, ly, 0x8fc45e);
+        p.set(x0 + 2, ly + 2, 0x8fc45e);
+      }
+    },
+    fern: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 5; i++) {
+        const x0 = 3 + i * 2;
+        const h = 5 + ((rng() * 8) | 0);
+        for (let k = 0; k < h; k++) {
+          const y = 15 - k;
+          const x = x0 + Math.round(Math.sin(k * 0.6 + i) * 1.2);
+          p.set(x, y, k === h - 1 ? 0x8fbe57 : i % 2 ? 0x4f8f2c : 0x5aa236);
+          if (k > 2 && k % 2 === 0) {
+            p.set(x - 1, y, 0x3f7a24);
+            p.set(x + 1, y, 0x3f7a24);
+          }
+        }
+      }
     },
   };
 }
