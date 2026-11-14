@@ -1,0 +1,17 @@
+{
+  "renderDistance": 4,
+  "dayLength": 1000000,
+  "dayTime": 0.32,
+  "baseline": {
+    "fps": 0,
+    "movement": { "dist": 0, "ms": 0 },
+    "build": { "ms": 0, "dirty": 0 },
+    "load": { "ms": 0, "dirty": 0, "mesh": 0, "gen": 0 }
+  },
+  "tweaks": {
+    "reduceDirtyOnSetBlock": false,
+    "increaseWorkerPool": false,
+    "lowerCloudOpacity": false
+  },
+  "note": "Manual tuning baseline and tweak flags; update after running test/tuning-baseline.mjs"
+}
