@@ -58,6 +58,7 @@
 | `src/api/` | `CraftAPI` 门面：旧 22 项 + 新增 `plugins` / `events` 命名空间 |
 | `src/plugins/builtin/` | 默认启用的内置插件；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约 |
 | `src/plugins/example/` | 插件开发示例（不默认启用） |
+| `src/diagnostics/` | 运行时诊断组：只读快照检查、F3 / CraftAPI 报告、每 10 秒自动采样 |
 
 ---
 
@@ -256,9 +257,10 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 构建 | `npm run build` | 单文件 `dist/index.html` |
 | 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
 | 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
-| 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 14 组 |
-| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 31 项 |
-| 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件断言 |
+| 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
+| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 38 项（含并发启用、初始化中停用、waitFor 清理） |
+| 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
+| 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
 | 一键 | `npm run verify` | 以上全部 |
 
 浏览器测试参数可配置：`MC_HEADLESS=0 MC_GL=desktop` + `xvfb-run`
@@ -335,6 +337,27 @@ ChunkManager.update()
 
 CPU 略升来自「按面扫描 + 每个可见面一次 AO」；因为整段已移出主线程，渲染不再被阻塞。
 v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发）把吞吐补回来。
+
+## 8.5 运行时诊断组（v1.3.2）
+
+`src/diagnostics/RuntimeDiagnostics.ts` 只接收组装根收集的只读快照，不依赖 three / DOM
+业务对象，因此浏览器与 Node 共用同一套检查：
+
+| 入口 | 用途 |
+|---|---|
+| `CraftAPI.diagnostics.run()` | 手动执行全部检查，返回 `{ ok, checked, errors, warnings, issues, durationMs }` |
+| `CraftAPI.diagnostics.last()` | 最近一次自动采样结果 |
+| F3 面板 | 显示「运行时诊断」行 |
+| `__mc.diagnostics` | 控制台调试入口 |
+| 自动采样 | 每 10 秒一次；异常集合变化时才 `console.groupCollapsed` 输出 |
+
+覆盖的不变量：版本一致、玩家坐标/摔落值、playing 输入状态、暂停态残留按键、Worker 配置
+ACK、Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、事件
+订阅、生存数值与死亡状态一致、实体数量、存档脏标记老化。
+
+Worker 现在对每条 `config` 消息回传 `config-ack`；`ChunkManager.configReady` 只有在所有
+Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹理后，`invalidateConfig()`
+会立即重建并下发配置，同时把已有网格重新入队。
 
 ## 9. 后续路线（带验收标准）
 

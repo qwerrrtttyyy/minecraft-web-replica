@@ -35,6 +35,14 @@ interface LegacySave {
 }
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const intIn = (v: unknown, min: number, max: number): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+
+/** 编辑差分 key 必须是整数坐标；方块 id 0~255（0 表示挖掉） */
+const EDIT_KEY_RE = /^-?\d+,-?\d+,-?\d+$/;
+/** 背包 key：i:物品名 / b:方块 id */
+const ITEM_KEY_RE = /^i:[A-Za-z0-9_.:-]+$/;
+const BLOCK_KEY_RE = /^b:\d+$/;
 
 const isVec3 = (v: unknown): boolean => {
   if (!v || typeof v !== 'object') return false;
@@ -46,8 +54,8 @@ const isStack = (v: unknown): boolean => {
   if (v === null) return true;
   if (!v || typeof v !== 'object') return false;
   const s = v as Record<string, unknown>;
-  if (s.kind === 'block') return finite(s.id);
-  if (s.kind === 'item') return typeof s.id === 'string' && s.id.length > 0;
+  if (s.kind === 'block') return intIn(s.id, 0, 255);
+  if (s.kind === 'item') return typeof s.id === 'string' && ITEM_KEY_RE.test(`i:${s.id}`);
   return false;
 };
 
@@ -65,7 +73,9 @@ export function validateSave(data: unknown): data is SaveData {
   if (d.mode !== 'survival' && d.mode !== 'creative') return false;
   if (!Array.isArray(d.edits)) return false;
   for (const e of d.edits) {
-    if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string' || !finite(e[1])) return false;
+    if (!Array.isArray(e) || e.length !== 2) return false;
+    if (typeof e[0] !== 'string' || !EDIT_KEY_RE.test(e[0])) return false;
+    if (!intIn(e[1], 0, 255)) return false;
   }
   const p = d.player;
   if (!p || !finite(p.x) || !finite(p.y) || !finite(p.z) ||
@@ -74,9 +84,12 @@ export function validateSave(data: unknown): data is SaveData {
   if (!s || !finite(s.health) || !finite(s.hunger) || !finite(s.breath) ||
       !Array.isArray(s.inventory) || !isVec3(s.spawn)) return false;
   for (const e of s.inventory) {
-    if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string' || !finite(e[1])) return false;
+    if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string') return false;
+    if (!ITEM_KEY_RE.test(e[0]) && !BLOCK_KEY_RE.test(e[0])) return false;
+    if (!intIn(e[1], 1, 999)) return false;
+    if (BLOCK_KEY_RE.test(e[0]) && !intIn(Number(e[0].slice(2)), 1, 255)) return false;
   }
-  if (!finite(d.dayTime) || !Array.isArray(d.hotbar) ||
+  if (!finite(d.dayTime) || d.dayTime < 0 || d.dayTime > 1 || !Array.isArray(d.hotbar) ||
       d.hotbar.length !== 9 || !d.hotbar.every(isStack)) return false;
   if (!finite(d.slot) || d.slot < 0 || d.slot > 8) return false;
   const st = d.settings;

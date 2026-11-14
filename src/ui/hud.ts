@@ -28,6 +28,7 @@ export interface HUDOptions {
   onRenderDistance: (v: number) => void;
   onSensitivity: (v: number) => void;
   onFov: (v: number) => void;
+  onPaletteOpen: (from: 'game' | 'menu') => void;
   onPaletteClose: () => void;
   onRespawn: () => void;
   onModeToggle: () => void;
@@ -535,10 +536,9 @@ export class HUD {
 
     const btnRow = h('div', 'menu-row');
     btnRow.appendChild(this.mcButton('操作说明', () => this.showHelp(true)));
-    btnRow.appendChild(this.mcButton('方块库', () => {
-      this.showMenu(false);
-      this.showPalette(true);
-    }));
+    // 必须交给组装根打开面板：paletteReturn 需要记住 'menu'，
+    // 否则关闭面板会直接恢复游戏而不是回到菜单（v1.3.2 修复）。
+    btnRow.appendChild(this.mcButton('方块库', () => this.opts.onPaletteOpen('menu')));
     panel.appendChild(btnRow);
 
     const newWorldRow = h('div', 'menu-new-world');

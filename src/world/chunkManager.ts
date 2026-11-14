@@ -120,6 +120,8 @@ export class ChunkManager implements System {
   private workers: Worker[] = [];
   /** 每个 Worker 当前在途任务数，用于 least-busy 派发 */
   private busy: number[] = [];
+  /** 每个 Worker 已确认的配置 revision（-1 表示尚未收到 config） */
+  private workerConfig: number[] = [];
   private poolSize = 0;
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
@@ -184,6 +186,7 @@ export class ChunkManager implements System {
           };
           this.workers.push(w);
           this.busy.push(0);
+          this.workerConfig.push(-1);
         } catch (err) {
           console.warn('[mesher] Worker 创建失败，回退主线程同步网格化：', err);
         }
@@ -204,20 +207,36 @@ export class ChunkManager implements System {
   get workerCount(): number { return this.workers.length; }
   get inFlightCount() { return this.inFlight.size; }
   get meshStats() { return { ...this.totals }; }
+  /** 运行时诊断：所有 Worker 是否都已确认当前配置 */
+  get configReady(): boolean {
+    if (this.config === null) return false;
+    if (this.mode === 'main') return true;
+    return this.workers.length > 0 &&
+      this.workers.every((_, i) => this.workerConfig[i] === this.configRevision);
+  }
+  get configRevisionValue(): number { return this.configRevision; }
+  /** 运行时诊断：该区块是否已有网格 / 是否在途 */
+  hasMesh(cx: number, cz: number): boolean { return this.meshes.has(chunkKey(cx, cz)); }
+  hasInFlight(cx: number, cz: number): boolean { return this.inFlight.has(chunkKey(cx, cz)); }
   get greedy() { return this.getConfig().greedy; }
   set greedy(v: boolean) {
     if (this.greedyOption === v) return;
     this.greedyOption = v;
     this.invalidateConfig();
-    // 已网格化的区块重新入队，便于实时对照
-    for (const key of this.meshes.keys()) this.world.dirty.add(key);
   }
 
-  /** 方块/纹理注册变化后必须调用，否则 Worker 仍用旧元数据 */
+  /**
+   * 方块/纹理注册变化后必须调用，否则 Worker 仍用旧元数据。
+   *
+   * v1.3.2 修复：旧实现只把 config 置 null 后调用 postConfig()，而 postConfig
+   * 在 config 为 null 时会直接返回 —— Worker 永远收不到新配置；Worker 派发路径
+   * 又不会调用 getConfig()。现在立即重建并下发，同时把所有已有网格重新入队。
+   */
   invalidateConfig(): void {
     this.config = null;
     this.configRevision++;
-    this.postConfig();
+    this.getConfig(); // 重建 + postConfig 下发给所有 Worker
+    for (const key of this.meshes.keys()) this.world.dirty.add(key);
   }
 
   private getConfig(): MeshConfig {
@@ -230,7 +249,9 @@ export class ChunkManager implements System {
 
   private postConfig(): void {
     if (this.workers.length && this.config) {
-      for (const w of this.workers) w.postMessage({ type: 'config', config: this.config });
+      for (let i = 0; i < this.workers.length; i++) {
+        this.workers[i].postMessage({ type: 'config', config: this.config, wid: i });
+      }
     }
   }
 
@@ -258,6 +279,7 @@ export class ChunkManager implements System {
     for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
     this.workers = [];
     this.busy = [];
+    this.workerConfig = [];
     this.poolSize = 0;
     const pending = [...this.inFlight.entries()];
     this.inFlight.clear();
@@ -303,6 +325,9 @@ export class ChunkManager implements System {
       this.inFlight.delete(key);
       resolve();
     } else {
+      // 防御性保证：任何 Worker 任务发出前，配置已构建并下发。
+      // （invalidateConfig 现在会立即重建，但这里兜住未来新增的调用路径）
+      this.getConfig();
       const wid = this.pickWorker();
       const snapshot = buildMeshSnapshot(this.world, cx, cz);
       this.workers[wid].postMessage(
@@ -317,11 +342,18 @@ export class ChunkManager implements System {
   private drainResults(): void {
     if (this.pendingResults.length === 0) return;
     for (const msg of this.pendingResults.splice(0)) {
+      // 配置回执不占派发计数，先处理并跳过
+      if (msg.type === 'config-ack') {
+        if (this.workerConfig[msg.wid] !== undefined) this.workerConfig[msg.wid] = msg.revision;
+        continue;
+      }
+      // 每条回传消息都对应一次派发计数：无论结果是否过期都要回退，
+      // 否则「区块卸载后旧结果晚到」会让 busy 计数永久偏高（v1.3.2 修复）。
+      if (msg.wid != null && this.busy[msg.wid] > 0) this.busy[msg.wid]--;
       const key = chunkKey(msg.cx, msg.cz);
       const rec = this.inFlight.get(key);
       if (!rec || rec.generation !== msg.generation) continue;
       this.inFlight.delete(key);
-      if (msg.wid != null && this.busy[msg.wid] > 0) this.busy[msg.wid]--;
       if (msg.type === 'result') {
         if (this.world.getChunk(msg.cx, msg.cz)?.generated) {
           this.applyPacked(key, msg.cx, msg.cz, msg.mesh);

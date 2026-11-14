@@ -121,39 +121,68 @@ export class Input {
       if (down) this.edges.push({ type: 'pause' });
       return;
     }
-    if (!this.enabled) return;
     const gameKeys = [
       'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab',
       'F1', 'F3', 'F5', 'KeyE', 'KeyF', 'Digit1', 'Digit2', 'Digit3', 'Digit4',
       'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9',
     ];
-    if (gameKeys.includes(e.code)) e.preventDefault();
-    if (down && e.repeat) return;
-
-    if (down) {
-      this.keys.add(e.code);
-      const now = performance.now();
-      if (e.code === 'Space') {
-        if (now - this.lastSpace < 280) this.edges.push({ type: 'fly' });
-        this.lastSpace = now;
-      }
-      if (e.code === 'KeyW') {
-        if (now - this.lastW < 280) this.sprintLatch = true;
-        this.lastW = now;
-      }
-      if (e.code.startsWith('Digit')) {
-        const n = Number(e.code.slice(5));
-        if (n >= 1 && n <= 9) this.edges.push({ type: 'slot', value: n - 1, absolute: true } as InputEdge);
-      }
-      if (e.code === 'F5') this.edges.push({ type: 'camera' });
-      if (e.code === 'F3') this.edges.push({ type: 'debug' });
-      if (e.code === 'KeyE') this.edges.push({ type: 'palette' });
-      if (e.code === 'KeyF') this.edges.push({ type: 'fly' });
-      if (e.code === 'F1') this.edges.push({ type: 'hud' });
-    } else {
+    if (this.enabled && gameKeys.includes(e.code)) e.preventDefault();
+    // v1.3.2 修复：keyup 必须无条件处理。
+    // 旧实现先判断 enabled —— 暂停 / 死亡期间松开的 W、Shift 等键会永远留在
+    // keys 集合里，恢复游戏后角色会自己持续移动，直到重新按一次再松开。
+    if (!down) {
       this.keys.delete(e.code);
       if (e.code === 'KeyW') this.sprintLatch = false;
+      return;
     }
+    if (!this.enabled) return;
+    if (e.repeat) return;
+
+    this.keys.add(e.code);
+    const now = performance.now();
+    if (e.code === 'Space') {
+      if (now - this.lastSpace < 280) this.edges.push({ type: 'fly' });
+      this.lastSpace = now;
+    }
+    if (e.code === 'KeyW') {
+      if (now - this.lastW < 280) this.sprintLatch = true;
+      this.lastW = now;
+    }
+    if (e.code.startsWith('Digit')) {
+      const n = Number(e.code.slice(5));
+      if (n >= 1 && n <= 9) this.edges.push({ type: 'slot', value: n - 1, absolute: true } as InputEdge);
+    }
+    if (e.code === 'F5') this.edges.push({ type: 'camera' });
+    if (e.code === 'F3') this.edges.push({ type: 'debug' });
+    if (e.code === 'KeyE') this.edges.push({ type: 'palette' });
+    if (e.code === 'KeyF') this.edges.push({ type: 'fly' });
+    if (e.code === 'F1') this.edges.push({ type: 'hud' });
+  }
+
+  /**
+   * 暂停 / 死亡 / 切出时清空所有瞬时输入。
+   * 与 keyup 兜底配合，保证恢复游戏后不会残留移动、潜行或挖掘状态。
+   */
+  reset() {
+    this.keys.clear();
+    this.sprintLatch = false;
+    this.breakHeld = false;
+    this.placeHeld = false;
+    this.dragging = false;
+    this.lookX = 0;
+    this.lookY = 0;
+    this.touchMoveX = 0;
+    this.touchMoveZ = 0;
+    this.touchSprint = false;
+    this.touchJump = false;
+    this.touchSneak = false;
+    this.touchBreak = false;
+    this.touchPlace = false;
+  }
+
+  /** 运行时诊断：当前仍处于按下状态的键盘按键 */
+  get pressedKeys(): string[] {
+    return [...this.keys];
   }
 
   /** 触摸视角增量 */

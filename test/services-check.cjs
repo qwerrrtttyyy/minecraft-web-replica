@@ -191,6 +191,10 @@ const fakeApi = () => ({
   world: { setBlock: () => true, getBlock: () => 0 },
   player: { teleport() {}, setFly() {}, break() {}, place() {} },
   save: { import() {}, setProvider() {} },
+  blocks: { register() {}, get: (id) => id },
+  tnt: { ignite() {} },
+  entities: { spawn() {}, list: () => [] },
+  survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
   registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
   on() { return () => {}; }, off() {}, emit() {},
 });
@@ -271,6 +275,78 @@ okAsync('插件 unload 后从注册表移除', async () => {
   ps.unload('demo:temp');
   assert.strictEqual(ps.get('demo:temp'), undefined);
 });
+
+// ---- v1.3.2 生命周期回归 ----
+okAsync('并发启用依赖插件不再误报循环依赖（child 先）', async () => {
+  const { ps } = makePluginService();
+  ps.register({
+    manifest: { id: 'demo:base' },
+    setup: async () => { await new Promise((r) => setTimeout(r, 20)); },
+  });
+  ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() {} });
+  await Promise.all([ps.enable('demo:child'), ps.enable('demo:base')]);
+  assert.strictEqual(ps.get('demo:base').state, 'enabled');
+  assert.strictEqual(ps.get('demo:child').state, 'enabled');
+});
+okAsync('并发启用依赖插件不再误报循环依赖（base 先）', async () => {
+  const { ps } = makePluginService();
+  ps.register({
+    manifest: { id: 'demo:base' },
+    setup: async () => { await new Promise((r) => setTimeout(r, 20)); },
+  });
+  ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() {} });
+  await Promise.all([ps.enable('demo:base'), ps.enable('demo:child')]);
+  assert.strictEqual(ps.get('demo:base').state, 'enabled');
+  assert.strictEqual(ps.get('demo:child').state, 'enabled');
+});
+okAsync('同一插件并发 enable 只初始化一次', async () => {
+  const { ps } = makePluginService();
+  let setups = 0;
+  ps.register({
+    manifest: { id: 'demo:once' },
+    setup: async () => { setups++; await new Promise((r) => setTimeout(r, 10)); },
+  });
+  await Promise.all([ps.enable('demo:once'), ps.enable('demo:once'), ps.enable('demo:once')]);
+  assert.strictEqual(setups, 1);
+  assert.strictEqual(ps.get('demo:once').state, 'enabled');
+});
+okAsync('初始化中 disable 不会回写 enabled 且会清理 teardown', async () => {
+  const { ps } = makePluginService();
+  let teardown = 0;
+  ps.register({
+    manifest: { id: 'demo:slow' },
+    setup: async (ctx) => {
+      await new Promise((r) => setTimeout(r, 20));
+      ctx.onDispose(() => teardown++);
+      return () => teardown++;
+    },
+  });
+  const p = ps.enable('demo:slow');
+  ps.disable('demo:slow');
+  await p;
+  assert.strictEqual(ps.get('demo:slow').state, 'disabled');
+  assert.strictEqual(teardown, 2);
+});
+okAsync('EventChannel.waitFor 在 dispose 时撤销订阅并 reject', async () => {
+  const ev = new EventService();
+  const ch = ev.scope('demo:wait');
+  const before = ev.stats().subscribers;
+  const p = ch.waitFor('game:start', 5000);
+  assert.strictEqual(ev.stats().subscribers, before + 1);
+  ch.dispose();
+  assert.strictEqual(ev.stats().subscribers, before);
+  await assert.rejects(p, /已关闭/);
+});
+okAsync('EventChannel.waitFor 收到事件后自动退订', async () => {
+  const ev = new EventService();
+  const ch = ev.scope('demo:wait-ok');
+  const before = ev.stats().subscribers;
+  const p = ch.waitFor('game:start', 5000);
+  ev.emit('game:start', { seed: 9 });
+  assert.strictEqual((await p).seed, 9);
+  assert.strictEqual(ev.stats().subscribers, before);
+  ch.dispose();
+});
 ok('权限裁剪：未声明 world:write 时 setBlock 抛错', () => {
   const base = fakeApi();
   const scoped = scopeAPI(base, []);
@@ -285,6 +361,20 @@ ok('权限裁剪：声明后写能力放行', () => {
   assert.strictEqual(scoped.world.setBlock(1, 2, 3, 4), true);
   assert.doesNotThrow(() => scoped.registerBlock({}));
   assert.doesNotThrow(() => scoped.emit('game:start', { seed: 1 }));
+});
+ok('权限裁剪：blocks 只读代理与 tnt / entities / survival 写入口', () => {
+  const base = fakeApi();
+  const scoped = scopeAPI(base, []);
+  // 旧 22 项直接暴露 BlockRegistry；register 必须被拦截，读能力保留
+  assert.throws(() => scoped.blocks.register({}), /缺少权限 blocks:register/);
+  assert.strictEqual(scoped.blocks.get(7), 7);
+  assert.throws(() => scoped.tnt.ignite(0, 0, 0), /缺少权限 world:write/);
+  assert.throws(() => scoped.entities.spawn('pig', 0, 0, 0), /缺少权限 world:write/);
+  assert.throws(() => scoped.survival.give('apple'), /缺少权限 player:write/);
+  assert.throws(() => scoped.survival.setMode('creative'), /缺少权限 player:write/);
+  // 声明权限后，blocks.register 仍必须走门面（真实环境会触发配置刷新）
+  const allowed = scopeAPI(fakeApi(), ['blocks:register']);
+  assert.doesNotThrow(() => allowed.blocks.register({}));
 });
 ok('插件 dispose 停用全部插件', () => {
   const { ps } = makePluginService();
@@ -320,6 +410,13 @@ ok('validateSave 拒绝各类坏档', () => {
     (d) => { d.mode = 'hardcore'; },
     (d) => { d.edits = 'oops'; },
     (d) => { d.edits = [['1,2,3', 'x']]; },
+    (d) => { d.edits = [['1,2', 3]]; },
+    (d) => { d.edits = [['1,2,3', 256]]; },
+    (d) => { d.edits = [['1.5,2,3', 3]]; },
+    (d) => { d.dayTime = 1.5; },
+    (d) => { d.survival.inventory = [['b:999', 1]]; },
+    (d) => { d.survival.inventory = [['i:apple', 0]]; },
+    (d) => { d.survival.inventory = [['x:apple', 1]]; },
     (d) => { delete d.player.pitch; },
     (d) => { d.player.fly = 'yes'; },
     (d) => { d.survival.inventory = [['i:apple']]; },

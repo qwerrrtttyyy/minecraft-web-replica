@@ -327,18 +327,51 @@ export class LightEngine {
   }
 
   /**
-   * 遮挡变强时沿列逐格回收天空光。
-   * 光井里相邻两格常常「等亮度」（都是 15），removeLight 的严格小于判据无法沿列推进，
-   * 因此这里沿列逐格调用 removeLight，既收掉列内梯度，也让每格各自回收水平依赖。
+   * 遮挡变强时沿列回收天空光。
+   *
+   * v1.3.2 性能修复：旧实现沿列逐格调用 removeLight，每一格都可能重新遍历同一条
+   * 水平依赖链（洞穴/悬崖上方放置方块时是平方级开销，实测可卡住数秒到一分钟）。
+   * 现在先把整列清零、把所有列格子作为「多源移除队列」一次性 BFS，受影响格只处理一次。
    */
   private removeSkyColumn(x: number, z: number, fromY: number) {
     const chunk = this.chunkAt(x >> 4, z >> 4);
     if (!chunk || !chunk.lit) return;
     const lx = x & 15;
     const lz = z & 15;
+    const q: number[] = [];
     for (let y = fromY; y >= 0; y--) {
-      if (chunk.sky[chunk.idx(lx, y, lz)] === 0) break;
-      this.removeLight(true, x, y, z);
+      const idx = chunk.idx(lx, y, lz);
+      const level = chunk.sky[idx];
+      if (level === 0) break;
+      chunk.sky[idx] = 0;
+      this.touched.add(chunkKey(chunk.cx, chunk.cz));
+      q.push(x, y, z, level);
+    }
+    let head = 0;
+    while (head < q.length) {
+      const px = q[head++];
+      const py = q[head++];
+      const pz = q[head++];
+      const pl = q[head++];
+      for (const [dx, dy, dz] of DIRS) {
+        const nx = px + dx;
+        const ny = py + dy;
+        const nz = pz + dz;
+        if (ny < 0 || ny >= H) continue;
+        const nc = this.chunkAt(nx >> 4, nz >> 4);
+        if (!nc || !nc.lit) continue;
+        const nidx = nc.idx(nx & 15, ny, nz & 15);
+        const nl = nc.sky[nidx];
+        if (nl === 0) continue;
+        if (nl < pl && !this.isEmitter(nc.data[nidx], nl)) {
+          nc.sky[nidx] = 0;
+          this.touched.add(chunkKey(nc.cx, nc.cz));
+          q.push(nx, ny, nz, nl);
+        } else {
+          // 独立光源或更亮的边界：稍后从这里重新扩散
+          this.skyQ.push(nx, ny, nz, nl);
+        }
+      }
     }
   }
 

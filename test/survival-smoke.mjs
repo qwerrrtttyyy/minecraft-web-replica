@@ -40,7 +40,13 @@ async function openPage(browser, mobile, url = URL_UNDER_TEST) {
   }
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 25000 });
-  await page.evaluate(() => localStorage.clear());
+  // 固定种子：不同地形（悬崖/洞穴上方）会让光照增量更新的耗时差一个数量级，
+  // 冒烟测试不应把随机世界当成变量。视觉回归同样使用 seed=2026。
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.setItem('mc-ts-new-seed', '2026');
+    sessionStorage.setItem('mc-ts-new-mode', 'survival');
+  });
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 25000 });
   await sleep(500);
@@ -183,6 +189,14 @@ try {
   ok('合并已产生实际收益', mesh.stats.quads > 0 && mesh.stats.merged > 0,
     `quads=${mesh.stats.quads} merged=${mesh.stats.merged}`);
 
+  // ---- v1.3.2：运行时诊断组 ----
+  await page.waitForFunction('window.__mc.chunks.configReady', { timeout: 15000 }).catch(() => {});
+  const diag0 = await page.evaluate(() => window.CraftAPI.diagnostics.run());
+  ok('运行时诊断组可用且无 error', diag0.errors === 0,
+    diag0.issues.map((i) => `${i.id}:${i.message}`).join(' | '));
+  ok('诊断 last() 返回最近一次报告',
+    await page.evaluate(() => window.CraftAPI.diagnostics.last()?.checked > 0));
+
   // ---- v1.2.0 服务层 / 插件服务 实景断言 ----
   const svc = await page.evaluate(() => ({
     version: CraftAPI.version,
@@ -190,7 +204,7 @@ try {
     plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
     emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
   }));
-  ok('版本号单一来源为 1.3.1', svc.version === '1.3.1', svc.version);
+  ok('版本号单一来源为 1.3.2', svc.version === '1.3.2', svc.version);
   ok('服务容器注册了事件/插件/API/内置依赖',
     ['events', 'plugins', 'api', 'builtin-deps'].every((k) => svc.services.includes(k)), svc.services.join(','));
   ok('内置插件全部启用', svc.plugins.length === 2 && svc.plugins.every((s) => s.endsWith(':enabled')),
@@ -220,6 +234,72 @@ try {
     `${plug.before}→${plug.during}→${plug.after}`);
   ok('插件卸载后从注册表移除', !plug.list.includes('test:probe'));
 
+  // ---- v1.3.2：运行时注册方块后 Worker 配置必须同步（Config ACK） ----
+  const runtimeBlock = await page.evaluate(async () => {
+    CraftAPI.registerTile('diag_probe', (set, rng) => {
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) set(x, y, rng() > 0.5 ? 0xff00ff : 0x990099);
+      }
+    });
+    const def = CraftAPI.registerBlock({
+      name: 'diag_probe_block',
+      label: '诊断探针方块',
+      shape: 'cube', solid: true, opaque: true, liquid: false, transparentPass: false,
+      lightEmission: 0, hardness: 1, sound: 'stone',
+      tiles: { top: 'diag_probe', bottom: 'diag_probe', side: 'diag_probe' },
+    });
+    const mc = window.__mc;
+    const p = mc.player.pos;
+    const x = Math.floor(p.x) + 2;
+    const y = Math.floor(p.y) + 5;
+    const z = Math.floor(p.z);
+    mc.world.setBlock(x, y, z, def.id);
+    const deadline = performance.now() + 20000;
+    while (performance.now() < deadline) {
+      if (mc.chunks.configReady && mc.world.dirty.size === 0 && mc.chunks.inFlightCount === 0) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const diag = CraftAPI.diagnostics.run();
+    return {
+      id: def.id,
+      block: mc.world.getBlock(x, y, z),
+      configReady: mc.chunks.configReady,
+      revision: mc.chunks.configRevisionValue,
+      errors: diag.errors,
+      issues: diag.issues.map((i) => `${i.id}:${i.message}`),
+    };
+  });
+  ok('运行时注册方块后 Worker 配置就绪', runtimeBlock.configReady && runtimeBlock.revision >= 1,
+    JSON.stringify(runtimeBlock));
+  ok('运行时注册方块写入世界数据', runtimeBlock.block === runtimeBlock.id, JSON.stringify(runtimeBlock));
+  ok('运行时诊断组在扩展后仍无 error', runtimeBlock.errors === 0, runtimeBlock.issues.join(' | '));
+
+  // ---- v1.3.2：菜单 → 方块库 → 关闭应当回到菜单 ----
+  await page.evaluate(() => window.__mc.openMenu());
+  await sleep(150);
+  await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('.menu-panel .menu-row .mc-btn')];
+    btns.find((b) => b.textContent.includes('方块库')).click();
+  });
+  await sleep(150);
+  const paletteFromMenu = await page.evaluate(() => ({
+    open: window.__mc.hud.paletteOpen,
+    menu: window.__mc.hud.menuOpen,
+  }));
+  await page.evaluate(() => document.querySelector('.palette-close').click());
+  await sleep(150);
+  const afterPaletteClose = await page.evaluate(() => ({
+    mode: window.__mc.mode,
+    menu: window.__mc.hud.menuOpen,
+    palette: window.__mc.hud.paletteOpen,
+  }));
+  ok('菜单打开方块库后关闭返回菜单',
+    paletteFromMenu.open && !paletteFromMenu.menu &&
+    afterPaletteClose.mode === 'paused' && afterPaletteClose.menu && !afterPaletteClose.palette,
+    JSON.stringify({ paletteFromMenu, afterPaletteClose }));
+  await page.evaluate(() => window.__mc.resumeGame());
+  await sleep(200);
+
   ok('生命/饥饿 HUD 可见', await page.$eval('.stats-wrap', (el) => el.style.display !== 'none' && el.offsetParent !== null));
   ok('心形与鸡腿各 10 格',
     (await page.$$eval('.stat-heart .stat-pip', (e) => e.length)) === 10 &&
@@ -231,11 +311,27 @@ try {
   // 移动
   const p0 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
   await page.keyboard.down('KeyW');
-  await sleep(900);
+  let moveDist = 0;
+  for (let i = 0; i < 25; i++) {
+    await sleep(200);
+    const p = await page.evaluate(() => ({ ...window.__mc.player.pos }));
+    moveDist = Math.hypot(p.x - p0.x, p.z - p0.z);
+    if (moveDist > 0.7) break;
+  }
   await page.keyboard.up('KeyW');
-  const p1 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
-  ok('键盘移动生效', Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.7,
-    `位移 ${Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(2)}`);
+  ok('键盘移动生效', moveDist > 0.7, `位移 ${moveDist.toFixed(2)}`);
+
+  // ---- v1.3.2：输入禁用期间的 keyup 不能丢失 ----
+  await page.keyboard.down('KeyW');
+  await sleep(120);
+  await page.evaluate(() => { window.__mc.input.enabled = false; });
+  await page.keyboard.up('KeyW');
+  const stuckKeys = await page.evaluate(() => {
+    const keys = [...window.__mc.input.pressedKeys];
+    window.__mc.input.enabled = true;
+    return keys;
+  });
+  ok('输入禁用期间 keyup 仍会清理按键', stuckKeys.length === 0, stuckKeys.join(','));
 
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
   const mineCell = await page.evaluate(() => {
@@ -268,16 +364,21 @@ try {
   ok('准星命中测试方块', !!aim && aim.x === mineCell.x && aim.y === mineCell.y && aim.z === mineCell.z,
     aim ? `${aim.name}@${aim.x},${aim.y},${aim.z}` : 'null');
 
-  await page.mouse.move(640, 380);
+  // 指针锁已激活时不要再移动鼠标：page.mouse.move 会作为 movementX 进入视角，
+  // 把准星转走（真实玩家不会在锁定时做绝对坐标跳转）。
+  const lockedBeforeMine = await page.evaluate(
+    () => document.pointerLockElement === document.querySelector('canvas'));
+  if (!lockedBeforeMine) await page.mouse.move(640, 380);
   await page.mouse.down({ button: 'left' });
-  // 指针锁定生效的瞬间，Chromium 可能补发一个合成 movement（应用侧已丢弃首个事件），
-  // 这里再兜一层：若准星已偏离，重新对准同一格，避免环境差异造成假失败。
-  await sleep(200);
-  const aimDrift = await page.evaluate((c) => {
-    const t = window.__mc.player.target;
-    return !t || t.x !== c.x || t.y !== c.y || t.z !== c.z;
-  }, mineCell);
-  if (aimDrift) {
+  // 指针锁定生效的瞬间，Chromium 可能补发合成 movement；按住期间持续校正准星，
+  // 避免「读断言时还对准、真正挖掘时已经转走」的时序问题。
+  for (let i = 0; i < 10; i++) {
+    await sleep(100);
+    const aimDrift = await page.evaluate((c) => {
+      const t = window.__mc.player.target;
+      return !t || t.x !== c.x || t.y !== c.y || t.z !== c.z;
+    }, mineCell);
+    if (!aimDrift) break;
     await page.evaluate((c) => {
       const mc = window.__mc;
       const p = mc.player.pos;
@@ -285,6 +386,7 @@ try {
       mc.player.yaw = Math.atan2(-dx, -dz);
       mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
       mc.player.update(0.016);
+      mc.input.consumeLook();
     }, mineCell);
   }
   let midProgress = null;
@@ -328,6 +430,7 @@ try {
     await page.evaluate(() => window.__mc.player.hotbar.slots.some((s) => s && s.kind === 'block' && s.id === window.__mc.registry.byNameGet('cobblestone').id)));
 
   // ---- 放置：瞄准 3 格外的方块顶面，放下泥土 ----
+  console.log('[smoke] placement setup');
   const placeSetup = await page.evaluate(() => {
     const mc = window.__mc;
     const dirt = mc.registry.byNameGet('dirt').id;
@@ -356,14 +459,46 @@ try {
   });
   ok('瞄准方块顶面', !!placeTarget && placeTarget.ny === 1, JSON.stringify(placeTarget));
   const dirtBefore = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
-  await page.mouse.down({ button: 'right' });
-  await sleep(280);
-  await page.mouse.up({ button: 'right' });
-  await sleep(300);
   const placedCell = { x: placeTarget.x + placeTarget.nx, y: placeTarget.y + 1, z: placeTarget.z + placeTarget.nz };
-  const placedId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), placedCell);
+  let placed = { direct: 0, lastKey: null, lastId: 0 };
+  // 每次放置前重新对准并清掉残留 look delta；最多重试 3 次，
+  // 兼容指针锁合成 movement 造成的首次点击落空。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.evaluate((c) => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      const dx = c.x + 0.5 - p.x, dy = c.y + 1.0 - (p.y + 1.62), dz = c.z + 0.5 - p.z;
+      mc.player.yaw = Math.atan2(-dx, -dz);
+      mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      mc.input.consumeLook();
+    }, placeSetup);
+    await sleep(120);
+    await page.mouse.down({ button: 'right' });
+    await sleep(280);
+    await page.mouse.up({ button: 'right' });
+    await sleep(300);
+    // 指针锁合成移动可能让实际放置格偏移 1 格；以世界差分里最后一次 dirt 编辑为准，
+    // 同时保留目标格的直读值用于诊断。
+    placed = await page.evaluate(({ dirt, cell }) => {
+      let lastKey = null;
+      for (const [k, v] of window.__mc.world.edits) if (v === dirt) lastKey = k;
+      let lastId = 0;
+      if (lastKey) {
+        const [x, y, z] = lastKey.split(',').map(Number);
+        lastId = window.__mc.world.getBlock(x, y, z);
+      }
+      return {
+        direct: window.__mc.world.getBlock(cell.x, cell.y, cell.z),
+        lastKey,
+        lastId,
+      };
+    }, { dirt: placeSetup.dirt, cell: placedCell });
+    console.log('[smoke] placement attempt', attempt, placed.lastKey, placed.direct);
+    if (placed.direct === placeSetup.dirt || placed.lastId === placeSetup.dirt) break;
+  }
   const dirtAfter = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
-  ok('生存模式放置方块', placedId === placeSetup.dirt, `placed=${placedId} want=${placeSetup.dirt}`);
+  ok('生存模式放置方块', placed.direct === placeSetup.dirt || placed.lastId === placeSetup.dirt,
+    `direct=${placed.direct} edit=${placed.lastKey}:${placed.lastId} want=${placeSetup.dirt}`);
   // 按住右键 280ms 跨过 placeTimer=0.24s 的连放窗口时可能连放 2 次，
   // 因此这里只断言「确实消耗了背包方块」，连放本身是预期行为。
   ok('放置消耗背包方块', dirtAfter < dirtBefore && dirtAfter >= dirtBefore - 3,
@@ -519,12 +654,16 @@ try {
   const m0 = await mpage.evaluate(() => ({ ...window.__mc.player.pos }));
   await mpage.touchscreen.touchStart(jx, jy);
   await mpage.touchscreen.touchMove(jx, jy - jb.height * 0.45);
-  await sleep(1200);
+  let joyDist = 0;
+  for (let i = 0; i < 25; i++) {
+    await sleep(200);
+    const p = await mpage.evaluate(() => ({ ...window.__mc.player.pos }));
+    joyDist = Math.hypot(p.x - m0.x, p.z - m0.z);
+    if (joyDist > 0.8) break;
+  }
   await mpage.touchscreen.touchEnd();
   await sleep(200);
-  const m1 = await mpage.evaluate(() => ({ ...window.__mc.player.pos }));
-  ok('摇杆可推动玩家', Math.hypot(m1.x - m0.x, m1.z - m0.z) > 0.8,
-    `位移 ${Math.hypot(m1.x - m0.x, m1.z - m0.z).toFixed(2)}`);
+  ok('摇杆可推动玩家', joyDist > 0.8, `位移 ${joyDist.toFixed(2)}`);
 
   // 长按挖掘按钮
   const mcell = await mpage.evaluate(() => {

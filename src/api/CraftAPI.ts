@@ -15,6 +15,7 @@ import type { ISaveProvider, SaveData } from '../save/save';
 import type { SoundEngine } from '../audio/sound';
 import type { SurvivalState } from '../player/survival';
 import type { GameMode } from '../core/types';
+import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
 
 /**
  * 公开扩展门面（挂载到 window.CraftAPI）。
@@ -53,6 +54,12 @@ export interface CraftAPI {
     disable(id: string): void;
     unload(id: string): void;
     list(): PluginRecord[];
+  };
+
+  /** v1.3.2：运行时诊断组（Worker 配置 / 区块收敛 / 输入 / 插件 / 存档） */
+  diagnostics: {
+    run(): DiagnosticReport;
+    last(): DiagnosticReport | null;
   };
 
   world: {
@@ -142,6 +149,10 @@ export interface APIDeps {
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
+  diagnostics: {
+    run(): DiagnosticReport;
+    last(): DiagnosticReport | null;
+  };
 }
 
 export function createCraftAPI(d: APIDeps): CraftAPI {
@@ -180,6 +191,10 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       disable: (id) => d.plugins.disable(id),
       unload: (id) => d.plugins.unload(id),
       list: () => d.plugins.list(),
+    },
+    diagnostics: {
+      run: () => d.diagnostics.run(),
+      last: () => d.diagnostics.last(),
     },
     world: {
       seed: () => d.world.generator.seed,

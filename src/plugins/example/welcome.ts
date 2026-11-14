@@ -36,7 +36,7 @@ export const welcomePlugin: PluginDefinition = {
       opaque: true,
       liquid: false,
       transparentPass: false,
-      lightEmission: 0.8,
+      lightEmission: 14, // 0~15，0.8 会被 Uint8Array 截断成 0（不发光）
       hardness: 1.2,
       sound: 'stone',
       tiles: { top: 'demo_glow', bottom: 'demo_glow', side: 'demo_glow' },

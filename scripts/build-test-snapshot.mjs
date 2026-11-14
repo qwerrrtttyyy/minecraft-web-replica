@@ -31,6 +31,8 @@ const entries = [
   'src/world/meshSource.ts',
   'src/world/snapshotSource.ts',
   'src/core/types.ts',
+  'src/core/version.ts',
+  'src/diagnostics/RuntimeDiagnostics.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');

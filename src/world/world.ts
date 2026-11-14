@@ -190,14 +190,21 @@ export class World {
     const lx = x - cx * CS;
     const lz = z - cz * CS;
     const start = clamp(terrain, 0, H - 1);
+    let lowest = -1;
     for (let y = start; y >= 0; y--) {
-      if (this.registry.isSolid(chunk.data[chunk.idx(lx, y, lz)])) return y;
+      if (this.registry.isSolid(chunk.data[chunk.idx(lx, y, lz)])) {
+        lowest = y;
+        break;
+      }
     }
-    // 地形被挖空时，向上找玩家建造的落脚点
-    for (let y = start + 1; y < H; y++) {
-      if (this.registry.isSolid(chunk.data[chunk.idx(lx, y, lz)])) return y;
+    // 只挖到基岩时，向下扫描必然停在 y=0；此时优先找玩家在上方搭建的落脚点。
+    // （v1.3.2 修复：旧实现无论结果如何都会在向下循环里 return，向上分支不可达）
+    if (lowest <= 0) {
+      for (let y = start + 1; y < H; y++) {
+        if (this.registry.isSolid(chunk.data[chunk.idx(lx, y, lz)])) return y;
+      }
     }
-    return terrain;
+    return lowest >= 0 ? lowest : terrain;
   }
 
   /**
