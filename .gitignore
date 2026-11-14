@@ -13,5 +13,8 @@ coverage/
 test/artifacts/
 test/.build/
 
+# 浏览器安装包（npx @puppeteer/browsers 会下到 ./chrome）
+chrome/
+
 # Build output
 dist/

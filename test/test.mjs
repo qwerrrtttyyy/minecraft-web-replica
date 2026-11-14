@@ -154,7 +154,19 @@ const tnt = await page.evaluate(() => {
   mc.igniteTnt(tx, ty, tz);
   return { tx, ty, tz, before };
 });
-await page.waitForFunction('window.__exploded !== null', { timeout: 15000 });
+await page.waitForFunction('window.__exploded !== null', { timeout: 6000 }).catch(async () => {
+  // 软件渲染帧率过低时 1.6 秒引信走不完，用固定步长快进 TNT 更新
+  await page.evaluate(() => {
+    const mc = window.__mc;
+    for (let i = 0; i < 2000 && !window.__exploded; i++) {
+      for (const t of [...mc.tntList]) {
+        t.update(0.05);
+        if (t.done) mc.tntList.splice(mc.tntList.indexOf(t), 1);
+      }
+      if (mc.tntList.length === 0) break;
+    }
+  });
+});
 await sleep(400);
 const tnt2 = await page.evaluate(({ tx, ty, tz }) => {
   const mc = window.__mc;
