@@ -19,6 +19,12 @@
 与**重复放置白扣背包**两处真实缺陷；`test:visual` 视觉回归纳入 `npm run verify` 与 CI，
 补上 MIT LICENSE。逐条改动见文末「v1.3.1 集成复核与修复记录」。
 
+**v1.3.2 运行时诊断与生命周期修复**：修复运行时注册方块后 Worker 配置不刷新、暂停/死亡期间
+按键卡住、菜单→方块库关闭后直接恢复游戏、入水后残留摔落伤害等缺陷；插件并发启用 / 初始化中
+停用与 `EventChannel.waitFor` 清理补齐代次机制。新增 **运行时诊断组**
+（`CraftAPI.diagnostics.run()`、F3 面板、每 10 秒自动采样）与 `test:diagnostics` 回归。
+逐条改动见文末「v1.3.2 运行时诊断与修复记录」。
+
 **v1.2.0 架构革新**：把**事件**与**插件**相关的 API 从 `main.ts` 中彻底独立为服务层
 （`ServiceContainer` + `EventService` + `PluginService`），`CraftAPI` 退化为薄门面，
 横切逻辑下沉为可启用/停用的一等公民插件；同时修复流式加载竞态与多项实测缺陷，
@@ -625,6 +631,50 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 | `test:smoke`（实景） | 88/88，含新增的同 id 放置回归 |
 | `test:visual` | 9/9 |
 | `build` | `dist/index.html` 659 kB（单文件） |
+
+---
+
+## v1.3.2 运行时诊断与修复记录
+
+### 修复
+
+| 缺陷 | 位置 | 说明 |
+|---|---|---|
+| 运行时注册方块后 Worker 配置不刷新 | `src/world/chunkManager.ts`、`mesh.worker.ts` | `invalidateConfig()` 旧实现把 config 置 null 后调用 `postConfig()`，后者因 config 为空直接返回；Worker 派发路径也不重建配置。现在立即重建、下发并重排全部网格，Worker 回传 `config-ack` 供诊断确认 |
+| Worker busy 计数泄漏 | `src/world/chunkManager.ts` | 区块卸载后旧结果晚到会跳过 `busy--`；现在每条回传先回退派发计数，再判断是否过期 |
+| 暂停 / 死亡期间按键卡住 | `src/input/input.ts`、`src/main.ts` | keyup 不再受 `enabled` 限制；暂停、死亡、返回标题、开始游戏时统一 `input.reset()` |
+| 菜单 → 方块库关闭后直接恢复游戏 | `src/ui/hud.ts`、`src/main.ts` | 菜单按钮改走 `onPaletteOpen('menu')`，`paletteReturn` 正确回到菜单 |
+| 入水 / 传送 / 切模式后残留摔落伤害 | `src/player/player.ts`、`src/main.ts` | 入水、`teleport()`、`spawn()`、切换飞行、模式切换均清零 `fallVy` |
+| 插件并发启用误报循环依赖 | `src/services/plugins/PluginService.ts` | 用 `pending` Promise 表复用进行中的初始化，循环检测只沿当前递归链 |
+| 初始化中 disable 后回写 enabled | `src/services/plugins/PluginService.ts` | 每次 enable/disable 递增 epoch；setup 返回后检测代次，只清理不回写 |
+| `EventChannel.waitFor` 不受作用域管理 | `src/services/events/EventChannel.ts` | 改为通道内 `once` + 定时器，dispose 时统一退订并 reject |
+| 权限可经 `blocks.register` 绕过 | `src/services/plugins/PluginService.ts` | 无 `blocks:register` 时暴露只读 Proxy；`tnt.ignite` / `entities.spawn` 归入 `world:write`，`survival` 写入口归入 `player:write` |
+| 异步存档回调吞掉新编辑 | `src/main.ts` | 增加 `dirtyVersion` + `saveSeq`，只有最新保存且期间无新编辑时才清脏 |
+| 天空光列回收平方级开销 | `src/world/light.ts` | 旧实现沿列逐格 `removeLight`，在洞穴/悬崖上方放置方块会重复遍历同一依赖链；改为整列清零 + 多源 BFS，每格只处理一次 |
+| 云层每 96 格跳变 / 长时间挂机漂出视野 | `src/gfx/sky.ts` | 云块以世界格为锚点、按 1/4 网格宽度重建，漂移与移动均无接缝 |
+| `surfaceHeight` 向上找平台分支不可达 | `src/world/world.ts` | 向下扫到基岩后再向上寻找玩家搭建的平台 |
+| 最顶层放置白扣物品 | `src/player/player.ts` | 消耗背包前先校验 `1 <= y < WORLD_HEIGHT` |
+| 存档校验过松 | `src/save/save.ts` | 校验 edits 坐标格式 / 方块 id、背包 key / 数量、dayTime 范围、快捷栏整数 id |
+| 示例插件发光值溢出 | `src/plugins/example/welcome.ts` | `0.8` → `14`（0~15） |
+
+### 运行时诊断组
+
+- `CraftAPI.diagnostics.run()` / `.last()`：返回 `{ ok, checked, errors, warnings, issues, durationMs }`。
+- F3 面板增加「运行时诊断」一行；`__mc.diagnostics` 可在控制台直接调用。
+- 每 10 秒自动采样一次，异常集合变化时才输出 `console.groupCollapsed` 分组（warn 不触发
+  浏览器 `pageerror` 断言，因此可在实景测试中安全开启）。
+- 检查项：版本一致性、玩家坐标 / 摔落值、playing 输入状态、暂停态残留按键、Worker 配置 ACK、
+  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、事件订阅、
+  生存数值与死亡状态一致、实体数量、存档脏标记老化。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `test:services` | 38 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限） |
+| `test:diagnostics` | 20 组断言（健康快照 + 各类异常注入） |
+| `test:smoke` | 95/95；新增诊断组、运行时注册方块 Config ACK、菜单方块库返回、keyup 清理断言；固定 seed=2026 + 条件轮询，消除地形随机性导致的假失败 |
+| `test:visual` | 9/9 |
 
 ---
 

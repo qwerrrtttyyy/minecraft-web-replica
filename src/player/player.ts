@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, lerp, SEA_LEVEL, type BlockId, type System } from '../core/types';
+import { clamp, lerp, SEA_LEVEL, WORLD_HEIGHT, type BlockId, type System } from '../core/types';
 import type { EventService } from '../services/events';
 import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import type { World, RayHit } from '../world/world';
@@ -161,6 +161,7 @@ export class Player implements System, PhysicsBody {
     const place = (x: number, h: number, z: number) => {
       this.pos.set(x + 0.5, h + 1.02, z + 0.5);
       this.vel.set(0, 0, 0);
+      this.resetFallDistance();
       this.survival.spawn = { x: x + 0.5, y: h + 1.02, z: z + 0.5 };
       this.events.emit('player:spawn', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
     };
@@ -212,6 +213,8 @@ export class Player implements System, PhysicsBody {
     if (this.survival.isSurvival) return false;
     this.fly = !this.fly;
     if (this.fly) this.vel.y = 0;
+    // 飞行状态下落的竖直速度不计入摔落伤害
+    this.fallVy = 0;
     this.sound.click(this.fly ? 880 : 520);
     return true;
   }
@@ -224,6 +227,16 @@ export class Player implements System, PhysicsBody {
   teleport(x: number, y: number, z: number) {
     this.pos.set(x, y, z);
     this.vel.set(0, 0, 0);
+    this.resetFallDistance();
+  }
+
+  /** 传送 / 入水 / 切模式后必须清零，否则旧下落速度会在下一次落地时结算伤害 */
+  resetFallDistance() {
+    this.fallVy = 0;
+  }
+
+  get fallDistance(): number {
+    return this.fallVy;
   }
 
   // ---------- 主循环 ----------
@@ -245,6 +258,8 @@ export class Player implements System, PhysicsBody {
       Math.floor(this.pos.x), Math.floor(this.pos.y + EYE), Math.floor(this.pos.z)));
     this.inWater = feetBlock.liquid;
     this.eyeInWater = eyeBlock.liquid;
+    // 入水即视为安全落地：否则高台跳水后游上岸，旧 fallVy 会在岸边结算伤害
+    if (this.inWater) this.fallVy = 0;
 
     // 期望方向
     const s = Math.sin(this.yaw);
@@ -529,6 +544,8 @@ export class Player implements System, PhysicsBody {
     const x = hit.x + hit.nx;
     const y = hit.y + hit.ny;
     const z = hit.z + hit.nz;
+    // 先校验放置边界，避免 setBlock 返回 false 时背包已经被扣掉
+    if (y < 1 || y >= WORLD_HEIGHT) return;
     const existing = this.registry.get(this.world.getBlock(x, y, z));
     if (existing.solid) return;
     if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return;

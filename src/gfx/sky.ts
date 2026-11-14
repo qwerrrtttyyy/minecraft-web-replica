@@ -26,8 +26,13 @@ export class Sky implements System {
   private stars: THREE.Points;
   private starMat: THREE.PointsMaterial;
   private clouds: THREE.Mesh;
-  private cloudBaseX = 0;
-  private cloudBaseZ = 0;
+  /** 云块网格以世界格为锚点，玩家移动 / 云漂移过大时整体重建（接缝按世界格对齐） */
+  private cloudCell = 12;
+  private cloudSize = 48;
+  private cloudOriginX = 0;
+  private cloudOriginZ = 0;
+  private cloudDrift = 0;
+  private readonly cloudNoise = new Noise(777);
   readonly sunLight: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   /** 当前太阳颜色（日出/日落偏暖），区块 shader 用它给天空光染色 */
@@ -157,8 +162,15 @@ export class Sky implements System {
     this.group.add(this.stars);
 
     // 体素云
-    this.clouds = this.buildClouds(isMobile);
+    this.cloudSize = isMobile ? 36 : 48;
+    this.clouds = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+      // depthWrite: 云块自身的前脸遮住后方的侧面/顶面，消除“华夫格”状多层叠加，
+      // 云因此读成有厚度的体素板；云位于世界最高层之上，不影响任何地形通道的深度关系
+      color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.82, fog: false, depthWrite: true,
+    }));
+    this.clouds.renderOrder = -5;
     this.group.add(this.clouds);
+    this.rebuildClouds(0, 0);
     scene.add(this.group);
 
     // 雾
@@ -171,16 +183,25 @@ export class Sky implements System {
     scene.add(this.sunLight, this.sunLight.target, this.hemi);
   }
 
-  private buildClouds(isMobile: boolean): THREE.Mesh {
-    const cell = 12;
-    const n = isMobile ? 36 : 48;
-    const noise = new Noise(777);
+  /**
+   * 重建云层几何。格坐标为世界坐标（gx, gz），因此玩家移动 / 云漂移触发重建时，
+   * 重叠区域的云块完全一致，不会出现旧实现每 96 格整体跳变的问题；
+   * 同时 cloudDrift 只改变位置、不改变格划分，长时间挂机云也不会漂出可视范围。
+   */
+  private rebuildClouds(centerX: number, centerZ: number): void {
+    const cell = this.cloudCell;
+    const n = this.cloudSize;
+    const originX = Math.round(centerX / cell) * cell;
+    const originZ = Math.round(centerZ / cell) * cell;
+    this.cloudOriginX = originX;
+    this.cloudOriginZ = originZ;
+    const gx0 = originX / cell - n / 2;
+    const gz0 = originZ / cell - n / 2;
     const pos: number[] = [];
     const col: number[] = [];
     const idx: number[] = [];
     const y = 80;
     const thick = 3.2;
-    const half = (n * cell) / 2;
     // 逐面烘焙明暗（顶亮 / 底暗 / 侧面区分 x、z 轴），让方块云读成有厚度的体素而非白色纸片
     const shade = [1, 0.58, 0.72, 0.86, 0.66, 0.8];
     const addBox = (x0: number, z0: number) => {
@@ -203,10 +224,12 @@ export class Sky implements System {
         idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
       }
     };
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        const v = noise.fbm2(i / 7.5, j / 7.5, 3);
-        if (v > 0.22) addBox(i * cell - half, j * cell - half);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const gx = gx0 + i;
+        const gz = gz0 + j;
+        const v = this.cloudNoise.fbm2(gx / 7.5, gz / 7.5, 3);
+        if (v > 0.22) addBox(gx * cell - originX, gz * cell - originZ);
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -214,14 +237,8 @@ export class Sky implements System {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     geo.setIndex(idx);
     geo.computeBoundingSphere();
-    const mat = new THREE.MeshBasicMaterial({
-      // depthWrite: 云块自身的前脸遮住后方的侧面/顶面，消除“华夫格”状多层叠加，
-      // 云因此读成有厚度的体素板；云位于世界最高层之上，不影响任何地形通道的深度关系
-      color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.82, fog: false, depthWrite: true,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.renderOrder = -5;
-    return mesh;
+    this.clouds.geometry.dispose();
+    this.clouds.geometry = geo;
   }
 
   /** 由外部（main 的 ui 系统）每帧写入：相机没入水中时切换水下大气表现 */
@@ -280,14 +297,18 @@ export class Sky implements System {
     this.starMat.opacity = (1 - this.daylight) * 0.9;
     this.stars.rotation.y = elapsed * 0.004;
 
-    // 云漂移（围绕玩家缓慢平移）
+    // 云漂移：以世界格为锚点重建，移动/漂移超过 1/4 网格宽度才重建，接缝连续
     const cam = this.camera.position;
-    if (Math.abs(cam.x - this.cloudBaseX) > 96) this.cloudBaseX = cam.x;
-    if (Math.abs(cam.z - this.cloudBaseZ) > 96) this.cloudBaseZ = cam.z;
+    this.cloudDrift = elapsed * 1.3;
+    const patchRadius = (this.cloudSize * this.cloudCell) / 4;
+    if (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
+        Math.abs(cam.z - this.cloudOriginZ) > patchRadius) {
+      this.rebuildClouds(cam.x - this.cloudDrift, cam.z);
+    }
     this.clouds.position.set(
-      this.cloudBaseX - this.group.position.x + elapsed * 1.3,
+      this.cloudOriginX - this.group.position.x + this.cloudDrift,
       -this.group.position.y,
-      this.cloudBaseZ - this.group.position.z,
+      this.cloudOriginZ - this.group.position.z,
     );
     const cloudMat = this.clouds.material as THREE.MeshBasicMaterial;
     // 日落/日出时把云染向霞光色，夜里压暗；水下淡出以免穿帮

@@ -12,6 +12,11 @@ type Handler<T> = (payload: T) => void;
  */
 export class EventChannel {
   private readonly offs: (() => void)[] = [];
+  private readonly waits = new Set<{
+    timer: ReturnType<typeof setTimeout>;
+    off: () => void;
+    reject: (e: Error) => void;
+  }>();
   private disposed = false;
 
   constructor(private readonly bus: EventService, readonly namespace: string) {
@@ -43,13 +48,43 @@ export class EventChannel {
     this.bus.emit(type, payload);
   }
 
+  /**
+   * v1.3.2：通道内的 waitFor 必须走本通道订阅，才能在 dispose 时一起撤销。
+   * 旧实现直接调用 bus.waitFor()，插件停用后订阅与 Promise 都留在总线上。
+   */
   waitFor<K extends keyof GameEvents>(type: K, timeoutMs = 5000): Promise<GameEvents[K]> {
-    return this.bus.waitFor(type, timeoutMs);
+    if (this.disposed) {
+      return Promise.reject(new Error(`[events] 通道 ${this.namespace} 已关闭`));
+    }
+    return new Promise<GameEvents[K]>((resolve, reject) => {
+      const entry = {
+        timer: undefined as unknown as ReturnType<typeof setTimeout>,
+        off: () => {},
+        reject,
+      };
+      entry.timer = setTimeout(() => {
+        this.waits.delete(entry);
+        entry.off();
+        reject(new Error(`[events] 等待 ${String(type)} 超时（${timeoutMs}ms）`));
+      }, timeoutMs);
+      entry.off = this.once(type, (p) => {
+        clearTimeout(entry.timer);
+        this.waits.delete(entry);
+        resolve(p);
+      });
+      this.waits.add(entry);
+    });
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const w of this.waits) {
+      clearTimeout(w.timer);
+      w.off();
+      w.reject(new Error(`[events] 通道 ${this.namespace} 已关闭`));
+    }
+    this.waits.clear();
     for (const off of this.offs.splice(0)) off();
     this.bus.release(this);
   }

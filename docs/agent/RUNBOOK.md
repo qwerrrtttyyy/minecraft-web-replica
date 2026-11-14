@@ -2,35 +2,48 @@
 
 ## 开发流程
 
-1. 读取 `docs/PROJECT-EXPERIENCE.md` 了解架构与硬规则
-2. 查看 `docs/agent/tasks/` 待办任务卡（YAML 格式）
-3. 本地 `pnpm test && pnpm typecheck` 回归验证
-4. 提交前运行 `python3 docs/agent/validate.py` 校验任务卡契约
-5. 提交 `port/trae-fixes`，触发 CI 验证
+1. 读 [PROJECT-EXPERIENCE.md](../PROJECT-EXPERIENCE.md) 了解硬规则与常见坑
+2. 改代码前先跑 `npm run typecheck`，确认基线干净
+3. 改完后按顺序跑回归（见下），提交前必须 `npm run verify` 全绿
+4. 提交信息说明「修了什么 / 为什么」，不要只写「update」
 
-## 任务卡格式
+## 基线命令
 
-```yaml
-id: TASK-ID
-title: 任务标题
-description: 详细描述
-touch:
-  allow: [src/**/*.ts, test/**/*.ts]  # 允许修改的文件
-  deny: []                               # 禁止修改的文件
-inputs: []
-outputs: []  # 必须满足的接口契约
+```bash
+npm ci
+npm run typecheck
+npm run test:snapshot
+npm run test:logic
+npm run test:light
+npm run test:mesher
+npm run test:services
+npm run test:diagnostics
+npm run verify          # 含 build + 浏览器实景 + 视觉回归
 ```
 
-## 阶段 3 光照实践经验
+`test:snapshot` 必须先于 `test:logic / test:light / test:mesher / test:services /
+test:diagnostics`，因为后四者 require 生成出来的 CJS 快照。
 
-- `LightEngine` 用 BFS 队列管理天空光 / 方块光传播
-- `Chunk.sky` / `Chunk.block` 按行存 0~15，`lit=true` 表示已初始化
-- `buildMeshSnapshot` 必须连带拷贝 `sky` / `block` 到 Worker 侧
-- Greedy mask key 包含光照档位：`id | ao<<8 | sky<<10 | block<<14`（`- 1` 后解码），光照不同不合并
-- Shader `aLight = [sky/15, block/15]`，`lit = max(sky*daylight, block)`，基础 0.07+0.93*lit
+浏览器实景在 Linux 无 GPU 环境下：
 
-## 常见问题排查
+```bash
+xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run test:smoke
+```
 
-- **CI 浏览器启动超时**：基础设施抖动，重跑或检查 Chromium 字体/沙盒配置
-- **Worker 消息未到达**：检查 `transferList` 是否包含正确的 `ArrayBuffer`
-- **旧存档方块错位**：方块 ID 必须保持 append-only，id 1..n 不变
+## 运行时诊断
+
+- `CraftAPI.diagnostics.run()`：手动执行全部检查，返回结构化报告
+- `CraftAPI.diagnostics.last()`：读取最近一次自动采样结果
+- F3 面板：查看「运行时诊断」行
+- 自动采样每 10 秒一次，仅当异常集合变化时输出 `console.groupCollapsed`
+
+新增检查项时，同时更新 `test/diagnostics-check.cjs`，并在注入异常的快照上断言对应
+`issue.id`，确保检查项本身不会静默失效。
+
+## 常见问题
+
+- **测试快照过期**：重新 `npm run test:snapshot`；不要提交 `test/logic` / `test/terrain-logic`
+- **Worker 配置不生效**：确认 `invalidateConfig()` 已重建并下发，且 `chunks.configReady`
+  为 true；否则检查 `config-ack` 是否被 `drainResults` 消费
+- **CI 浏览器启动超时**：基础设施抖动时重跑；持续失败检查 Chromium / Xvfb / Mesa 安装
+- **旧存档方块错位**：方块 id 必须保持 append-only，禁止在中间插入内置方块

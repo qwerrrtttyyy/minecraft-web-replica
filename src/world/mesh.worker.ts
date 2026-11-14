@@ -22,6 +22,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const msg = e.data;
   if (msg.type === 'config') {
     config = msg.config;
+    // 回执让主线程能确认每个 Worker 都拿到了当前 revision（运行时诊断用）
+    post({ type: 'config-ack', wid: msg.wid, revision: msg.config.revision });
     return;
   }
   if (msg.type === 'mesh') {

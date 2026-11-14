@@ -24,6 +24,10 @@ import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
 import type { BuiltinDeps } from './plugins/builtin/deps';
 import { builtinPlugins } from './plugins/builtin';
+import {
+  DiagnosticsRunner,
+  type DiagnosticSnapshot, type DiagnosticReport,
+} from './diagnostics/RuntimeDiagnostics';
 
 /**
  * 组装根（composition root）。
@@ -87,7 +91,7 @@ async function boot() {
     if (Array.isArray(saved.hotbar) && saved.hotbar.length === 9) {
       hotbar.slots = saved.hotbar.map((s) => {
         if (!s || s.kind === undefined) return null;
-        if (s.kind === 'block' && typeof s.id === 'number' && registry.get(s.id).id === s.id) {
+        if (s.kind === 'block' && typeof s.id === 'number' && s.id > 0 && registry.get(s.id).id === s.id) {
           return { kind: 'block' as const, id: s.id };
         }
         if (s.kind === 'item' && typeof s.id === 'string' && ITEMS[s.id]) {
@@ -156,6 +160,15 @@ async function boot() {
   let mode: Mode = 'title';
   let debugOn = false;
   let dirtySave = false;
+  /** 脏标记版本：保存期间产生的编辑不能被旧保存的回调清掉（异步 provider 竞态） */
+  let dirtyVersion = 0;
+  /** 保存序号：只允许最新一次保存清脏标记 */
+  let saveSeq = 0;
+  let lastSaveOkAt = 0;
+  const markDirty = () => {
+    dirtySave = true;
+    dirtyVersion++;
+  };
   let saveAcc = 0;
   let debugAcc = 0;
   let wasUnderwater = false;
@@ -187,14 +200,19 @@ async function boot() {
   });
   const saveNow = () => {
     const data = collectSave();
+    const seq = ++saveSeq;
+    const version = dirtyVersion;
     provider.save(data)
       .then((bytes) => {
-        dirtySave = false;
+        // 仅当没有更新的保存、且快照之后没有新编辑时才清脏；
+        // 否则异步 provider 的旧回调会吞掉新编辑的脏标记。
+        if (seq === saveSeq && version === dirtyVersion) dirtySave = false;
+        lastSaveOkAt = Date.now();
         events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : JSON.stringify(data).length });
       })
       .catch((e) => {
-        // 保存失败时保留 dirty 标记，8 秒后重试
-        dirtySave = true;
+        // 保存失败时保留 dirty 标记，8 秒后重试；旧保存的失败不覆盖新保存结果
+        if (seq === saveSeq) dirtySave = true;
         console.warn('存档失败', e);
       });
     saveAcc = 0;
@@ -207,7 +225,7 @@ async function boot() {
     world.setBlock(x, y, z, AIR);
     if (playSound) sound.fuse();
     events.emit('block:ignite', { x, y, z });
-    dirtySave = true;
+    markDirty();
   };
   events.on('block:ignite', ({ x, y, z }) => {
     tntList.push(new PrimedTnt(world, atlas, registry, engine.scene, x, y, z, explode));
@@ -256,7 +274,7 @@ async function boot() {
       }
     }
     events.emit('explosion', { center: { x: cx, y: cy, z: cz }, radius: r });
-    dirtySave = true;
+    markDirty();
   }
 
   // ---- HUD ----
@@ -265,7 +283,7 @@ async function boot() {
     hotbar.index = ((i % 9) + 9) % 9;
     events.emit('hotbar:select', { index: hotbar.index, block: stackBlock(hotbar.slots[hotbar.index]) });
     sound.click(700);
-    dirtySave = true;
+    markDirty();
   };
 
   const hud = new HUD({
@@ -294,14 +312,14 @@ async function boot() {
     onSlot: (i) => { if (mode === 'playing') selectSlot(i); },
     onAssign: (id) => {
       events.emit('hotbar:select', { index: hotbar.index, block: id });
-      dirtySave = true;
+      markDirty();
     },
     onSoundToggle: () => {
       settings.sound = !settings.sound;
       sound.setEnabled(settings.sound);
       hud.setSound(settings.sound);
       if (settings.sound) sound.click(880);
-      dirtySave = true;
+      markDirty();
     },
     onCamera: () => { if (mode === 'playing') cycleCamera(); },
     onFly: () => {
@@ -317,9 +335,10 @@ async function boot() {
       if (mode === 'playing') openMenu();
       else if (mode === 'paused') resumeGame();
     },
-    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); dirtySave = true; },
-    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; dirtySave = true; },
-    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); dirtySave = true; },
+    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); markDirty(); },
+    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; markDirty(); },
+    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); markDirty(); },
+    onPaletteOpen: (from) => openPalette(from),
     onPaletteClose: () => closePalette(),
     onRespawn: () => respawn(),
     onModeToggle: () => toggleGameMode(),
@@ -378,12 +397,14 @@ async function boot() {
         y++;
       }
       player.vel.set(0, 0, 0);
+      player.resetFallDistance();
     }
     hud.setLoading(null);
     hud.setPlaying(true);
     touch?.setVisible(true);
     mode = 'playing';
     input.enabled = true;
+    input.reset();
     // 丢弃加载期间累积的视角增量，避免进入世界瞬间镜头跳动
     input.consumeLook();
     hud.setFlyActive(player.fly);
@@ -398,7 +419,7 @@ async function boot() {
       hud.toast(isMobile ? '左侧摇杆移动 · 右侧拖动视角 · 轻点破坏' : 'WASD 移动 · 左键破坏 · 右键放置 · E 打开方块库');
     }
     window.setTimeout(() => hud.fadeHint(), 12000);
-    dirtySave = true;
+    markDirty();
   }
 
   async function newWorld(s?: number, m?: GameMode) {
@@ -415,6 +436,7 @@ async function boot() {
     if (mode !== 'playing') return;
     mode = 'paused';
     input.enabled = false;
+    input.reset();
     input.exitLock();
     hud.syncSettings(settings.renderDistance, settings.sensitivity, settings.fov);
     hud.setMenuMode(survival.mode, survival.health, survival.hunger);
@@ -439,6 +461,7 @@ async function boot() {
     if (mode === 'playing') {
       mode = 'paused';
       input.enabled = false;
+      input.reset();
       input.exitLock();
       // 方块库与菜单一样属于暂停态，必须发事件（v1.1.2 遗漏，插件依赖此钩子）
       events.emit('game:pause', { paused: true });
@@ -458,6 +481,7 @@ async function boot() {
     saved = collectSave();
     mode = 'title';
     input.enabled = false;
+    input.reset();
     input.exitLock();
     hud.setPlaying(false);
     hud.hideDeath();
@@ -491,7 +515,7 @@ async function boot() {
     input.enabled = true;
     input.requestLock();
     chunks.setCenter(player.pos.x, player.pos.z);
-    dirtySave = true;
+    markDirty();
   }
 
   /** 模式切换后按背包重建快捷栏，避免创造模式的无限方块格变成 count=0 的幽灵格 */
@@ -516,6 +540,8 @@ async function boot() {
     survival.mode = m;
     gameMode = m;
     player.fly = false;
+    // 创造模式飞行下降积累的 fallVy 不能带到生存模式
+    player.resetFallDistance();
     if (m === 'creative') {
       if (survival.health <= 0) survival.health = MAX_HEALTH;
     } else {
@@ -532,7 +558,7 @@ async function boot() {
     hud.setSurvival(survival);
     hud.updateHotbar();
     syncUseMode();
-    dirtySave = true;
+    markDirty();
   }
 
   /** 生存 / 创造切换 */
@@ -549,18 +575,83 @@ async function boot() {
     touch?.setUseMode(!s ? 'none' : s.kind === 'item' ? 'item' : 'block');
   }
 
+  // ---- 运行时诊断组：只读快照 / API / F3 面板共用同一套检查 ----
+  const collectDiagnostics = (): DiagnosticSnapshot => {
+    const pcx = Math.floor(player.pos.x / 16);
+    const pcz = Math.floor(player.pos.z / 16);
+    const margin = chunks.renderDistance + 1;
+    let generated = 0;
+    let unlitChunks = 0;
+    let missingMeshes = 0;
+    for (const chunk of world.chunks.values()) {
+      if (!chunk.generated) continue;
+      generated++;
+      if (!chunk.lit) unlitChunks++;
+      if (Math.abs(chunk.cx - pcx) > margin || Math.abs(chunk.cz - pcz) > margin) continue;
+      if (!chunks.hasMesh(chunk.cx, chunk.cz) && !chunks.hasInFlight(chunk.cx, chunk.cz)) {
+        missingMeshes++;
+      }
+    }
+    const ev = events.stats();
+    return {
+      version: VERSION,
+      mode,
+      gameMode: survival.mode,
+      player: {
+        x: player.pos.x, y: player.pos.y, z: player.pos.z,
+        fallDistance: player.fallDistance,
+      },
+      input: { enabled: input.enabled, pressedKeys: input.pressedKeys },
+      chunks: {
+        loading: chunks.isLoading,
+        mesherMode: chunks.mesherMode,
+        workerCount: chunks.workerCount,
+        renderDistance: chunks.renderDistance,
+        generated,
+        meshed: chunks.meshCount,
+        dirty: world.dirty.size,
+        inFlight: chunks.inFlightCount,
+        configReady: chunks.configReady,
+        configRevision: chunks.configRevisionValue,
+        missingMeshes,
+        unlitChunks,
+      },
+      plugins: plugins.list().map((p) => ({ id: p.manifest.id, state: p.state })),
+      events: {
+        subscribers: ev.subscribers,
+        channels: ev.channels.length,
+        emitted: Object.values(ev.emitted).reduce((a, b) => a + b, 0),
+      },
+      survival: {
+        health: survival.health, hunger: survival.hunger,
+        breath: survival.breath, dead: survival.dead,
+      },
+      entities: entities.entities.length,
+      save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
+    };
+  };
+  const diagnostics = new DiagnosticsRunner(collectDiagnostics);
+  const diagnosticsApi: {
+    run(): DiagnosticReport;
+    last(): DiagnosticReport | null;
+  } = {
+    run: () => diagnostics.run(),
+    last: () => diagnostics.last,
+  };
+
   // ---- 服务装配：横切逻辑下沉，boot() 不再持有事件接线 ----
   const builtinDeps: BuiltinDeps = {
     hud, sound, player, survival, registry, hotbar,
     buzz,
     parseKey,
     syncUseMode,
-    markDirty: () => { dirtySave = true; },
+    markDirty,
     saveNow,
     onDeath: () => {
       // 状态机属于组装根，UI / 音效 / 触感由插件负责
       mode = 'dead';
       input.enabled = false;
+      input.reset();
       input.exitLock();
       touch?.setVisible(false);
       saveNow();
@@ -593,6 +684,7 @@ async function boot() {
     setMode: (m) => applyMode(m),
     respawn,
     parseStack: parseKey,
+    diagnostics: diagnosticsApi,
   });
   container.provide(TOKENS.CraftAPI, api);
   (window as unknown as Record<string, unknown>).CraftAPI = api;
@@ -673,6 +765,10 @@ async function boot() {
     const facing = ['北 (-Z)', '西 (-X)', '南 (+Z)', '东 (+X)'][Math.round(yawDeg / 90) % 4];
     const t = player.target;
     const targetStr = t ? `${registry.get(t.block).label} (${t.x}, ${t.y}, ${t.z})` : '无';
+    const diag = diagnostics.run();
+    const diagStr = diag.ok
+      ? `正常（${diag.checked} 项）`
+      : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
     return [
       `Minecraft TS ${VERSION} · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
@@ -680,6 +776,7 @@ async function boot() {
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
+      `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString}  种子: ${seed}`,
       survival.isSurvival
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  背包 ${survival.inventory.size} 种`
@@ -813,6 +910,8 @@ async function boot() {
   hud.setLoading(null);
   hud.showTitle(true);
   engine.start();
+  // 运行时诊断组：每 10 秒采样一次，异常集合变化时才输出（避免刷屏）
+  diagnostics.start();
 
   addEventListener('beforeunload', () => {
     if (!suppressUnloadSave && (mode === 'playing' || mode === 'paused')) saveNow();
@@ -827,6 +926,7 @@ async function boot() {
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, tntList, survival,
     services: container, events, plugins, api,
+    diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
   };
 }

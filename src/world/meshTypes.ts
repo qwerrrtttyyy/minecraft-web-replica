@@ -160,7 +160,7 @@ export interface MeshRequest {
 }
 
 export type WorkerRequest =
-  | { type: 'config'; config: MeshConfig }
+  | { type: 'config'; config: MeshConfig; wid: number }
   | MeshRequest;
 
 export interface MeshResult {
@@ -177,4 +177,5 @@ export interface MeshResult {
 
 export type WorkerResponse =
   | MeshResult
+  | { type: 'config-ack'; wid: number; revision: number }
   | { type: 'error'; wid: number; cx: number; cz: number; generation: number; message: string };
