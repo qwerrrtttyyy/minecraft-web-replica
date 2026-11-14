@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import * as THREE from 'three';
 import { Engine } from './core/engine';
-import { VERSION } from './core/version';
+import { VERSION, RELEASE } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
@@ -772,7 +772,7 @@ async function boot() {
       ? `正常（${diag.checked} 项）`
       : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
     return [
-      `Minecraft TS ${VERSION} · three.js r170`,
+      `Minecraft TS ${RELEASE} (${VERSION}) · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,

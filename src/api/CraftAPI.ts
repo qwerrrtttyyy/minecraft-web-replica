@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { EventService, GameEvents, EventChannel, EventStats, AnyEventHandler } from '../services/events';
 import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
-import { VERSION } from '../core/version';
+import { VERSION, RELEASE } from '../core/version';
 import type { Engine } from '../core/engine';
 import type { BlockRegistry, BlockInput, BlockDefinition } from '../world/blocks';
 import type { World } from '../world/world';
@@ -26,6 +26,8 @@ import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
  */
 export interface CraftAPI {
   version: string;
+  /** 正式里程碑版本（vN），与迭代版本 version 相互独立 */
+  release: string;
   /** 注册新方块（tiles 必须是已注册纹理名） */
   registerBlock(input: BlockInput): BlockDefinition;
   /** 注册自定义 16×16 像素纹理 */
@@ -158,6 +160,7 @@ export interface APIDeps {
 export function createCraftAPI(d: APIDeps): CraftAPI {
   return {
     version: VERSION,
+    release: RELEASE,
     registerBlock(input) {
       for (const t of [input.tiles.top, input.tiles.bottom, input.tiles.side]) {
         if (!d.atlas.hasTile(t)) throw new Error(`纹理未注册: ${t}（先用 registerTile 注册）`);

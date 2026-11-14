@@ -124,6 +124,9 @@ try {
   await page.evaluate(() => { window.__mc.sky.dayTime = 0.74; });
   await sleep(900);
   await page.screenshot({ path: path.join(OUT, 'visual-sunset.png') });
+  const duskSky = await page.evaluate(() => window.__mc.sky.visualState());
+  ok('黄昏地平线大气放大生效', duskSky.sunScale > 1.2 && duskSky.moonScale > 1.1,
+    `sun=${duskSky.sunScale.toFixed(2)} moon=${duskSky.moonScale.toFixed(2)}`);
 
   // ---------- 夜 ----------
   await page.evaluate(() => { window.__mc.sky.dayTime = 0.9; });
@@ -133,6 +136,15 @@ try {
   ok('夜间画面明显变暗', night.lum < day.lum * 0.72,
     `day=${day.lum.toFixed(1)} night=${night.lum.toFixed(1)}`);
   ok('夜间仍有可见细节', night.colors > 12, `distinct=${night.colors}`);
+  const skyNight = await page.evaluate(() => window.__mc.sky.visualState());
+  ok('月相为 8 相且相位有效', skyNight.moonPhases === 8 && skyNight.moonPhase >= 0 && skyNight.moonPhase < 8,
+    `phases=${skyNight.moonPhases} current=${skyNight.moonPhase}`);
+  ok('夜间双层星点各自可见', skyNight.starLayers === 2 &&
+    skyNight.starOpacity.every((v) => v > 0.3 && v <= 0.95),
+    `opacity=${skyNight.starOpacity.map((v) => v.toFixed(3)).join('/')}`);
+  ok('雾区间有效且地平线过渡早于远裁剪',
+    skyNight.fogNear > 0 && skyNight.fogNear < skyNight.fogFar,
+    `fog=${skyNight.fogNear.toFixed(1)}..${skyNight.fogFar.toFixed(1)}`);
 
   // ---------- 火光 ----------
   const lightScene = await page.evaluate(() => {
@@ -204,7 +216,7 @@ try {
       'iron_ore', 'gold_ore', 'diamond_ore', 'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'orange_wool',
       'green_wool', 'purple_wool', 'black_wool', 'oak_leaves', 'red_mushroom', 'brown_mushroom', 'dead_bush',
       'copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'clay', 'podzol', 'granite', 'cactus',
-      'sugar_cane', 'fern'];
+      'sugar_cane', 'fern', 'pumpkin', 'bookshelf'];
     const baseY = Math.floor(p.y) + 16;
     const wallDist = 7;
     const cols = 8;

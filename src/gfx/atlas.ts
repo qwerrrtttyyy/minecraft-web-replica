@@ -799,6 +799,58 @@ function builtinPainters(): Record<string, Painter> {
   };
 }
 
+/**
+ * 新增的两个方块侧面纹理。
+ * 定义在此处、并在构造函数中放到全部既有纹理之后注册，是为了让既有 64 张 tile
+ * 的图集索引保持 0..63 完全不变。图集为 16×16=256 格、UV 按 GRID 动态计算，
+ * 新增两张不会触发扩容，也不影响任何既有纹理的渲染。
+ */
+
+/** 南瓜侧面：橙色底 + 纵向棱纹 + 顶部短梗，呼应 pumpkin_face / pumpkin_top */
+const pumpkinSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xd97318, 10);
+  // 暗色沟槽 + 相邻浅色高光，形成一条条纵向棱纹
+  for (const x of [2, 6, 10, 14]) {
+    for (let y = 0; y < TILE; y++) {
+      p.set(x, y, jitter(0xb85c10, rng, 5));
+      if (x + 1 < TILE && rng() < 0.75) p.set(x + 1, y, jitter(0xeb8b28, rng, 6));
+    }
+  }
+  // 与 pumpkin_top 同色的顶部短梗
+  rect(p, 7, 0, 2, 2, 0x3f7a24);
+  p.set(7, 0, 0x2f5c1b);
+  p.set(8, 0, 0x2f5c1b);
+  p.set(7, 1, 0x4f8f2c);
+};
+
+/** 书架侧面：木质边框（横梁 + 立柱）+ 两排彩色书脊 */
+const bookshelfSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x6b4f2e, 6);
+  rect(p, 2, 2, 12, 12, 0x3a2a18); // 书架内格阴影
+  const spines = [0x9c3b2e, 0x2f4f8a, 0x3f7a34, 0xb08028, 0x6a3f9e, 0xb0552a, 0x2f7a78, 0x8a2f44];
+  for (const [yBase, yTop] of [[13, 9], [6, 2]] as const) {
+    let x = 2;
+    while (x < 14) {
+      const w = 2 + ((rng() * 2) | 0);
+      const c = spines[(rng() * spines.length) | 0];
+      const top = yTop + ((rng() * 2) | 0); // 书高参差
+      for (let yy = top; yy <= yBase; yy++)
+        for (let xx = x; xx < x + w && xx < 14; xx++) p.set(xx, yy, jitter(c, rng, 8));
+      for (let yy = top; yy <= yBase; yy++) p.set(x, yy, 0x241809); // 书脊左缘暗线
+      for (let xx = x; xx < x + w && xx < 14; xx++) p.set(xx, top, jitter(c, rng, 18)); // 书页/标题带
+      x += w;
+    }
+  }
+  const frame = 0x5f4a2a;
+  rect(p, 0, 0, TILE, 2, frame);
+  rect(p, 0, 7, TILE, 2, frame);
+  rect(p, 0, 14, TILE, 2, frame);
+  rect(p, 0, 0, 2, TILE, frame);
+  rect(p, 14, 0, 2, TILE, frame);
+  for (const y of [0, 7, 14])
+    for (let x = 2; x < 14; x++) if (rng() < 0.8) p.set(x, y, jitter(0x8a6a3e, rng, 5));
+};
+
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
     fillNoise(p, rng, hex, 5);
@@ -834,6 +886,9 @@ export class TextureAtlas {
     this.painters.set('green_wool', woolPainter(0x3f7a2f));
     this.painters.set('purple_wool', woolPainter(0x7a3f9e));
     this.painters.set('black_wool', woolPainter(0x24242a));
+    // 新增：放在全部既有纹理之后注册，既有 64 张 tile 的索引保持不变
+    this.painters.set('pumpkin_side', pumpkinSidePainter);
+    this.painters.set('bookshelf_side', bookshelfSidePainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

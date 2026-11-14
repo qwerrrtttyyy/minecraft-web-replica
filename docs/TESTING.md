@@ -21,7 +21,7 @@ npm run verify
 | 7 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
 | 8 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
 | 9 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 10 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 18 组 | ✓ |
+| 10 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组（含 id 55/56 完整性） | ✓ |
 | 11 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
 | 12 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 

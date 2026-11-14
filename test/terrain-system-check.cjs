@@ -46,8 +46,16 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 54 种', all.length === 54, `${all.length}`);
+  ok('内置方块总数 56 种', all.length === 56, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
+  ok('两种新方块 id 55~56 末位追加',
+    reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
+    `pumpkin=${reg.byNameGet('pumpkin')?.id} bookshelf=${reg.byNameGet('bookshelf')?.id}`);
+  ok('两种新方块纹理与属性完整', ['pumpkin', 'bookshelf'].every((n) => {
+    const d = reg.byNameGet(n);
+    return d && d.tiles.top && d.tiles.bottom && d.tiles.side &&
+      d.shape === 'cube' && d.solid && d.drops.length > 0;
+  }));
   ok('10 种新方块 id 45~54 末位追加',
     NEW_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 45 + i),
     NEW_BLOCKS.map((n) => reg.byNameGet(n).id).join(','));

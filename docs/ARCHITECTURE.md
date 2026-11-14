@@ -260,7 +260,7 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
 | 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 43 项（含并发启用、初始化中停用、waitFor 清理） |
 | 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
-| 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 18 组 |
+| 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组 |
 | 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
 | 视觉 | `npm run test:visual` | 昼夜 / 火光 / 全部内置方块展示墙 |
 | 一键 | `npm run verify` | 以上全部 |

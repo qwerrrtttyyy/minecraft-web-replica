@@ -242,4 +242,10 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('sugar_cane', '甘蔗');
   plant('fern', '蕨');
   cube('granite', '花岗岩', {}, { hardness: 1.5 });
+
+  // ---- 新增方块（id 55、56，末位追加，旧存档 edits 差分保持有效） ----
+  cube('pumpkin', '南瓜', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_side' },
+    { sound: 'wood', hardness: 1 });
+  cube('bookshelf', '书架', { top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf_side' },
+    { sound: 'wood', hardness: 1.5 });
 }
