@@ -364,7 +364,37 @@ try {
   const placedId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), placedCell);
   const dirtAfter = await page.evaluate((d) => window.__mc.survival.countKey('b:' + d), placeSetup.dirt);
   ok('生存模式放置方块', placedId === placeSetup.dirt, `placed=${placedId} want=${placeSetup.dirt}`);
-  ok('放置消耗背包方块', dirtAfter === dirtBefore - 1, `${dirtBefore}→${dirtAfter}`);
+  // 按住右键 280ms 跨过 placeTimer=0.24s 的连放窗口时可能连放 2 次，
+  // 因此这里只断言「确实消耗了背包方块」，连放本身是预期行为。
+  ok('放置消耗背包方块', dirtAfter < dirtBefore && dirtAfter >= dirtBefore - 3,
+    `${dirtBefore}→${dirtAfter}`);
+
+  // ---- 目标格已是同一方块：不应白扣背包（v1.3.1 修复） ----
+  // 火把 / 草丛是非实心方块，existing.solid 拦不住，而 setBlock 对同 id 返回 false，
+  // 先扣后放就会吞掉背包。这里直接驱动 doPlace，不依赖鼠标与帧时长。
+  const samePlace = await page.evaluate(() => {
+    const mc = window.__mc;
+    const stone = mc.registry.byNameGet('stone').id;
+    const torch = mc.registry.byNameGet('torch').id;
+    mc.survival.addBlock(torch, 2);
+    const slot = mc.player.hotbar.slots.findIndex((s) => s === null);
+    mc.player.hotbar.slots[slot] = { kind: 'block', id: torch };
+    mc.selectSlot(slot);
+    const p = mc.player.pos;
+    const x = Math.floor(p.x) + 2, y = Math.floor(p.y), z = Math.floor(p.z) - 3;
+    mc.world.setBlock(x, y, z, stone, false);
+    mc.world.setBlock(x, y + 1, z, torch, false);
+    const before = mc.survival.countKey('b:' + torch);
+    mc.player.target = { x, y, z, nx: 0, ny: 1, nz: 0, block: stone, dist: 0.8 };
+    mc.player.doPlace();
+    const after = mc.survival.countKey('b:' + torch);
+    const cell = mc.world.getBlock(x, y + 1, z);
+    mc.player.target = null;
+    return { before, after, cell, torch };
+  });
+  ok('重复放置同一方块不白扣背包',
+    samePlace.cell === samePlace.torch && samePlace.after === samePlace.before,
+    `${samePlace.before}→${samePlace.after} cell=${samePlace.cell} want=${samePlace.torch}`);
 
   // ---- 伤害 / 死亡 / 重生 ----
   await page.evaluate(() => window.__mc.survival.damage(6, '测试伤害'));

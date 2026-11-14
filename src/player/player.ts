@@ -535,6 +535,9 @@ export class Player implements System, PhysicsBody {
     const def = this.registry.get(stack.id as BlockId);
     if (def.id === AIR) return;
     if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return;
+    // 目标格已是同一方块时 setBlock 会返回 false：先拦住，否则扣了背包却没放下方块。
+    // 火把 / 草丛这类非实心方块不会被上面的 existing.solid 挡住，所以这条必须存在。
+    if (existing.id === def.id) return;
     if (this.survival.isSurvival && !this.survival.consume(stack, 1)) return;
     this.world.setBlock(x, y, z, def.id);
     this.events.emit('block:place', { x, y, z, block: def.id });
