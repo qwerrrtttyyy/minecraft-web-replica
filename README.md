@@ -21,6 +21,8 @@
 
 ## 快速开始
 
+**在线试玩（GitHub Pages）**：<https://qwerrrtttyyy.github.io/minecraft-web-replica/>
+
 ```bash
 npm install
 npm run dev      # 开发服务器
