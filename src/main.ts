@@ -754,6 +754,8 @@ async function boot() {
       if (uw && !wasUnderwater) sound.splash();
       wasUnderwater = uw;
       hud.setUnderwater(uw);
+      // 天空的水下大气：暂停时保持入水状态（sky.update 暂停期间不推进），回档后不闪烁
+      sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
         hud.setSurvival(survival);
         hud.setMining(mode === 'playing' && player.miningProgress !== null && player.miningBlock

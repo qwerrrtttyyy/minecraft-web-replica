@@ -3,6 +3,11 @@ import { Noise } from '../world/noise';
 import { clamp, lerp, smoothstep, mulberry32, type System } from '../core/types';
 import type { EventService } from '../services/events';
 
+/** 水下环境色：天穹整体压向这一色相，与 HUD 的水下叠层共同构成水下氛围 */
+const UNDERWATER_SKY = 0x0e2f5e;
+/** 水下雾色（比天穹更饱和一点，靠近观察者处仍保留可读性） */
+const UNDERWATER_FOG = 0x124079;
+
 /**
  * 天空系统：渐变天穹 + 方形太阳/月亮 + 星空 + 体素云层 + 昼夜循环。
  * 同时驱动世界亮度、雾色与实体光照。
@@ -32,6 +37,10 @@ export class Sky implements System {
   private emitAcc = 0;
   /** 本地累计时间：暂停期间 sky.update 不被调用，恢复后云与星空不会跳变 */
   private localTime = 0;
+  /** 目标状态：相机是否没入水中（由 main 每帧写入） */
+  private submerged = false;
+  /** 平滑后的水下强度 0~1，避免入水瞬间雾与天穹硬切 */
+  private sub = 0;
 
   private cDayTop = new THREE.Color(0x5f9dff);
   private cDayHorizon = new THREE.Color(0xc4ddff);
@@ -47,6 +56,8 @@ export class Sky implements System {
   private cSunset = new THREE.Color(0xff8a3c);
   private cWhite = new THREE.Color(0xffffff);
   private cWarm = new THREE.Color(0xffb066);
+  private cUnderFog = new THREE.Color(UNDERWATER_FOG);
+  private tmpUnder = new THREE.Color();
 
   constructor(
     private scene: THREE.Scene,
@@ -66,6 +77,8 @@ export class Sky implements System {
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunColor: { value: new THREE.Color(0xfff2c0) },
         uDaylight: { value: 1 },
+        uWater: { value: new THREE.Color(UNDERWATER_SKY) },
+        uSub: { value: 0 },
       },
       vertexShader: `
         varying vec3 vDir;
@@ -78,17 +91,32 @@ export class Sky implements System {
         varying vec3 vDir;
         uniform vec3 uTop; uniform vec3 uHorizon; uniform vec3 uSunDir;
         uniform vec3 uSunColor; uniform float uDaylight;
+        uniform vec3 uWater; uniform float uSub;
         void main() {
           vec3 dir = normalize(vDir);
           float h = clamp(dir.y, 0.0, 1.0);
-          vec3 col = mix(uHorizon, uTop, pow(h, 0.58));
-          float d = max(dot(dir, normalize(uSunDir)), 0.0);
-          float vis = smoothstep(-0.12, 0.05, uSunDir.y);
+          // smootherstep 曲线：比 pow(h, 0.58) 更连续，地平线附近保留更多雾色衔接
+          float t = h * h * h * (h * (h * 6.0 - 15.0) + 10.0);
+          vec3 col = mix(uHorizon, uTop, t * 0.92 + h * 0.08);
+          vec3 sd = normalize(uSunDir);
+          float d = max(dot(dir, sd), 0.0);
+          float vis = smoothstep(-0.12, 0.05, sd.y);
           col += uSunColor * pow(d, 90.0) * 0.5 * vis;
           col += uSunColor * pow(d, 8.0) * 0.14 * vis;
-          float md = max(dot(dir, -normalize(uSunDir)), 0.0);
+          // 地平线霞光带：把日出/日落的暖色压向贴近地平线的窄带，并与太阳方位对齐
+          vec2 hz = dir.xz; vec2 sh = sd.xz;
+          float hl = length(hz) * length(sh);
+          if (hl > 1e-4) {
+            float az = max(dot(hz, sh) / hl, 0.0);
+            float band = exp(-abs(dir.y) * 5.5);
+            col += uSunColor * pow(az, 3.0) * band * 0.22 * vis * (1.0 - uDaylight * 0.55);
+          }
+          float md = max(dot(dir, -sd), 0.0);
           col += vec3(0.7, 0.8, 1.0) * pow(md, 120.0) * 0.22 * (1.0 - uDaylight);
-          gl_FragColor = vec4(col, 1.0);
+          col = mix(col, uWater, uSub);
+          // 8bit 输出下的蓝噪声式抖动，消除大面积天穹渐变肉眼可见的色带
+          float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+          gl_FragColor = vec4(col + (n - 0.5) / 255.0, 1.0);
         }`,
     });
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(460, 32, 16), this.domeMat);
@@ -148,10 +176,13 @@ export class Sky implements System {
     const n = isMobile ? 36 : 48;
     const noise = new Noise(777);
     const pos: number[] = [];
+    const col: number[] = [];
     const idx: number[] = [];
     const y = 80;
     const thick = 3.2;
     const half = (n * cell) / 2;
+    // 逐面烘焙明暗（顶亮 / 底暗 / 侧面区分 x、z 轴），让方块云读成有厚度的体素而非白色纸片
+    const shade = [1, 0.58, 0.72, 0.86, 0.66, 0.8];
     const addBox = (x0: number, z0: number) => {
       const x1 = x0 + cell, z1 = z0 + cell, y0 = y, y1 = y + thick;
       const faces = [
@@ -162,9 +193,13 @@ export class Sky implements System {
         [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]],
         [[x0, y0, z1], [x0, y1, z1], [x1, y1, z1], [x1, y0, z1]],
       ];
-      for (const f of faces) {
+      for (let f = 0; f < faces.length; f++) {
         const base = pos.length / 3;
-        for (const v of f) pos.push(...v);
+        for (const v of faces[f]) {
+          pos.push(v[0], v[1], v[2]);
+          const s = shade[f];
+          col.push(s, s, s);
+        }
         idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
       }
     };
@@ -176,14 +211,22 @@ export class Sky implements System {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     geo.setIndex(idx);
     geo.computeBoundingSphere();
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.82, fog: false, depthWrite: false,
+      // depthWrite: 云块自身的前脸遮住后方的侧面/顶面，消除“华夫格”状多层叠加，
+      // 云因此读成有厚度的体素板；云位于世界最高层之上，不影响任何地形通道的深度关系
+      color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.82, fog: false, depthWrite: true,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = -5;
     return mesh;
+  }
+
+  /** 由外部（main 的 ui 系统）每帧写入：相机没入水中时切换水下大气表现 */
+  setUnderwater(v: boolean) {
+    this.submerged = v;
   }
 
   /** 太阳方向（单位向量） */
@@ -207,6 +250,11 @@ export class Sky implements System {
     const elev = sunDir.y;
     this.daylight = smoothstep(-0.14, 0.16, elev);
     const dusk = clamp(1 - Math.abs(elev) / 0.32, 0, 1);
+    // 水下强度：指数趋近目标值，约 0.2s 完成过渡，避免入/出水瞬间硬切
+    const subTarget = this.submerged ? 1 : 0;
+    this.sub += (subTarget - this.sub) * Math.min(1, dt * 8);
+    if (Math.abs(this.sub - subTarget) < 0.005) this.sub = subTarget;
+    const sub = this.sub;
 
     this.tmpTop.copy(this.cNightTop).lerp(this.cDayTop, this.daylight);
     this.tmpHorizon.copy(this.cNightHorizon).lerp(this.cDayHorizon, this.daylight);
@@ -218,6 +266,7 @@ export class Sky implements System {
     (u.uHorizon.value as THREE.Color).copy(this.tmpHorizon);
     (u.uSunDir.value as THREE.Vector3).copy(sunDir);
     u.uDaylight.value = this.daylight;
+    u.uSub.value = sub * 0.85;
     this.tmpSun.set(0xfff2c0).lerp(this.cSunset, dusk);
     (u.uSunColor.value as THREE.Color).copy(this.tmpSun);
     this.sunTint.copy(this.tmpSun);
@@ -240,17 +289,19 @@ export class Sky implements System {
       -this.group.position.y,
       this.cloudBaseZ - this.group.position.z,
     );
-    // 云在夜里压暗并偏蓝，黄昏时跟着地平线余晖走，避免夜里一片发光的白板
-    (this.clouds.material as THREE.MeshBasicMaterial).opacity = 0.32 + this.daylight * 0.5;
-    (this.clouds.material as THREE.MeshBasicMaterial).color
-      .copy(this.tmpHorizon)
-      .lerp(this.cWhite, 0.15 + this.daylight * 0.55);
+    const cloudMat = this.clouds.material as THREE.MeshBasicMaterial;
+    // 日落/日出时把云染向霞光色，夜里压暗；水下淡出以免穿帮
+    cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.35 + this.daylight * 0.45);
+    cloudMat.color.lerp(this.tmpSun, dusk * 0.25);
+    cloudMat.color.multiplyScalar(0.45 + this.daylight * 0.55);
+    cloudMat.opacity = (0.32 + this.daylight * 0.5) * (1 - sub * 0.9);
+    this.clouds.visible = sub < 0.99;
 
-    // 雾（世界亮度由区块 shader 的天空光 / 方块光分别处理）
+    // 雾：水下切换为近距蓝雾；世界亮度由区块 shader 的天空光 / 方块光分别处理
     const R = this.getRenderDistance() * 16;
-    this.fog.color.copy(this.tmpHorizon);
-    this.fog.near = R * 0.55;
-    this.fog.far = R * 0.98;
+    this.fog.color.copy(this.tmpHorizon).lerp(this.cUnderFog, sub);
+    this.fog.near = lerp(R * 0.55, 2, sub);
+    this.fog.far = lerp(R * 0.98, R * 0.42, sub);
 
     // 实体光照
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);
