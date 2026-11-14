@@ -1,4 +1,4 @@
-# Minecraft TS 架构说明（v1.3.0）
+# Minecraft TS 架构说明（v1.4.0）
 
 > 目标：把**插件**与**事件**相关的 API 从 `main.ts` 中彻底独立为服务，形成可替换、
 > 可测试、有生命周期的架构分层；同时修复实测暴露的缺陷并补齐工程化闭环。
@@ -258,10 +258,14 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
 | 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
 | 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
-| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 38 项（含并发启用、初始化中停用、waitFor 清理） |
+| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 43 项（含并发启用、初始化中停用、waitFor 清理） |
 | 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
+| 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 18 组 |
 | 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
+| 视觉 | `npm run test:visual` | 昼夜 / 火光 / 全部内置方块展示墙 |
 | 一键 | `npm run verify` | 以上全部 |
+
+测试体系（快照机制、固定种子、新增测试规则）见 [TESTING.md](TESTING.md)。
 
 浏览器测试参数可配置：`MC_HEADLESS=0 MC_GL=desktop` + `xvfb-run`
 （需 `--enable-unsafe-swiftshader --disable-gpu-sandbox`）。CI 见
@@ -359,16 +363,33 @@ Worker 现在对每条 `config` 消息回传 `config-ack`；`ChunkManager.config
 Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹理后，`invalidateConfig()`
 会立即重建并下发配置，同时把已有网格重新入队。
 
+## 8.6 地形生成管线（v1.4.0）
+
+`DefaultGenerator.generateChunk()` 不再是一段 100 行的流水账，而是
+「构建上下文 → 按固定阶段派发」：
+
+| 阶段 | 职责 | 关键约束 |
+|---|---|---|
+| `columns` | 地形柱、陡坡露石、雪线、浅海黏土、水、渐隐洞穴 | 水下地层不挖洞穴，避免空气袋 |
+| `ores` | 分层矿脉（煤 / 铁 / 金 / 钻石 / 萤石 + 铜 / 红石 / 青金石 / 绿宝石 / 花岗岩） | 只替换石头；`biome` 限制的矿脉逐格校验群系边界 |
+| `trees` | 跨区块树木 | 由世界坐标候选点决定，邻区块裁剪结果一致 |
+| `decorate` | 花草 / 仙人掌 / 甘蔗 | 只写在配置表地表方块之上，不覆盖树冠，四邻水位校验 |
+
+地表 / 填充 / 装饰 / 浅滩黏土 / 仙人掌 / 甘蔗由 `BIOME_PROFILES`（7 个群系）统一描述，
+构造时解析为方块 id；`TERRAIN_STAGES` 与实例 `stageNames` 是对外可读的契约，
+`test/terrain-system-check.cjs` 直接断言阶段顺序与配置表驱动的自然生成位置。
+
 ## 9. 后续路线（带验收标准）
 
 | 版本 | 目标 | 可机械检查的验收标准 |
 |---|---|---|
 | v1.3.0 | Worker 池（least-busy 派发） | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升 |
 | v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 21 项断言（v1.3.1 补遮光回收、跨区块天窗与幂等往返回归）；mesher 面覆盖与光照逐格一致 |
-| v1.4.0 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
-| v1.4.1 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
-| v1.4.2 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
+| v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置 |
+| v1.4.1 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
+| v1.4.2 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
+| v1.4.3 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
 | v2.0 | 合成 / 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
-**当前建议**：不要先上合成/护甲/更多怪物。地基（竞态、背压、Worker 池、测试闭环、光照）已补齐，
-下一步做透明排序。
+**当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
+下一步做透明排序与 AABB 脱困。

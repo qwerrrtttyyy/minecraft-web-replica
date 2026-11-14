@@ -226,4 +226,20 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('green_wool', '绿色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('purple_wool', '紫色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('black_wool', '黑色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
+
+  // ---- v1.4.0 方块扩充（id 45 起，仍为末位追加，旧存档差分保持有效） ----
+  // 矿石：与既有矿脉一起由地形阶段配置生成（绿宝石仅高山）
+  cube('copper_ore', '铜矿石', {}, { hardness: 2.5 });
+  cube('emerald_ore', '绿宝石矿石', {}, { hardness: 3 });
+  cube('lapis_ore', '青金石矿石', {}, { hardness: 2.6 });
+  cube('redstone_ore', '红石矿石', {}, { hardness: 2.4 });
+  // 地表 / 建材
+  cube('clay', '黏土', {}, { sound: 'dirt', hardness: 0.6 });
+  cube('podzol', '灰化土', { top: 'podzol_top', bottom: 'dirt', side: 'podzol_side' },
+    { sound: 'dirt', hardness: 0.5, drops: [{ name: 'dirt' }] });
+  cube('cactus', '仙人掌', {}, { sound: 'plant', hardness: 0.4 });
+  // 植物（十字面，地形装饰生成）
+  plant('sugar_cane', '甘蔗');
+  plant('fern', '蕨');
+  cube('granite', '花岗岩', {}, { hardness: 1.5 });
 }

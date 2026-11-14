@@ -66,11 +66,115 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   oreRichness: 1,
 };
 
+/**
+ * 生成阶段：generateChunk 严格按此顺序执行。
+ * 顺序本身是契约——矿石只替换石头，树木先于花草，装饰不能覆盖树冠。
+ */
+export const TERRAIN_STAGES = ['columns', 'ores', 'trees', 'decorate'] as const;
+export type TerrainStage = (typeof TERRAIN_STAGES)[number];
+
+/**
+ * 群系配置表：地表 / 填充 / 装饰 / 浅滩黏土 / 仙人掌 / 甘蔗收进一张表，
+ * 柱状生成与装饰阶段只读这张表，新增群系或地表方块不再散落在 if 分支里。
+ */
+export interface BiomeProfile {
+  /** 地表方块名 */
+  surface: string;
+  /** 地表下 3 层方块名 */
+  filler: string;
+  /** 地表装饰权重（每列命中概率 = 权重之和） */
+  plants: readonly { name: string; weight: number }[];
+  /** 浅水海床生成黏土的概率（0 关闭） */
+  clayChance: number;
+  /** 沙漠每列生成仙人掌的概率（0 关闭） */
+  cactusChance: number;
+  /** 临水浅岸生成甘蔗的概率（0 关闭） */
+  caneChance: number;
+}
+
+export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
+  ocean: {
+    surface: 'sand', filler: 'sand', plants: [],
+    clayChance: 0.5, cactusChance: 0, caneChance: 0,
+  },
+  beach: {
+    surface: 'sand', filler: 'sand', plants: [],
+    // 沙滩本身不长花草，但临水处是甘蔗最自然的落脚点
+    clayChance: 0, cactusChance: 0, caneChance: 0.08,
+  },
+  desert: {
+    surface: 'sand', filler: 'sand',
+    plants: [{ name: 'dead_bush', weight: 0.006 }],
+    clayChance: 0, cactusChance: 0.02, caneChance: 0,
+  },
+  plains: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'tall_grass', weight: 0.068 }, { name: 'poppy', weight: 0.022 },
+      { name: 'dandelion', weight: 0.02 }, { name: 'fern', weight: 0.01 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.025,
+  },
+  forest: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'tall_grass', weight: 0.099 }, { name: 'poppy', weight: 0.032 },
+      { name: 'dandelion', weight: 0.029 }, { name: 'fern', weight: 0.012 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.03,
+  },
+  taiga: {
+    surface: 'podzol', filler: 'dirt',
+    plants: [
+      { name: 'tall_grass', weight: 0.05 }, { name: 'fern', weight: 0.035 },
+      { name: 'poppy', weight: 0.016 }, { name: 'dandelion', weight: 0.014 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.02,
+  },
+  alpine: {
+    surface: 'snow', filler: 'dirt', plants: [],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+  },
+};
+
 interface ColumnBase {
   height: number;
   biome: BiomeId;
   temperature: number;
   humidity: number;
+}
+
+/** 矿脉描述：只替换石头，biome 存在时限定群系（绿宝石仅高山） */
+interface VeinSpec {
+  id: number;
+  min: number;
+  max: number;
+  count: number;
+  size: number;
+  salt: number;
+  biome?: BiomeId;
+}
+
+interface ResolvedProfile {
+  surface: number;
+  filler: number;
+  plants: { id: number; weight: number }[];
+  plantTotal: number;
+  clayChance: number;
+  cactusChance: number;
+  caneChance: number;
+}
+
+/** 单区块生成的共享上下文：列信息、高度网格与坐标换算只构建一次 */
+interface GenContext {
+  cx: number;
+  cz: number;
+  x0: number;
+  z0: number;
+  cols: ColumnInfo[];
+  idx: (x: number, y: number, z: number) => number;
+  at: (lx: number, lz: number) => ColumnInfo;
+  groundAt: (wx: number, wz: number) => number;
 }
 
 const CACHE_LIMIT = 8192;
@@ -90,17 +194,19 @@ function evictOldest<K, V>(cache: Map<K, V>): void {
 }
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
-/** 树冠半径 2，额外留 2 格扫描邻区块的树 */
+/** 树冠半径 2，额外留 2 格扫描邻区块的树；甘蔗等岸边装饰也复用该边距 */
 const PAD = 4;
 const GRID = CS + PAD * 2;
 const TREE_CELL = 6;
 
 /**
  * 默认地形：大陆/海洋 + 域扭曲丘陵 + 脊线山脉 + 河道 + 温度湿度群系
- * + 渐隐洞穴 + 分层矿脉 + 跨区块树木 + 坡度露石/雪线。
+ * + 渐隐洞穴 + 分层矿脉 + 跨区块树木 + 按群系配置表的地表装饰。
  *
  * 设计要点：
  * - 所有特征都由世界坐标 + seed 决定，区块生成顺序不影响结果；
+ * - 生成拆成 columns → ores → trees → decorate 四个显式阶段；
+ * - 地表方块 / 装饰 / 浅滩黏土 / 仙人掌 / 甘蔗都来自 BIOME_PROFILES 一张表；
  * - 树木按「世界坐标候选点」扫描邻域后裁剪写入本区块，树冠可跨区块连续；
  * - 高度与群系带缓存，整区块只算一次 24×24 列信息。
  */
@@ -117,6 +223,12 @@ export class DefaultGenerator implements IWorldGenerator {
   private readonly cave: Noise;
   private readonly cave2: Noise;
   private readonly ids: Record<string, number>;
+  private readonly profiles: Record<BiomeId, ResolvedProfile>;
+
+  /** 生成阶段顺序（测试 / 调试可读） */
+  readonly stageNames: readonly TerrainStage[] = TERRAIN_STAGES;
+  /** 群系配置表（测试 / 调试可读；方块 id 在构造时解析） */
+  readonly biomeProfiles = BIOME_PROFILES;
 
   private readonly heightCache = new Map<string, number>();
   private readonly baseCache = new Map<string, ColumnBase>();
@@ -145,13 +257,30 @@ export class DefaultGenerator implements IWorldGenerator {
 
     const id = (name: string) => registry.byNameGet(name)?.id ?? 0;
     this.ids = {
-      grass: id('grass'), dirt: id('dirt'), stone: id('stone'), sand: id('sand'),
-      water: id('water'), bedrock: id('bedrock'), snow: id('snow'),
+      stone: id('stone'), water: id('water'), bedrock: id('bedrock'),
       log: id('oak_log'), leaves: id('oak_leaves'),
-      tallgrass: id('tall_grass'), poppy: id('poppy'), dandelion: id('dandelion'),
       coal: id('coal_ore'), iron: id('iron_ore'), gold: id('gold_ore'),
       diamond: id('diamond_ore'), glowstone: id('glowstone'),
+      copper: id('copper_ore'), emerald: id('emerald_ore'), lapis: id('lapis_ore'),
+      redstone: id('redstone_ore'), granite: id('granite'),
+      clay: id('clay'), cactus: id('cactus'), cane: id('sugar_cane'),
     };
+
+    const resolved = {} as Record<BiomeId, ResolvedProfile>;
+    for (const biome of Object.keys(BIOME_PROFILES) as BiomeId[]) {
+      const p = BIOME_PROFILES[biome];
+      const plants = p.plants.map((pl) => ({ id: id(pl.name), weight: pl.weight }));
+      resolved[biome] = {
+        surface: id(p.surface),
+        filler: id(p.filler),
+        plants,
+        plantTotal: plants.reduce((sum, pl) => sum + pl.weight, 0),
+        clayChance: p.clayChance,
+        cactusChance: p.cactusChance,
+        caneChance: p.caneChance,
+      };
+    }
+    this.profiles = resolved;
   }
 
   // ---------- 确定性哈希 ----------
@@ -276,12 +405,23 @@ export class DefaultGenerator implements IWorldGenerator {
   // ---------- 区块生成 ----------
 
   generateChunk(cx: number, cz: number, data: Uint8Array): void {
-    const I = this.ids;
-    const idx = (x: number, y: number, z: number) => (y * CS + z) * CS + x;
+    const ctx = this.buildContext(cx, cz);
+    for (const stage of this.stageNames) this.runStage(stage, ctx, data);
+  }
+
+  private runStage(stage: TerrainStage, ctx: GenContext, data: Uint8Array): void {
+    switch (stage) {
+      case 'columns': this.stageColumns(ctx, data); break;
+      case 'ores': this.stageOres(ctx, data); break;
+      case 'trees': this.stageTrees(ctx, data); break;
+      case 'decorate': this.stageDecorate(ctx, data); break;
+    }
+  }
+
+  /** 一次算出 (16+2×PAD)² 列的地形信息；坡度由高度网格差分，避免逐列重算高度 */
+  private buildContext(cx: number, cz: number): GenContext {
     const x0 = cx * CS;
     const z0 = cz * CS;
-
-    // 一次算出 (16+2*PAD)² 列的地形信息，列内复用
     const cols: ColumnInfo[] = new Array(GRID * GRID);
     const heights = new Int16Array(GRID * GRID);
     for (let gz = 0; gz < GRID; gz++) {
@@ -294,7 +434,6 @@ export class DefaultGenerator implements IWorldGenerator {
         cols[k] = { x: wx, z: wz, ...b, slope: 0 };
       }
     }
-    // 坡度直接由高度网格做差分，避免每列再算 4 次高度
     for (let gz = 0; gz < GRID; gz++) {
       for (let gx = 0; gx < GRID; gx++) {
         const k = gz * GRID + gx;
@@ -305,24 +444,47 @@ export class DefaultGenerator implements IWorldGenerator {
         cols[k].slope = clamp(Math.hypot(hx, hz) / (2 * 1.4), 0, 1);
       }
     }
-    const at = (lx: number, lz: number) => cols[(lz + PAD) * GRID + lx + PAD];
-    const groundAt = (wx: number, wz: number) => {
-      const gx = wx - x0 + PAD;
-      const gz = wz - z0 + PAD;
-      if (gx >= 0 && gx < GRID && gz >= 0 && gz < GRID) return heights[gz * GRID + gx];
-      return this.height(wx, wz);
+    return {
+      cx, cz, x0, z0, cols,
+      idx: (x: number, y: number, z: number) => (y * CS + z) * CS + x,
+      at: (lx: number, lz: number) => cols[(lz + PAD) * GRID + lx + PAD],
+      groundAt: (wx: number, wz: number) => {
+        const gx = wx - x0 + PAD;
+        const gz = wz - z0 + PAD;
+        if (gx >= 0 && gx < GRID && gz >= 0 && gz < GRID) return heights[gz * GRID + gx];
+        return this.height(wx, wz);
+      },
     };
+  }
 
-    // 1) 地形柱 + 洞穴
+  // ---------- 阶段 1：地形柱 + 水 + 洞穴 ----------
+
+  private stageColumns(ctx: GenContext, data: Uint8Array): void {
+    const I = this.ids;
+    const { x0, z0, at, idx } = ctx;
     for (let lz = 0; lz < CS; lz++) {
       for (let lx = 0; lx < CS; lx++) {
         const c = at(lx, lz);
         const h = c.height;
         const wx = x0 + lx;
         const wz = z0 + lz;
+        const profile = this.profiles[c.biome];
         const sandy = c.biome === 'ocean' || c.biome === 'beach' || c.biome === 'desert';
         const snowy = c.biome === 'alpine';
         const steep = c.slope > 0.58;
+
+        // 陡坡露石只作用于非沙质 / 非雪线群系（与旧行为一致）
+        let filler = profile.filler;
+        let top = profile.surface;
+        if (steep && !sandy && !snowy) {
+          filler = I.stone;
+          top = I.stone;
+        }
+        // 浅水海床铺黏土：只在海平面下 3 格内的浅滩，深水保持沙床
+        if (c.biome === 'ocean' && profile.clayChance > 0 &&
+          SEA_LEVEL - h <= 3 && this.hash2i(wx, wz, 0x0c1a) < profile.clayChance) {
+          top = I.clay;
+        }
 
         for (let y = 0; y <= h; y++) {
           let id: number;
@@ -342,9 +504,9 @@ export class DefaultGenerator implements IWorldGenerator {
               if (tunnel > lerp(1.1, 0.905, fade) || n2 > lerp(1.1, 0.6, fade)) id = 0;
             }
           } else if (y < h) {
-            id = sandy ? I.sand : steep ? I.stone : I.dirt;
+            id = filler;
           } else {
-            id = sandy ? I.sand : snowy ? I.snow : steep ? I.stone : I.grass;
+            id = top;
           }
           data[idx(lx, y, lz)] = id;
         }
@@ -354,58 +516,38 @@ export class DefaultGenerator implements IWorldGenerator {
         }
       }
     }
-
-    // 2) 矿脉：只替换仍是石头的体素，洞穴不会被矿石填回
-    this.placeOres(cx, cz, data, idx);
-
-    // 3) 树木先于花草，避免植物占住树冠格
-    this.placeTrees(cx, cz, data, idx, groundAt);
-
-    // 4) 地表装饰（只在草地、缓坡、无遮挡的格子上）
-    for (let lz = 0; lz < CS; lz++) {
-      for (let lx = 0; lx < CS; lx++) {
-        const c = at(lx, lz);
-        if (c.biome === 'ocean' || c.biome === 'beach' || c.biome === 'desert') continue;
-        if (c.slope > 0.5 || c.height <= SEA_LEVEL) continue;
-        const h = c.height;
-        if (h + 1 >= H || data[idx(lx, h, lz)] !== I.grass) continue;
-        const p = idx(lx, h + 1, lz);
-        if (data[p] !== 0) continue;
-        const wx = x0 + lx;
-        const wz = z0 + lz;
-        const r = this.hash2i(wx, wz, 0x51ed);
-        const density = c.biome === 'forest' ? 0.16 : c.biome === 'taiga' ? 0.08 : 0.11;
-        if (r < density * 0.62) data[p] = I.tallgrass;
-        else if (r < density * 0.82) data[p] = I.poppy;
-        else if (r < density) data[p] = I.dandelion;
-      }
-    }
   }
 
-  // ---------- 矿脉 ----------
+  // ---------- 阶段 2：矿脉 ----------
 
-  private placeOres(
-    cx: number, cz: number, data: Uint8Array,
-    idx: (x: number, y: number, z: number) => number,
-  ): void {
+  private stageOres(ctx: GenContext, data: Uint8Array): void {
     const I = this.ids;
-    const veins: { id: number; min: number; max: number; count: number; size: number; salt: number }[] = [
+    const veins: VeinSpec[] = [
       { id: I.coal, min: 6, max: 52, count: 16, size: 7, salt: 0x11a },
       { id: I.iron, min: 6, max: 40, count: 10, size: 6, salt: 0x22b },
       { id: I.gold, min: 5, max: 26, count: 5, size: 5, salt: 0x33c },
       { id: I.diamond, min: 4, max: 16, count: 2, size: 4, salt: 0x44d },
       // 深层偶发萤石晶洞，给地下一点自发光
       { id: I.glowstone, min: 8, max: 24, count: 2, size: 3, salt: 0x55e },
+      // v1.4.0：铜 / 红石 / 青金石 / 花岗岩随深度分布，绿宝石只在高山
+      { id: I.copper, min: 8, max: 50, count: 10, size: 7, salt: 0x66f },
+      { id: I.redstone, min: 5, max: 22, count: 6, size: 5, salt: 0x77a },
+      { id: I.lapis, min: 6, max: 32, count: 4, size: 5, salt: 0x88b },
+      { id: I.emerald, min: 8, max: 42, count: 6, size: 4, salt: 0x99c, biome: 'alpine' },
+      { id: I.granite, min: 5, max: 44, count: 8, size: 8, salt: 0xaad },
     ];
     for (const v of veins) {
       if (v.id === 0) continue; // 自定义注册表缺少该方块时静默跳过
       const count = Math.round(v.count * this.opt.oreRichness);
       for (let i = 0; i < count; i++) {
-        const rng = mulberry32(this.hashInt(cx, cz, v.salt, i));
+        const rng = mulberry32(this.hashInt(ctx.cx, ctx.cz, v.salt, i));
         const lx = 1 + ((rng() * (CS - 2)) | 0);
         const lz = 1 + ((rng() * (CS - 2)) | 0);
+        const wx = ctx.x0 + lx;
+        const wz = ctx.z0 + lz;
+        if (v.biome && this.biomeAt(wx, wz) !== v.biome) continue;
         // 用本区块中心的地形高度限制矿脉深度，避免穿出海床
-        const h = this.height(cx * CS + lx, cz * CS + lz);
+        const h = this.height(wx, wz);
         const maxY = Math.min(v.max, h - 5);
         if (maxY < v.min) continue;
         let px = lx;
@@ -413,8 +555,11 @@ export class DefaultGenerator implements IWorldGenerator {
         let pz = lz;
         for (let k = 0; k < v.size; k++) {
           if (px < 0 || px >= CS || pz < 0 || pz >= CS || py < 1 || py >= H) break;
-          const j = idx(px, py, pz);
-          if (data[j] === I.stone) data[j] = v.id;
+          // 限定群系的矿脉逐格校验，避免矿脉跨过群系边界（绿宝石不跑到山脚）
+          if (!v.biome || this.biomeAt(ctx.x0 + px, ctx.z0 + pz) === v.biome) {
+            const j = ctx.idx(px, py, pz);
+            if (data[j] === I.stone) data[j] = v.id;
+          }
           px += ((rng() * 3) | 0) - 1;
           py += ((rng() * 3) | 0) - 1;
           pz += ((rng() * 3) | 0) - 1;
@@ -423,16 +568,11 @@ export class DefaultGenerator implements IWorldGenerator {
     }
   }
 
-  // ---------- 跨区块树木 ----------
+  // ---------- 阶段 3：跨区块树木 ----------
 
-  private placeTrees(
-    cx: number, cz: number, data: Uint8Array,
-    idx: (x: number, y: number, z: number) => number,
-    groundAt: (wx: number, wz: number) => number,
-  ): void {
+  private stageTrees(ctx: GenContext, data: Uint8Array): void {
     const I = this.ids;
-    const x0 = cx * CS;
-    const z0 = cz * CS;
+    const { x0, z0, idx, groundAt } = ctx;
     // 多扫一个格子：邻区块中心的树冠可能伸进本区块
     const gx0 = Math.floor((x0 - PAD - TREE_CELL) / TREE_CELL);
     const gx1 = Math.floor((x0 + CS + PAD) / TREE_CELL);
@@ -488,5 +628,73 @@ export class DefaultGenerator implements IWorldGenerator {
         }
       }
     }
+  }
+
+  // ---------- 阶段 4：地表装饰（按群系配置表） ----------
+
+  private stageDecorate(ctx: GenContext, data: Uint8Array): void {
+    const I = this.ids;
+    const { x0, z0, at, idx, groundAt } = ctx;
+    for (let lz = 0; lz < CS; lz++) {
+      for (let lx = 0; lx < CS; lx++) {
+        const c = at(lx, lz);
+        const h = c.height;
+        if (h + 1 >= H) continue;
+        const profile = this.profiles[c.biome];
+        // 顶面必须是本群系配置的地表方块：陡坡露石 / 雪线不会被花草覆盖
+        if (data[idx(lx, h, lz)] !== profile.surface) continue;
+        if (data[idx(lx, h + 1, lz)] !== 0) continue;
+        const wx = x0 + lx;
+        const wz = z0 + lz;
+
+        // 甘蔗：紧邻水面的浅岸（含与水面同高的沙滩），1~2 格高
+        if (profile.caneChance > 0 && h >= SEA_LEVEL && h <= SEA_LEVEL + 3 &&
+          this.hash2i(wx, wz, 0x6a1e) < profile.caneChance &&
+          this.nearWater(wx, wz, h, groundAt)) {
+          const n = this.hash2i(wx, wz, 0x6a1f) < 0.5 ? 2 : 1;
+          for (let k = 0; k < n && h + 1 + k < H; k++) {
+            const j = idx(lx, h + 1 + k, lz);
+            if (data[j] !== 0) break;
+            data[j] = I.cane;
+          }
+          continue;
+        }
+
+        if (h <= SEA_LEVEL) continue;
+
+        // 沙漠仙人掌：成列 1~3 格
+        if (profile.cactusChance > 0 && c.slope <= 0.35 &&
+          this.hash2i(wx, wz, 0xcac7) < profile.cactusChance) {
+          const n = 1 + ((this.hash2i(wx, wz, 0xcac8) * 3) | 0);
+          for (let k = 0; k < n && h + 1 + k < H; k++) {
+            const j = idx(lx, h + 1 + k, lz);
+            if (data[j] !== 0) break;
+            data[j] = I.cactus;
+          }
+          continue;
+        }
+
+        if (c.slope > 0.5) continue;
+        if (profile.plantTotal <= 0) continue;
+        const r = this.hash2i(wx, wz, 0x51ed);
+        let acc = 0;
+        for (const pl of profile.plants) {
+          acc += pl.weight;
+          if (r < acc) {
+            data[idx(lx, h + 1, lz)] = pl.id;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  /** 四邻中是否有比自己更低的水面（甘蔗只长在临水浅岸） */
+  private nearWater(
+    wx: number, wz: number, height: number,
+    groundAt: (wx: number, wz: number) => number,
+  ): boolean {
+    return groundAt(wx + 1, wz) < height || groundAt(wx - 1, wz) < height ||
+      groundAt(wx, wz + 1) < height || groundAt(wx, wz - 1) < height;
   }
 }
