@@ -167,8 +167,8 @@ try {
     const w = window.__mc.world;
     return {
       torch: w.getBlockLight(s.cx, s.gy + 1, s.cz),
-      near: w.getBlockLight(s.cx + 1, s.gy + 1, s.cz),
-      nightSky: w.getSkyLight(s.cx, s.gy + 1, s.cz),
+      // 取 z 方向邻格：只受 torch(14) 直接影响，距 jack_o_lantern/glowstone 各 3 格(<=12)
+      near: w.getBlockLight(s.cx, s.gy + 1, s.cz + 1),
     };
   }, lightScene);
   await page.screenshot({ path: path.join(OUT, 'visual-lights.png') });
