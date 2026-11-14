@@ -375,11 +375,18 @@ export class ChunkManager implements System {
 
     // 2) 派发网格任务（近处优先，每帧限量，避免消息风暴）
     if (this.world.dirty.size > 0) {
-      const list = [...this.world.dirty]
-        .map((k) => k.split(',').map(Number) as [number, number])
-        .filter(([x, z]) => Math.abs(x - cx) <= margin && Math.abs(z - cz) <= margin)
-        .sort((a, b) =>
-          (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
+      const list: [number, number][] = [];
+      for (const key of this.world.dirty) {
+        const [x, z] = key.split(',').map(Number);
+        if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
+          // 远处脏标记直接丢弃，避免长期累积；靠近时会由第 0 步重新入队
+          this.world.dirty.delete(key);
+          continue;
+        }
+        list.push([x, z]);
+      }
+      list.sort((a, b) =>
+        (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
       let dispatched = 0;
       for (const [x, z] of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME) break;

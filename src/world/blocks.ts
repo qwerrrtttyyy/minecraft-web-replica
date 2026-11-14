@@ -95,6 +95,8 @@ export class BlockRegistry {
   register(input: BlockInput): BlockDefinition {
     if (this.byName.has(input.name)) throw new Error(`方块名重复: ${input.name}`);
     const id = input.id ?? this.nextId;
+    // 区块数据用 Uint8Array 存储，id 超过 255 会被静默截断成别的方块
+    if (id < 1 || id > 255) throw new Error(`方块 id 超出 1~255: ${id}`);
     if (this.byId.has(id)) throw new Error(`方块 id 重复: ${id}`);
     const def: BlockDefinition = { ...input, id, drops: input.drops ?? [{ name: 'self' }] };
     this.byId.set(id, def);

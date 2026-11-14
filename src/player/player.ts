@@ -77,6 +77,9 @@ export class Player implements System, PhysicsBody {
   private shakeAmp = 0;
   private shakeT = 0;
   private moveEmitAcc = 0;
+  private lastEmitX = 0;
+  private lastEmitY = 0;
+  private lastEmitZ = 0;
   private eatTimer = 0;
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
@@ -362,7 +365,15 @@ export class Player implements System, PhysicsBody {
     this.moveEmitAcc += dt;
     if (this.moveEmitAcc > 0.25) {
       this.moveEmitAcc = 0;
-      this.events.emit('player:move', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
+      // 只有真的移动过才通知存档，站着不动不应反复触发自动保存
+      const moved = Math.abs(this.pos.x - this.lastEmitX) +
+        Math.abs(this.pos.y - this.lastEmitY) + Math.abs(this.pos.z - this.lastEmitZ);
+      if (moved > 0.02) {
+        this.lastEmitX = this.pos.x;
+        this.lastEmitY = this.pos.y;
+        this.lastEmitZ = this.pos.z;
+        this.events.emit('player:move', { position: { x: this.pos.x, y: this.pos.y, z: this.pos.z } });
+      }
     }
   }
 
@@ -626,8 +637,8 @@ export class Player implements System, PhysicsBody {
     const sp = this.swingT < 1 ? Math.sin(this.swingT * Math.PI) : 0;
     const aspect = this.camera.aspect || 1.6;
     const halfW = Math.tan((this.camera.fov * Math.PI) / 360) * aspect;
-    // 竖屏时等比缩小手持物并往里收，避免被画面裁掉
-    const handScale = Math.min(1, Math.max(0.55, aspect / 1.5));
+    // 竖屏时明显缩小手持物，避免遮住跳跃/放置按钮；桌面也略收一点
+    const handScale = Math.min(0.72, Math.max(0.3, aspect / 2.15));
     this.heldGroup.scale.setScalar(handScale);
     const handX = Math.min(0.44, halfW * 0.42);
     this.heldGroup.position.set(

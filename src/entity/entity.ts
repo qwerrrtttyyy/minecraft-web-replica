@@ -192,7 +192,10 @@ export class Entity implements PhysicsBody {
     if (moving) this.phase += dt * 7;
     this.model.group.position.copy(this.pos);
     this.model.group.rotation.y = this.yaw + Math.PI;
-    this.model.animate(this.phase, moving && (Math.abs(this.vel.x) + Math.abs(this.vel.z)) > 0.2);
+    const animating = moving && (Math.abs(this.vel.x) + Math.abs(this.vel.z)) > 0.2;
+    this.model.animate(this.phase, animating);
+    // 上下浮动必须叠加在实体位置上，不能由 animate() 直接写绝对坐标
+    if (animating) this.model.group.position.y += Math.abs(Math.sin(this.phase)) * 0.02;
   }
 }
 

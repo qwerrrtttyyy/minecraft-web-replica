@@ -253,7 +253,6 @@ export function buildZombie(): MobModel {
       legs[1].rotation.x = -s;
       arms[0].rotation.x = -Math.PI / 2.1 + Math.sin(phase * 0.5) * 0.12;
       arms[1].rotation.x = -Math.PI / 2.1 - Math.sin(phase * 0.5) * 0.12;
-      group.position.y = moving ? Math.abs(Math.sin(phase)) * 0.02 : 0;
     },
   };
 }
