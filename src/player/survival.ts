@@ -28,11 +28,17 @@ export interface ItemDefinition {
   tile: string;
   /** 进食恢复的饥饿值（0~20） */
   food?: number;
+  /** 右键时种植的方块名（种子 / 浆果等可种植物品） */
+  plant?: string;
 }
 
 export const ITEMS: Record<string, ItemDefinition> = {
   apple: { name: 'apple', label: '苹果', tile: 'apple', food: 4 },
   porkchop: { name: 'porkchop', label: '生猪排', tile: 'porkchop', food: 6 },
+  wheat_seeds: { name: 'wheat_seeds', label: '小麦种子', tile: 'wheat_seeds', plant: 'wheat_seedling' },
+  sweet_berries: {
+    name: 'sweet_berries', label: '甜浆果', tile: 'sweet_berries', food: 2, plant: 'sweet_berry_bush',
+  },
 };
 
 export const itemKey = (name: string) => `i:${name}`;

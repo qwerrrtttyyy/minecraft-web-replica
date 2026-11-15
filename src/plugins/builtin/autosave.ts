@@ -21,6 +21,7 @@ export const autosavePlugin: PluginDefinition = {
       'block:break',
       'block:place',
       'block:ignite',
+      'plant:grow',
       'player:move',
       'inventory:change',
       'hotbar:select',

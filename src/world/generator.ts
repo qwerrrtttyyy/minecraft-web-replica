@@ -3,6 +3,7 @@ import {
 } from '../core/types';
 import { Noise } from './noise';
 import type { BlockRegistry } from './blocks';
+import { buildTree, type TreeSpecies } from './trees';
 
 /**
  * 世界生成器接口（扩展点：CraftAPI.setGenerator 可整体替换地形算法）。
@@ -62,7 +63,7 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   riverDepth: 7,
   spawnUplift: 3,
   spawnRadius: 82,
-  treeDensity: { plains: 0.08, forest: 0.42, taiga: 0.34 },
+  treeDensity: { plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05 },
   oreRichness: 1,
 };
 
@@ -90,12 +91,24 @@ export interface BiomeProfile {
   cactusChance: number;
   /** 临水浅岸生成甘蔗的概率（0 关闭） */
   caneChance: number;
+  /** 树种权重（缺省不生成树；是否生成仍由 treeDensity 决定） */
+  trees?: readonly { species: TreeSpecies; weight: number }[];
+  /** 水下植物（海草 / 海带）权重 */
+  waterPlants?: readonly { name: string; weight: number }[];
+  /** 水下植物命中概率（0 关闭） */
+  waterPlantChance?: number;
+  /** 浅水水面生成睡莲的概率（0 关闭） */
+  lilyChance?: number;
+  /** 地表生成南瓜的概率（0 关闭） */
+  pumpkinChance?: number;
 }
 
 export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
   ocean: {
     surface: 'sand', filler: 'sand', plants: [],
     clayChance: 0.5, cactusChance: 0, caneChance: 0,
+    waterPlants: [{ name: 'seagrass', weight: 0.7 }, { name: 'kelp', weight: 0.3 }],
+    waterPlantChance: 0.16, lilyChance: 0.01,
   },
   beach: {
     surface: 'sand', filler: 'sand', plants: [],
@@ -110,30 +123,48 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
   plains: {
     surface: 'grass', filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.068 }, { name: 'poppy', weight: 0.022 },
-      { name: 'dandelion', weight: 0.02 }, { name: 'fern', weight: 0.01 },
+      { name: 'tall_grass', weight: 0.05 }, { name: 'poppy', weight: 0.012 },
+      { name: 'dandelion', weight: 0.012 }, { name: 'fern', weight: 0.006 },
+      { name: 'azure_bluet', weight: 0.012 }, { name: 'oxeye_daisy', weight: 0.012 },
+      { name: 'cornflower', weight: 0.01 }, { name: 'tulip_red', weight: 0.006 },
+      { name: 'tulip_orange', weight: 0.005 }, { name: 'tulip_white', weight: 0.005 },
+      { name: 'tulip_pink', weight: 0.005 }, { name: 'bluebell', weight: 0.006 },
+      { name: 'allium', weight: 0.004 }, { name: 'sunflower', weight: 0.004 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.025,
+    trees: [{ species: 'oak', weight: 1 }], pumpkinChance: 0.0015,
   },
   forest: {
     surface: 'grass', filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.099 }, { name: 'poppy', weight: 0.032 },
-      { name: 'dandelion', weight: 0.029 }, { name: 'fern', weight: 0.012 },
+      { name: 'tall_grass', weight: 0.06 }, { name: 'poppy', weight: 0.01 },
+      { name: 'dandelion', weight: 0.01 }, { name: 'fern', weight: 0.01 },
+      { name: 'tall_fern', weight: 0.012 },
+      { name: 'lily_of_the_valley', weight: 0.012 }, { name: 'bluebell', weight: 0.012 },
+      { name: 'rose_bush', weight: 0.006 }, { name: 'lilac', weight: 0.005 },
+      { name: 'peony', weight: 0.005 },
+      { name: 'red_mushroom', weight: 0.004 }, { name: 'brown_mushroom', weight: 0.004 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.03,
+    trees: [{ species: 'oak', weight: 0.65 }, { species: 'birch', weight: 0.35 }],
+    pumpkinChance: 0.001,
   },
   taiga: {
     surface: 'podzol', filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.05 }, { name: 'fern', weight: 0.035 },
-      { name: 'poppy', weight: 0.016 }, { name: 'dandelion', weight: 0.014 },
+      { name: 'tall_grass', weight: 0.01 }, { name: 'fern', weight: 0.025 },
+      { name: 'tall_fern', weight: 0.03 }, { name: 'poppy', weight: 0.004 },
+      { name: 'lily_of_the_valley', weight: 0.004 },
+      { name: 'red_mushroom', weight: 0.004 }, { name: 'brown_mushroom', weight: 0.006 },
+      { name: 'sweet_berry_bush', weight: 0.008 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.02,
+    trees: [{ species: 'spruce', weight: 1 }],
   },
   alpine: {
     surface: 'snow', filler: 'dirt', plants: [],
     clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'spruce', weight: 1 }],
   },
 };
 
@@ -163,6 +194,13 @@ interface ResolvedProfile {
   clayChance: number;
   cactusChance: number;
   caneChance: number;
+  trees: { species: TreeSpecies; weight: number }[];
+  treeTotal: number;
+  waterPlants: { id: number; weight: number }[];
+  waterPlantTotal: number;
+  waterPlantChance: number;
+  lilyChance: number;
+  pumpkinChance: number;
 }
 
 /** 单区块生成的共享上下文：列信息、高度网格与坐标换算只构建一次 */
@@ -259,17 +297,23 @@ export class DefaultGenerator implements IWorldGenerator {
     this.ids = {
       stone: id('stone'), water: id('water'), bedrock: id('bedrock'),
       log: id('oak_log'), leaves: id('oak_leaves'),
+      birchLog: id('birch_log'), birchLeaves: id('birch_leaves'),
+      spruceLog: id('spruce_log'), spruceLeaves: id('spruce_leaves'),
       coal: id('coal_ore'), iron: id('iron_ore'), gold: id('gold_ore'),
       diamond: id('diamond_ore'), glowstone: id('glowstone'),
       copper: id('copper_ore'), emerald: id('emerald_ore'), lapis: id('lapis_ore'),
       redstone: id('redstone_ore'), granite: id('granite'),
       clay: id('clay'), cactus: id('cactus'), cane: id('sugar_cane'),
+      seagrass: id('seagrass'), kelp: id('kelp'), lilyPad: id('lily_pad'),
+      pumpkin: id('pumpkin'),
     };
 
     const resolved = {} as Record<BiomeId, ResolvedProfile>;
     for (const biome of Object.keys(BIOME_PROFILES) as BiomeId[]) {
       const p = BIOME_PROFILES[biome];
       const plants = p.plants.map((pl) => ({ id: id(pl.name), weight: pl.weight }));
+      const waterPlants = (p.waterPlants ?? []).map((pl) => ({ id: id(pl.name), weight: pl.weight }));
+      const trees = [...(p.trees ?? [])];
       resolved[biome] = {
         surface: id(p.surface),
         filler: id(p.filler),
@@ -278,6 +322,13 @@ export class DefaultGenerator implements IWorldGenerator {
         clayChance: p.clayChance,
         cactusChance: p.cactusChance,
         caneChance: p.caneChance,
+        trees,
+        treeTotal: trees.reduce((sum, t) => sum + t.weight, 0),
+        waterPlants,
+        waterPlantTotal: waterPlants.reduce((sum, pl) => sum + pl.weight, 0),
+        waterPlantChance: p.waterPlantChance ?? 0,
+        lilyChance: p.lilyChance ?? 0,
+        pumpkinChance: p.pumpkinChance ?? 0,
       };
     }
     this.profiles = resolved;
@@ -578,6 +629,10 @@ export class DefaultGenerator implements IWorldGenerator {
     const gx1 = Math.floor((x0 + CS + PAD) / TREE_CELL);
     const gz0 = Math.floor((z0 - PAD - TREE_CELL) / TREE_CELL);
     const gz1 = Math.floor((z0 + CS + PAD) / TREE_CELL);
+    const logOf = (s: TreeSpecies) =>
+      s === 'birch' ? I.birchLog : s === 'spruce' ? I.spruceLog : I.log;
+    const leafOf = (s: TreeSpecies) =>
+      s === 'birch' ? I.birchLeaves : s === 'spruce' ? I.spruceLeaves : I.leaves;
 
     for (let gz = gz0; gz <= gz1; gz++) {
       for (let gx = gx0; gx <= gx1; gx++) {
@@ -589,45 +644,48 @@ export class DefaultGenerator implements IWorldGenerator {
         const b = this.base(wx, wz);
         const density = this.opt.treeDensity[b.biome] ?? 0;
         if (density <= 0 || rDen > density) continue;
-        if (b.height <= SEA_LEVEL || b.height + 10 >= H) continue;
+        if (b.height <= SEA_LEVEL || b.height + 14 >= H) continue;
         if (this.slopeAt(wx, wz) > 0.45) continue;
+
+        const species = this.pickTreeSpecies(b.biome, this.hash2i(gx, gz, 0x2f61));
+        if (!species) continue;
 
         // 同一棵树在任何区块里都用同一随机序列，保证跨区块裁剪结果一致
         const rng = mulberry32((Math.imul(wx, 73856093) ^ Math.imul(wz, 19349663) ^ this.seed) | 0);
-        const trunk = 4 + ((rng() * 3) | 0);
+        const shape = buildTree(species, rng);
         const baseY = b.height + 1;
-        if (baseY + trunk + 2 >= H) continue;
-        const crown = b.biome === 'taiga' ? 1 : 2;
+        let maxDy = 0;
+        for (const blk of shape) if (blk.dy > maxDy) maxDy = blk.dy;
+        if (baseY + maxDy >= H) continue;
 
-        // 树干：只写本区块内的那一列
-        if (wx >= x0 && wx < x0 + CS && wz >= z0 && wz < z0 + CS) {
-          const lx = wx - x0;
-          const lz = wz - z0;
-          for (let dy = 0; dy < trunk; dy++) {
-            const yy = baseY + dy;
-            if (yy < H) data[idx(lx, yy, lz)] = I.log;
+        for (const blk of shape) {
+          const lx = wx + blk.dx - x0;
+          const lz = wz + blk.dz - z0;
+          const yy = baseY + blk.dy;
+          if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || yy < 1 || yy >= H) continue;
+          if (blk.kind === 'log') {
+            data[idx(lx, yy, lz)] = logOf(species);
+            continue;
           }
-        }
-
-        // 树冠：按世界坐标计算，按本区块范围裁剪
-        const topRad = Math.max(1, crown - 1);
-        for (let dy = trunk - 2; dy <= trunk + 1; dy++) {
-          const rad = dy >= trunk ? topRad : crown;
-          for (let dx = -rad; dx <= rad; dx++) {
-            for (let dz = -rad; dz <= rad; dz++) {
-              if (Math.abs(dx) === rad && Math.abs(dz) === rad && (dy >= trunk || rng() < 0.5)) continue;
-              const lx = wx + dx - x0;
-              const lz = wz + dz - z0;
-              const yy = baseY + dy;
-              if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || yy >= H) continue;
-              if (yy <= groundAt(wx + dx, wz + dz)) continue;
-              const j = idx(lx, yy, lz);
-              if (data[j] === 0) data[j] = I.leaves;
-            }
-          }
+          // 树冠不覆盖地形、不覆盖其他树干；只写入空气
+          if (yy <= groundAt(wx + blk.dx, wz + blk.dz)) continue;
+          const j = idx(lx, yy, lz);
+          if (data[j] === 0) data[j] = leafOf(species);
         }
       }
     }
+  }
+
+  /** 按群系权重选择树种；该群系没有配置树种时返回 null */
+  private pickTreeSpecies(biome: BiomeId, r: number): TreeSpecies | null {
+    const p = this.profiles[biome];
+    if (p.treeTotal <= 0 || p.trees.length === 0) return null;
+    let acc = 0;
+    for (const t of p.trees) {
+      acc += t.weight;
+      if (r < acc) return t.species;
+    }
+    return p.trees[p.trees.length - 1].species;
   }
 
   // ---------- 阶段 4：地表装饰（按群系配置表） ----------
@@ -641,11 +699,46 @@ export class DefaultGenerator implements IWorldGenerator {
         const h = c.height;
         if (h + 1 >= H) continue;
         const profile = this.profiles[c.biome];
+        const wx = x0 + lx;
+        const wz = z0 + lz;
+
+        // 水下装饰：海草 / 海带长在海床上，浅水水面铺睡莲
+        if (h < SEA_LEVEL) {
+          if (profile.waterPlantTotal > 0 && profile.waterPlantChance > 0 &&
+            data[idx(lx, h + 1, lz)] === I.water &&
+            this.hash2i(wx, wz, 0x0cea) < profile.waterPlantChance) {
+            let acc = 0;
+            const r = this.hash2i(wx, wz, 0x0ceb);
+            for (const pl of profile.waterPlants) {
+              acc += pl.weight;
+              if (r >= acc) continue;
+              if (pl.id === I.kelp) {
+                // 海带成列向上生长，最多长到水面
+                const n = 2 + ((this.hash2i(wx, wz, 0x0cec) * 4) | 0);
+                for (let k = 0; k < n; k++) {
+                  const y = h + 1 + k;
+                  if (y > SEA_LEVEL) break;
+                  const j = idx(lx, y, lz);
+                  if (data[j] !== I.water) break;
+                  data[j] = pl.id;
+                }
+              } else {
+                data[idx(lx, h + 1, lz)] = pl.id;
+              }
+              break;
+            }
+          }
+          if (profile.lilyChance > 0 && SEA_LEVEL - h <= 3 &&
+            this.hash2i(wx, wz, 0x1a7e) < profile.lilyChance &&
+            SEA_LEVEL + 1 < H && data[idx(lx, SEA_LEVEL + 1, lz)] === 0) {
+            data[idx(lx, SEA_LEVEL + 1, lz)] = I.lilyPad;
+          }
+          continue;
+        }
+
         // 顶面必须是本群系配置的地表方块：陡坡露石 / 雪线不会被花草覆盖
         if (data[idx(lx, h, lz)] !== profile.surface) continue;
         if (data[idx(lx, h + 1, lz)] !== 0) continue;
-        const wx = x0 + lx;
-        const wz = z0 + lz;
 
         // 甘蔗：紧邻水面的浅岸（含与水面同高的沙滩），1~2 格高
         if (profile.caneChance > 0 && h >= SEA_LEVEL && h <= SEA_LEVEL + 3 &&
@@ -671,6 +764,13 @@ export class DefaultGenerator implements IWorldGenerator {
             if (data[j] !== 0) break;
             data[j] = I.cactus;
           }
+          continue;
+        }
+
+        // 南瓜：草甸 / 森林地表的稀有野生成丛，也是南瓜藤生长机制的种子来源
+        if (profile.pumpkinChance > 0 && c.slope <= 0.4 &&
+          this.hash2i(wx, wz, 0x9c3d) < profile.pumpkinChance) {
+          data[idx(lx, h + 1, lz)] = I.pumpkin;
           continue;
         }
 

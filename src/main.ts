@@ -7,6 +7,7 @@ import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
 import { World } from './world/world';
+import { Botany } from './world/botany';
 import { ChunkManager } from './world/chunkManager';
 import { Sky } from './gfx/sky';
 import { Particles } from './gfx/particles';
@@ -139,6 +140,7 @@ async function boot() {
   const input = new Input(engine.renderer.domElement, isMobile);
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
+  const botany = new Botany(world, registry, seed, events, { isMobile });
   if (saved) {
     player.teleport(saved.player.x, saved.player.y, saved.player.z);
     player.yaw = saved.player.yaw;
@@ -830,6 +832,14 @@ async function boot() {
       }
     },
   });
+  engine.addSystem({
+    name: 'botany',
+    update: (dt) => {
+      // 暂停 / 死亡 / 加载时不推进生态，避免回到游戏时世界突然变化
+      if (mode !== 'playing') return;
+      botany.update(dt, player.pos.x, player.pos.z, sky.daylight);
+    },
+  });
   engine.addSystem(particles);
   engine.addSystem({
     name: 'ui',
@@ -927,6 +937,7 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, tntList, survival,
+    botany,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,

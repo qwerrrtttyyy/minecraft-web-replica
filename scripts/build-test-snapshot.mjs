@@ -23,6 +23,8 @@ const entries = [
   'src/save/save.ts',
   'src/world/generator.ts',
   'src/world/blocks.ts',
+  'src/world/botany.ts',
+  'src/world/trees.ts',
   'src/world/light.ts',
   'src/world/world.ts',
   'src/world/workerPool.ts',
