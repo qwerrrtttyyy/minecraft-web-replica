@@ -126,6 +126,22 @@ console.log('运行时诊断组回归');
 }
 
 {
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.plugins.push({ id: 'demo:orphan', state: 'enabled', dependencies: ['demo:missing'] });
+    s.plugins.push({ id: 'demo:stopped', state: 'disabled' });
+    s.plugins.push({ id: 'demo:needs-stopped', state: 'enabled', dependencies: ['demo:stopped'] });
+  }));
+  ok('启用插件缺少已启用依赖被捕获', has(r, 'plugins.dependency'));
+}
+
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.plugins.push({ id: 'demo:ok', state: 'enabled', dependencies: ['core:autosave'] });
+  }));
+  ok('依赖已满足时不误报', !has(r, 'plugins.dependency'));
+}
+
+{
   const r = runRuntimeDiagnostics(clone((s) => { s.survival.dead = true; }));
   ok('死亡状态与主状态机不一致被捕获', has(r, 'survival.deadState'));
 }

@@ -1,4 +1,4 @@
-# 测试体系（v1.4.0）
+# 测试体系（v1.5.0）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -46,8 +46,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   蕨（草甸 / 森林 / 针叶林）、绿宝石（仅高山）的生成位置约束。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
-- **services-check**：服务容器、事件服务、插件生命周期、权限、存档校验。
-- **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现。
+- **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
+  manifest 防篡改）、级联停用、存档校验。
+- **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含
+  `plugins.dependency`：启用中的插件缺少已启用依赖）。
 - **survival-smoke**：真实浏览器里的完整玩法链路；固定 seed=2026，条件轮询等世界收敛。
 - **visual-check**：固定 seed=2026 / 时段，断言夜间变暗、火光提亮、方块墙颜色丰富。
 

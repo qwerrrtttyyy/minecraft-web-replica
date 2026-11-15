@@ -38,9 +38,12 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **输入状态机**：暂停 / 死亡 / 返回标题时调用 `input.reset()`；keyup 必须无条件处理，
   否则禁用期间的松键会永久留在 `keys` 里。
 - **插件生命周期**：`PluginService` 用 `pending` Promise 复用并发 enable，用 epoch 识别
-  “setup 期间被 disable”；`EventChannel.waitFor` 也必须走通道作用域，dispose 时一起清理。
-- **权限是护栏不是沙箱**：`scopeAPI` 会拦截 world/player/save/api/blocks 的写入口，
-  但 `ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
+  “setup 期间被 disable”；`EventChannel.waitFor` 也必须走通道作用域，dispose 时一起清理；
+  `disable` 会级联停用下游依赖（依赖方先 teardown）。
+- **权限是护栏不是沙箱**：写入口集中登记在 `PluginService.ts` 的 `WRITE_CAPABILITIES`
+  表（world/player/save/api/blocks/time/settings/plugins），新增能力必须同步加拦截；
+  `api:emit` 要同时盖住 `ctx.events.emit` 与 `api.events.scope` 子通道；manifest 存 / 取
+  都要防御性拷贝。`ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
 - **诊断**：新增高风险不变量时，优先在 `src/diagnostics/RuntimeDiagnostics.ts` 增加检查，
   并在 `test/diagnostics-check.cjs` 补一条注入式回归。

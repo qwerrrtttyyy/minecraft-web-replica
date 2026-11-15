@@ -8,7 +8,22 @@ export type PluginPermission =
   | 'player:write'
   | 'save:write'
   | 'api:emit'
-  | 'blocks:register';
+  | 'blocks:register'
+  | 'time:write'
+  | 'settings:write'
+  | 'plugins:manage';
+
+/** 全部合法权限名（register 时校验，拼错立即失败而不是静默放行/拒绝） */
+export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = [
+  'world:write',
+  'player:write',
+  'save:write',
+  'api:emit',
+  'blocks:register',
+  'time:write',
+  'settings:write',
+  'plugins:manage',
+];
 
 export interface PluginManifest {
   /** 全局唯一 id，建议 `作者:名称`（如 `core:autosave`） */

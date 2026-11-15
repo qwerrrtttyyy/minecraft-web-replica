@@ -1,5 +1,6 @@
-import type { EventService } from '../events/EventService';
-import type { EventChannel } from '../events/EventChannel';
+import type { EventService, AnyEventHandler } from '../events/EventService';
+import type { EventChannel, EventChannelOptions } from '../events/EventChannel';
+import type { GameEvents } from '../events/GameEvents';
 import type { Disposable, ServiceContainer } from '../ServiceContainer';
 import type { CraftAPI } from '../../api/CraftAPI';
 import type {
@@ -10,9 +11,12 @@ import type {
   PluginRecord,
   PluginState,
 } from './PluginContext';
+import { PLUGIN_PERMISSIONS } from './PluginContext';
 
 interface InternalRecord {
   def: PluginDefinition;
+  /** manifest 的防御性副本：插件无法通过 list() / get() 改写自己的权限 */
+  manifest: PluginManifest;
   state: PluginState;
   error?: string;
   channel?: EventChannel;
@@ -25,21 +29,84 @@ const deny = (p: PluginPermission): never => {
   throw new Error(`[plugins] 缺少权限 ${p}（在 manifest.permissions 中声明后重试）`);
 };
 
-/** 按权限裁剪公开 API：未授权的写能力换成抛错桩，读能力全部保留 */
-export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = []): CraftAPI {
+/**
+ * 权限 → 需要拦截的写入口（路径相对 CraftAPI 根）。
+ *
+ * 集中成表而不是散落一地的 if：新增能力时只改这张表，避免「加了写入口忘了加拦截」。
+ * 读能力不在此表中，一律经原型链保留。
+ */
+const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
+  'world:write': [['world', 'setBlock'], ['tnt', 'ignite'], ['entities', 'spawn']],
+  'player:write': [
+    ['player', 'teleport'],
+    ['player', 'setFly'],
+    ['player', 'break'],
+    ['player', 'place'],
+    ['player', 'setCamera'],
+    ['survival', 'setMode'],
+    ['survival', 'respawn'],
+    ['survival', 'give'],
+    ['survival', 'damage'],
+    ['survival', 'heal'],
+  ],
+  'save:write': [['save', 'import'], ['save', 'setProvider']],
+  'blocks:register': [['registerBlock'], ['registerTile'], ['registerEntity'], ['setGenerator']],
+  'time:write': [['time', 'set'], ['time', 'setDayLength']],
+  'settings:write': [
+    ['settings', 'renderDistance'],
+    ['settings', 'sensitivity'],
+    ['settings', 'fov'],
+    ['settings', 'sound'],
+  ],
+  'plugins:manage': [
+    ['plugins', 'register'],
+    ['plugins', 'enable'],
+    ['plugins', 'disable'],
+    ['plugins', 'unload'],
+  ],
+  'api:emit': [['emit']],
+};
+
+/** 沿路径逐层建立 shadow（Object.create 继承原对象），把末端换成抛错桩 */
+const denyPath = (root: CraftAPI, path: readonly string[], permission: PluginPermission): void => {
+  let obj: Record<string, unknown> = root as unknown as Record<string, unknown>;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    const shadow = Object.create(obj[key] ?? {}) as Record<string, unknown>;
+    obj[key] = shadow;
+    obj = shadow;
+  }
+  obj[path[path.length - 1]] = () => deny(permission);
+};
+
+/**
+ * 按权限裁剪公开 API：未授权的写能力换成抛错桩，读能力全部保留。
+ *
+ * `channel` 是插件的命名空间通道（PluginService 启用时注入）：
+ * - `api.on / off` 路由进通道，停用时自动撤销，杜绝「api.on 订阅泄漏」；
+ * - `api.events.scope(ns)` 返回通道的子通道，同样随插件销毁；
+ * - `api.events.waitFor / onAny` 也归属通道，避免绕过通道作用域。
+ */
+export function scopeAPI(
+  base: CraftAPI,
+  permissions: PluginPermission[] = [],
+  channel?: EventChannel,
+): CraftAPI {
   const perms = new Set(permissions);
   const api = Object.create(base) as CraftAPI;
 
-  const canRegisterBlocks = perms.has('blocks:register');
-  if (!canRegisterBlocks) {
-    api.registerBlock = (() => deny('blocks:register')) as CraftAPI['registerBlock'];
-    api.registerTile = (() => deny('blocks:register')) as CraftAPI['registerTile'];
-    api.registerEntity = (() => deny('blocks:register')) as CraftAPI['registerEntity'];
-    api.setGenerator = (() => deny('blocks:register')) as CraftAPI['setGenerator'];
+  for (const [permission, paths] of Object.entries(WRITE_CAPABILITIES) as [
+    PluginPermission,
+    readonly string[][],
+  ][]) {
+    if (perms.has(permission)) continue;
+    for (const path of paths) denyPath(api, path, permission);
   }
+
   // 旧 22 项里直接暴露了 BlockRegistry。代理保证 register 永远走权限与
   // CraftAPI.registerBlock 门面（否则不会触发 onBlockRegistered / Worker 配置刷新），
   // 同时保留 get / isSolid / all 等读能力（方法必须 bind 回原对象，私有字段才有效）。
+  const canRegisterBlocks = perms.has('blocks:register');
   if (base.blocks) {
     const registerThroughFacade = base.registerBlock;
     api.blocks = new Proxy(base.blocks, {
@@ -53,44 +120,26 @@ export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = []): 
       },
     });
   }
-  if (!perms.has('api:emit')) {
-    api.emit = (() => deny('api:emit')) as unknown as CraftAPI['emit'];
-  }
-  if (!perms.has('world:write')) {
-    const world = Object.create(base.world) as CraftAPI['world'];
-    world.setBlock = (() => deny('world:write')) as CraftAPI['world']['setBlock'];
-    api.world = world;
-    if (base.tnt) {
-      api.tnt = { ignite: (() => deny('world:write')) as CraftAPI['tnt']['ignite'] };
-    }
-    if (base.entities) {
-      const entities = Object.create(base.entities) as CraftAPI['entities'];
-      entities.spawn = (() => deny('world:write')) as CraftAPI['entities']['spawn'];
-      api.entities = entities;
-    }
-  }
-  if (!perms.has('player:write')) {
-    const player = Object.create(base.player) as CraftAPI['player'];
-    player.teleport = (() => deny('player:write')) as CraftAPI['player']['teleport'];
-    player.setFly = (() => deny('player:write')) as CraftAPI['player']['setFly'];
-    player.break = (() => deny('player:write')) as CraftAPI['player']['break'];
-    player.place = (() => deny('player:write')) as CraftAPI['player']['place'];
-    api.player = player;
-    if (base.survival) {
-      const survival = Object.create(base.survival) as CraftAPI['survival'];
-      survival.setMode = (() => deny('player:write')) as CraftAPI['survival']['setMode'];
-      survival.respawn = (() => deny('player:write')) as CraftAPI['survival']['respawn'];
-      survival.give = (() => deny('player:write')) as CraftAPI['survival']['give'];
-      survival.damage = (() => deny('player:write')) as CraftAPI['survival']['damage'];
-      survival.heal = (() => deny('player:write')) as CraftAPI['survival']['heal'];
-      api.survival = survival;
-    }
-  }
-  if (!perms.has('save:write')) {
-    const save = Object.create(base.save) as CraftAPI['save'];
-    save.import = (() => deny('save:write')) as CraftAPI['save']['import'];
-    save.setProvider = (() => deny('save:write')) as CraftAPI['save']['setProvider'];
-    api.save = save;
+
+  // 事件视图：api:emit 必须同时约束 ctx.events.emit 与 api.events.scope(...).emit，
+  // 否则插件可以绕开权限直接派发事件（例如触发 core:autosave 误标脏）。
+  const canEmit = perms.has('api:emit');
+  const baseEvents = base.events;
+  api.events = {
+    scope: (ns: string, options?: EventChannelOptions): EventChannel =>
+      channel
+        ? channel.fork(ns)
+        : baseEvents.scope(ns, { canEmit: options?.canEmit ?? canEmit }),
+    stats: () => baseEvents.stats(),
+    onAny: (fn: AnyEventHandler) => (channel ? channel.onAny(fn) : baseEvents.onAny(fn)),
+    waitFor: (type, timeoutMs) =>
+      channel ? channel.waitFor(type, timeoutMs) : baseEvents.waitFor(type, timeoutMs),
+  };
+  if (channel) {
+    api.on = (<K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void) =>
+      channel.on(type, fn)) as CraftAPI['on'];
+    api.off = (<K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void) =>
+      base.off(type, fn)) as CraftAPI['off'];
   }
   return api;
 }
@@ -116,8 +165,17 @@ export class PluginService implements Disposable {
     private readonly api: () => CraftAPI,
   ) {}
 
+  /** 返回 manifest 的再副本：调用方改写它不会影响注册表，更无法自我提权 */
   private snapshot(r: InternalRecord): PluginRecord {
-    return { manifest: r.def.manifest, state: r.state, error: r.error };
+    return {
+      manifest: {
+        ...r.manifest,
+        permissions: r.manifest.permissions ? [...r.manifest.permissions] : undefined,
+        dependencies: r.manifest.dependencies ? [...r.manifest.dependencies] : undefined,
+      },
+      state: r.state,
+      error: r.error,
+    };
   }
 
   register(def: PluginDefinition): PluginRecord {
@@ -126,8 +184,36 @@ export class PluginService implements Disposable {
     if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9._:-]{1,63}$/i.test(id)) {
       throw new Error(`[plugins] 非法插件 id: ${String(id)}`);
     }
+    if (typeof def.setup !== 'function') {
+      throw new Error(`[plugins] 插件 ${id} 缺少 setup 函数`);
+    }
+    const rawPermissions = def.manifest.permissions;
+    if (rawPermissions !== undefined && !Array.isArray(rawPermissions)) {
+      throw new Error(`[plugins] 插件 ${id} 的 permissions 必须是数组`);
+    }
+    const permissions = (rawPermissions ?? []) as PluginPermission[];
+    const unknown = permissions.filter((p) => !PLUGIN_PERMISSIONS.includes(p));
+    if (unknown.length > 0) {
+      throw new Error(`[plugins] 插件 ${id} 声明了未知权限：${unknown.join(', ')}`);
+    }
+    const rawDeps = def.manifest.dependencies;
+    if (rawDeps !== undefined && !Array.isArray(rawDeps)) {
+      throw new Error(`[plugins] 插件 ${id} 的 dependencies 必须是数组`);
+    }
+    const dependencies = rawDeps ?? [];
+    if (dependencies.some((d) => typeof d !== 'string' || d.length === 0)) {
+      throw new Error(`[plugins] 插件 ${id} 的 dependencies 必须是插件 id 数组`);
+    }
+    if (dependencies.includes(id)) {
+      throw new Error(`[plugins] 插件 ${id} 不能依赖自己`);
+    }
     if (this.records.has(id)) throw new Error(`[plugins] 插件重复注册: ${id}`);
-    const rec: InternalRecord = { def, state: 'registered', teardown: [], epoch: 0 };
+    const manifest: PluginManifest = {
+      ...def.manifest,
+      permissions: [...permissions],
+      dependencies: [...dependencies],
+    };
+    const rec: InternalRecord = { def, manifest, state: 'registered', teardown: [], epoch: 0 };
     this.records.set(id, rec);
     this.events.emit('plugin:registered', { id });
     return this.snapshot(rec);
@@ -169,14 +255,15 @@ export class PluginService implements Disposable {
   }
 
   private async runEnable(rec: InternalRecord, stack: Set<string>): Promise<void> {
-    const id = rec.def.manifest.id;
+    const id = rec.manifest.id;
     const epoch = ++rec.epoch;
-    const channel = this.events.scope(id);
+    // 通道的 emit 能力由 api:emit 决定：未声明的插件无法派发事件
+    const channel = this.events.scope(id, { canEmit: (rec.manifest.permissions ?? []).includes('api:emit') });
     rec.channel = channel;
     try {
       const chain = new Set(stack);
       chain.add(id);
-      for (const dep of rec.def.manifest.dependencies ?? []) {
+      for (const dep of rec.manifest.dependencies ?? []) {
         if (!this.records.has(dep)) throw new Error(`依赖未注册: ${dep}`);
         await this.enableInternal(dep, chain);
         // enable 内部会隔离失败为 failed 状态，这里必须显式复查，
@@ -188,7 +275,7 @@ export class PluginService implements Disposable {
         if (rec.epoch !== epoch || this.disposed) throw new Error('初始化期间被停用');
       }
       const base = this.api();
-      const scoped = scopeAPI(base, rec.def.manifest.permissions);
+      const scoped = scopeAPI(base, rec.manifest.permissions, channel);
       const ctx: PluginContext = {
         id,
         events: channel,
@@ -233,15 +320,32 @@ export class PluginService implements Disposable {
       try {
         fn();
       } catch (e) {
-        console.error(`[plugins] ${rec.def.manifest.id} teardown 失败`, e);
+        console.error(`[plugins] ${rec.manifest.id} teardown 失败`, e);
       }
     }
   }
 
   disable(id: string): void {
+    this.disableInternal(id, new Set());
+  }
+
+  /**
+   * 级联停用：依赖本插件的下游插件会先被停用（teardown 顺序 = 依赖方先释放），
+   * 避免出现「B 处于 enabled 但它依赖的 A 已经不在」的悬浮依赖。
+   * `visited` 防止循环依赖注册（enable 阶段才会拦截）时无限递归。
+   */
+  private disableInternal(id: string, visited: Set<string>): void {
+    if (visited.has(id)) return;
+    visited.add(id);
     const rec = this.records.get(id);
     // 从未启用的插件也要落到 disabled 终态（dispose 时统一收口）
     if (!rec || rec.state === 'disabled') return;
+    for (const other of this.records.values()) {
+      if (other.state !== 'enabled') continue;
+      if ((other.manifest.dependencies ?? []).includes(id)) {
+        this.disableInternal(other.manifest.id, visited);
+      }
+    }
     // 使进行中的 setup 失效：它返回后只做清理，不会再写回 enabled
     rec.epoch++;
     this.runTeardown(rec);
