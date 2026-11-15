@@ -592,6 +592,43 @@ try {
   ok('僵尸能攻击玩家', hpAfterZombie < 20, `health=${hpAfterZombie}`);
   ok('日照强度随夜晚下降', await page.evaluate(() => window.__mc.sky.daylight < 0.4));
 
+  // ---- 合成界面（v1.5.0）：背包取料 → 合成 → 产出 ----
+  {
+    await page.evaluate(() => {
+      const mc = window.__mc;
+      mc.survival.addBlock(mc.registry.byNameGet('oak_log').id, 1);
+      mc.openCrafting('game');
+    });
+    await page.waitForSelector('.crafting-overlay', { timeout: 8000 });
+    ok('合成界面可打开', await page.$eval('.crafting-overlay', (el) => el.style.display !== 'none'));
+    ok('合成界面是 3×3 网格', await page.$eval('.crafting-grid', (el) => el.dataset.size === '3'));
+    ok('配方列表非空', (await page.$$eval('.crafting-recipe', (e) => e.length)) >= 5);
+
+    // 点「橡木木板」配方自动摆放，再点结果槽合成
+    await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.crafting-recipe')];
+      rows.find((r) => r.textContent.includes('橡木木板')).click();
+    });
+    await sleep(200);
+    ok('自动摆放把原木放进格子', (await page.$$eval('.crafting-cell img', (e) => e.length)) === 1);
+    ok('结果槽显示可合成产物', (await page.$$eval('.crafting-result.ready', (e) => e.length)) === 1);
+
+    await page.click('.crafting-result');
+    await sleep(250);
+    const craft = await page.evaluate(() => ({
+      planks: window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('oak_planks').id),
+      logs: window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('oak_log').id),
+    }));
+    ok('合成产出 4 橡木木板', craft.planks === 4, `count=${craft.planks}`);
+    ok('原木被消耗', craft.logs === 0, `count=${craft.logs}`);
+
+    // 关闭界面，剩余材料应退回背包
+    await page.click('.crafting-close');
+    await sleep(200);
+    ok('合成界面可关闭', await page.$eval('.crafting-overlay', (el) => el.style.display === 'none'));
+    ok('关闭后游戏恢复', await page.evaluate(() => window.__mc.mode === 'playing'));
+  }
+
   // ---- 模式切换 ----
   await page.evaluate(() => window.__mc.toggleGameMode());
   ok('可切换到创造模式', (await page.evaluate(() => window.__mc.survival.mode)) === 'creative');

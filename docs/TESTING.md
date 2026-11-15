@@ -24,8 +24,9 @@ npm run verify
 | 10 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
 | 11 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
 | 12 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
-| 13 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 14 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 13 | `npm run test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 / 材料标识与背包键互转 43 组 | ✓ |
+| 14 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 15 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -53,6 +54,9 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **plant-energy**：植物特性表（solar / hydro / fungal 分类与花蜜掉落）、白天蓄能、
   夜间呼吸下限、完全黑暗 / 离水 / 火光旁的枯死、`plant:bloom` 开花事件、采集与浆果回退、
   能量不足时禁止树苗生长、向日葵根系共享、`stats()` 统计。
+- **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量）、有序配方的
+  3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
+  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
 - **services-check**：服务容器、事件服务、插件生命周期、权限、存档校验。

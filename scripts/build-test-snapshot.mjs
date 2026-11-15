@@ -17,6 +17,7 @@ const tmp = path.join(root, '.test-build');
 const entries = [
   'src/vite-env.d.ts',
   'src/player/survival.ts',
+  'src/player/crafting.ts',
   'src/core/events.ts',
   'src/services/ServiceContainer.ts',
   'src/services/plugins/PluginService.ts',

@@ -12,6 +12,7 @@ import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
+import { INTERACTIVE_BLOCK } from './crafting';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -540,6 +541,8 @@ export class Player implements System, PhysicsBody {
   useSelected() {
     const stack = this.selectedStack();
     if (!stack) {
+      // 空手右键可交互方块（如工作台）：交给上层打开对应界面
+      if (this.tryInteract()) return;
       this.harvestPlant();
       return;
     }
@@ -557,6 +560,19 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
+  }
+
+  /**
+   * 空手右键可交互方块 → 发出交互事件。
+   * 只有 survival 模式可交互：创造模式没有背包，合成界面无意义。
+   */
+  private tryInteract(): boolean {
+    const hit = this.target;
+    if (!hit || !this.survival.isSurvival) return false;
+    const def = this.registry.get(hit.block);
+    if (def.name !== INTERACTIVE_BLOCK) return false;
+    this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
+    return true;
   }
 
   /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */

@@ -26,6 +26,13 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `RELEASE` 仅在发布正式版时推进；Git 标签统一带 `v`：正式版打 `vN`，历史迭代标签为 `vX.Y.Z`（`v1.3.0` / `v1.3.1`）。
 - **方块 id 只追加**：内置方块 id 1..56 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
+- **合成规则进配置表**：配方表在 `src/player/crafting.ts` 的 `CRAFTING_RECIPES`，
+  不要把配方散进 UI 或 main.ts。材料标识用方块名 / `item:xxx`；背包键
+  （`b:<id>` / `i:<name>`）与材料标识的转换只放在组装根的 `craftingHost` 里。
+- **合成严格匹配**：网格里多一个不相干的材料就不该匹配，否则玩家会拿到
+  「看起来对但其实错了」的产物；`test/crafting-check.cjs` 对此有专门断言。
+- **合成界面不碰 SurvivalState**：UI 层只认材料标识，取料 / 退料 / 产出全走
+  `CraftingHost` 回调，否则 UI 与生存状态会互相渗透。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
   `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止

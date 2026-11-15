@@ -40,6 +40,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     name: 'sweet_berries', label: '甜浆果', tile: 'sweet_berries', food: 2, plant: 'sweet_berry_bush',
   },
   nectar: { name: 'nectar', label: '花蜜', tile: 'nectar', food: 3 },
+  stick: { name: 'stick', label: '木棍', tile: 'stick' },
 };
 
 export const itemKey = (name: string) => `i:${name}`;
