@@ -6,6 +6,7 @@ import type { CraftAPI } from '../../api/CraftAPI';
 import type {
   PluginContext,
   PluginDefinition,
+  PluginManifest,
   PluginPermission,
   PluginRecord,
   PluginState,
