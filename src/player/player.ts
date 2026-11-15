@@ -6,6 +6,7 @@ import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { Input } from '../input/input';
 import { moveBody, boxIntersectsBlock, type PhysicsBody } from './physics';
+import { isStuck, resolvePenetration, type SolidPredicate } from './unstuck';
 import { PlayerModel } from '../entity/models';
 import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
@@ -86,6 +87,15 @@ export class Player implements System, PhysicsBody {
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
+
+  // ---- AABB 脱困（被方块挤住时平滑推出） ----
+  unstuckCount = 0;
+  private stuckTarget: {
+    fx: number; fy: number; fz: number; tx: number; ty: number; tz: number;
+    t: number; dur: number; dist: number;
+  } | null = null;
+  private readonly solidPredicate: SolidPredicate = (x, y, z) =>
+    this.registry.isSolid(this.world.getBlock(x, y, z));
 
   constructor(
     private world: World,
@@ -230,7 +240,15 @@ export class Player implements System, PhysicsBody {
     this.pos.set(x, y, z);
     this.vel.set(0, 0, 0);
     this.resetFallDistance();
+    this.stuckTarget = null;
   }
+
+  /** 当前 AABB 是否与真实实心方块相交（未生成区块视为空气） */
+  get isStuck(): boolean {
+    return isStuck(this.pos, this.width, this.height, this.solidPredicate);
+  }
+  /** 是否正在执行脱困缓动 */
+  get isUnstucking(): boolean { return this.stuckTarget !== null; }
 
   /** 传送 / 入水 / 切模式后必须清零，否则旧下落速度会在下一次落地时结算伤害 */
   resetFallDistance() {
@@ -243,8 +261,48 @@ export class Player implements System, PhysicsBody {
 
   // ---------- 主循环 ----------
 
+  /**
+   * AABB 脱困：被实体方块包围时平滑推出。moveBody 只能阻止穿入、无法把已嵌入的身体推出，
+   * 这里检测到相交后用最小贯穿量搜索出最近脱离点，并以 ≤0.4s 缓动把玩家推过去，
+   * 完成后清速度、置空中、计数并派发 player:unstuck。
+   */
+  private stepUnstuck(dt: number): boolean {
+    if (this.stuckTarget) {
+      const s = this.stuckTarget;
+      s.t += dt;
+      const k = Math.min(1, s.t / s.dur);
+      const ease = k * k * (3 - 2 * k);
+      this.pos.set(lerp(s.fx, s.tx, ease), lerp(s.fy, s.ty, ease), lerp(s.fz, s.tz, ease));
+      if (k >= 1) {
+        this.stuckTarget = null;
+        this.vel.set(0, 0, 0);
+        this.onGround = false;
+        this.unstuckCount++;
+        this.events.emit('player:unstuck', {
+          position: { x: this.pos.x, y: this.pos.y, z: this.pos.z }, distance: s.dist,
+        });
+      }
+      return true;
+    }
+    if (!this.isStuck) return false;
+    const r = resolvePenetration(this.pos, this.width, this.height, this.solidPredicate);
+    if (!r.moved || !r.resolved) return false;
+    const dist = Math.hypot(r.dx, r.dy, r.dz);
+    this.stuckTarget = {
+      fx: this.pos.x, fy: this.pos.y, fz: this.pos.z, tx: r.x, ty: r.y, tz: r.z,
+      t: 0, dur: Math.min(0.4, 0.12 + dist * 0.02), dist,
+    };
+    this.vel.set(0, 0, 0);
+    return true;
+  }
+
   update(dt: number) {
     if (this.survival.dead) return;
+    // AABB 脱困优先于常规物理：被方块挤住时先平滑推出，避免 moveBody 反复钳制卡死
+    if (this.stepUnstuck(dt)) {
+      this.updateCamera(dt, 0);
+      return;
+    }
     const input = this.input;
     const [dx, dy] = input.consumeLook();
     this.yaw -= dx * 0.0022;

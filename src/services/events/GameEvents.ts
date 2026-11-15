@@ -28,6 +28,8 @@ export interface GameEvents {
   'player:spawn': { position: Vec3Like };
   'player:move': { position: Vec3Like };
   'player:camera': { mode: number };
+  /** 玩家被实体方块包围后完成脱困（AABB 推出） */
+  'player:unstuck': { position: Vec3Like; distance: number };
   'hotbar:select': { index: number; block: BlockId };
   'time:change': { dayTime: number; daylight: number };
   'chunk:generated': { cx: number; cz: number };
