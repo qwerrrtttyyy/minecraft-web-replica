@@ -87,6 +87,8 @@ export class Player implements System, PhysicsBody {
   private lastEmitZ = 0;
   private eatTimer = 0;
   private botany: Botany | null = null;
+  /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
+  private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
@@ -553,6 +555,11 @@ export class Player implements System, PhysicsBody {
     this.botany = botany;
   }
 
+  /** 沙类重力系统注入（FallingSystem），替代 breakBlock 的内联植物连带检查 */
+  setFalling(falling: { triggerColumn(x: number, y: number, z: number): void } | null) {
+    this.falling = falling;
+  }
+
   /** 破坏准星方块（含掉落、上方植物连带与蓄能采集结算） */
   breakBlock() {
     const hit = this.target;
@@ -576,18 +583,23 @@ export class Player implements System, PhysicsBody {
     this.sound.dig(def.sound, def.hardness);
     this.collectDrops(def);
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
-    // 上方植物随之掉落
-    const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
-    const above = this.registry.get(aboveId);
-    if (above.shape === 'cross') {
-      this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
-      this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
-      this.collectDrops(above);
+    // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
+    // 未注入重力系统时保留旧的植物连带行为
+    if (this.falling) {
+      this.falling.triggerColumn(hit.x, hit.y + 1, hit.z);
+    } else {
+      const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
+      const above = this.registry.get(aboveId);
+      if (above.shape === 'cross') {
+        this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
+        this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
+        this.collectDrops(above);
+      }
     }
   }
 
-  /** 生存模式把掉落物放进背包，创造模式忽略 */
-  private collectDrops(def: BlockDefinition) {
+  /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
+  collectDrops(def: BlockDefinition) {
     if (!this.survival.isSurvival) return;
     for (const d of def.drops) {
       if (d.chance !== undefined && Math.random() > d.chance) continue;
@@ -677,6 +689,8 @@ export class Player implements System, PhysicsBody {
     if (this.survival.isSurvival && !this.survival.consume(stack, 1)) return false;
     this.world.setBlock(x, y, z, def.id);
     this.events.emit('block:place', { x, y, z, block: def.id });
+    // 沙类失去支撑立即下落（受更新下落：放置也算一次方块更新）
+    this.falling?.triggerColumn(x, y, z);
     this.sound.place(def.sound);
     this.swing();
     return true;

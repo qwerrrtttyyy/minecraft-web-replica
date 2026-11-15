@@ -23,12 +23,14 @@ export interface MeshBlockDef {
   transparentPass: boolean;
   lightEmission: number;
   tiles: { top: string; bottom: string; side: string };
+  /** 群系染色（草 / 叶 / 藤蔓）：灰度纹理，shader 按世界坐标噪声乘群系色 */
+  tint: boolean;
 }
 
 export const AIR_MESH_DEF: MeshBlockDef = {
   id: 0, name: 'air', shape: 'cube', opaque: false, cullSame: false,
   liquid: false, transparentPass: false, lightEmission: 0,
-  tiles: { top: '', bottom: '', side: '' },
+  tiles: { top: '', bottom: '', side: '' }, tint: false,
 };
 
 export const ZERO_UV: UVRect = [0, 0, 0, 0];
@@ -81,6 +83,8 @@ export interface GeoArrays {
   lights: number[];
   /** 每顶点 u0,v0,du,dv：shader 据此把局部 UV 映射回图集 tile */
   tiles: number[];
+  /** 每顶点群系染色开关（0/1）：草 / 叶 / 藤蔓为 1，shader 据此乘群系色 */
+  tints: number[];
   indices: number[];
 }
 
@@ -98,6 +102,7 @@ export interface PackedGeo {
   colors: Float32Array;
   lights: Float32Array;
   tiles: Float32Array;
+  tints: Float32Array;
   indices: Uint32Array;
 }
 
@@ -133,9 +138,10 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
     const c = new Float32Array(g.colors);
     const l = new Float32Array(g.lights);
     const t = new Float32Array(g.tiles);
+    const tn = new Float32Array(g.tints);
     const i = new Uint32Array(g.indices);
-    transfer.push(p.buffer, u.buffer, c.buffer, l.buffer, t.buffer, i.buffer);
-    return { positions: p, uvs: u, colors: c, lights: l, tiles: t, indices: i };
+    transfer.push(p.buffer, u.buffer, c.buffer, l.buffer, t.buffer, tn.buffer, i.buffer);
+    return { positions: p, uvs: u, colors: c, lights: l, tiles: t, tints: tn, indices: i };
   };
   return {
     mesh: {

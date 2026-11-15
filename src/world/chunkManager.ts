@@ -56,6 +56,8 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
   // 每个顶点的图集 tile 区域，shader 用 fract(局部UV) 平铺
   g.setAttribute('aTileRect', new THREE.BufferAttribute(p.tiles, 4));
+  // 每个顶点的群系染色开关（0/1），shader 据此给草/叶/藤蔓乘群系色
+  g.setAttribute('aTint', new THREE.BufferAttribute(p.tints, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
   return g;
@@ -68,22 +70,64 @@ interface ChunkShader {
   fragmentShader: string;
 }
 
+/**
+ * 群系植被染色（草 / 叶 / 藤蔓）：灰度纹理 × 世界坐标噪声群系色。
+ *
+ * 纹理在图集里画成灰度（atlas.ts 的 gray()），这里按世界 XZ 的双层值噪声
+ * 在「冷绿 / 基准绿 / 暖黄绿」之间平滑过渡，模拟群系色带；每株植物之间再叠
+ * 一层中频噪声打散边界。aTint 顶点属性做门控（只有 tint 方块参与），
+ * 草方块侧面的泥土保留彩色，用饱和度掩膜只染灰度条带。
+ */
+const FOLIAGE_GLSL = `
+float foliageHash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float foliageNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(foliageHash(i), foliageHash(i + vec2(1.0, 0.0)), f.x),
+    mix(foliageHash(i + vec2(0.0, 1.0)), foliageHash(i + vec2(1.0, 1.0)), f.x),
+    f.y);
+}
+vec3 foliageTint(vec2 wxz) {
+  float band = foliageNoise(wxz * 0.012);
+  // 注意：patch 是 GLSL ES 保留字（细分着色器），不可作变量名
+  float patchN = foliageNoise(wxz * 0.055 + 17.3);
+  vec3 cool = vec3(0.62, 0.98, 0.62);
+  vec3 base = vec3(0.82, 1.12, 0.50);
+  vec3 warm = vec3(1.06, 1.10, 0.42);
+  vec3 t = mix(cool, base, smoothstep(0.25, 0.62, band));
+  t = mix(t, warm, smoothstep(0.58, 0.88, band));
+  return t * (1.0 - 0.10 * patchN);
+}
+`;
+
 function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
   shader.uniforms.uDaylight = daylight;
   shader.uniforms.uSunTint = sunTint;
-  shader.vertexShader = 'attribute vec2 aLight;\nvarying vec2 vLight;\n' + shader.vertexShader.replace(
+  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nvarying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
     '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvLight = aLight;',
+    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
   );
-  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + shader.fragmentShader.replace(
+  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
     '#include <color_fragment>',
     `#include <color_fragment>
+    // 植被掩膜：必须在光照染色之前采样饱和度，否则天空/太阳色会把灰度误判成彩色
+    float folMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+    float folMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
+    float folMask = vTint * (1.0 - smoothstep(0.10, 0.22, folMx > 0.0 ? (folMx - folMn) / folMx : 0.0));
+    vec3 folTint = foliageTint(vFolPos.xz);
     float skyPart = vLight.x * uDaylight;
     float lit = max(skyPart, vLight.y);
     float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
     vec3 skyTint = mix(vec3(0.56, 0.65, 0.94), vec3(1.0), clamp(uDaylight * 1.35, 0.0, 1.0));
     vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
-    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;`,
+    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;
+    diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
   );
 }
 

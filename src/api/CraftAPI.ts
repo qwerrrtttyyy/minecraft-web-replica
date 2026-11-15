@@ -20,6 +20,7 @@ import type { Sky } from '../gfx/sky';
 import type { ChunkManager } from '../world/chunkManager';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { ISaveProvider, SaveData } from '../save/save';
+import { downloadSave, parseSaveFile } from '../save/save';
 import type { SoundEngine } from '../audio/sound';
 import type { SurvivalState } from '../player/survival';
 import type { GameMode } from '../core/types';
@@ -123,6 +124,10 @@ export interface CraftAPI {
     export(): SaveData;
     import(data: SaveData): Promise<void>;
     setProvider(p: ISaveProvider): void;
+    /** v1.5.0：导出为 .json 文件下载（备份 / 跨浏览器迁移） */
+    exportFile(): void;
+    /** v1.5.0：从 .json 文件导入（校验失败抛错），成功后重载世界 */
+    importFile(file: File): Promise<void>;
   };
   settings: {
     renderDistance(v: number): void;
@@ -150,6 +155,13 @@ export interface CraftAPI {
     exportOptions(): string;
     /** 导入设置 JSON（未知键忽略、越界值钳制），返回生效字段数 */
     importOptions(json: string): number;
+  };
+  /** 输入：可重绑定按键 + 手柄状态（v1.5.0） */
+  input: {
+    getBinding(action: string): string;
+    setBinding(action: string, code: string): void;
+    resetBindings(): void;
+    gamepadConnected: boolean;
   };
   /** 生存模式：生命 / 饥饿 / 背包（创造模式下多数接口为 no-op） */
   survival: {
@@ -193,6 +205,12 @@ export interface APIDeps {
   igniteTnt(x: number, y: number, z: number): void;
   onBlockRegistered(): void;
   setRenderDistance(v: number): void;
+  input: {
+    getBinding(action: string): string;
+    setBinding(action: string, code: string): void;
+    resetBindings(): void;
+    gamepadConnected: boolean;
+  };
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
@@ -301,6 +319,12 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       export: () => d.collectSave(),
       import: (data) => d.applySave(data),
       setProvider: (p) => d.setSaveProvider(p),
+      exportFile: () => downloadSave(d.collectSave()),
+      importFile: async (file) => {
+        const data = parseSaveFile(await file.text());
+        if (!data) throw new Error('存档文件格式校验失败');
+        await d.applySave(data);
+      },
     },
     settings: {
       renderDistance: (v) => d.setRenderDistance(v),
@@ -320,6 +344,12 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       autosaveInterval: (v) => d.setAutosaveInterval(v),
       exportOptions: () => d.exportOptions(),
       importOptions: (json) => d.importOptions(json),
+    },
+    input: {
+      getBinding: (a) => d.input.getBinding(a),
+      setBinding: (a, code) => d.input.setBinding(a, code),
+      resetBindings: () => d.input.resetBindings(),
+      get gamepadConnected() { return d.input.gamepadConnected; },
     },
     survival: {
       mode: () => d.survival.mode,

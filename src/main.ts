@@ -29,9 +29,14 @@ import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
 import { PrimedTnt } from './entity/tnt';
+import { FallingSystem } from './entity/falling';
 import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
-import { LocalStorageProvider, validateSave, type ISaveProvider, type SaveData } from './save/save';
+import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
+import {
+  createDefaultSaveProvider, downloadSave, pickSaveFile,
+  validateSave, type ISaveProvider, type SaveData,
+} from './save/save';
 import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
 import type { BuiltinDeps } from './plugins/builtin/deps';
@@ -79,7 +84,9 @@ async function boot() {
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
 
   // ---- 存档 ----
-  let provider: ISaveProvider = new LocalStorageProvider();
+  // 默认 IndexedDB（localStorage 5MB 上限是丢档隐患），不可用时自动降级；
+  // localStorage 里的历史存档会一次性迁移（createDefaultSaveProvider）
+  let provider: ISaveProvider = await createDefaultSaveProvider();
   let saved = await provider.load();
   const pendingSeed = sessionStorage.getItem('mc-ts-new-seed');
   const pendingModeRaw = sessionStorage.getItem('mc-ts-new-mode');
@@ -165,7 +172,12 @@ async function boot() {
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
   const botany = new Botany(world, registry, seed, events, { isMobile });
-  player.setBotany(botany);  // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
+  player.setBotany(botany);
+  // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
+  const falling = new FallingSystem(world, registry, atlas, engine.scene, events);
+  falling.onPlantDrop = (def) => player.collectDrops(def);
+  player.setFalling(falling);
+  // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
     const def = registry.get(block);
     const color = atlas.avgColor(def.tiles.side);
@@ -269,6 +281,15 @@ async function boot() {
     saveAcc = 0;
   };
 
+  /** 导入存档（文件 / CraftAPI 同路径）：校验 → 落盘 → 重载世界 */
+  const applySaveData = async (data: SaveData) => {
+    if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
+    await provider.save(data);
+    // 导入成功后禁止卸载保存，否则 reload 会把当前状态覆盖到刚导入的存档上
+    suppressUnloadSave = true;
+    location.reload();
+  };
+
   // ---- TNT ----
   const igniteTnt = (x: number, y: number, z: number, playSound: boolean) => {
     const def = registry.get(world.getBlock(x, y, z));
@@ -304,6 +325,8 @@ async function boot() {
       } else {
         events.emit('block:break', { x, y, z, block: id });
       }
+      // 爆炸也是一次方块更新：上方失支撑的沙类 / 植物随之处理
+      falling.triggerColumn(x, y + 1, z);
     }
     particles.burst(cx, cy, cz, [1, 0.72, 0.3], isMobile ? 55 : 90, r * 0.45, 9);
     particles.burst(cx, cy, cz, [0.45, 0.42, 0.4], isMobile ? 40 : 60, r * 0.5, 7);
@@ -486,9 +509,37 @@ async function boot() {
     onCraftOpen: (from) => openCrafting(from),
     onRespawn: () => respawn(),
     onModeToggle: () => toggleGameMode(),
+    onExportSave: () => {
+      downloadSave(collectSave());
+      hud.toast('存档已导出为 .json 文件');
+    },
+    onImportSave: () => {
+      void pickSaveFile().then((data) => {
+        if (!data) return;
+        void applySaveData(data);
+      }, (e) => {
+        hud.toast(`导入失败：${e instanceof Error ? e.message : '文件无法读取'}`);
+      });
+    },
+    getBindings: () => {
+      const b = input.getBindings();
+      return ACTION_KEYS.map((a) => ({ action: a, label: ACTION_LABELS[a], keyLabel: codeLabel(b[a]) }));
+    },
+    onRebind: (action, code) => {
+      input.setBinding(action as Parameters<typeof input.setBinding>[0], code);
+    },
+    onResetBindings: () => input.resetBindings(),
     isSurvival: () => survival.isSurvival,
     getCount: (s) => survival.countStack(s),
   });
+
+  // 按键捕获阶段优先于 Input：重绑定面板等待按键时消费该事件，避免触发游戏动作
+  addEventListener('keydown', (e) => {
+    if (hud.keybindOpen && hud.captureKey(e.code)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
   hud.setSound(settings.sound);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
@@ -938,14 +989,14 @@ async function boot() {
     engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
     getSaveProvider: () => provider,
     setSaveProvider: (p) => { provider = p; },
-    collectSave,
-    applySave: async (data) => {
-      if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
-      await provider.save(data);
-      // 导入成功后禁止卸载保存，否则 reload 会把当前状态覆盖到刚导入的存档上
-      suppressUnloadSave = true;
-      location.reload();
+    input: {
+      getBinding: (a) => input.getBinding(a as Parameters<typeof input.getBinding>[0]),
+      setBinding: (a, code) => input.setBinding(a as Parameters<typeof input.setBinding>[0], code),
+      resetBindings: () => input.resetBindings(),
+      get gamepadConnected() { return input.gamepadConnected; },
     },
+    collectSave,
+    applySave: applySaveData,
     igniteTnt: (x, y, z) => igniteTnt(x, y, z, true),
     onBlockRegistered: () => {
       hud.rebuildPalette();
@@ -1010,7 +1061,8 @@ async function boot() {
             closeOptions();
           } else if (mode === 'playing') openMenu();
           else if (mode === 'paused') {
-            if (hud.helpOpen) hud.showHelp(false);
+            if (hud.keybindOpen) hud.showKeybinds(false);
+            else if (hud.helpOpen) hud.showHelp(false);
             else if (hud.craftingOpen) closeCrafting();
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
@@ -1111,6 +1163,8 @@ async function boot() {
   engine.addSystem({
     name: 'gameplay',
     update: (dt, t) => {
+      // 手柄每帧轮询：暂停时也要读 Start 键（processEdges 处理恢复）
+      input.pollGamepad(dt);
       if (mode === 'playing') {
         player.update(dt);
         entities.update(dt, {
@@ -1124,6 +1178,7 @@ async function boot() {
           tnt.update(dt);
           if (tnt.done) tntList.splice(tntList.indexOf(tnt), 1);
         }
+        falling.update(dt);
       } else if (mode === 'title') {
         cinematic(t);
         entities.update(dt, {
@@ -1243,7 +1298,7 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany,
+    botany, falling,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,

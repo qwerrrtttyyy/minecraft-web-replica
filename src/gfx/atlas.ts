@@ -39,6 +39,16 @@ const jitter = (hex: number, rng: () => number, v: number) => {
   return (r << 16) | (g << 8) | b;
 };
 
+/**
+ * 转灰度（BT.601 亮度，jitter 后仍保持 r=g=b）。
+ * 草 / 叶 / 藤蔓纹理在图集里画成灰度，区块 shader 按世界坐标噪声乘群系色
+ * （chunkManager.injectLight 的 foliageTint）；亮度保留原纹理的明暗对比。
+ */
+const gray = (hex: number) => {
+  const l = Math.round(0.299 * ((hex >> 16) & 255) + 0.587 * ((hex >> 8) & 255) + 0.114 * (hex & 255));
+  return (l << 16) | (l << 8) | l;
+};
+
 const fillNoise = (p: Px, rng: () => number, hex: number, v: number) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(hex, rng, v));
 };
@@ -97,13 +107,14 @@ const leaves = (p: Px, x: number, y: number, hex: number) => {
   p.set(x + 2, y + 1, hex);
 };
 
-/** 树叶簇：与橡树叶同构，仅色调随树种变化 */
+/** 树叶簇：与橡树叶同构，仅色调随树种变化（灰度画，shader 乘群系色） */
 function leavesPainter(tones: number[]): Painter {
+  const grays = tones.map(gray);
   return (p, rng) => {
     p.clear();
     for (let cy = 0; cy < 4; cy++) {
       for (let cx = 0; cx < 4; cx++) {
-        const base = tones[(rng() * tones.length) | 0];
+        const base = grays[(rng() * grays.length) | 0];
         for (let y = 0; y < 4; y++) {
           for (let x = 0; x < 4; x++) {
             const edge = x === 0 || y === 0 || x === 3 || y === 3;
@@ -303,24 +314,26 @@ function builtinPainters(): Record<string, Painter> {
   };
   return {
     grass_top: (p, rng) => {
-      fillNoise(p, rng, 0x7ba848, 10);
-      blob(p, rng, 0x6b9a3e, 10, 3);
-      blob(p, rng, 0x8fbe57, 8, 3);
+      // 灰度画：群系色由 shader 按世界坐标噪声调制（chunkManager.injectLight）
+      fillNoise(p, rng, gray(0x7ba848), 10);
+      blob(p, rng, gray(0x6b9a3e), 10, 3);
+      blob(p, rng, gray(0x8fbe57), 8, 3);
       // 短草叶，让大草地不至于只有噪声
       for (let i = 0; i < 18; i++) {
         const x = (rng() * TILE) | 0;
         const y = (rng() * TILE) | 0;
-        p.set(x, y, jitter(0x9ccb63, rng, 8));
-        if (rng() < 0.5) p.set(x, y + 1, jitter(0x76a646, rng, 7));
+        p.set(x, y, jitter(gray(0x9ccb63), rng, 8));
+        if (rng() < 0.5) p.set(x, y + 1, jitter(gray(0x76a646), rng, 7));
       }
     },
     dirt,
     grass_side: (p, rng) => {
+      // 泥土保持彩色，顶部草条带画灰度：shader 的饱和度掩膜只染灰度部分
       dirt(p, rng);
       for (let x = 0; x < TILE; x++) {
         const depth = 2 + ((rng() * 3) | 0);
-        for (let y = 0; y < depth; y++) p.set(x, y, jitter(0x7ba848, rng, 10));
-        if (rng() < 0.4) p.set(x, depth, jitter(0x6b9a3e, rng, 8));
+        for (let y = 0; y < depth; y++) p.set(x, y, jitter(gray(0x7ba848), rng, 10));
+        if (rng() < 0.4) p.set(x, depth, jitter(gray(0x6b9a3e), rng, 8));
       }
     },
     stone: stoneBase,
@@ -383,7 +396,8 @@ function builtinPainters(): Record<string, Painter> {
     },
     oak_leaves: (p, rng) => {
       p.clear();
-      const tones = [0x2f5f1c, 0x3f7a24, 0x4f8f2c, 0x5aa236];
+      // 灰度画：群系色由 shader 调制（tint 方块）
+      const tones = [0x2f5f1c, 0x3f7a24, 0x4f8f2c, 0x5aa236].map(gray);
       // 4×4 的叶簇：同一簇内色调统一，边缘随机镂空，整体不再是椒盐噪声
       for (let cy = 0; cy < 4; cy++) {
         for (let cx = 0; cx < 4; cx++) {
@@ -397,7 +411,7 @@ function builtinPainters(): Record<string, Painter> {
           }
           if (rng() < 0.55) {
             p.set(cx * 4 + 1 + ((rng() * 2) | 0), cy * 4 + 1 + ((rng() * 2) | 0),
-              jitter(0x6fb545, rng, 8));
+              jitter(gray(0x6fb545), rng, 8));
           }
         }
       }
@@ -406,7 +420,7 @@ function builtinPainters(): Record<string, Painter> {
         p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0, 0);
       }
       for (let x = 0; x < TILE; x++) {
-        if (rng() < 0.35) p.set(x, 15, jitter(0x2a5418, rng, 6));
+        if (rng() < 0.35) p.set(x, 15, jitter(gray(0x2a5418), rng, 6));
       }
     },
     glass: (p) => {
@@ -507,7 +521,7 @@ function builtinPainters(): Record<string, Painter> {
         for (let k = 0; k < h; k++) {
           const y = 15 - k;
           const x = x0 + Math.round(Math.sin(k * 0.45 + i) * 0.9);
-          p.set(x, y, k === h - 1 ? 0x93c45e : i % 2 ? 0x6fa03e : 0x82b44e);
+          p.set(x, y, gray(k === h - 1 ? 0x93c45e : i % 2 ? 0x6fa03e : 0x82b44e));
         }
       }
     },
@@ -989,10 +1003,10 @@ function builtinPainters(): Record<string, Painter> {
         for (let k = 0; k < h; k++) {
           const y = 15 - k;
           const x = x0 + Math.round(Math.sin(k * 0.6 + i) * 1.2);
-          p.set(x, y, k === h - 1 ? 0x8fbe57 : i % 2 ? 0x4f8f2c : 0x5aa236);
+          p.set(x, y, gray(k === h - 1 ? 0x8fbe57 : i % 2 ? 0x4f8f2c : 0x5aa236));
           if (k > 2 && k % 2 === 0) {
-            p.set(x - 1, y, 0x3f7a24);
-            p.set(x + 1, y, 0x3f7a24);
+            p.set(x - 1, y, gray(0x3f7a24));
+            p.set(x + 1, y, gray(0x3f7a24));
           }
         }
       }
@@ -1053,10 +1067,10 @@ function builtinPainters(): Record<string, Painter> {
         for (let k = 0; k < h; k++) {
           const y = 15 - k;
           const x = x0 + Math.round(Math.sin(k * 0.5 + i) * 1.3);
-          p.set(x, y, k === h - 1 ? 0x7aa84a : i % 2 ? 0x356822 : 0x447a2a);
+          p.set(x, y, gray(k === h - 1 ? 0x7aa84a : i % 2 ? 0x356822 : 0x447a2a));
           if (k > 2 && k % 2 === 0) {
-            p.set(x - 1, y, 0x2a5418);
-            p.set(x + 1, y, 0x2a5418);
+            p.set(x - 1, y, gray(0x2a5418));
+            p.set(x + 1, y, gray(0x2a5418));
           }
         }
       }
@@ -1068,11 +1082,11 @@ function builtinPainters(): Record<string, Painter> {
         let x = x0;
         const top = (rng() * 4) | 0;
         for (let y = top; y < TILE; y++) {
-          p.set(x, y, jitter(y % 4 === 0 ? 0x4f8f2c : 0x35682a, rng, 6));
+          p.set(x, y, jitter(gray(y % 4 === 0 ? 0x4f8f2c : 0x35682a), rng, 6));
           if (rng() < 0.22) x += rng() < 0.5 ? -1 : 1;
           if (y % 4 === 1) {
-            p.set(x - 1, y, 0x3f7a24);
-            p.set(x + 1, y, 0x4f8f2c);
+            p.set(x - 1, y, gray(0x3f7a24));
+            p.set(x + 1, y, gray(0x4f8f2c));
           }
         }
       }
