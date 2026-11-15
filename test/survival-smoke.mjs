@@ -9,6 +9,9 @@ import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+/** 版本唯一来源：src/core/version.ts ↔ package.json 由 check:version 机械校验，
+ *  这里只读 package.json，避免在测试里再抄一份版本字面量（抄一次就漂移一次）。 */
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist/index.html')}`;
 const CHROME = process.env.CHROME_PATH ??
   ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
@@ -204,7 +207,7 @@ try {
     plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
     emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
   }));
-  ok('版本号单一来源为 1.4.0', svc.version === '1.4.0', svc.version);
+  ok(`版本号单一来源为 ${PKG_VERSION}`, svc.version === PKG_VERSION, svc.version);
   ok('服务容器注册了事件/插件/API/内置依赖',
     ['events', 'plugins', 'api', 'builtin-deps'].every((k) => svc.services.includes(k)), svc.services.join(','));
   ok('内置插件全部启用', svc.plugins.length === 2 && svc.plugins.every((s) => s.endsWith(':enabled')),
