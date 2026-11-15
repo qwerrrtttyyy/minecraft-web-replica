@@ -256,7 +256,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('bookshelf', '书架', { top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf_side' },
     { sound: 'wood', hardness: 1.5 });
 
-  // ---- v1.5.0 植物大扩充（id 57 起，仍为末位追加，旧存档差分保持有效） ----
+  // ---- v1.4.1 植物大扩充（id 57 起，仍为末位追加，旧存档差分保持有效） ----
   // 花卉：全部走群系配置表自然生成，也会由邻近同类随机蔓延
   plant('bluebell', '蓝铃花');
   plant('allium', '绒球葱');

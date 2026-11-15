@@ -40,7 +40,7 @@ const NEW_BLOCKS = [
   'podzol', 'cactus', 'sugar_cane', 'fern', 'granite',
 ];
 
-// v1.5.0 植物大扩充：id 57 起末位追加（35 种）
+// v1.4.1 植物大扩充：id 57 起末位追加（35 种）
 const PLANT_BLOCKS = [
   'bluebell', 'allium', 'azure_bluet', 'oxeye_daisy', 'cornflower',
   'lily_of_the_valley', 'tulip_red', 'tulip_orange', 'tulip_white', 'tulip_pink',
@@ -63,7 +63,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 91 种（v1.5.0 追加 35 种植物）', all.length === 91, `${all.length}`);
+  ok('内置方块总数 91 种（v1.4.1 追加 35 种植物）', all.length === 91, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -117,9 +117,10 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     reg.byNameGet('vine').waterPlant !== true);
 
   const { ITEMS } = require('./terrain-logic/player/survival.js');
-  ok('小麦种子 / 甜浆果声明了可种植方块',
+  ok('种子 / 浆果 / 花蜜物品注册完整',
     ITEMS.wheat_seeds.plant === 'wheat_seedling' &&
-    ITEMS.sweet_berries.plant === 'sweet_berry_bush' && ITEMS.sweet_berries.food > 0);
+    ITEMS.sweet_berries.plant === 'sweet_berry_bush' && ITEMS.sweet_berries.food > 0 &&
+    ITEMS.nectar.food > 0 && ITEMS.nectar.tile === 'nectar');
 }
 
 // 2) 统一阶段管线 + 群系配置表
@@ -237,7 +238,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   ok('大范围生成无明显性能退化', ms < 15000, `${ms} ms / ${(2 * R + 1) ** 2} 区块`);
 }
 
-// 3b) v1.5.0 自然植物：固定种子 ±7 区块内全部出现，且位置符合规则
+// 3b) v1.4.1 自然植物：固定种子 ±7 区块内全部出现，且位置符合规则
 {
   const { reg, gen } = make(777);
   const ids = Object.fromEntries(NATURAL_PLANTS.map((n) => [n, reg.byNameGet(n).id]));

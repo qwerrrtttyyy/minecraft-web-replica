@@ -141,6 +141,14 @@ async function boot() {
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
   const botany = new Botany(world, registry, seed, events, { isMobile });
+  player.setBotany(botany);
+  // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
+  events.on('plant:bloom', ({ x, y, z, block }) => {
+    const def = registry.get(block);
+    const color = atlas.avgColor(def.tiles.side);
+    particles.burst(x + 0.5, y + 0.7, z + 0.5, color, 10, 0.3, 1.4);
+    particles.burst(x + 0.5, y + 0.8, z + 0.5, [1, 0.93, 0.55], 5, 0.22, 1.1);
+  });
   if (saved) {
     player.teleport(saved.player.x, saved.player.y, saved.player.z);
     player.yaw = saved.player.yaw;
@@ -773,6 +781,7 @@ async function boot() {
     const diagStr = diag.ok
       ? `正常（${diag.checked} 项）`
       : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
+    const plants = botany.stats(p.x, p.z);
     return [
       `Minecraft TS ${RELEASE} (${VERSION}) · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
@@ -780,6 +789,7 @@ async function boot() {
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
+      `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy}`,
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString}  种子: ${seed}`,
       survival.isSurvival

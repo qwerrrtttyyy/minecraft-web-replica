@@ -24,6 +24,7 @@ const entries = [
   'src/world/generator.ts',
   'src/world/blocks.ts',
   'src/world/botany.ts',
+  'src/world/plantTraits.ts',
   'src/world/trees.ts',
   'src/world/light.ts',
   'src/world/world.ts',

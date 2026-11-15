@@ -1,6 +1,10 @@
-import { CHUNK_SIZE, WORLD_HEIGHT, mulberry32, type BlockId } from '../core/types';
+import { CHUNK_SIZE, WORLD_HEIGHT, blockKey, clamp, mulberry32, type BlockId } from '../core/types';
 import type { EventService } from '../services/events';
 import { AIR, type BlockRegistry } from './blocks';
+import {
+  HARVEST_ENERGY_COST, MAX_PLANT_ENERGY, NIGHT_ENERGY_FLOOR, START_PLANT_ENERGY,
+  plantTrait, type PlantTrait,
+} from './plantTraits';
 import { buildTree, type TreeSpecies } from './trees';
 import type { World } from './world';
 
@@ -15,7 +19,33 @@ export interface BotanyOptions {
   isMobile?: boolean;
 }
 
-type GrowKind = 'grow' | 'spread' | 'decay' | 'ripen';
+type GrowKind = 'grow' | 'spread' | 'decay' | 'ripen' | 'harvest';
+
+/** 单株植物的内在能量状态 */
+export interface PlantEnergyState {
+  x: number;
+  y: number;
+  z: number;
+  id: BlockId;
+  /** 0~100 */
+  energy: number;
+  /** 本轮蓄能是否已经发过开花反馈（能量跌破半阈值后重新武装） */
+  bloomed?: boolean;
+}
+
+export interface BotanyStats {
+  tracked: number;
+  charged: number;
+  avgEnergy: number;
+  solar: number;
+  hydro: number;
+  fungal: number;
+}
+
+export interface PlantBonus {
+  item: string;
+  count: number;
+}
 
 /** 生态规则的方块 id 表：显式接口保证漏键在编译期暴露，而不是静默变成 0 */
 interface BotanyIds {
@@ -53,11 +83,20 @@ export class Botany {
   private readonly rng: () => number;
   private readonly interval: number;
   private readonly attempts: number;
-  private readonly radius: number;
+  /** 对外只读：F3 / 调试面板按同一半径统计生态能量 */
+  readonly sampleRadius: number;
   private acc = 0;
+  private focusX = 0;
+  private focusZ = 0;
+  /** 能量日志上限：超出后淘汰最旧的四分之一，避免长距离探索无限增长 */
+  private static readonly ENERGY_LIMIT = 4096;
 
   /** 名称 → id 缓存（本引擎只认内置植物，运行时方块不会进入随机刻） */
   private readonly id: BotanyIds;
+  /** 方块 id → 植物特性（代谢类型 / 开花阈值 / 生长耗能 / 共享半径） */
+  private readonly traits = new Map<BlockId, PlantTrait>();
+  /** 内在能量表：坐标 → 状态。只跟踪被随机刻采样过的植物 */
+  private readonly energy = new Map<string, PlantEnergyState>();
   private readonly flowers = new Set<BlockId>();
   private readonly spreadable = new Set<BlockId>();
   private readonly mushrooms = new Set<BlockId>();
@@ -77,7 +116,7 @@ export class Botany {
     this.rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
     this.interval = options.interval ?? 0.3;
     this.attempts = options.attempts ?? (options.isMobile ? 24 : 56);
-    this.radius = options.radius ?? 24;
+    this.sampleRadius = options.radius ?? 24;
 
     const byName = (name: string) => registry.byNameGet(name)?.id ?? 0;
     this.id = {
@@ -121,11 +160,25 @@ export class Botany {
     if (this.id.birchSapling) this.saplings.set(this.id.birchSapling, 'birch');
     if (this.id.spruceSapling) this.saplings.set(this.id.spruceSapling, 'spruce');
     for (const id of [this.id.kelp, this.id.seagrass]) if (id) this.aquatic.add(id);
-    for (const id of [this.id.sugarCane, this.id.bamboo]) if (id) this.columns.add(id);
+    // 柱状能量锚点：甘蔗 / 竹子 / 仙人掌都按整列共享储能与顶部光照
+    for (const id of [this.id.sugarCane, this.id.bamboo, this.id.cactus]) {
+      if (id) this.columns.add(id);
+    }
+
+    // 植物特性表按注册名解析；运行时注册的方块不进入生态能量体系
+    for (const def of registry.all()) {
+      const trait = plantTrait(def.name);
+      if (trait) this.traits.set(def.id, trait);
+    }
+    // 玩家拆掉 / 放回方块时清掉旧能量，避免新植物继承前一位住客的储能
+    this.events?.on('block:break', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
+    this.events?.on('block:place', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
   }
 
   /** 主循环入口：只在玩家附近推进随机刻 */
   update(dt: number, focusX: number, focusZ: number, daylight: number): void {
+    this.focusX = focusX;
+    this.focusZ = focusZ;
     this.acc += Math.min(dt, 0.25);
     if (this.acc < this.interval) return;
     this.acc -= this.interval;
@@ -142,12 +195,262 @@ export class Botany {
     return this.applyAt(x, y, z, id, daylight);
   }
 
+  // ---------- 内在能量 API ----------
+
+  /** 读取单株植物的当前能量；非植物 / 未跟踪返回 0 */
+  energyAt(x: number, y: number, z: number): number {
+    const id = this.world.getBlock(x, y, z);
+    if (!this.traits.has(id)) return 0;
+    return this.stateAt(x, y, z, id).energy;
+  }
+
+  /** 调试 / 测试钩子：直接写入能量（0~100） */
+  setEnergy(x: number, y: number, z: number, energy: number): void {
+    const id = this.world.getBlock(x, y, z);
+    if (!this.traits.has(id)) return;
+    this.stateAt(x, y, z, id).energy = clamp(energy, 0, MAX_PLANT_ENERGY);
+  }
+
+  /** 生态能量统计（F3 / 调试面板）：只统计当前仍在原位的植物 */
+  stats(
+    focusX = this.focusX, focusZ = this.focusZ, radius = this.sampleRadius,
+  ): BotanyStats {
+    let tracked = 0, charged = 0, total = 0, solar = 0, hydro = 0, fungal = 0;
+    for (const st of this.energy.values()) {
+      if (Math.abs(st.x - focusX) > radius || Math.abs(st.z - focusZ) > radius) continue;
+      if (this.world.getBlock(st.x, st.y, st.z) !== st.id) continue;
+      const trait = this.traits.get(st.id);
+      if (!trait) continue;
+      tracked++;
+      total += st.energy;
+      if (st.energy >= trait.bloom) charged++;
+      if (trait.metabolism === 'solar') solar++;
+      else if (trait.metabolism === 'hydro') hydro++;
+      else fungal++;
+    }
+    return {
+      tracked, charged,
+      avgEnergy: tracked ? Math.round((total / tracked) * 10) / 10 : 0,
+      solar, hydro, fungal,
+    };
+  }
+
+  /**
+   * 采集蓄能植物：能量达到开花阈值才产出。
+   * - use：右键采集，浆果丛会退回未成熟状态；
+   * - break：破坏时结算，方块即将被移除。
+   */
+  harvest(x: number, y: number, z: number, mode: 'use' | 'break' = 'use'): PlantBonus | null {
+    const id = this.world.getBlock(x, y, z);
+    const trait = this.traits.get(id);
+    if (!trait?.harvest) return null;
+    const st = this.stateAt(x, y, z, id);
+    if (st.energy < trait.bloom) return null;
+    st.energy = Math.max(NIGHT_ENERGY_FLOOR, st.energy - HARVEST_ENERGY_COST);
+    if (mode === 'use' && id === this.id.berryBushRipe) {
+      this.set(x, y, z, this.id.berryBush, 'harvest');
+    }
+    st.bloomed = false;
+    this.events?.emit('plant:bloom', { x, y, z, block: id, energy: Math.round(st.energy) });
+    return { ...trait.harvest };
+  }
+
+  // ---------- 能量模型 ----------
+
+  /** 柱状植物以底格为能量锚点；藤蔓以顶端为锚点，整条共享一份储能 */
+  private anchorOf(x: number, y: number, z: number, id: BlockId): [number, number, number] {
+    if (this.columns.has(id) || this.aquatic.has(id)) {
+      let ay = y;
+      while (ay - 1 >= 1 && this.world.getBlock(x, ay - 1, z) === id) ay--;
+      return [x, ay, z];
+    }
+    if (id === this.id.vine) {
+      let ay = y;
+      while (ay + 1 < H && this.world.getBlock(x, ay + 1, z) === id) ay++;
+      return [x, ay, z];
+    }
+    return [x, y, z];
+  }
+
+  private stateAt(x: number, y: number, z: number, id: BlockId): PlantEnergyState {
+    const [ax, ay, az] = this.anchorOf(x, y, z, id);
+    const key = blockKey(ax, ay, az);
+    let state = this.energy.get(key);
+    if (!state || state.id !== id) {
+      state = { x: ax, y: ay, z: az, id, energy: START_PLANT_ENERGY, bloomed: false };
+      this.remember(key, state);
+    }
+    return state;
+  }
+
+  private remember(key: string, state: PlantEnergyState): void {
+    if (!this.energy.has(key) && this.energy.size >= Botany.ENERGY_LIMIT) {
+      let drop = this.energy.size >> 2;
+      if (drop < 1) drop = 1;
+      for (const k of this.energy.keys()) {
+        this.energy.delete(k);
+        if (--drop <= 0) break;
+      }
+    }
+    this.energy.set(key, state);
+  }
+
+  /**
+   * 每次随机刻先为植物充 / 放能，再执行生长规则。
+   * 返回 false 表示植物因环境不适而枯萎（已从世界移除）。
+   */
+  private charge(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
+    const trait = this.traits.get(id);
+    if (!trait) return true;
+    const st = this.stateAt(x, y, z, id);
+    const { delta, hostile } = this.energyDelta(trait, st, daylight);
+    const prev = st.energy;
+    let next = clamp(prev + delta, 0, MAX_PLANT_ENERGY);
+    // 夜间呼吸只把「不低于下限」的能量压到 20，不会把已耗尽的能量凭空补回
+    if (!hostile && delta < 0 && prev >= NIGHT_ENERGY_FLOOR) {
+      next = Math.max(NIGHT_ENERGY_FLOOR, next);
+    }
+    st.energy = next;
+
+    if (hostile && next <= 0) {
+      this.energy.delete(blockKey(st.x, st.y, st.z));
+      this.decay(st.x, st.y, st.z, id);
+      return false;
+    }
+    if (next < trait.bloom * 0.5) st.bloomed = false;
+    if (!st.bloomed && prev < trait.bloom && next >= trait.bloom) this.emitBloom(st);
+    // 蓄能中的植物会周期性闪一下，让玩家不用 F3 也能看出「这株可以采」
+    if (next >= trait.bloom && this.rng() < 0.02) {
+      const dx = st.x - this.focusX;
+      const dz = st.z - this.focusZ;
+      if (dx * dx + dz * dz <= 32 * 32) {
+        this.events?.emit('plant:bloom', {
+          x: st.x, y: st.y, z: st.z, block: st.id, energy: Math.round(st.energy),
+        });
+      }
+    }
+    if (next >= 80) this.shareEnergy(st, trait);
+    return true;
+  }
+
+  private energyDelta(
+    trait: PlantTrait, st: PlantEnergyState, daylight: number,
+  ): { delta: number; hostile: boolean } {
+    // 仙人掌等不透光植物自身格的光照恒为 0；柱状植物还要越过整列看顶部光照，
+    // 否则长高后底格会被自己的植株遮成「黑暗」而误判饿死。
+    let lightY = st.y;
+    if (this.columns.has(st.id) || this.aquatic.has(st.id)) {
+      while (lightY + 1 < H && this.world.getBlock(st.x, lightY + 1, st.z) === st.id) lightY++;
+    }
+    const sky = Math.max(
+      this.world.getSkyLight(st.x, st.y, st.z),
+      this.world.getSkyLight(st.x, lightY + 1, st.z),
+    );
+    const block = Math.max(
+      this.world.getBlockLight(st.x, st.y, st.z),
+      this.world.getBlockLight(st.x, lightY + 1, st.z),
+    );
+    const day = clamp(0.3 + 0.7 * clamp(daylight, 0, 1), 0, 1);
+
+    if (trait.metabolism === 'hydro') {
+      const self = this.registry.get(this.world.getBlock(st.x, st.y, st.z));
+      const at = (dx: number, dy: number, dz: number) =>
+        this.registry.get(this.world.getBlock(st.x + dx, st.y + dy, st.z + dz));
+      // 水生植物会替换水格，因此除四邻水体之外，还要承认上下相连的水草列
+      const wet = at(0, -1, 0).liquid || at(0, 1, 0).liquid ||
+        at(1, 0, 0).liquid || at(-1, 0, 0).liquid ||
+        at(0, 0, 1).liquid || at(0, 0, -1).liquid ||
+        (self.waterPlant === true &&
+          (at(0, -1, 0).waterPlant === true || at(0, 1, 0).waterPlant === true));
+      return wet ? { delta: 11, hostile: false } : { delta: -14, hostile: true };
+    }
+
+    if (trait.metabolism === 'fungal') {
+      // 火光会灼伤菌类（这是玩家可以主动利用 / 需要规避的特性）
+      if (block >= 13) return { delta: -14, hostile: true };
+      const light = Math.max(sky * day, block);
+      if (light < 8) return { delta: 10, hostile: false };
+      return { delta: -4, hostile: false };
+    }
+
+    const light = Math.max(sky * day, block);
+    // 完全黑暗的洞穴：太阳能植物会饿死
+    if (sky < 4 && block < 4) return { delta: -14, hostile: true };
+    if (light < 6) return { delta: -2, hostile: false };
+    const soil = this.isSoil(this.world.getBlock(st.x, st.y - 1, st.z)) ? 2 : 0;
+    return { delta: 5 + Math.min(9, Math.round(light * 0.6)) + soil, hostile: false };
+  }
+
+  private emitBloom(st: PlantEnergyState): void {
+    st.bloomed = true;
+    this.events?.emit('plant:bloom', {
+      x: st.x, y: st.y, z: st.z, block: st.id, energy: Math.round(st.energy),
+    });
+  }
+
+  /** 根系网络：蓄满的植物把富余能量送给同代谢类型的邻近植物 */
+  private shareEnergy(source: PlantEnergyState, trait: PlantTrait): void {
+    if (source.energy < 80 || trait.shareRadius <= 0 || this.rng() > 0.25) return;
+    const r = trait.shareRadius;
+    for (let i = 0; i < 6; i++) {
+      const nx = source.x + ((this.rng() * (r * 2 + 1)) | 0) - r;
+      const ny = source.y + ((this.rng() * 3) | 0) - 1;
+      const nz = source.z + ((this.rng() * (r * 2 + 1)) | 0) - r;
+      if (ny < 1 || ny >= H) continue;
+      if (nx === source.x && ny === source.y && nz === source.z) continue;
+      const nid = this.world.getBlock(nx, ny, nz);
+      const ntrait = this.traits.get(nid);
+      if (!ntrait || ntrait.metabolism !== trait.metabolism) continue;
+      const [ax, ay, az] = this.anchorOf(nx, ny, nz, nid);
+      if (ax === source.x && ay === source.y && az === source.z) continue;
+      const key = blockKey(ax, ay, az);
+      let target = this.energy.get(key);
+      if (!target || target.id !== nid) {
+        target = { x: ax, y: ay, z: az, id: nid, energy: START_PLANT_ENERGY, bloomed: false };
+        this.remember(key, target);
+      }
+      const power = Math.min(trait.sharePower, source.energy - 60, MAX_PLANT_ENERGY - target.energy);
+      if (power <= 0) continue;
+      const prev = target.energy;
+      source.energy -= power;
+      target.energy += power;
+      if (!target.bloomed && prev < ntrait.bloom && target.energy >= ntrait.bloom) {
+        this.emitBloom(target);
+      }
+      return;
+    }
+  }
+
+  private canGrow(x: number, y: number, z: number, id: BlockId): boolean {
+    const trait = this.traits.get(id);
+    if (!trait) return true;
+    return this.stateAt(x, y, z, id).energy >= trait.growthCost;
+  }
+
+  /** 带能量消耗的写入：能量不足或写入失败都不扣能量 */
+  private grow(
+    tx: number, ty: number, tz: number, id: BlockId, kind: GrowKind,
+    sx = tx, sy = ty, sz = tz, costId = id,
+  ): boolean {
+    const trait = this.traits.get(costId);
+    // 必须在写入前取能量状态：生长阶段替换方块后 id 会变化
+    const state = trait ? this.stateAt(sx, sy, sz, costId) : null;
+    if (trait && (!state || state.energy < trait.growthCost)) return false;
+    if (!this.set(tx, ty, tz, id, kind)) return false;
+    if (trait && state) {
+      state.energy = Math.max(0, state.energy - trait.growthCost);
+      // 原地升级（麦苗 → 抽穗 → 小麦、青果 → 成熟）保留剩余能量
+      if (costId !== id && sx === tx && sy === ty && sz === tz) state.id = id;
+    }
+    return true;
+  }
+
   // ---------- 采样 ----------
 
   private randomAttempt(focusX: number, focusZ: number, daylight: number): void {
     const r = this.rng;
     const angle = r() * Math.PI * 2;
-    const dist = Math.sqrt(r()) * this.radius;
+    const dist = Math.sqrt(r()) * this.sampleRadius;
     const x = Math.floor(focusX + Math.cos(angle) * dist);
     const z = Math.floor(focusZ + Math.sin(angle) * dist);
     const chunk = this.world.getChunk(Math.floor(x / CS), Math.floor(z / CS));
@@ -167,6 +470,9 @@ export class Botany {
   // ---------- 调度 ----------
 
   private applyAt(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
+    // 先充 / 放能：能量不足的植物本轮不会生长；环境长期不适会直接枯死
+    if (this.traits.has(id) && !this.charge(x, y, z, id, daylight)) return true;
+
     if (id === this.id.grass) return this.tickGrass(x, y, z, daylight);
     if (id === this.id.dirt) return this.tickDirt(x, y, z);
     if (id === this.id.cactus) {
@@ -183,11 +489,11 @@ export class Botany {
     }
     if (id === this.id.glowLichen) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickLichen(x, y, z);
+      return this.tickLichen(x, y, z, daylight);
     }
     if (id === this.id.mossCarpet) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickMoss(x, y, z);
+      return this.tickMoss(x, y, z, daylight);
     }
     if (this.aquatic.has(id)) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
@@ -199,7 +505,7 @@ export class Botany {
     }
     if (this.saplings.has(id)) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickSapling(x, y, z, this.saplings.get(id)!, daylight);
+      return this.tickSapling(x, y, z, id, this.saplings.get(id)!, daylight);
     }
     if (id === this.id.wheatSeedling || id === this.id.wheatGrowing) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
@@ -217,7 +523,7 @@ export class Botany {
     const def = this.registry.get(id);
     if (def.shape !== 'cross') return false;
     if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-    if (this.mushrooms.has(id)) return this.tickMushroom(x, y, z, id);
+    if (this.mushrooms.has(id)) return this.tickMushroom(x, y, z, id, daylight);
     if (this.flowers.has(id) || this.spreadable.has(id)) return this.tickSpread(x, y, z, id, daylight);
     return false;
   }
@@ -252,6 +558,7 @@ export class Botany {
     // 整列枯萎：甘蔗 / 竹子 / 仙人掌 / 海带被拆掉底格后不应留下一段悬空
     for (let yy = y; yy < H; yy++) {
       if (this.world.getBlock(x, yy, z) !== id) break;
+      this.energy.delete(blockKey(x, yy, z));
       if (this.world.setBlock(x, yy, z, AIR)) {
         this.events?.emit('plant:grow', { x, y: yy, z, block: id, kind: 'decay' });
         changed = true;
@@ -306,17 +613,21 @@ export class Botany {
   // ---------- 规则：花草蔓延 ----------
 
   private tickSpread(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
-    if (daylight < 0.15 || this.rng() > 0.09) return false;
+    if (this.lightAt(x, y, z, daylight) < 9) return false;
+    if (this.rng() > 0.09) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
-    return spot ? this.set(spot[0], spot[1], spot[2], id, 'spread') : false;
+    return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
 
-  private tickMushroom(x: number, y: number, z: number, id: BlockId): boolean {
-    // 蘑菇只在阴暗处蔓延（洞穴 / 树冠下）
-    if (this.world.getSkyLight(x, y, z) >= 8 || this.world.getBlockLight(x, y, z) >= 8) return false;
+  private tickMushroom(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
+    // 与能量模型保持一致：白天露天下不再蔓延，夜晚 / 阴影 / 洞穴中可以
+    const sky = this.world.getSkyLight(x, y, z);
+    const block = this.world.getBlockLight(x, y, z);
+    const light = Math.max(sky * (0.3 + 0.7 * clamp(daylight, 0, 1)), block);
+    if (light >= 8 || block >= 13) return false;
     if (this.rng() > 0.12) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
-    return spot ? this.set(spot[0], spot[1], spot[2], id, 'spread') : false;
+    return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
 
   // ---------- 规则：柱状植物生长 ----------
@@ -331,11 +642,11 @@ export class Botany {
       // 竹子长满后横向扩繁
       if (id !== this.id.bamboo || this.rng() > 0.06) return false;
       const spot = this.findGroundSpot(base, top, z, 2, true);
-      return spot ? this.set(spot[0], spot[1], spot[2], id, 'spread') : false;
+      return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, base, z) : false;
     }
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
     if (this.rng() > (id === this.id.bamboo ? 0.42 : 0.3)) return false;
-    return this.set(x, top + 1, z, id, 'grow');
+    return this.grow(x, top + 1, z, id, 'grow', x, base, z);
   }
 
   private tickCactus(x: number, y: number, z: number): boolean {
@@ -346,7 +657,7 @@ export class Botany {
     if (top - base + 1 >= 3) return false;
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
     if (this.rng() > 0.22) return false;
-    return this.set(x, top + 1, z, this.id.cactus, 'grow');
+    return this.grow(x, top + 1, z, this.id.cactus, 'grow', x, base, z);
   }
 
   private tickAquatic(x: number, y: number, z: number, id: BlockId): boolean {
@@ -359,14 +670,14 @@ export class Botany {
       const above = this.world.getBlock(x, top + 1, z);
       if (above !== this.id.water) return false;
       if (this.rng() > 0.3) return false;
-      return this.set(x, top + 1, z, id, 'grow');
+      return this.grow(x, top + 1, z, id, 'grow', x, base, z);
     }
     // 海草在海床上成片蔓延
     if (this.rng() > 0.14) return false;
     const [dx, dz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(dx, y, dz) !== this.id.water) return false;
     if (!this.registry.isSolid(this.world.getBlock(dx, y - 1, dz))) return false;
-    return this.set(dx, y, dz, id, 'spread');
+    return this.grow(dx, y, dz, id, 'spread', x, y, z);
   }
 
   private tickLily(x: number, y: number, z: number): boolean {
@@ -375,7 +686,7 @@ export class Botany {
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
     const below = this.world.getBlock(nx, y - 1, nz);
     if (below !== this.id.water) return false;
-    return this.set(nx, y, nz, this.id.lilyPad, 'spread');
+    return this.grow(nx, y, nz, this.id.lilyPad, 'spread', x, y, z);
   }
 
   private tickVine(x: number, y: number, z: number): boolean {
@@ -383,17 +694,21 @@ export class Botany {
     // 优先向下垂挂（y 减小），其次沿墙面横爬
     if (this.rng() < 0.6) {
       if (y - 1 >= 1 && this.world.getBlock(x, y - 1, z) === AIR) {
-        return this.set(x, y - 1, z, this.id.vine, 'grow');
+        return this.grow(x, y - 1, z, this.id.vine, 'grow', x, y, z);
       }
       return false;
     }
     const [nx, nz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
-    return this.set(nx, y, nz, this.id.vine, 'spread');
+    return this.grow(nx, y, nz, this.id.vine, 'spread', x, y, z);
   }
 
-  private tickLichen(x: number, y: number, z: number): boolean {
-    if (this.world.getSkyLight(x, y, z) >= 8 || this.world.getBlockLight(x, y, z) >= 8) return false;
+  private tickLichen(x: number, y: number, z: number, daylight: number): boolean {
+    const light = Math.max(
+      this.world.getSkyLight(x, y, z) * (0.3 + 0.7 * clamp(daylight, 0, 1)),
+      this.world.getBlockLight(x, y, z),
+    );
+    if (light >= 8 || this.world.getBlockLight(x, y, z) >= 13) return false;
     if (this.rng() > 0.18) return false;
     for (let i = 0; i < 6; i++) {
       const nx = x + ((this.rng() * 5) | 0) - 2;
@@ -402,54 +717,61 @@ export class Botany {
       if (ny < 1 || ny >= H - 1) continue;
       if (this.world.getBlock(nx, ny, nz) !== AIR) continue;
       if (!this.hasSolidNeighbor(nx, ny, nz)) continue;
-      return this.set(nx, ny, nz, this.id.glowLichen, 'spread');
+      return this.grow(nx, ny, nz, this.id.glowLichen, 'spread', x, y, z);
     }
     return false;
   }
 
-  private tickMoss(x: number, y: number, z: number): boolean {
-    if (this.world.getSkyLight(x, y, z) < 5) return false;
+  private tickMoss(x: number, y: number, z: number, daylight: number): boolean {
+    const light = Math.max(
+      this.world.getSkyLight(x, y, z) * (0.3 + 0.7 * clamp(daylight, 0, 1)),
+      this.world.getBlockLight(x, y, z),
+    );
+    if (light >= 9 || this.world.getBlockLight(x, y, z) >= 13) return false;
     if (this.rng() > 0.14) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
-    return spot ? this.set(spot[0], spot[1], spot[2], this.id.mossCarpet, 'spread') : false;
+    return spot ? this.grow(spot[0], spot[1], spot[2], this.id.mossCarpet, 'spread', x, y, z) : false;
   }
 
   // ---------- 规则：作物 / 浆果 / 南瓜 ----------
 
   private tickWheat(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
-    if (daylight < 0.15 || this.world.getSkyLight(x, y, z) < 9) return false;
+    if (this.lightAt(x, y, z, daylight) < 9) return false;
     if (this.rng() > 0.22) return false;
     const next = id === this.id.wheatSeedling ? this.id.wheatGrowing : this.id.wheat;
-    return next ? this.set(x, y, z, next, 'grow') : false;
+    return next ? this.grow(x, y, z, next, 'grow', x, y, z, id) : false;
   }
 
   private tickBerry(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (id === this.id.berryBush) {
-      if (daylight < 0.12 || this.rng() > 0.18) return false;
-      return this.set(x, y, z, this.id.berryBushRipe, 'ripen');
+      if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.18) return false;
+      return this.grow(x, y, z, this.id.berryBushRipe, 'ripen', x, y, z, id);
     }
     if (this.rng() > 0.06) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
-    return spot ? this.set(spot[0], spot[1], spot[2], this.id.berryBush, 'spread') : false;
+    return spot ? this.grow(spot[0], spot[1], spot[2], this.id.berryBush, 'spread', x, y, z, id) : false;
   }
 
   private tickPumpkinStem(x: number, y: number, z: number, daylight: number): boolean {
-    if (daylight < 0.15 || this.rng() > 0.12) return false;
+    if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.12) return false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = x + dx;
       const nz = z + dz;
       if (this.world.getBlock(nx, y, nz) !== AIR) continue;
       if (!this.registry.isSolid(this.world.getBlock(nx, y - 1, nz))) continue;
-      return this.set(nx, y, nz, this.id.pumpkin, 'grow');
+      return this.grow(nx, y, nz, this.id.pumpkin, 'grow', x, y, z, this.id.pumpkinStem);
     }
     return false;
   }
 
   // ---------- 规则：树苗长成树 ----------
 
-  private tickSapling(x: number, y: number, z: number, species: TreeSpecies, daylight: number): boolean {
-    if (daylight < 0.12 || this.world.getSkyLight(x, y, z) < 9) return false;
+  private tickSapling(
+    x: number, y: number, z: number, id: BlockId, species: TreeSpecies, daylight: number,
+  ): boolean {
+    if (this.lightAt(x, y, z, daylight) < 9) return false;
     if (this.rng() > 0.08) return false;
+    if (!this.canGrow(x, y, z, id)) return false;
     const below = this.world.getBlock(x, y - 1, z);
     if (!this.isSoil(below)) return false;
 
@@ -464,6 +786,8 @@ export class Botany {
     }
 
     this.world.setBlock(x, y, z, AIR);
+    // 树苗的能量已转化为整棵树，不再保留单株储能
+    this.energy.delete(blockKey(x, y, z));
     let changed = false;
     for (const b of shape) {
       const tx = x + b.dx;
@@ -491,6 +815,14 @@ export class Botany {
   }
 
   // ---------- 工具 ----------
+
+  /** 有效光照：天空光按昼夜缩放，与方块光取大（火把也能支撑室内种植） */
+  private lightAt(x: number, y: number, z: number, daylight: number): number {
+    return Math.max(
+      this.world.getSkyLight(x, y, z) * (0.3 + 0.7 * clamp(daylight, 0, 1)),
+      this.world.getBlockLight(x, y, z),
+    );
+  }
 
   private isSoil(id: BlockId): boolean {
     return id === this.id.grass || id === this.id.dirt || id === this.id.podzol;
@@ -524,7 +856,9 @@ export class Botany {
       if (nx === x && ny === y && nz === z) continue;
       if (this.world.getBlock(nx, ny, nz) !== AIR) continue;
       if (!this.isSoil(this.world.getBlock(nx, ny - 1, nz))) continue;
-      if (needLight && this.world.getSkyLight(nx, ny, nz) < 9) continue;
+      if (needLight &&
+        this.world.getSkyLight(nx, ny, nz) < 9 &&
+        this.world.getBlockLight(nx, ny, nz) < 9) continue;
       return [nx, ny, nz];
     }
     return null;

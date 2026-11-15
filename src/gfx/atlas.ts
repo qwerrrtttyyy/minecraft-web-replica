@@ -997,7 +997,7 @@ function builtinPainters(): Record<string, Painter> {
         }
       }
     },
-    // ---- v1.5.0 植物大扩充：花卉 ----
+    // ---- v1.4.1 植物大扩充：花卉 ----
     bluebell: flowerPainter(0x4a5ad0, 0x8a9af0, 0xfff0a0, 'bell', 0x3e7a22, 2),
     allium: flowerPainter(0x9a4ac8, 0xd09af0, 0xfff0c0, 'sphere', 0x3e7a22, 1),
     azure_bluet: flowerPainter(0xeef0e6, 0xffffff, 0xe8c84a, 'bluet', 0x3e7a22, 4),
@@ -1209,6 +1209,27 @@ function builtinPainters(): Record<string, Painter> {
         p.set(x + 1, y + 1, jitter(0xa82838, rng, 10));
         p.set(x, y, 0xf06a70);
       }
+    },
+    // 花蜜：金色蜜滴，用于表现「蓄能开花」的直接收益
+    nectar: (p, rng) => {
+      p.clear();
+      // 蜜滴主体：上窄下宽的水滴形
+      for (let y = 4; y <= 15; y++) {
+        const half = y < 6 ? 1 : y < 12 ? 3 : 4;
+        for (let x = 8 - half; x <= 7 + half; x++) {
+          const dx = (x - 7.5) / (half + 0.4);
+          const dy = (y - 10.5) / 5.5;
+          if (dx * dx + dy * dy > 1) continue;
+          const edge = dx * dx + dy * dy > 0.62;
+          p.set(x, y, jitter(edge ? 0xd89018 : 0xf6c94a, rng, 9));
+        }
+      }
+      p.set(6, 9, 0xfff3b0);
+      p.set(6, 10, 0xffe58a);
+      p.set(7, 8, 0xfff8d8);
+      // 顶部小高光
+      p.set(8, 5, 0xfff8d8);
+      p.set(9, 6, 0xffe58a);
     },
   };
 }

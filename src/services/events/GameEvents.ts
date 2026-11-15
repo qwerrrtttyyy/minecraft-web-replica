@@ -17,8 +17,13 @@ export interface GameEvents {
   'block:break': { x: number; y: number; z: number; block: BlockId };
   'block:place': { x: number; y: number; z: number; block: BlockId };
   'block:ignite': { x: number; y: number; z: number };
-  /** 生态随机刻改变了方块（生长 / 蔓延 / 枯萎 / 成熟），供存档与插件观测 */
-  'plant:grow': { x: number; y: number; z: number; block: BlockId; kind: 'grow' | 'spread' | 'decay' | 'ripen' };
+  /** 生态随机刻改变了方块（生长 / 蔓延 / 枯萎 / 成熟 / 采集），供存档与插件观测 */
+  'plant:grow': {
+    x: number; y: number; z: number; block: BlockId;
+    kind: 'grow' | 'spread' | 'decay' | 'ripen' | 'harvest';
+  };
+  /** 植物蓄能到开花阈值 / 被采集：用于粒子、音效与生态反馈 */
+  'plant:bloom': { x: number; y: number; z: number; block: BlockId; energy: number };
   'explosion': { center: Vec3Like; radius: number };
   'player:spawn': { position: Vec3Like };
   'player:move': { position: Vec3Like };

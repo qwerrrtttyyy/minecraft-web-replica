@@ -11,6 +11,7 @@ import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
+import type { Botany } from '../world/botany';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -81,6 +82,7 @@ export class Player implements System, PhysicsBody {
   private lastEmitY = 0;
   private lastEmitZ = 0;
   private eatTimer = 0;
+  private botany: Botany | null = null;
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
@@ -484,7 +486,12 @@ export class Player implements System, PhysicsBody {
     this.sound.fuse();
   }
 
-  /** 破坏准星方块（含掉落与上方植物连带） */
+  /** 生态能量系统在组装根创建后注入（避免 Player 反向依赖 Botany 的构造顺序） */
+  setBotany(botany: Botany) {
+    this.botany = botany;
+  }
+
+  /** 破坏准星方块（含掉落、上方植物连带与蓄能采集结算） */
   breakBlock() {
     const hit = this.target;
     if (!hit) return;
@@ -498,12 +505,15 @@ export class Player implements System, PhysicsBody {
       this.igniteTnt(hit.x, hit.y, hit.z);
       return;
     }
+    // 破坏前结算蓄能产物（花蜜 / 额外种子 / 浆果）
+    const bonus = this.botany?.harvest(hit.x, hit.y, hit.z, 'break') ?? null;
     this.world.setBlock(hit.x, hit.y, hit.z, AIR);
     this.events.emit('block:break', { x: hit.x, y: hit.y, z: hit.z, block: hit.block });
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
     this.collectDrops(def);
+    if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方植物随之掉落
     const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
     const above = this.registry.get(aboveId);
@@ -526,10 +536,13 @@ export class Player implements System, PhysicsBody {
 
   // ---------- 放置 / 使用 / 进食 ----------
 
-  /** 右键 / 放置键：手持方块则放置，种子 / 浆果则种植，手持食物则进食 */
+  /** 右键 / 放置键：手持方块则放置，种子 / 浆果则种植，空手则采集蓄能植物 */
   useSelected() {
     const stack = this.selectedStack();
-    if (!stack) return;
+    if (!stack) {
+      this.harvestPlant();
+      return;
+    }
     if (stack.kind === 'item') {
       const item = this.selectedItem();
       if (item?.plant) {
@@ -544,6 +557,21 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
+  }
+
+  /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */
+  private harvestPlant(): boolean {
+    const hit = this.target;
+    if (!hit || !this.botany) return false;
+    const bonus = this.botany.harvest(hit.x, hit.y, hit.z, 'use');
+    if (!bonus) return false;
+    this.survival.addDrop(bonus.item, bonus.count);
+    const def = this.registry.get(hit.block);
+    const color = this.atlas.avgColor(def.tiles.side);
+    this.particles.burst(hit.x + 0.5, hit.y + 0.7, hit.z + 0.5, color, 12, 0.28, 1.6);
+    this.sound.click(1080);
+    this.swing();
+    return true;
   }
 
   doPlace() {
