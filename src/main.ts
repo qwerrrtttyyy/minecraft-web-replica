@@ -791,7 +791,7 @@ async function boot() {
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
       `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy}`,
       `运行时诊断: ${diagStr}`,
-      `时间: ${sky.timeString}  种子: ${seed}`,
+      `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
