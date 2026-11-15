@@ -59,6 +59,8 @@
 | `src/plugins/builtin/` | 默认启用的内置插件；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约 |
 | `src/plugins/example/` | 插件开发示例（不默认启用） |
 | `src/diagnostics/` | 运行时诊断组：只读快照检查、F3 / CraftAPI 报告、每 10 秒自动采样 |
+| `src/player/crafting.ts` | 合成规则：配方表与网格匹配（纯逻辑，不依赖 DOM / three） |
+| `src/ui/crafting.ts` | 合成界面：3×3 网格、结果槽、背包区与配方列表（经 `CraftingHost` 回调取放） |
 
 ---
 
@@ -420,9 +422,10 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 | v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置 |
 | v1.4.1 | 植物生态 + 内在能量体系（已完成） | 35 种植物 / 树种 append-only；`botany-check` 28 组 + `plant-energy-check` 29 组断言 |
 | v1.4.2 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
+| v1.5.0 | 合成系统（已完成） | `crafting-check` 43 组断言：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、背包取放闭环 |
 | v1.4.3 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
 | v1.4.4 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
-| v2.0 | 合成 / 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
+| v2.0 | 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
 **当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
 下一步做透明排序与 AABB 脱困。

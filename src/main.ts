@@ -18,6 +18,13 @@ import { Particles } from './gfx/particles';
 import { BlockHighlight } from './gfx/highlight';
 import { Player, type HotbarState } from './player/player';
 import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
+import {
+  CRAFTING_RECIPES,
+  inventoryKeyToMaterial,
+  materialToStack,
+  type MaterialId,
+} from './player/crafting';
+import type { CraftingHost, CraftingMaterial } from './ui/crafting';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
@@ -158,8 +165,7 @@ async function boot() {
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
   const botany = new Botany(world, registry, seed, events, { isMobile });
-  player.setBotany(botany);
-  // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
+  player.setBotany(botany);  // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
     const def = registry.get(block);
     const color = atlas.avgColor(def.tiles.side);
@@ -213,6 +219,8 @@ async function boot() {
   let debugAcc = 0;
   let wasUnderwater = false;
   let paletteReturn: 'game' | 'menu' = 'game';
+  /** 合成界面的来源：关闭后回到菜单还是直接恢复游戏 */
+  let craftingReturn: 'game' | 'menu' = 'game';
   /** 新世界 / 导入存档触发 reload 时，禁止 beforeunload 用旧状态反写存档 */
   let suppressUnloadSave = false;
 
@@ -329,8 +337,56 @@ async function boot() {
     markDirty();
   };
 
+  /**
+   * 合成背包宿主：把 SurvivalState 的背包（'b:<id>' / 'i:<name>' 键）
+   * 与合成核心的材料标识（方块名 / 'item:xxx'）互相转换。
+   *
+   * UI 只认材料标识，生存状态只认背包键，转换全部收在这里。
+   */
+  const craftingHost: CraftingHost = {
+    getMaterials(): CraftingMaterial[] {
+      const out: CraftingMaterial[] = [];
+      for (const [key, count] of survival.inventory) {
+        if (count <= 0) continue;
+        const material = inventoryKeyToMaterial(key, registry);
+        if (!material) continue;
+        out.push({ material, count });
+      }
+      return out;
+    },
+    take(material: MaterialId): boolean {
+      const stack = materialToStack(material, registry);
+      if (!stack) return false;
+      const key = stack.kind === 'block' ? `b:${stack.id}` : `i:${stack.id}`;
+      if (survival.countKey(key) <= 0) return false;
+      survival.consume(stack, 1);
+      return true;
+    },
+    giveBack(material: MaterialId): void {
+      const stack = materialToStack(material, registry);
+      if (!stack) return;
+      if (stack.kind === 'block') survival.addBlock(stack.id, 1);
+      else survival.addItem(stack.id, 1);
+    },
+    produce(material: MaterialId, count: number): void {
+      const stack = materialToStack(material, registry);
+      if (!stack) return;
+      if (stack.kind === 'block') survival.addBlock(stack.id, count);
+      else survival.addItem(stack.id, count);
+    },
+    onCrafted(recipe, result) {
+      events.emit('crafting:crafted', { recipe: recipe.id, result: result.material, count: result.count });
+      sound.click(880);
+      hud.toast(`合成成功：${recipe.label} ×${result.count}`);
+    },
+    onClose() {
+      closeCrafting();
+    },
+  };
+
   const hud = new HUD({
     uiRoot, atlas, registry, hotbar, isMobile,
+    craftingHost,
     onStart: (cont, chosen) => {
       if (cont) { void startGame(true); return; } // 继续游戏保留存档模式
       // 标题页选的模式必须真正写回状态机，否则选「创造」仍会进入生存
@@ -427,6 +483,7 @@ async function boot() {
     getOptions: () => settings,
     onPaletteOpen: (from) => openPalette(from),
     onPaletteClose: () => closePalette(),
+    onCraftOpen: (from) => openCrafting(from),
     onRespawn: () => respawn(),
     onModeToggle: () => toggleGameMode(),
     isSurvival: () => survival.isSurvival,
@@ -507,6 +564,8 @@ async function boot() {
     applyMesherThreads(settings.mesherThreads);
   };
 
+  // 空手右键工作台方块 → 打开合成界面
+  events.on('crafting:open', () => openCrafting('game'));
   const cycleCamera = () => {
     player.cycleCamera();
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
@@ -656,6 +715,35 @@ async function boot() {
     if (optionsReturn === 'menu') hud.showMenu(true);
     else if (optionsReturn === 'game') resumeGame();
     // 标题屏：直接盖回标题，无需额外操作
+  }
+
+  /**
+   * 打开合成界面。
+   *
+   * 生存模式专用：创造模式背包为空，合成没有意义。
+   * 与方块库一样属于暂停态（游戏暂停 + 释放指针锁），否则鼠标会被游戏吃掉。
+   */
+  function openCrafting(from: 'game' | 'menu') {
+    if (!survival.isSurvival) {
+      hud.toast('创造模式不需要合成');
+      return;
+    }
+    craftingReturn = from;
+    if (mode === 'playing') {
+      mode = 'paused';
+      input.enabled = false;
+      input.reset();
+      input.exitLock();
+      events.emit('game:pause', { paused: true });
+    }
+    hud.showMenu(false);
+    hud.showCrafting('工作台');
+  }
+
+  function closeCrafting() {
+    hud.hideCrafting();
+    if (craftingReturn === 'menu') hud.showMenu(true);
+    else resumeGame();
   }
 
   function quitToTitle() {
@@ -923,6 +1011,7 @@ async function boot() {
           } else if (mode === 'playing') openMenu();
           else if (mode === 'paused') {
             if (hud.helpOpen) hud.showHelp(false);
+            else if (hud.craftingOpen) closeCrafting();
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
           }
@@ -1158,6 +1247,7 @@ async function boot() {
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
+    openCrafting, closeCrafting,
   };
 }
 

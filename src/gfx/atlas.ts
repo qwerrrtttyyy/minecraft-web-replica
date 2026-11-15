@@ -1286,6 +1286,22 @@ const bookshelfSidePainter: Painter = (p, rng) => {
     for (let x = 2; x < 14; x++) if (rng() < 0.8) p.set(x, y, jitter(0x8a6a3e, rng, 5));
 };
 
+/** 木棍：合成产物，扁平精灵（透明底）。斜置木棒，棕色主体 + 左侧高光 + 两端切口 */
+const stickPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let i = 0; i < 11; i++) {
+    const x = 3 + i;
+    const y = 12 - i;
+    p.set(x, y, jitter(0x9a6b3a, rng, 8));
+    p.set(x, y - 1, jitter(0xb5824a, rng, 6));
+    p.set(x + 1, y, jitter(0x7a5228, rng, 6));
+  }
+  p.set(3, 12, 0x6b4520);
+  p.set(3, 11, 0xc79a5e);
+  p.set(13, 3, 0x6b4520);
+  p.set(14, 2, 0xc79a5e);
+};
+
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
     fillNoise(p, rng, hex, 5);
@@ -1324,6 +1340,7 @@ export class TextureAtlas {
     // 新增：放在全部既有纹理之后注册，既有 64 张 tile 的索引保持不变
     this.painters.set('pumpkin_side', pumpkinSidePainter);
     this.painters.set('bookshelf_side', bookshelfSidePainter);
+    this.painters.set('stick', stickPainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

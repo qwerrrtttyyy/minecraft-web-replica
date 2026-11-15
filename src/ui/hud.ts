@@ -4,6 +4,7 @@ import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
+import { CraftingPanel, type CraftingHost } from './crafting';
 
 /**
  * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
@@ -50,6 +51,10 @@ export interface HUDOptions {
   onImportOptions: (json: string) => void;
   onPaletteOpen: (from: 'game' | 'menu') => void;
   onPaletteClose: () => void;
+  /** 合成面板：背包宿主（由组装根实现，UI 不直接碰 SurvivalState） */
+  craftingHost: CraftingHost;
+  /** 打开合成界面（from: 'game' = 游戏中，'menu' = 从菜单进入） */
+  onCraftOpen: (from: 'game' | 'menu') => void;
   onRespawn: () => void;
   onModeToggle: () => void;
   isSurvival: () => boolean;
@@ -161,6 +166,7 @@ export class HUD {
   private ioApplyBtn!: HTMLButtonElement;
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
+  private crafting!: CraftingPanel;
 
   hudHidden = false;
   private itemNameTimer = 0;
@@ -182,6 +188,9 @@ export class HUD {
     this.buildPalette();
     this.buildHelp();
     this.buildDeath();
+    // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
+    this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
+    this.root.appendChild(this.crafting.root);
   }
 
   private icon(stack: Stack): string {
@@ -587,6 +596,8 @@ export class HUD {
     // 否则关闭面板会直接恢复游戏而不是回到菜单（v1.3.2 修复）。
     btnRow.appendChild(this.mcButton('方块库', () => this.opts.onPaletteOpen('menu')));
     btnRow.appendChild(this.mcButton('设置', () => this.opts.onOptionsOpen('menu')));
+    // 工作台：生存模式下随时可开（材料来自背包），与右键工作台方块等价
+    btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
     panel.appendChild(btnRow);
 
     const newWorldRow = h('div', 'menu-new-world');
@@ -975,6 +986,22 @@ export class HUD {
 
   get menuOpen() {
     return this.menuOverlay.style.display !== 'none';
+  }
+
+  // ---------- 合成 ----------
+
+  /** 打开合成界面（工作台 3×3） */
+  showCrafting(title: string) {
+    this.crafting.show(3, title);
+  }
+
+  /** 关闭合成界面（材料退回背包由 CraftingPanel 负责） */
+  hideCrafting() {
+    this.crafting.hide();
+  }
+
+  get craftingOpen() {
+    return this.crafting.isOpen;
   }
 
   // ---------- 死亡 ----------

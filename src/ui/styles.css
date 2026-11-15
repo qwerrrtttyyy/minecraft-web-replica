@@ -77,6 +77,91 @@ img { image-rendering: pixelated; }
   padding: 16px;
 }
 
+/* ============ 合成 ============ */
+.crafting-panel {
+  width: min(600px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.crafting-head { display: flex; align-items: center; justify-content: space-between; }
+.crafting-head .panel-title { margin: 0; }
+.crafting-body { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.crafting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-auto-rows: 56px;
+  gap: 4px;
+}
+.crafting-grid[data-size="2"] { grid-template-columns: repeat(2, 56px); grid-auto-rows: 56px; }
+.crafting-cell {
+  position: relative;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 20, 24, .55);
+  border: 2px solid #4a4a4a;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, .5);
+  cursor: pointer;
+}
+.crafting-cell img { width: 42px; height: 42px; pointer-events: none; image-rendering: pixelated; }
+.crafting-cell:hover { border-color: #8a8a8a; }
+.crafting-cell.selected { border-color: #ffffa0; box-shadow: inset 2px 2px 0 rgba(0, 0, 0, .5), 0 0 0 2px #ffffa0; }
+.crafting-arrow { font-size: 22px; color: #d8d8d8; }
+.crafting-result {
+  position: relative;
+  width: 66px; height: 66px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 20, 24, .55);
+  border: 2px solid #4a4a4a;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, .5);
+  cursor: default;
+}
+.crafting-result.ready { border-color: #6a8a4a; cursor: pointer; }
+.crafting-result.ready:hover { border-color: #ffffa0; }
+.crafting-result img { width: 48px; height: 48px; pointer-events: none; image-rendering: pixelated; }
+.crafting-count {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: 11px; font-weight: 700; color: #fff;
+  text-shadow: 1px 1px 0 #1a1a1a; pointer-events: none;
+}
+.crafting-hint { min-height: 16px; font-size: 12px; color: #d8d8d8; text-align: center; }
+.crafting-bag-title { font-size: 13px; color: #ffffa0; margin-top: 4px; }
+.crafting-bag {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px; max-height: 168px; overflow-y: auto; padding: 2px;
+}
+.crafting-chip {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 1;
+  background: rgba(20, 20, 24, .55);
+  border: 2px solid #4a4a4a;
+  cursor: pointer; padding: 0;
+}
+.crafting-chip img { width: 38px; height: 38px; pointer-events: none; image-rendering: pixelated; }
+.crafting-chip:hover { border-color: #ffffa0; }
+.crafting-bag-empty { grid-column: 1 / -1; text-align: center; color: #9a9a9a; font-size: 12px; padding: 10px 0; }
+.crafting-recipes { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow-y: auto; }
+.crafting-recipe {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 8px;
+  background: rgba(20, 20, 24, .45);
+  border: 1px solid #3a3a3a;
+  color: #d8d8d8; font-size: 12px; cursor: pointer; text-align: left;
+}
+.crafting-recipe:hover { border-color: #ffffa0; }
+.crafting-recipe-label { flex: 1; }
+.crafting-recipe-result { position: relative; display: flex; align-items: center; }
+.crafting-recipe-result img { width: 30px; height: 30px; image-rendering: pixelated; }
+.crafting-pattern { display: grid; gap: 1px; }
+.crafting-pattern-cell {
+  width: 14px; height: 14px;
+  background: rgba(0, 0, 0, .3);
+  border: 1px solid #4a4a4a;
+  display: flex; align-items: center; justify-content: center;
+}
+.crafting-pattern-cell img { width: 12px; height: 12px; image-rendering: pixelated; }
+
 /* ============ 标题屏 ============ */
 .title-screen {
   position: absolute; inset: 0;

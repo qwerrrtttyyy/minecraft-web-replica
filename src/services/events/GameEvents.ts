@@ -52,6 +52,10 @@ export interface GameEvents {
   'survival:eat': { item: string; hunger: number };
   /** 生存模式：背包变化（kind: block/item） */
   'inventory:change': { key: string; count: number };
+  /** 生存模式：空手右键工作台，请求打开合成界面 */
+  'crafting:open': { x: number; y: number; z: number };
+  /** 合成完成（配方 id / 产物材料 / 数量） */
+  'crafting:crafted': { recipe: string; result: string; count: number };
   'game:start': { seed: number };
   'game:pause': { paused: boolean };
   'save:done': { bytes: number };
