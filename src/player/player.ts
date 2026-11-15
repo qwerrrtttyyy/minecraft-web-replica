@@ -11,6 +11,7 @@ import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
+import type { Botany } from '../world/botany';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -81,6 +82,7 @@ export class Player implements System, PhysicsBody {
   private lastEmitY = 0;
   private lastEmitZ = 0;
   private eatTimer = 0;
+  private botany: Botany | null = null;
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
@@ -252,12 +254,13 @@ export class Player implements System, PhysicsBody {
     this.sprinting = input.sprint && input.moveZ > 0.1 && !this.sneaking &&
       (!this.survival.isSurvival || this.survival.hunger > 6);
 
-    const feetBlock = this.registry.get(this.world.getBlock(
+    const feetDef = this.registry.get(this.world.getBlock(
       Math.floor(this.pos.x), Math.floor(this.pos.y + 0.3), Math.floor(this.pos.z)));
-    const eyeBlock = this.registry.get(this.world.getBlock(
+    const eyeDef = this.registry.get(this.world.getBlock(
       Math.floor(this.pos.x), Math.floor(this.pos.y + EYE), Math.floor(this.pos.z)));
-    this.inWater = feetBlock.liquid;
-    this.eyeInWater = eyeBlock.liquid;
+    // 海草 / 海带占据水格，玩家穿过时仍要按入水处理（浮力、氧气、水下雾）
+    this.inWater = feetDef.liquid || feetDef.waterPlant === true;
+    this.eyeInWater = eyeDef.liquid || eyeDef.waterPlant === true;
     // 入水即视为安全落地：否则高台跳水后游上岸，旧 fallVy 会在岸边结算伤害
     if (this.inWater) this.fallVy = 0;
 
@@ -483,7 +486,12 @@ export class Player implements System, PhysicsBody {
     this.sound.fuse();
   }
 
-  /** 破坏准星方块（含掉落与上方植物连带） */
+  /** 生态能量系统在组装根创建后注入（避免 Player 反向依赖 Botany 的构造顺序） */
+  setBotany(botany: Botany) {
+    this.botany = botany;
+  }
+
+  /** 破坏准星方块（含掉落、上方植物连带与蓄能采集结算） */
   breakBlock() {
     const hit = this.target;
     if (!hit) return;
@@ -497,12 +505,15 @@ export class Player implements System, PhysicsBody {
       this.igniteTnt(hit.x, hit.y, hit.z);
       return;
     }
+    // 破坏前结算蓄能产物（花蜜 / 额外种子 / 浆果）
+    const bonus = this.botany?.harvest(hit.x, hit.y, hit.z, 'break') ?? null;
     this.world.setBlock(hit.x, hit.y, hit.z, AIR);
     this.events.emit('block:break', { x: hit.x, y: hit.y, z: hit.z, block: hit.block });
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
     this.collectDrops(def);
+    if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方植物随之掉落
     const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
     const above = this.registry.get(aboveId);
@@ -525,41 +536,73 @@ export class Player implements System, PhysicsBody {
 
   // ---------- 放置 / 使用 / 进食 ----------
 
-  /** 右键 / 放置键：手持方块则放置，手持食物则进食 */
+  /** 右键 / 放置键：手持方块则放置，种子 / 浆果则种植，空手则采集蓄能植物 */
   useSelected() {
     const stack = this.selectedStack();
-    if (!stack) return;
+    if (!stack) {
+      this.harvestPlant();
+      return;
+    }
     if (stack.kind === 'item') {
+      const item = this.selectedItem();
+      if (item?.plant) {
+        const def = this.registry.byNameGet(item.plant);
+        // 甜浆果既能种植也能进食：对准可种位置时优先种植，否则吃掉
+        if (!def || !this.placeBlockDef(def, stack)) {
+          if (item.food) this.eat();
+        }
+        return;
+      }
       this.eat();
       return;
     }
     this.doPlace();
   }
 
+  /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */
+  private harvestPlant(): boolean {
+    const hit = this.target;
+    if (!hit || !this.botany) return false;
+    const bonus = this.botany.harvest(hit.x, hit.y, hit.z, 'use');
+    if (!bonus) return false;
+    this.survival.addDrop(bonus.item, bonus.count);
+    const def = this.registry.get(hit.block);
+    const color = this.atlas.avgColor(def.tiles.side);
+    this.particles.burst(hit.x + 0.5, hit.y + 0.7, hit.z + 0.5, color, 12, 0.28, 1.6);
+    this.sound.click(1080);
+    this.swing();
+    return true;
+  }
+
   doPlace() {
     const stack = this.selectedStack();
     if (!stack || stack.kind !== 'block') return;
+    this.placeBlockDef(this.registry.get(stack.id as BlockId), stack);
+  }
+
+  /** 放置 / 种植共用路径；返回是否真的落下方块 */
+  private placeBlockDef(def: BlockDefinition, stack: Stack): boolean {
     const hit = this.target;
-    if (!hit) return;
+    if (!hit) return false;
     const x = hit.x + hit.nx;
     const y = hit.y + hit.ny;
     const z = hit.z + hit.nz;
     // 先校验放置边界，避免 setBlock 返回 false 时背包已经被扣掉
-    if (y < 1 || y >= WORLD_HEIGHT) return;
+    if (y < 1 || y >= WORLD_HEIGHT) return false;
     const existing = this.registry.get(this.world.getBlock(x, y, z));
-    if (existing.solid) return;
-    if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return;
-    const def = this.registry.get(stack.id as BlockId);
-    if (def.id === AIR) return;
-    if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return;
+    if (existing.solid) return false;
+    if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return false;
+    if (def.id === AIR) return false;
+    if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return false;
     // 目标格已是同一方块时 setBlock 会返回 false：先拦住，否则扣了背包却没放下方块。
     // 火把 / 草丛这类非实心方块不会被上面的 existing.solid 挡住，所以这条必须存在。
-    if (existing.id === def.id) return;
-    if (this.survival.isSurvival && !this.survival.consume(stack, 1)) return;
+    if (existing.id === def.id) return false;
+    if (this.survival.isSurvival && !this.survival.consume(stack, 1)) return false;
     this.world.setBlock(x, y, z, def.id);
     this.events.emit('block:place', { x, y, z, block: def.id });
     this.sound.place(def.sound);
     this.swing();
+    return true;
   }
 
   eat() {

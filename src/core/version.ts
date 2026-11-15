@@ -9,6 +9,6 @@
  * 二者互不覆盖：一个正式版 vN 可以覆盖多个 X.Y.Z 迭代。因此历史迭代标签一律不带 v 前缀
  * （1.3.0 / 1.3.1），只有 v1 / v2 这类标签表示正式版。
  */
-export const VERSION = '1.4.0';
+export const VERSION = '1.4.1';
 export const RELEASE = 'v1';
 export const ENGINE_NAME = 'Minecraft TS';

@@ -75,6 +75,207 @@ const drawText = (p: Px, text: string, x0: number, y0: number, hex: number) => {
   }
 };
 
+/** 直立茎：从 y0（顶部）画到 y1（底部），可选左右摆动 */
+const stem = (p: Px, x: number, y0: number, y1: number, hex: number) => {
+  for (let y = y0; y <= y1; y++) p.set(x, y, hex);
+};
+
+/** 斜向茎，供藤蔓 / 南瓜藤使用 */
+const curlStem = (p: Px, x: number, y0: number, y1: number, hex: number, rng: () => number) => {
+  let cx = x;
+  for (let y = y0; y <= y1; y++) {
+    p.set(cx, y, jitter(hex, rng, 6));
+    if (rng() < 0.28) cx += rng() < 0.5 ? -1 : 1;
+  }
+};
+
+/** 两片对称小叶 */
+const leaves = (p: Px, x: number, y: number, hex: number) => {
+  p.set(x - 1, y, hex);
+  p.set(x + 1, y, hex);
+  p.set(x - 2, y + 1, hex);
+  p.set(x + 2, y + 1, hex);
+};
+
+/** 树叶簇：与橡树叶同构，仅色调随树种变化 */
+function leavesPainter(tones: number[]): Painter {
+  return (p, rng) => {
+    p.clear();
+    for (let cy = 0; cy < 4; cy++) {
+      for (let cx = 0; cx < 4; cx++) {
+        const base = tones[(rng() * tones.length) | 0];
+        for (let y = 0; y < 4; y++) {
+          for (let x = 0; x < 4; x++) {
+            const edge = x === 0 || y === 0 || x === 3 || y === 3;
+            if (edge && rng() < 0.2) continue;
+            p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
+          }
+        }
+      }
+    }
+    for (let i = 0; i < 5; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0, 0);
+  };
+}
+
+/** 树干侧面：纵纹 + 少量深浅斑 */
+function logSidePainter(base: number, dark: number, light: number, dashes = false): Painter {
+  return (p, rng) => {
+    fillNoise(p, rng, base, 7);
+    for (const x of [0, 4, 8, 12, 15]) {
+      for (let y = 0; y < TILE; y++) if (rng() < 0.8) p.set(x, y, jitter(dark, rng, 7));
+    }
+    blob(p, rng, light, 5, 4);
+    if (dashes) {
+      for (let i = 0; i < 5; i++) {
+        const x = 1 + ((rng() * 12) | 0);
+        const y = 1 + ((rng() * 13) | 0);
+        p.set(x, y, jitter(dark, rng, 10));
+        if (rng() < 0.7) p.set(x + 1, y, dark);
+      }
+    }
+  };
+}
+
+/** 树干横截面：年轮 */
+function logTopPainter(base: number, ring: number, bark: number): Painter {
+  return (p, rng) => {
+    fillNoise(p, rng, base, 6);
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
+        const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        if (d >= 6.5) p.set(x, y, jitter(bark, rng, 6));
+        else if (((d | 0) % 3) === 1) p.set(x, y, jitter(ring, rng, 5));
+      }
+    }
+  };
+}
+
+/** 花：茎 + 两片叶 + 顶部花冠（kind 决定花冠造型） */
+function flowerPainter(
+  petal: number, light: number, center: number,
+  kind: 'round' | 'cup' | 'bell' | 'daisy' | 'cluster' | 'sphere' | 'bluet' | 'spike',
+  stemHex = 0x3e7a22, top = 3,
+): Painter {
+  return (p, rng) => {
+    p.clear();
+    stem(p, 7, top + 5, 15, stemHex);
+    leaves(p, 7, 11 + ((rng() * 2) | 0), 0x4c8f2b);
+    if (kind === 'round' || kind === 'cup' || kind === 'cluster') {
+      const y0 = top, y1 = top + 4;
+      for (let y = y0; y <= y1; y++) {
+        const w = kind === 'cup' ? (y >= y1 - 1 ? 3 : 2) : (y === y0 || y === y1 ? 1 : 2);
+        for (let x = 7 - w; x <= 8 + w; x++) {
+          const edge = x === 7 - w || x === 8 + w || y === y0 || y === y1;
+          p.set(x, y, jitter(edge ? light : petal, rng, 7));
+        }
+      }
+      p.set(7, y1 - 1, center);
+      p.set(8, y1 - 1, center);
+    } else if (kind === 'bell') {
+      for (let y = top; y <= top + 3; y++) {
+        const w = y === top ? 1 : 2;
+        for (let x = 7 - w; x <= 8 + w; x++) p.set(x, y, jitter(y === top ? light : petal, rng, 7));
+      }
+      p.set(7, top + 4, 0x8a6a3a);
+      p.set(8, top + 4, 0x8a6a3a);
+    } else if (kind === 'daisy') {
+      for (const [dx, dy] of [[0, 0], [-2, 1], [2, 1], [-1, -1], [1, -1], [-1, 2], [1, 2], [0, 3], [0, -2]]) {
+        p.set(8 + dx, top + 2 + dy, jitter(light, rng, 6));
+      }
+      for (let y = top + 1; y <= top + 2; y++) {
+        for (let x = 7; x <= 8; x++) p.set(x, y, jitter(center, rng, 6));
+      }
+    } else if (kind === 'sphere') {
+      for (let y = top; y <= top + 5; y++) {
+        for (let x = 5; x <= 10; x++) {
+          const dx = x - 7.5, dy = y - (top + 2.5);
+          if (dx * dx + dy * dy > 7.5) continue;
+          p.set(x, y, jitter(dx * dx + dy * dy > 4 ? petal : light, rng, 8));
+        }
+      }
+    } else if (kind === 'bluet') {
+      for (const [dx, dy] of [[0, 0], [-2, 0], [2, 0], [0, -2], [0, 2]]) {
+        p.set(8 + dx, top + 2 + dy, jitter(light, rng, 5));
+      }
+      p.set(8, top + 2, center);
+    } else {
+      // spike：向日葵 / 麦穗式的长条花冠
+      for (let y = top; y <= top + 5; y++) {
+        const w = y === top || y === top + 5 ? 1 : 2;
+        for (let x = 7 - w; x <= 8 + w; x++) p.set(x, y, jitter(x === 7 - w ? light : petal, rng, 7));
+      }
+      for (let y = top + 1; y <= top + 4; y += 2) {
+        p.set(7, y, center);
+        p.set(8, y, center);
+      }
+    }
+  };
+}
+
+/** 灌木：底部叶团 + 若干花点 */
+function bushPainter(leafHex: number, lightHex: number, flowerHex: number, flowerLight: number): Painter {
+  return (p, rng) => {
+    p.clear();
+    stem(p, 7, 12, 15, 0x4a5a24);
+    stem(p, 8, 12, 15, 0x4a5a24);
+    for (let y = 5; y <= 12; y++) {
+      const w = y <= 6 ? 3 : y <= 9 ? 5 : 4;
+      for (let x = 7 - w; x <= 8 + w; x++) {
+        if (rng() < 0.12) continue;
+        p.set(x, y, jitter(rng() < 0.3 ? lightHex : leafHex, rng, 8));
+      }
+    }
+    for (let i = 0; i < 7; i++) {
+      const x = 3 + ((rng() * 10) | 0);
+      const y = 4 + ((rng() * 8) | 0);
+      const edge = rng() < 0.5 ? flowerLight : flowerHex;
+      p.set(x, y, edge);
+      if (rng() < 0.6) p.set(x + 1, y, flowerHex);
+    }
+  };
+}
+
+/** 作物 / 草叶：多根从底部向上的叶片，随成长阶段变高变黄 */
+function cropPainter(bladeHex: number, tipHex: number, height: number, heads: boolean): Painter {
+  return (p, rng) => {
+    p.clear();
+    for (let i = 0; i < 5; i++) {
+      const x0 = 2 + i * 3;
+      const h = height + ((rng() * 3) | 0);
+      for (let k = 0; k < h; k++) {
+        const y = 15 - k;
+        const x = x0 + Math.round(Math.sin(k * 0.35 + i) * 0.8);
+        p.set(x, y, jitter(k === h - 1 ? tipHex : bladeHex, rng, 7));
+      }
+      if (heads && i % 2 === 0) {
+        const x = x0 + Math.round(Math.sin((h - 1) * 0.35 + i) * 0.8);
+        for (let dy = 0; dy < 3; dy++) {
+          p.set(x - 1, 15 - h + 1 - dy, jitter(0xd8b848, rng, 10));
+          p.set(x, 15 - h + 1 - dy, jitter(0xf0d878, rng, 8));
+          p.set(x + 1, 15 - h + 1 - dy, jitter(0xd8b848, rng, 10));
+        }
+      }
+    }
+  };
+}
+
+/** 树苗：纤细树干 + 顶部小叶团 */
+function saplingPainter(leafHex: number, lightHex: number, trunkHex = 0x6b4a2a): Painter {
+  return (p, rng) => {
+    p.clear();
+    stem(p, 7, 8, 15, trunkHex);
+    stem(p, 8, 9, 15, trunkHex);
+    for (let y = 3; y <= 9; y++) {
+      const w = y >= 8 ? 2 : y >= 5 ? 3 : 2;
+      for (let x = 7 - w; x <= 8 + w; x++) {
+        if (rng() < 0.14) continue;
+        p.set(x, y, jitter(rng() < 0.35 ? lightHex : leafHex, rng, 8));
+      }
+    }
+  };
+}
+
+
 function builtinPainters(): Record<string, Painter> {
   const dirt: Painter = (p, rng) => {
     fillNoise(p, rng, 0x866043, 13);
@@ -795,6 +996,240 @@ function builtinPainters(): Record<string, Painter> {
           }
         }
       }
+    },
+    // ---- v1.4.1 植物大扩充：花卉 ----
+    bluebell: flowerPainter(0x4a5ad0, 0x8a9af0, 0xfff0a0, 'bell', 0x3e7a22, 2),
+    allium: flowerPainter(0x9a4ac8, 0xd09af0, 0xfff0c0, 'sphere', 0x3e7a22, 1),
+    azure_bluet: flowerPainter(0xeef0e6, 0xffffff, 0xe8c84a, 'bluet', 0x3e7a22, 4),
+    oxeye_daisy: flowerPainter(0xf5f5ea, 0xffffff, 0xf0d24a, 'daisy', 0x3e7a22, 3),
+    cornflower: flowerPainter(0x3f5fd0, 0x7a9af0, 0x2a3f9a, 'cluster', 0x3e7a22, 4),
+    lily_of_the_valley: (p, rng) => {
+      p.clear();
+      // 拱形花茎，末端垂着几枚白色小铃
+      let x = 4;
+      for (let y = 15; y >= 5; y--) {
+        p.set(x, y, 0x3e7a22);
+        if (y < 11 && y % 2 === 0) x += 1;
+      }
+      for (const [bx, by] of [[5, 12], [7, 10], [9, 8], [11, 7]]) {
+        p.set(bx, by, 0xf2f5e8);
+        p.set(bx + 1, by, 0xe0e8d0);
+        p.set(bx, by + 1, 0xd8e0c8);
+      }
+      leaves(p, 6, 13, 0x4c8f2b);
+      if (rng() < 0.5) p.set(10, 6, 0xffffff);
+    },
+    tulip_red: flowerPainter(0xd0342c, 0xf06a52, 0x7a1f1a, 'cup'),
+    tulip_orange: flowerPainter(0xe8862a, 0xf8b05a, 0x9a4a12, 'cup'),
+    tulip_white: flowerPainter(0xe8e6d8, 0xf8f8f0, 0xc8b878, 'cup'),
+    tulip_pink: flowerPainter(0xe08ab0, 0xf8bcd4, 0xb0507a, 'cup'),
+    sunflower: (p, rng) => {
+      p.clear();
+      // 高茎 + 两片大叶
+      stem(p, 7, 7, 15, 0x4a7a2a);
+      stem(p, 8, 8, 15, 0x3f6a24);
+      leaves(p, 7, 12, 0x4f8f2c);
+      leaves(p, 7, 9, 0x5aa236);
+      // 花盘：外圈金黄花瓣 + 中央棕色籽盘
+      for (let y = 1; y <= 8; y++) {
+        for (let x = 3; x <= 12; x++) {
+          const dx = (x - 7.5) / 4.6, dy = (y - 4.5) / 4;
+          const d = dx * dx + dy * dy;
+          if (d > 1) continue;
+          p.set(x, y, jitter(d > 0.52 ? 0xf0c22a : 0x6b4220, rng, 9));
+        }
+      }
+      p.set(7, 4, 0x8a5a2a);
+      p.set(8, 5, 0x8a5a2a);
+    },
+    lilac: bushPainter(0x3f6a2f, 0x4f8a3a, 0xa070d0, 0xc49ae8),
+    rose_bush: bushPainter(0x35682a, 0x4f8a3a, 0xc0342c, 0xf06a5a),
+    peony: bushPainter(0x3f6a2f, 0x5a8a3a, 0xe08aa8, 0xf8bcd4),
+    tall_fern: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 6; i++) {
+        const x0 = 2 + i * 2;
+        const h = 8 + ((rng() * 7) | 0);
+        for (let k = 0; k < h; k++) {
+          const y = 15 - k;
+          const x = x0 + Math.round(Math.sin(k * 0.5 + i) * 1.3);
+          p.set(x, y, k === h - 1 ? 0x7aa84a : i % 2 ? 0x356822 : 0x447a2a);
+          if (k > 2 && k % 2 === 0) {
+            p.set(x - 1, y, 0x2a5418);
+            p.set(x + 1, y, 0x2a5418);
+          }
+        }
+      }
+    },
+    // ---- 攀爬 / 水生 / 洞穴植物 ----
+    vine: (p, rng) => {
+      p.clear();
+      for (const x0 of [2, 5, 9, 12]) {
+        let x = x0;
+        const top = (rng() * 4) | 0;
+        for (let y = top; y < TILE; y++) {
+          p.set(x, y, jitter(y % 4 === 0 ? 0x4f8f2c : 0x35682a, rng, 6));
+          if (rng() < 0.22) x += rng() < 0.5 ? -1 : 1;
+          if (y % 4 === 1) {
+            p.set(x - 1, y, 0x3f7a24);
+            p.set(x + 1, y, 0x4f8f2c);
+          }
+        }
+      }
+    },
+    lily_pad: (p, rng) => {
+      p.clear();
+      // 扁圆叶片 + 右侧缺口
+      for (let y = 8; y <= 14; y++) {
+        for (let x = 1; x <= 14; x++) {
+          const dx = (x - 7.5) / 6.2, dy = (y - 11.5) / 2.9;
+          if (dx * dx + dy * dy > 1) continue;
+          if (x >= 7 && x <= 8 && y >= 10) continue;
+          p.set(x, y, jitter((x + y) % 3 === 0 ? 0x4f8f2c : 0x3f7a2f, rng, 6));
+        }
+      }
+      // 一朵粉色睡莲花
+      p.set(4, 7, 0xe8a0c0);
+      p.set(5, 7, 0xf0c0d8);
+      p.set(4, 6, 0xd080a8);
+      p.set(6, 6, 0xe8a0c0);
+    },
+    seagrass: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 5; i++) {
+        const x0 = 2 + i * 3;
+        const h = 7 + ((rng() * 6) | 0);
+        for (let k = 0; k < h; k++) {
+          const y = 15 - k;
+          p.set(x0 + Math.round(Math.sin(k * 0.4 + i) * 0.9), y,
+            jitter(k === h - 1 ? 0x6ad0a0 : 0x3f9a6a, rng, 7));
+        }
+      }
+    },
+    kelp: (p, rng) => {
+      p.clear();
+      for (const x0 of [3, 7, 11]) {
+        let x = x0;
+        for (let y = 15; y >= 0; y--) {
+          p.set(x, y, jitter(y % 5 === 0 ? 0x8aa84a : 0x6a8a3a, rng, 7));
+          p.set(x + 1, y, jitter(0x5a7a2f, rng, 6));
+          if (rng() < 0.24) x += rng() < 0.5 ? -1 : 1;
+          if (y % 6 === 3) {
+            p.set(x - 1, y, 0x7a9a42);
+            p.set(x + 2, y, 0x7a9a42);
+          }
+        }
+      }
+    },
+    bamboo: (p, rng) => {
+      p.clear();
+      for (const x0 of [3, 7, 11]) {
+        const top = 1 + ((rng() * 4) | 0);
+        for (let y = top; y < TILE; y++) {
+          const node = y % 5 === 0;
+          p.set(x0, y, jitter(node ? 0xb8d878 : 0x7aa84a, rng, 8));
+          p.set(x0 + 1, y, jitter(node ? 0x8fb05a : 0x5a8a34, rng, 6));
+        }
+        const ly = 3 + ((rng() * 5) | 0);
+        p.set(x0 - 1, ly, 0x9ac860);
+        p.set(x0 - 2, ly + 1, 0x7aa84a);
+        p.set(x0 + 2, ly + 2, 0x9ac860);
+      }
+    },
+    glow_lichen: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 22; i++) {
+        let x = (rng() * TILE) | 0;
+        let y = (rng() * TILE) | 0;
+        const base = rng() < 0.4 ? 0x9ff0d8 : 0x4fd0b0;
+        for (let k = 0; k < 3 + ((rng() * 4) | 0); k++) {
+          p.set(x, y, jitter(base, rng, 10));
+          x += ((rng() * 3) | 0) - 1;
+          y += ((rng() * 3) | 0) - 1;
+        }
+      }
+    },
+    moss_carpet: (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 9; i++) {
+        const x0 = (rng() * 14) | 0;
+        const w = 2 + ((rng() * 3) | 0);
+        const h = 2 + ((rng() * 3) | 0);
+        for (let y = 16 - h; y < TILE; y++) {
+          for (let x = x0; x < x0 + w; x++) {
+            if (rng() < 0.15) continue;
+            p.set(x, y, jitter(rng() < 0.4 ? 0x7ab04a : 0x5a8f3a, rng, 8));
+          }
+        }
+      }
+    },
+    // ---- 小麦与浆果：生长阶段用不同纹理表达 ----
+    wheat_seedling: cropPainter(0x6fa03e, 0x93c45e, 4, false),
+    wheat_growing: cropPainter(0x7fa84e, 0xb8d878, 8, false),
+    wheat: cropPainter(0xc8a840, 0xf0d878, 12, true),
+    sweet_berry_bush: bushPainter(0x3f6a2f, 0x4f8a3a, 0x6a9a4a, 0x8aba60),
+    sweet_berry_bush_ripe: bushPainter(0x3f6a2f, 0x4f8a3a, 0xd03848, 0xf06a70),
+    pumpkin_stem: (p, rng) => {
+      p.clear();
+      curlStem(p, 7, 3, 15, 0x4a7a2a, rng);
+      for (const [x, y] of [[5, 8], [9, 10], [4, 12], [10, 6]]) {
+        p.set(x, y, 0x5aa236);
+        p.set(x + 1, y, 0x3f7a24);
+      }
+    },
+    // ---- 树苗与树种 ----
+    oak_sapling: saplingPainter(0x3f7a24, 0x5aa236),
+    birch_sapling: saplingPainter(0x6a8a34, 0x8ab04a, 0xd8d0b8),
+    spruce_sapling: saplingPainter(0x2a5a32, 0x3f7a44),
+    birch_log_side: logSidePainter(0xd8d0b8, 0x8a8068, 0xf0e8d0, true),
+    birch_log_top: logTopPainter(0xd8c9a0, 0xb3a478, 0x8a8068),
+    birch_leaves: leavesPainter([0x5a7a2a, 0x6a8a34, 0x7aa040, 0x8ab04a]),
+    spruce_log_side: logSidePainter(0x4a3520, 0x2e1f12, 0x6a4a2a),
+    spruce_log_top: logTopPainter(0x7a5a34, 0x5a3f24, 0x3a2a18),
+    spruce_leaves: leavesPainter([0x1f4a2a, 0x2a5a32, 0x35683a, 0x3f7a44]),
+    // ---- 种植物品 ----
+    wheat_seeds: (p, rng) => {
+      p.clear();
+      for (const [x, y] of [[4, 9], [8, 7], [11, 10], [6, 12], [9, 12], [5, 7]]) {
+        p.set(x, y, jitter(0xc8a840, rng, 12));
+        p.set(x + 1, y, jitter(0xe0c868, rng, 10));
+        p.set(x, y + 1, 0xa88830);
+      }
+    },
+    sweet_berries: (p, rng) => {
+      p.clear();
+      stem(p, 8, 2, 8, 0x4a6a2a);
+      p.set(6, 4, 0x5aa236);
+      p.set(10, 5, 0x5aa236);
+      for (const [x, y] of [[5, 8], [9, 9], [7, 12], [11, 12], [4, 12]]) {
+        const c = jitter(0xd03848, rng, 14);
+        p.set(x, y, c);
+        p.set(x + 1, y, c);
+        p.set(x, y + 1, jitter(0xa82838, rng, 10));
+        p.set(x + 1, y + 1, jitter(0xa82838, rng, 10));
+        p.set(x, y, 0xf06a70);
+      }
+    },
+    // 花蜜：金色蜜滴，用于表现「蓄能开花」的直接收益
+    nectar: (p, rng) => {
+      p.clear();
+      // 蜜滴主体：上窄下宽的水滴形
+      for (let y = 4; y <= 15; y++) {
+        const half = y < 6 ? 1 : y < 12 ? 3 : 4;
+        for (let x = 8 - half; x <= 7 + half; x++) {
+          const dx = (x - 7.5) / (half + 0.4);
+          const dy = (y - 10.5) / 5.5;
+          if (dx * dx + dy * dy > 1) continue;
+          const edge = dx * dx + dy * dy > 0.62;
+          p.set(x, y, jitter(edge ? 0xd89018 : 0xf6c94a, rng, 9));
+        }
+      }
+      p.set(6, 9, 0xfff3b0);
+      p.set(6, 10, 0xffe58a);
+      p.set(7, 8, 0xfff8d8);
+      // 顶部小高光
+      p.set(8, 5, 0xfff8d8);
+      p.set(9, 6, 0xffe58a);
     },
   };
 }

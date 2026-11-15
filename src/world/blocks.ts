@@ -31,6 +31,8 @@ export interface BlockDefinition {
   cullSame?: boolean;
   /** 液体：可游泳穿过，不可被准星选中 */
   liquid: boolean;
+  /** 水生植物：占据水格，玩家在其中仍视为入水（海草 / 海带） */
+  waterPlant?: boolean;
   /** 是否走透明渲染通道（水、玻璃） */
   transparentPass: boolean;
   /** 自发光强度 0~15（走独立高亮通道，夜晚不暗） */
@@ -161,7 +163,11 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('oak_planks', '橡木木板', {}, { sound: 'wood', hardness: 2 });
   cube('oak_leaves', '橡树树叶', {}, {
     opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
-    drops: [{ name: 'oak_leaves', chance: 0.5 }, { name: 'item:apple', chance: 0.2 }],
+    drops: [
+      { name: 'oak_sapling', chance: 0.08 },
+      { name: 'oak_leaves', chance: 0.5 },
+      { name: 'item:apple', chance: 0.2 },
+    ],
   });
   cube('glass', '玻璃', {}, { opaque: false, transparentPass: true, sound: 'glass', hardness: 0.3, drops: [] });
   cube('bricks', '红砖块', {}, { hardness: 2 });
@@ -178,13 +184,14 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('blue_wool', '蓝色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('yellow_wool', '黄色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
 
-  const plant = (name: string, label: string) =>
+  const plant = (name: string, label: string, drops?: DropSpec[]) =>
     reg.register({
       name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
       transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-      tiles: { top: name, bottom: name, side: name },
+      tiles: { top: name, bottom: name, side: name }, drops,
     });
-  plant('tall_grass', '草丛');
+  // 草丛是生存模式最早的小麦种子来源（对应原版打草掉种子）
+  plant('tall_grass', '草丛', [{ name: 'self' }, { name: 'item:wheat_seeds', chance: 0.25 }]);
   plant('poppy', '虞美人');
   plant('dandelion', '蒲公英');
 
@@ -248,4 +255,78 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     { sound: 'wood', hardness: 1 });
   cube('bookshelf', '书架', { top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf_side' },
     { sound: 'wood', hardness: 1.5 });
+
+  // ---- v1.4.1 植物大扩充（id 57 起，仍为末位追加，旧存档差分保持有效） ----
+  // 花卉：全部走群系配置表自然生成，也会由邻近同类随机蔓延
+  plant('bluebell', '蓝铃花');
+  plant('allium', '绒球葱');
+  plant('azure_bluet', '蓝花美耳草');
+  plant('oxeye_daisy', '滨菊');
+  plant('cornflower', '矢车菊');
+  plant('lily_of_the_valley', '铃兰');
+  plant('tulip_red', '红色郁金香');
+  plant('tulip_orange', '橙色郁金香');
+  plant('tulip_white', '白色郁金香');
+  plant('tulip_pink', '粉色郁金香');
+  plant('sunflower', '向日葵');
+  plant('lilac', '丁香');
+  plant('rose_bush', '玫瑰丛');
+  plant('peony', '牡丹');
+  plant('tall_fern', '高蕨');
+
+  // 攀爬 / 水生 / 洞穴植物：藤蔓向下蔓延、睡莲在水面铺开、海草与海带成片生长
+  plant('vine', '藤蔓');
+  plant('lily_pad', '睡莲');
+  reg.register({
+    name: 'seagrass', label: '海草', shape: 'cross', solid: false, opaque: false, liquid: false,
+    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
+    tiles: { top: 'seagrass', bottom: 'seagrass', side: 'seagrass' },
+  });
+  reg.register({
+    name: 'kelp', label: '海带', shape: 'cross', solid: false, opaque: false, liquid: false,
+    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
+    tiles: { top: 'kelp', bottom: 'kelp', side: 'kelp' },
+  });
+  plant('bamboo', '竹子');
+  reg.register({
+    name: 'glow_lichen', label: '发光地衣', shape: 'cross', solid: false, opaque: false, liquid: false,
+    transparentPass: false, lightEmission: 7, hardness: 0, sound: 'plant',
+    tiles: { top: 'glow_lichen', bottom: 'glow_lichen', side: 'glow_lichen' },
+  });
+  plant('moss_carpet', '苔藓地毯');
+
+  // 生长阶段：小麦（麦苗 → 抽穗 → 成熟）与甜浆果丛（青果 → 成熟）
+  const growthPlant = (name: string, label: string, drops: DropSpec[]) =>
+    reg.register({
+      name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
+      transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
+      tiles: { top: name, bottom: name, side: name }, drops,
+    });
+  growthPlant('wheat_seedling', '麦苗', [{ name: 'item:wheat_seeds', chance: 0.6 }]);
+  growthPlant('wheat_growing', '小麦（抽穗）', [{ name: 'item:wheat_seeds', chance: 0.9 }]);
+  growthPlant('wheat', '小麦（成熟）',
+    [{ name: 'self' }, { name: 'item:wheat_seeds', count: 2 }]);
+  growthPlant('sweet_berry_bush', '甜浆果丛', [{ name: 'self' }]);
+  growthPlant('sweet_berry_bush_ripe', '成熟甜浆果丛',
+    [{ name: 'self' }, { name: 'item:sweet_berries', count: 2 }]);
+  growthPlant('pumpkin_stem', '南瓜藤', [{ name: 'self' }]);
+
+  // 树苗：随机刻后长成对应树种（橡树 / 白桦 / 云杉）
+  plant('oak_sapling', '橡树树苗');
+  plant('birch_sapling', '白桦树苗');
+  plant('spruce_sapling', '云杉树苗');
+
+  // 树种方块：由森林 / 针叶林生成阶段按权重种植，也可由树苗长成
+  cube('birch_log', '白桦原木', { top: 'birch_log_top', bottom: 'birch_log_top', side: 'birch_log_side' },
+    { sound: 'wood', hardness: 2 });
+  cube('birch_leaves', '白桦树叶', {}, {
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
+    drops: [{ name: 'birch_sapling', chance: 0.08 }, { name: 'birch_leaves', chance: 0.5 }],
+  });
+  cube('spruce_log', '云杉原木', { top: 'spruce_log_top', bottom: 'spruce_log_top', side: 'spruce_log_side' },
+    { sound: 'wood', hardness: 2 });
+  cube('spruce_leaves', '云杉树叶', {}, {
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
+    drops: [{ name: 'spruce_sapling', chance: 0.08 }, { name: 'spruce_leaves', chance: 0.5 }],
+  });
 }
