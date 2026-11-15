@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import type { System } from './types';
-import { clamp } from './types';
+import { clamp, type System } from './types';
 
 /**
  * 引擎主循环：渲染器、场景、相机、系统调度、尺寸自适应。

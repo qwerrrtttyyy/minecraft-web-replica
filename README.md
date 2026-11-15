@@ -19,7 +19,14 @@
 其余全部手写：体素世界、区块流式加载、带 AO 的网格生成、程序化像素纹理、昼夜天空、
 物理碰撞、实体 AI、触控适配、存档与扩展 API。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.4.2（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.4.3（双轨版本号，规则见下方「版本规范」）
+
+**v1.4.3 生态扩展点与插件化植物**：新增 `botany` 扩展点（`CraftAPI.botany`）与
+`botany:register` 权限，`Botany` 在内置规则未命中时按方块 id 分派插件规则；
+新增内置插件 `core:botany-expansion`，由它注册 **6 种植物**（id 92~97，末位追加）
+与 **3 条生态规则**（异花传粉 / 夜间开花蔓延 / 高山霜线），并通过 `chunk:generated`
+事件按群系补种。所有新植物与规则都由插件注册，停用插件后规则与特性自动注销。
+新增 `test:botany-rules` 回归与 `lint` 门禁，详见 `docs/TESTING.md`。
 
 ## 版本规范
 
@@ -338,6 +345,30 @@ new DefaultGenerator(seed, registry, {
 ```
 
 > **旧存档提示**：地形算法变更后，v1.1.1 及更早存档的 `edits` 差分仍按坐标生效，但周围自然地形会变；载入时会自动把玩家抬到新地形之上，避免卡在方块里。方块 id 未变动（矿石追加在表尾）。
+
+## 生态扩展点与插件（v1.4.3）
+
+`CraftAPI.botany` 是插件专用的生态扩展面，写操作需要 `botany:register` 权限
+（读操作 `listRules()` / `stats()` 始终可用）：
+
+```js
+// 注册一株插件植物：先注册纹理 / 方块，再登记特性与规则
+CraftAPI.registerTile('my_flower', (set) => { /* 逐像素绘制 */ });
+CraftAPI.registerBlock({ name: 'my_flower', /* ... */ });
+CraftAPI.botany.registerPlant('my_flower', {
+  metabolism: 'solar', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12,
+});
+CraftAPI.botany.registerRule({
+  id: 'me:my-pack:rule', owner: 'me:my-pack', plants: ['my_flower'],
+  tick: (ctx) => { /* 用 ctx.grow / boost / write，不直接碰 World */ return false; },
+});
+CraftAPI.botany.unregisterRules('me:my-pack'); // 停用插件时整体注销
+```
+
+`Botany` 只在内置规则全部未命中时按方块 id 兜底分派插件规则，因此扩展不会
+改变任何既有生态行为。内置插件 `core:botany-expansion` 就是用这套接口注册了
+6 种植物（id 92~97）与 3 条规则，并订阅 `chunk:generated` 按群系补种。
+控制台可用 `CraftAPI.plugins.disable('core:botany-expansion')` 验证停用后规则立即失效。
 
 ## 扩展 API（为未来预留的接口）
 

@@ -1,7 +1,5 @@
 import type { EventService } from '../services/events';
-import type { GameMode, Vec3Like } from '../core/types';
-import { clamp } from '../core/types';
-import type { BlockId } from '../core/types';
+import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
 
 /**

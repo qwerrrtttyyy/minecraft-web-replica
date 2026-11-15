@@ -25,6 +25,8 @@ const entries = [
   'src/world/blocks.ts',
   'src/world/botany.ts',
   'src/world/plantTraits.ts',
+  'src/world/plantRules.ts',
+  'src/plugins/builtin/botanyContent.ts',
   'src/world/trees.ts',
   'src/world/light.ts',
   'src/world/world.ts',

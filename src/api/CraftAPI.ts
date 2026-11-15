@@ -16,6 +16,9 @@ import type { SoundEngine } from '../audio/sound';
 import type { SurvivalState } from '../player/survival';
 import type { GameMode } from '../core/types';
 import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
+import type { Botany, BotanyStats } from '../world/botany';
+import type { PlantTrait } from '../world/plantTraits';
+import type { PlantRule, PlantRuleInfo } from '../world/plantRules';
 
 /**
  * 公开扩展门面（挂载到 window.CraftAPI）。
@@ -58,6 +61,16 @@ export interface CraftAPI {
     list(): PluginRecord[];
   };
 
+  /** v1.4.3：生态扩展点。插件注册植物特性与生态规则（需 botany:register 权限） */
+  botany: {
+    registerPlant(name: string, trait: PlantTrait): void;
+    unregisterPlant(name: string): void;
+    registerRule(rule: PlantRule): void;
+    unregisterRules(owner: string): number;
+    listRules(): PlantRuleInfo[];
+    stats(): BotanyStats;
+  };
+
   /** v1.3.2：运行时诊断组（Worker 配置 / 区块收敛 / 输入 / 插件 / 存档） */
   diagnostics: {
     run(): DiagnosticReport;
@@ -68,6 +81,8 @@ export interface CraftAPI {
     seed(): number;
     getBlock(x: number, y: number, z: number): number;
     setBlock(x: number, y: number, z: number, id: number): boolean;
+    /** 生成期装饰写入：不记录存档差分、不标脏（需 world:write 权限） */
+    decorate(x: number, y: number, z: number, id: number): boolean;
     surfaceHeight(x: number, z: number): number;
     /** 该坐标的群系；自定义生成器未实现时返回 'unknown' */
     biomeAt(x: number, z: number): BiomeId | 'unknown';
@@ -151,6 +166,7 @@ export interface APIDeps {
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
+  botany: Botany;
   diagnostics: {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
@@ -195,6 +211,14 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       unload: (id) => d.plugins.unload(id),
       list: () => d.plugins.list(),
     },
+    botany: {
+      registerPlant: (name, trait) => d.botany.registerTrait(name, trait),
+      unregisterPlant: (name) => d.botany.unregisterTrait(name),
+      registerRule: (rule) => d.botany.registerRule(rule),
+      unregisterRules: (owner) => d.botany.unregisterRules(owner),
+      listRules: () => d.botany.listRules(),
+      stats: () => d.botany.stats(),
+    },
     diagnostics: {
       run: () => d.diagnostics.run(),
       last: () => d.diagnostics.last(),
@@ -203,6 +227,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       seed: () => d.world.generator.seed,
       getBlock: (x, y, z) => d.world.getBlock(x, y, z),
       setBlock: (x, y, z, id) => d.world.setBlock(x, y, z, id),
+      decorate: (x, y, z, id) => d.world.setBlockGenerated(x, y, z, id),
       surfaceHeight: (x, z) => d.world.surfaceHeight(x, z),
       biomeAt: (x, z) => d.world.generator.biomeAt?.(x, z) ?? 'unknown',
       terrain: (x, z) => d.world.generator.columnInfo?.(x, z) ?? null,

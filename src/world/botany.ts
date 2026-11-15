@@ -6,6 +6,7 @@ import {
   plantTrait, type PlantTrait,
 } from './plantTraits';
 import { buildTree, type TreeSpecies } from './trees';
+import { PlantRuleRegistry, type PlantRule, type PlantRuleContext } from './plantRules';
 import type { World } from './world';
 
 /** 一次随机刻里最多处理的采样次数（移动端减半，避免持续占用帧预算） */
@@ -105,6 +106,8 @@ export class Botany {
   private readonly columns = new Set<BlockId>();
   private readonly meadow: { id: BlockId; weight: number }[] = [];
   private meadowTotal = 0;
+  /** 插件生态规则表：内置规则未命中时才分派，停用插件可整体注销 */
+  private readonly rules: PlantRuleRegistry;
 
   constructor(
     private readonly world: World,
@@ -114,6 +117,7 @@ export class Botany {
     options: BotanyOptions = {},
   ) {
     this.rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
+    this.rules = new PlantRuleRegistry((name) => this.registry.byNameGet(name)?.id ?? 0);
     this.interval = options.interval ?? 0.3;
     this.attempts = options.attempts ?? (options.isMobile ? 24 : 56);
     this.sampleRadius = options.radius ?? 24;
@@ -194,6 +198,28 @@ export class Botany {
     if (id === AIR) return false;
     return this.applyAt(x, y, z, id, daylight);
   }
+
+  // ---------- 插件扩展点（v1.4.3） ----------
+
+  /** 注册植物特性：让运行时注册的方块进入能量 / 开花 / 采集体系 */
+  registerTrait(name: string, trait: PlantTrait): void {
+    const id = this.registry.byNameGet(name)?.id;
+    if (!id) throw new Error(`[botany] 未知植物: ${name}（请先注册方块）`);
+    this.traits.set(id, trait);
+  }
+
+  /** 注销植物特性：插件停用时把该植物退回静态装饰 */
+  unregisterTrait(name: string): void {
+    const id = this.registry.byNameGet(name)?.id;
+    if (id) this.traits.delete(id);
+  }
+
+  registerRule(rule: PlantRule): void { this.rules.register(rule); }
+
+  /** 按插件 id 批量注销规则，返回注销条数 */
+  unregisterRules(owner: string): number { return this.rules.unregister(owner); }
+
+  listRules(): ReturnType<PlantRuleRegistry['list']> { return this.rules.list(); }
 
   // ---------- 内在能量 API ----------
 
@@ -525,6 +551,15 @@ export class Botany {
     if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
     if (this.mushrooms.has(id)) return this.tickMushroom(x, y, z, id, daylight);
     if (this.flowers.has(id) || this.spreadable.has(id)) return this.tickSpread(x, y, z, id, daylight);
+    // 内置规则全部未命中才分派插件规则，保证既有生态行为一字不改
+    const rules = this.rules.ruleFor(id);
+    if (rules.length) {
+      const ctx = this.ruleContext(x, y, z, id, daylight);
+      let changed = false;
+      // 全部执行而非短路：同一株植物可同时受多条规则约束
+      for (const rule of rules) changed = rule.tick(ctx) || changed;
+      return changed;
+    }
     return false;
   }
 
@@ -862,6 +897,36 @@ export class Botany {
       return [nx, ny, nz];
     }
     return null;
+  }
+
+  /** 构造插件规则的受限上下文：不泄漏 World 实例，写入统一走 plant:grow 事件 */
+  private ruleContext(x: number, y: number, z: number, id: BlockId, daylight: number): PlantRuleContext {
+    return {
+      x, y, z, id, daylight,
+      rng: () => this.rng(),
+      energy: (ax, ay, az) => this.energyAt(ax, ay, az),
+      boost: (bx, by, bz, delta) => {
+        const bid = this.world.getBlock(bx, by, bz);
+        if (!this.traits.has(bid)) return;
+        const st = this.stateAt(bx, by, bz, bid);
+        st.energy = clamp(st.energy + delta, 0, MAX_PLANT_ENERGY);
+      },
+      canGrow: (gx, gy, gz, gid) => this.canGrow(gx, gy, gz, gid),
+      supported: (sx, sy, sz, sid) => this.supported(sid, sx, sy, sz),
+      // 生长消耗源植物（当前 tick 的这株）的能量
+      grow: (gx, gy, gz, gid, kind) => this.grow(gx, gy, gz, gid, kind, x, y, z, id),
+      // 写 AIR 走整列枯萎（this.set 会拒绝 id=0，避免静默失败）
+      write: (wx, wy, wz, wid, kind) => wid === AIR
+        ? this.decay(wx, wy, wz, this.world.getBlock(wx, wy, wz))
+        : this.set(wx, wy, wz, wid, kind),
+      get: (gx, gy, gz) => this.world.getBlock(gx, gy, gz),
+      isSolid: (gx, gy, gz) => this.registry.isSolid(this.world.getBlock(gx, gy, gz)),
+      biome: (bx, bz) => String(this.world.generator.biomeAt?.(bx, bz) ?? 'unknown'),
+      surface: (sx, sz) => this.world.surfaceHeight(sx, sz),
+      neighbors: (nx, ny, nz) => DIRS.map(
+        ([dx, dy, dz]) => [nx + dx, ny + dy, nz + dz] as [number, number, number],
+      ),
+    };
   }
 
   private set(x: number, y: number, z: number, id: BlockId, kind: GrowKind): boolean {

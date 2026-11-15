@@ -3,7 +3,7 @@
 ## 开发流程
 
 1. 读 [PROJECT-EXPERIENCE.md](../PROJECT-EXPERIENCE.md) 了解硬规则与常见坑
-2. 改代码前先跑 `npm run typecheck`，确认基线干净
+2. 改代码前先跑 `npm run typecheck` 与 `npm run lint`，确认基线干净
 3. 改完后按顺序跑回归（见下），提交前必须 `npm run verify` 全绿
 4. 提交信息说明「修了什么 / 为什么」，不要只写「update」
 
@@ -11,6 +11,8 @@
 
 ```bash
 npm ci
+npm run check:version
+npm run lint
 npm run typecheck
 npm run test:snapshot
 npm run test:logic
@@ -21,11 +23,14 @@ npm run test:diagnostics
 npm run test:worker-pool
 npm run test:edits
 npm run test:terrain-system
-npm run verify          # 含 build + 浏览器实景 + 视觉回归
+npm run test:botany
+npm run test:plant-energy
+npm run test:botany-rules
+npm run verify          # 以上全部 + build + 浏览器实景 + 视觉回归
 ```
 
 `test:snapshot` 必须先于全部 require CJS 快照的纯逻辑测试
-（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system`）。
+（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system / test:botany / test:plant-energy / test:botany-rules`）。
 
 浏览器实景在 Linux 无 GPU 环境下：
 
