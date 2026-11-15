@@ -32,6 +32,12 @@ export interface HUDOptions {
   onPaletteClose: () => void;
   onRespawn: () => void;
   onModeToggle: () => void;
+  onExportSave: () => void;
+  onImportSave: () => void;
+  /** 按键设置：读取绑定行（动作 / 名称 / 当前键标签）与写回 */
+  getBindings: () => Array<{ action: string; label: string; keyLabel: string }>;
+  onRebind: (action: string, code: string) => void;
+  onResetBindings: () => void;
   isSurvival: () => boolean;
   getCount: (s: Stack) => number;
 }
@@ -83,6 +89,9 @@ export class HUD {
   private paletteGrid!: HTMLElement;
   private paletteSearch!: HTMLInputElement;
   private helpOverlay!: HTMLElement;
+  private keybindOverlay!: HTMLElement;
+  private keybindList!: HTMLElement;
+  private keybindCapture: string | null = null;
   private deathOverlay!: HTMLElement;
   private deathCause!: HTMLElement;
   private soundBtn!: HTMLButtonElement;
@@ -114,6 +123,7 @@ export class HUD {
     this.buildMenu();
     this.buildPalette();
     this.buildHelp();
+    this.buildKeybinds();
     this.buildDeath();
   }
 
@@ -543,7 +553,13 @@ export class HUD {
     // 必须交给组装根打开面板：paletteReturn 需要记住 'menu'，
     // 否则关闭面板会直接恢复游戏而不是回到菜单（v1.3.2 修复）。
     btnRow.appendChild(this.mcButton('方块库', () => this.opts.onPaletteOpen('menu')));
+    btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
+
+    const saveRow = h('div', 'menu-row');
+    saveRow.appendChild(this.mcButton('导出存档', () => this.opts.onExportSave(), 'mc-btn-small'));
+    saveRow.appendChild(this.mcButton('导入存档', () => this.opts.onImportSave(), 'mc-btn-small'));
+    panel.appendChild(saveRow);
 
     const newWorldRow = h('div', 'menu-new-world');
     const seedInput = h('input', 'mc-input') as HTMLInputElement;
@@ -720,7 +736,7 @@ export class HUD {
     const cols = h('div', 'help-cols');
 
     const desk = h('div', 'help-col');
-    desk.appendChild(h('h3', '', '键盘 / 鼠标'));
+    desk.appendChild(h('h3', '', '键盘 / 鼠标（可在菜单中重绑定）'));
     const rows: [string, string][] = [
       ['W A S D', '移动'],
       ['空格', '跳跃 / 水中上浮'],
@@ -765,6 +781,31 @@ export class HUD {
     }
     mob.appendChild(h('div', 'help-tip', '生存提示：树叶可能掉苹果，猪掉猪排，夜晚僵尸会出现。摔落、溺水、饥饿都会掉血。'));
     cols.appendChild(mob);
+
+    const pad = h('div', 'help-col');
+    pad.appendChild(h('h3', '', '手柄（Gamepad）'));
+    const prows: [string, string][] = [
+      ['左摇杆', '移动'],
+      ['右摇杆', '转动视角'],
+      ['A', '跳跃 / 上浮'],
+      ['B', '潜行 / 下降'],
+      ['RB / 按下左摇杆', '疾跑'],
+      ['RT / X', '破坏方块'],
+      ['LT', '放置方块'],
+      ['LB / RB', '上一格 / 下一格'],
+      ['Y', '方块库'],
+      ['Start', '菜单 / 暂停'],
+      ['十字键上/下', '视角 / 飞行'],
+      ['十字键左/右', '选第1格 / 隐藏界面'],
+    ];
+    for (const [k, v] of prows) {
+      const row = h('div', 'help-row');
+      row.appendChild(h('kbd', '', k));
+      row.appendChild(h('span', '', v));
+      pad.appendChild(row);
+    }
+    pad.appendChild(h('div', 'help-tip', '插入手柄或通过蓝牙配对后按任意键即可启用；热插拔无需刷新页面。'));
+    cols.appendChild(pad);
     panel.appendChild(cols);
     panel.appendChild(this.mcButton('关闭', () => this.showHelp(false), 'mc-btn-big'));
     this.helpOverlay.appendChild(panel);
@@ -778,6 +819,71 @@ export class HUD {
 
   get helpOpen() {
     return this.helpOverlay.style.display !== 'none';
+  }
+
+  // ---------- 按键设置 ----------
+  private buildKeybinds() {
+    this.keybindOverlay = h('div', 'overlay keybind-overlay');
+    const panel = h('div', 'mc-panel keybind-panel');
+    panel.appendChild(h('div', 'panel-title', '按键设置'));
+    panel.appendChild(h('div', 'menu-note', '点击键位后按下新按键；Esc 取消，冲突键会自动交换。'));
+    this.keybindList = h('div', 'keybind-list');
+    panel.appendChild(this.keybindList);
+    const row = h('div', 'menu-row');
+    row.appendChild(this.mcButton('恢复默认', () => {
+      this.opts.onResetBindings();
+      this.refreshKeybinds();
+      this.toast('已恢复默认按键');
+    }, 'mc-btn-small'));
+    row.appendChild(this.mcButton('完成', () => this.showKeybinds(false), 'mc-btn-big'));
+    panel.appendChild(row);
+    this.keybindOverlay.appendChild(panel);
+    this.keybindOverlay.style.display = 'none';
+    this.root.appendChild(this.keybindOverlay);
+  }
+
+  /** 重建键位行；捕获中的行显示「按下按键…」 */
+  refreshKeybinds() {
+    this.keybindList.innerHTML = '';
+    for (const b of this.opts.getBindings()) {
+      const line = h('div', 'keybind-row');
+      line.appendChild(h('span', 'keybind-label', b.label));
+      const btn = h('button', 'mc-btn mc-btn-small keybind-key') as HTMLButtonElement;
+      const capturing = this.keybindCapture === b.action;
+      btn.textContent = capturing ? '按下按键…' : b.keyLabel;
+      if (capturing) btn.classList.add('capturing');
+      btn.addEventListener('click', () => {
+        this.keybindCapture = b.action;
+        this.refreshKeybinds();
+      });
+      line.appendChild(btn);
+      this.keybindList.appendChild(line);
+    }
+  }
+
+  /** 捕获一个按键：若正在等待绑定则消费它，返回是否已消费 */
+  captureKey(code: string): boolean {
+    if (!this.keybindCapture) return false;
+    const action = this.keybindCapture;
+    this.keybindCapture = null;
+    if (code !== 'Escape') {
+      this.opts.onRebind(action, code);
+      this.toast('按键已更新');
+    }
+    this.refreshKeybinds();
+    return true;
+  }
+
+  showKeybinds(v: boolean) {
+    if (v) {
+      this.keybindCapture = null;
+      this.refreshKeybinds();
+    }
+    this.keybindOverlay.style.display = v ? '' : 'none';
+  }
+
+  get keybindOpen() {
+    return this.keybindOverlay.style.display !== 'none';
   }
 }
 

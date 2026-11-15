@@ -204,7 +204,10 @@ try {
     plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
     emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
   }));
-  ok('版本号单一来源为 1.4.0', svc.version === '1.4.0', svc.version);
+  // 期望版本从 package.json 动态读取：断言「CraftAPI.version 与唯一版本源一致」这一契约，
+  // 避免每次迭代升级版本都要同步改测试里的硬编码字面量（旧版硬编码 1.4.0 已随升级失效）。
+  const expectedVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  ok(`版本号单一来源为 ${expectedVersion}`, svc.version === expectedVersion, svc.version);
   ok('服务容器注册了事件/插件/API/内置依赖',
     ['events', 'plugins', 'api', 'builtin-deps'].every((k) => svc.services.includes(k)), svc.services.join(','));
   ok('内置插件全部启用', svc.plugins.length === 2 && svc.plugins.every((s) => s.endsWith(':enabled')),
