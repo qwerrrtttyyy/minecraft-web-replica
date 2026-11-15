@@ -5,7 +5,6 @@ import type { CraftAPI } from '../../api/CraftAPI';
 import type {
   PluginContext,
   PluginDefinition,
-  PluginManifest,
   PluginPermission,
   PluginRecord,
   PluginState,
@@ -59,6 +58,7 @@ export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = []): 
   if (!perms.has('world:write')) {
     const world = Object.create(base.world) as CraftAPI['world'];
     world.setBlock = (() => deny('world:write')) as CraftAPI['world']['setBlock'];
+    world.decorate = (() => deny('world:write')) as CraftAPI['world']['decorate'];
     api.world = world;
     if (base.tnt) {
       api.tnt = { ignite: (() => deny('world:write')) as CraftAPI['tnt']['ignite'] };
@@ -85,6 +85,15 @@ export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = []): 
       survival.heal = (() => deny('player:write')) as CraftAPI['survival']['heal'];
       api.survival = survival;
     }
+  }
+  // v1.4.3：生态扩展点同样按权限裁剪，读能力（stats / listRules）全部保留
+  if (!perms.has('botany:register') && base.botany) {
+    const botany = Object.create(base.botany) as CraftAPI['botany'];
+    botany.registerPlant = (() => deny('botany:register')) as CraftAPI['botany']['registerPlant'];
+    botany.unregisterPlant = (() => deny('botany:register')) as CraftAPI['botany']['unregisterPlant'];
+    botany.registerRule = (() => deny('botany:register')) as CraftAPI['botany']['registerRule'];
+    botany.unregisterRules = (() => deny('botany:register')) as CraftAPI['botany']['unregisterRules'];
+    api.botany = botany;
   }
   if (!perms.has('save:write')) {
     const save = Object.create(base.save) as CraftAPI['save'];

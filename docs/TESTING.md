@@ -1,4 +1,4 @@
-# 测试体系（v1.4.1）
+# 测试体系（v1.4.3）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -13,19 +13,21 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| 2 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 3 | `npm run build` | 单文件 `dist/index.html` | — |
-| 4 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 5 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
-| 6 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 7 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 8 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
-| 9 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 10 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
-| 11 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
-| 12 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
-| 13 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 14 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
+| 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
+| 4 | `npm run build` | 单文件 `dist/index.html` | — |
+| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 6 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
+| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
+| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
+| 11 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
+| 12 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
+| 13 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
+| 14 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 6 植物 / 3 规则 / 生成选种 | ✓ |
+| 15 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 16 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -50,6 +52,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
+- **botany-rules**：扩展植物 id 92~97 末位追加、`PlantRuleRegistry` 动态解析 /
+  多规则命中 / 按 owner 注销、`botany:register` 权限裁剪、3 条规则的确定性行为
+  （异花传粉 / 夜间蔓延 / 高山霜线）、Botany 兜底分派与注销后失效、
+  自然生成选种的确定性与群系 / 临水约束。
 - **plant-energy**：植物特性表（solar / hydro / fungal 分类与花蜜掉落）、白天蓄能、
   夜间呼吸下限、完全黑暗 / 离水 / 火光旁的枯死、`plant:bloom` 开花事件、采集与浆果回退、
   能量不足时禁止树苗生长、向日葵根系共享、`stats()` 统计。
@@ -95,6 +101,8 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 2. 新方块 / 新群系 / 新生成阶段必须同时更新 `test:terrain-system`；
    新增生长 / 蔓延 / 枯萎规则必须同时更新 `test:botany`；
    新增代谢类型 / 能量规则 / 采集产物必须同时更新 `test:plant-energy`。
-3. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
-4. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
-5. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。
+3. 新增插件生态规则 / 扩展植物必须同时更新 `test:botany-rules`，
+   并在 `scripts/build-test-snapshot.mjs` 的 `entries` 中登记纯数据入口。
+4. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
+5. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
+6. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。

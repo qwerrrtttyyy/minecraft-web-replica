@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
 import type { EventService } from '../services/events';
-import type { BlockRegistry } from './blocks';
-import { AIR } from './blocks';
+import { AIR, type BlockRegistry } from './blocks';
 import type { IWorldGenerator } from './generator';
 import { LightEngine } from './light';
 
@@ -183,6 +182,26 @@ export class World {
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
     if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
     if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
+    return true;
+  }
+
+  /**
+   * 生成期装饰写入：只改已生成区块的数据，不记录玩家编辑差分、不标脏、
+   * 不触发光照增量更新——与 DefaultGenerator.stageDecorate 直接写 data 的语义一致。
+   * 网格由 ChunkManager 在本次生成后统一派发，因此新植物会被包含进去。
+   * 供插件在 chunk:generated 阶段补种，避免污染存档与流式加载队列。
+   */
+  setBlockGenerated(x: number, y: number, z: number, id: BlockId): boolean {
+    if (y < 1 || y >= H) return false;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (!chunk?.generated) return false;
+    const lx = x - cx * CS;
+    const lz = z - cz * CS;
+    const at = chunk.idx(lx, y, lz);
+    if (chunk.data[at] === id) return false;
+    chunk.data[at] = id;
     return true;
   }
 

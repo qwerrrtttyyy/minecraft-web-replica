@@ -16,7 +16,10 @@ jobs:
       - name: 安装 Chromium / Xvfb / Mesa 软件渲染
         run: sudo apt-get update && sudo apt-get install -y chromium xvfb libgl1-mesa-dri mesa-utils
       - run: npm ci
-      # verify = 版本一致性 + 类型检查 + 构建 + 快照重建 + 逻辑回归 + 服务单测 + 浏览器实景
+      # 任务卡契约校验器：outputs 未覆盖在 --strict 下会让 CI 失败
+      - name: 任务卡契约校验
+        run: python3 docs/agent/validate.py --strict
+      # verify = 版本一致性 + 静态门禁 + 类型检查 + 构建 + 快照重建 + 逻辑回归 + 服务单测 + 浏览器实景
       # 浏览器测试在 Xvfb 下以 headful + Mesa llvmpipe 运行，要求 100% PASS
       - name: 全量核验
         run: xvfb-run -a -s "-screen 0 1280x760x24" npm run verify

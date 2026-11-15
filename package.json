@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.4.2",
+  "version": "1.4.3",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:version": "node scripts/check-version.mjs",
+    "lint": "eslint src --max-warnings 0",
     "test:snapshot": "node scripts/build-test-snapshot.mjs",
     "test:logic": "node test/logic-check.cjs && node test/terrain-check.cjs",
     "test:mesher": "node test/mesher-check.cjs",
@@ -19,10 +20,11 @@
     "test:edits": "node test/world-edits-check.cjs",
     "test:terrain-system": "node test/terrain-system-check.cjs",
     "test:botany": "node test/botany-check.cjs",
+    "test:botany-rules": "node test/botany-rules-check.cjs",
     "test:plant-energy": "node test/plant-energy-check.cjs",
     "test:smoke": "node test/survival-smoke.mjs",
     "test:smoke:xvfb": "xvfb-run -a -s \"-screen 0 1280x760x24\" env MC_HEADLESS=0 MC_GL=desktop node test/survival-smoke.mjs",
-    "verify": "npm run check:version && npm run typecheck && npm run build && npm run test:snapshot && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:edits && npm run test:terrain-system && npm run test:botany && npm run test:plant-energy && npm run test:smoke && npm run test:visual",
+    "verify": "npm run check:version && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:edits && npm run test:terrain-system && npm run test:botany && npm run test:plant-energy && npm run test:botany-rules && npm run test:smoke && npm run test:visual",
     "test:light": "node test/light-check.cjs",
     "test:visual": "node test/visual-check.mjs"
   },
@@ -31,6 +33,9 @@
   },
   "devDependencies": {
     "@types/three": "0.170.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.2",
+    "@typescript-eslint/parser": "^8.72.2",
+    "eslint": "^9.39.5",
     "puppeteer-core": "^23.11.1",
     "typescript": "5.6.3",
     "vite": "5.4.11",
