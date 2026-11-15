@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 在线试玩（GitHub Pages）
+    url: https://qwerrrtttyyy.github.io/minecraft-web-replica/
+    about: 报告缺陷前建议先在最新线上版本复现。
+  - name: 贡献指南与硬规则
+    url: https://github.com/qwerrrtttyyy/minecraft-web-replica/blob/main/CONTRIBUTING.md
+    about: 提交 PR 前请先阅读，特别是「方块 id 只追加」「版本号不动」等硬规则。

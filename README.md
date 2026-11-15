@@ -1,10 +1,30 @@
 # Minecraft TS —— TypeScript 体素引擎复刻
 
-一个架构清晰、依赖极轻的前端 Minecraft 基础复刻。运行时唯一依赖为 **three.js**（渲染），
+> 🤖 **本项目完全由 AI 生成**——全部源码、测试与文档均出自 AI 编程代理，人类仅提出方向。
+> ⚠️ **警告：项目处于激进改进阶段**——迭代极快，API、存档格式与游戏行为随时可能变动，请勿用于生产环境。
+> 📖 生成方式、审核边界与质量边界见 [「关于本项目（诚实说明）」](#关于本项目诚实说明)。
+
+**[▶ 立即在线试玩（GitHub Pages）](https://qwerrrtttyyy.github.io/minecraft-web-replica/)** —— 无需安装、打开即玩
+
+[![verify CI](https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml/badge.svg)](https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml)
+[![latest tag](https://img.shields.io/github/v/tag/qwerrrtttyyy/minecraft-web-replica?label=version)](https://github.com/qwerrrtttyyy/minecraft-web-replica/tags)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![TypeScript 5.6](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![three.js 0.170](https://img.shields.io/badge/three.js-0.170-049ef4?logo=threedotjs&logoColor=white)](https://threejs.org/)
+[![single file](https://img.shields.io/badge/build-single--file%20HTML-2ea44f)](https://qwerrrtttyyy.github.io/minecraft-web-replica/)
+
+**简体中文** | [English](README_EN.md)
+
+一个**极致轻量**的 Minecraft 基础复刻：**运行时唯一依赖 three.js**，构建产物为**单个自包含 HTML 文件**（three.js 已内联），离线、无网络、甚至 `file://` 双击即可运行；所有纹理为代码逐像素绘制，**零原版资源**。运行时唯一依赖为 **three.js**（渲染），
 其余全部手写：体素世界、区块流式加载、带 AO 的网格生成、程序化像素纹理、昼夜天空、
 物理碰撞、实体 AI、触控适配、存档与扩展 API。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.4.3（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.4.4（双轨版本号，规则见下方「版本规范」）
+
+**v1.4.4 AABB 脱困与透明排序**：新增纯逻辑模块 `src/player/unstuck.ts`——按「最小贯穿量」
+搜索把已嵌入实心方块的玩家/实体平滑推出（≤0.4s 缓动，完成后清速度并派发
+`player:unstuck`）；透明通道按距离排序后再渲染，避免远近穿插。新增 `test:unstuck`
+回归（纯 Node，无需浏览器）。
 
 **v1.4.3 生态扩展点与插件化植物**：新增 `botany` 扩展点（`CraftAPI.botany`）与
 `botany:register` 权限，`Botany` 在内置规则未命中时按方块 id 分派插件规则；
@@ -872,6 +892,44 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 | `test:light` / `test:mesher` / `test:services` / `test:diagnostics` | 全通过 |
 | `test:smoke` | 95/95（版本断言更新为 1.4.0） |
 | `test:visual` | 9/9（方块展示墙加入 10 种新方块） |
+
+## 关于本项目（诚实说明）
+
+### 生成方式
+
+本项目——包括**全部源码、测试、构建脚本、CI 配置与文档**——**完全由 AI 生成**。
+人类维护者的角色仅限于提出方向、拆分任务与决定何时合并，不进行逐行人工编写。
+
+### 关于自动化审核与本文档的改进
+
+- 仓库此前的测试体系、CI 全绿结果、诊断组与「工程化」承诺，**同样是 AI 产出的一部分**，
+  不构成人工代码审计。测试通过只证明既有断言未被违反，不等于没有缺陷。
+- 本文档此前的**工程化改进**（贡献指南、Issue/PR 模板、CHANGELOG、徽章、英文版、
+  「参与贡献」区块）与本节的诚实说明，**也由 AI 分析生成**——包括对项目历史提交、
+  PR 记录与代码质量的审核结论，均来自 AI，请以审慎态度对待。
+
+### 质量边界
+
+- **激进改进阶段**：接口、存档格式与玩法仍在快速演进，破坏性变更是常态，
+  请勿将本项目作为依赖或用于生产。
+- **已知限制**：透明通道未按距离排序、15 级硬边光照、缺少 AABB 脱困、
+  软件渲染约 10 FPS；部分子系统仅有 AI 编写的测试覆盖。
+- **最好的验证方式不是相信本文件，而是亲手跑 `npm run verify` 或打开
+  [在线试玩](https://qwerrrtttyyy.github.io/minecraft-web-replica/) 实际体验**，
+  并以 Issue / PR 指出问题——外部反馈比任何 AI 自评都可靠。
+
+## 参与贡献
+
+欢迎任何形式的贡献——报告缺陷、提议功能、改进文档或提交代码。
+请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，其中包含动代码前必读的**硬规则清单**
+（方块 id 只追加、PR 不动版本号、Worker 数据纯度等，源自
+[docs/PROJECT-EXPERIENCE.md](docs/PROJECT-EXPERIENCE.md)）。
+
+- 🐛 [报告缺陷](../../issues/new?template=bug_report.yml) · [提议功能](../../issues/new?template=feature_request.yml)
+- 📜 [更新日志](CHANGELOG.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全策略](SECURITY.md)
+- 🔒 发现安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告，**不要**公开提 Issue
+
+AI 辅助的贡献同样欢迎：请由提交者逐行核验、如实标注 `Co-authored-by`，并对照硬规则自查。
 
 ---
 

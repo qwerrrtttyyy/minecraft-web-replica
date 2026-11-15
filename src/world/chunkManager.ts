@@ -43,6 +43,8 @@ export interface ChunkManagerOptions {
   greedy?: boolean;
   /** 网格化 Worker 池大小覆盖（默认按 navigator.hardwareConcurrency 推断，?workers=N 传入） */
   workers?: number;
+  /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
+  camera?: THREE.Camera;
 }
 
 const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
@@ -133,6 +135,15 @@ export class ChunkManager implements System {
   private pendingResults: WorkerResponse[] = [];
   private totals: MeshStats & { chunks: number } = { quads: 0, vertices: 0, merged: 0, ms: 0, chunks: 0 };
 
+  // ---- 透明通道按几何距离排序（解决玻璃/水叠加穿帮） ----
+  private camera: THREE.Camera | null = null;
+  private sortTmp = new THREE.Vector3();
+  private camWorld = new THREE.Vector3();
+  private lastSortCam = new THREE.Vector3(Infinity, Infinity, Infinity);
+  private sortAcc = 0;
+  private sortDirty = true;
+  private transparentOrderCache: { key: string; pass: 'transparent' | 'water'; dist: number; order: number }[] = [];
+
   constructor(
     private world: World,
     private scene: THREE.Scene,
@@ -143,6 +154,7 @@ export class ChunkManager implements System {
   ) {
     this.renderDistance = renderDistance;
     this.greedyOption = options.greedy ?? true;
+    this.camera = options.camera ?? null;
     this.materials = {
       opaque: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
       emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
@@ -217,6 +229,12 @@ export class ChunkManager implements System {
   /** 运行时诊断：该区块是否已有网格 / 是否在途 */
   hasMesh(cx: number, cz: number): boolean { return this.meshes.has(chunkKey(cx, cz)); }
   hasInFlight(cx: number, cz: number): boolean { return this.inFlight.has(chunkKey(cx, cz)); }
+  /** 透明/水通道的当前排序结果（按几何中心到相机距离远→近），用于调试与自动化断言 */
+  get transparentOrder() {
+    return this.transparentOrderCache.map((e) => ({ ...e }));
+  }
+  /** 每个 Worker 当前在途任务数（诊断用） */
+  get workerBusy(): number[] { return [...this.busy]; }
   get greedy() { return this.getConfig().greedy; }
   set greedy(v: boolean) {
     if (this.greedyOption === v) return;
@@ -406,13 +424,50 @@ export class ChunkManager implements System {
       water: make(data.water, this.materials.water, 2),
     };
     this.meshes.set(key, entry);
+    this.sortDirty = true;
     this.events.emit('chunk:meshed', { cx, cz });
+  }
+
+  /**
+   * 透明通道（玻璃/水）按几何包围球中心 + mesh 位置到相机距离远→近排序，
+   * 递增写入 renderOrder，解决「透明原点是区块坐标而非真实几何中心」导致的叠加穿帮。
+   * 相机位移超 0.25 格或网格变化（sortDirty）时才重算，平时 0.1s 节流一次。
+   */
+  private sortTransparent(): void {
+    if (!this.camera) return;
+    const cam = this.camera.getWorldPosition(this.camWorld);
+    if (!this.sortDirty && cam.distanceToSquared(this.lastSortCam) < 0.25 * 0.25) return;
+    this.lastSortCam.copy(cam);
+    this.sortDirty = false;
+
+    const items: { key: string; pass: 'transparent' | 'water'; mesh: THREE.Mesh; dist: number }[] = [];
+    for (const [key, entry] of this.meshes) {
+      for (const pass of ['transparent', 'water'] as const) {
+        const mesh = entry[pass];
+        if (!mesh) continue;
+        this.sortTmp.copy(mesh.position);
+        const bs = mesh.geometry.boundingSphere;
+        if (bs) this.sortTmp.add(bs.center);
+        items.push({ key, pass, mesh, dist: this.sortTmp.distanceTo(cam) });
+      }
+    }
+    items.sort((a, b) => (b.dist - a.dist) || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
+    this.transparentOrderCache = items.map((it, i) => {
+      const order = 10 + i;
+      it.mesh.renderOrder = order;
+      return { key: it.key, pass: it.pass, dist: it.dist, order };
+    });
   }
 
   update(dt: number) {
     this.waterTime.value += dt;
     this.drainResults();
     if (this.loading) return;
+    this.sortAcc += dt;
+    if (this.sortAcc >= 0.1) {
+      this.sortAcc = 0;
+      this.sortTransparent();
+    }
 
     const R = this.renderDistance;
     const cx = this.centerX;
@@ -481,6 +536,7 @@ export class ChunkManager implements System {
       if (m) {
         this.disposeMeshes(m);
         this.meshes.delete(key);
+        this.sortDirty = true;
       }
       this.world.chunks.delete(key);
       this.world.dirty.delete(key);
