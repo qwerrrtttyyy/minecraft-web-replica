@@ -58,6 +58,7 @@ export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = []): 
   if (!perms.has('world:write')) {
     const world = Object.create(base.world) as CraftAPI['world'];
     world.setBlock = (() => deny('world:write')) as CraftAPI['world']['setBlock'];
+    world.decorate = (() => deny('world:write')) as CraftAPI['world']['decorate'];
     api.world = world;
     if (base.tnt) {
       api.tnt = { ignite: (() => deny('world:write')) as CraftAPI['tnt']['ignite'] };

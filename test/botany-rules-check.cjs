@@ -20,7 +20,7 @@ const { EventService } = require('./terrain-logic/services/events/EventService.j
 const { scopeAPI } = require('./terrain-logic/services/plugins/PluginService.js');
 const {
   EXPANSION_PLANT_COUNT, EXPANSION_PLUGIN_ID, EXPANSION_PLANTS, EXPANSION_RULES,
-  expansionBlockInput, planSpawn, spawnHash,
+  SPAWN_ROLL_CEILING, expansionBlockInput, planSpawn, spawnHash,
 } = require('./terrain-logic/plugins/builtin/botanyContent.js');
 const { CHUNK_SIZE: CS } = require('./terrain-logic/core/types.js');
 
@@ -177,7 +177,8 @@ log('\n[3] botany:register 权限裁剪');
   assert.throws(() => denied.botany.registerPlant('lavender', {}), /botany:register/);
   assert.throws(() => denied.botany.registerRule({}), /botany:register/);
   assert.throws(() => denied.botany.unregisterRules('x'), /botany:register/);
-  ok('未声明权限时三个写入口全部拦截', true);
+  assert.throws(() => denied.world.decorate(1, 2, 3, 4), /world:write/);
+  ok('未声明权限时 botany 写入口与 decorate 全部拦截', true);
   ok('读能力保留（listRules / stats）',
     Array.isArray(denied.botany.listRules()) && typeof denied.botany.stats() === 'object');
   const allowed = scopeAPI(fakeApi(), ['botany:register']);
@@ -218,6 +219,11 @@ log('\n[4] 三条规则的确定性行为');
   {
     const { ctx, calls } = fakeCtx({ daylight: 0.9, isSolid: () => true });
     ok('夜间蔓延：白天不触发', nocturnal.tick(ctx) === false && calls.grow.length === 0);
+  {
+    const { ctx, calls } = fakeCtx({ daylight: 0.3, isSolid: () => true });
+    ok('夜间蔓延：黄昏也不触发（收敛保护）',
+      nocturnal.tick(ctx) === false && calls.grow.length === 0);
+  }
   }
   {
     const { ctx, calls } = fakeCtx({ daylight: 0.1, energy: () => 10, isSolid: () => true });
@@ -279,6 +285,8 @@ log('\n[6] 自然生成选种');
   ok('临水约束：无水时跳过香蒲', planSpawn('plains', 0.009, false) === null);
   ok('临水约束：有水时命中香蒲', planSpawn('plains', 0.009, true) === 'cattail');
   ok('大 roll 不命中任何植物', planSpawn('plains', 0.9, true) === null);
+  ok('roll 达到上界即短路（插件预过滤契约）',
+    planSpawn('beach', SPAWN_ROLL_CEILING, true) === null && SPAWN_ROLL_CEILING === 0.04);
 }
 
 log('\n[7] 内置生态不受影响');

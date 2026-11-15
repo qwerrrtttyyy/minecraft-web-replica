@@ -15,6 +15,8 @@ import type { PlantRule } from '../../world/plantRules';
 export const EXPANSION_PLUGIN_ID = 'core:botany-expansion';
 /** 扩展方块 id 起点：内置方块已占用 1~91，必须末位追加且不超过 255 */
 export const EXPANSION_FIRST_ID = 92;
+/** 单列生成权重累加的上界；插件据此先做一次廉价 roll 过滤再查世界 */
+export const SPAWN_ROLL_CEILING = 0.04;
 
 type Painter = (
   setPixel: (x: number, y: number, hex: number, alpha?: number) => void,
@@ -145,6 +147,7 @@ export function expansionBlockInput(p: ExpansionPlant): BlockInput {
  * 临水物种直接跳过，不会挤占后面物种的权重。
  */
 export function planSpawn(biome: string, roll: number, nearWater: boolean): string | null {
+  if (roll >= SPAWN_ROLL_CEILING) return null;
   let acc = 0;
   for (const p of EXPANSION_PLANTS) {
     const weight = p.spawn[biome as BiomeId] ?? 0;
@@ -195,9 +198,10 @@ export const EXPANSION_RULES: readonly PlantRule[] = [
     plants: ['glow_mushroom', 'ember_fern', 'moonlotus'],
     /** 夜间开花蔓延：暗光 + 蓄能充足时向邻近可站立空地扩散 */
     tick(ctx) {
-      if (ctx.daylight >= 0.4) return false;
-      if (ctx.energy(ctx.x, ctx.y, ctx.z) < 70) return false;
-      if (!ctx.canGrow(ctx.x, ctx.y, ctx.z, ctx.id) || ctx.rng() > 0.25) return false;
+      // 三重门槛（深夜 / 接近蓄满 / 低概率）：避免规则持续 setBlock 让流式加载队列无法收敛
+      if (ctx.daylight >= 0.25) return false;
+      if (ctx.energy(ctx.x, ctx.y, ctx.z) < 90) return false;
+      if (!ctx.canGrow(ctx.x, ctx.y, ctx.z, ctx.id) || ctx.rng() > 0.06) return false;
       for (const [nx, ny, nz] of horizontal(ctx)) {
         if (ctx.get(nx, ny, nz) !== 0 || !ctx.isSolid(nx, ny - 1, nz)) continue;
         if (ctx.grow(nx, ny, nz, ctx.id, 'spread')) return true;

@@ -186,6 +186,26 @@ export class World {
   }
 
   /**
+   * 生成期装饰写入：只改已生成区块的数据，不记录玩家编辑差分、不标脏、
+   * 不触发光照增量更新——与 DefaultGenerator.stageDecorate 直接写 data 的语义一致。
+   * 网格由 ChunkManager 在本次生成后统一派发，因此新植物会被包含进去。
+   * 供插件在 chunk:generated 阶段补种，避免污染存档与流式加载队列。
+   */
+  setBlockGenerated(x: number, y: number, z: number, id: BlockId): boolean {
+    if (y < 1 || y >= H) return false;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (!chunk?.generated) return false;
+    const lx = x - cx * CS;
+    const lz = z - cz * CS;
+    const at = chunk.idx(lx, y, lz);
+    if (chunk.data[at] === id) return false;
+    chunk.data[at] = id;
+    return true;
+  }
+
+  /**
    * 地表高度（用于出生点与实体生成）。
    * 从生成器给出的「地形高度」开始向下/向上扫描：
    * 既不会把树冠、草丛当成地面，也仍能识别玩家在地形之上搭建的平台。

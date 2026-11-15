@@ -81,6 +81,8 @@ export interface CraftAPI {
     seed(): number;
     getBlock(x: number, y: number, z: number): number;
     setBlock(x: number, y: number, z: number, id: number): boolean;
+    /** 生成期装饰写入：不记录存档差分、不标脏（需 world:write 权限） */
+    decorate(x: number, y: number, z: number, id: number): boolean;
     surfaceHeight(x: number, z: number): number;
     /** 该坐标的群系；自定义生成器未实现时返回 'unknown' */
     biomeAt(x: number, z: number): BiomeId | 'unknown';
@@ -225,6 +227,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       seed: () => d.world.generator.seed,
       getBlock: (x, y, z) => d.world.getBlock(x, y, z),
       setBlock: (x, y, z, id) => d.world.setBlock(x, y, z, id),
+      decorate: (x, y, z, id) => d.world.setBlockGenerated(x, y, z, id),
       surfaceHeight: (x, z) => d.world.surfaceHeight(x, z),
       biomeAt: (x, z) => d.world.generator.biomeAt?.(x, z) ?? 'unknown',
       terrain: (x, z) => d.world.generator.columnInfo?.(x, z) ?? null,

@@ -4,7 +4,7 @@ import {
   EXPANSION_PLANT_COUNT,
   EXPANSION_PLUGIN_ID,
   EXPANSION_PLANTS,
-  EXPANSION_RULES,
+  EXPANSION_RULES, SPAWN_ROLL_CEILING,
   expansionBlockInput,
   planSpawn,
   spawnHash,
@@ -20,7 +20,7 @@ import {
  * 权限按最小原则声明：
  * - blocks:register  注册纹理与方块
  * - botany:register  注册植物特性与生态规则
- * - world:write      在 chunk:generated 时补种
+ * - world:write      在 chunk:generated 时经 decorate 补种（生成期写入）
  *
  * 停用 / 卸载时：EventChannel 自动撤销订阅，onDispose 注销规则与特性，
  * 方块与纹理保留（BlockRegistry / TextureAtlas 不支持反注册），植物退回
@@ -66,24 +66,33 @@ export const botanyExpansionPlugin: PluginDefinition = {
         for (let dx = 0; dx < CHUNK_SIZE; dx++) {
           const x = x0 + dx;
           const z = z0 + dz;
-          const y = api.world.surfaceHeight(x, z) + 1;
-          if (api.world.getBlock(x, y, z) !== 0) continue;
+          // 先做一次廉价哈希过滤：绝大多数列只花一次整数运算，
+          // 避免 256 列 × 多次世界查询拖慢区块生成、让 dirty 队列无法收敛。
+          const roll = spawnHash(x, z, seed);
+          if (roll >= SPAWN_ROLL_CEILING) continue;
 
           const biome = api.world.biomeAt(x, z);
+          const y = api.world.surfaceHeight(x, z) + 1;
+          const current = api.world.getBlock(x, y, z);
+          // 水生植物可以占据水格（与内置海草 / 海带一致），其余只落空气格
+          if (current !== 0 && !api.blocks.get(current).liquid) continue;
+
           const nearWater = waterId !== 0 && (
             api.world.getBlock(x - 1, y, z) === waterId ||
             api.world.getBlock(x + 1, y, z) === waterId ||
             api.world.getBlock(x, y, z - 1) === waterId ||
             api.world.getBlock(x, y, z + 1) === waterId
           );
-          const name = planSpawn(biome, spawnHash(x, z, seed), nearWater);
+          const name = planSpawn(biome, roll, nearWater);
           if (!name) continue;
 
           const def = api.blocks.byNameGet(name);
           if (!def) continue;
           const below = api.blocks.get(api.world.getBlock(x, y - 1, z));
           if (!below.solid && !below.liquid) continue;
-          api.world.setBlock(x, y, z, def.id);
+          // 生成期写入：不记录存档差分、不标脏、不触发光照增量，
+          // 网格由 ChunkManager 在本次生成后统一派发。
+          api.world.decorate(x, y, z, def.id);
         }
       }
     });
