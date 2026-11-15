@@ -443,7 +443,7 @@ try {
     const mc = window.__mc;
     const dirt = mc.registry.byNameGet('dirt').id;
     mc.survival.addBlock(dirt, 3);
-    const slot = mc.player.hotbar.slots.findIndex((s) => s === null);
+    const slot = mc.player.hotbar.slots.indexOf(null);
     mc.player.hotbar.slots[slot] = { kind: 'block', id: dirt };
     mc.selectSlot(slot);
     const p = mc.player.pos;
@@ -520,7 +520,7 @@ try {
     const stone = mc.registry.byNameGet('stone').id;
     const torch = mc.registry.byNameGet('torch').id;
     mc.survival.addBlock(torch, 2);
-    const slot = mc.player.hotbar.slots.findIndex((s) => s === null);
+    const slot = mc.player.hotbar.slots.indexOf(null);
     mc.player.hotbar.slots[slot] = { kind: 'block', id: torch };
     mc.selectSlot(slot);
     const p = mc.player.pos;

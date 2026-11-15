@@ -913,7 +913,7 @@ export class HUD {
       const i = this.opts.hotbar.index;
       const old = this.opts.hotbar.slots[i];
       if (old && (old.kind !== stack.kind || old.id !== stack.id)) {
-        const empty = this.opts.hotbar.slots.findIndex((s) => s === null);
+        const empty = this.opts.hotbar.slots.indexOf(null);
         if (empty >= 0) this.opts.hotbar.slots[empty] = old;
       }
       this.opts.hotbar.slots[i] = stack;

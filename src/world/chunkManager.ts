@@ -125,7 +125,6 @@ export class ChunkManager implements System {
   private busy: number[] = [];
   /** 每个 Worker 已确认的配置 revision（-1 表示尚未收到 config） */
   private workerConfig: number[] = [];
-  private poolSize = 0;
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
   private config: MeshConfig | null = null;

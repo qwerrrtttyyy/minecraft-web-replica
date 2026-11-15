@@ -5,7 +5,7 @@
  * 覆盖：特性表、日照蓄能、夜间呼吸下限、洞穴 / 干燥 / 火光灼伤枯死、
  * 蓄能开花事件、花蜜与额外作物采集、根系能量共享、能量不足时禁止生长。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { World } = require('./terrain-logic/world/world.js');
 const { Botany } = require('./terrain-logic/world/botany.js');
@@ -36,7 +36,7 @@ function makeWorld(seed = 20261115) {
     seed,
     surfaceHeight: () => 20,
     biomeAt: () => 'plains',
-    generateChunk(cx, cz, data) {
+    generateChunk(_cx, _cz, data) {
       const idx = (x, y, z) => (y * CS + z) * CS + x;
       for (let z = 0; z < CS; z++) {
         for (let x = 0; x < CS; x++) {

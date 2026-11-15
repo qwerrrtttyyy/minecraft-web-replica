@@ -8,7 +8,7 @@
  *   是否真正驱动自然生成，以及黏土 / 灰化土 / 仙人掌 / 甘蔗 / 蕨 / 绿宝石
  *   的生成位置约束。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const {
   DefaultGenerator, DEFAULT_TERRAIN, BIOME_PROFILES, TERRAIN_STAGES,
 } = require('./terrain-logic/world/generator.js');

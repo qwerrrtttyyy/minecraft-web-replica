@@ -36,35 +36,6 @@
 
 **v1.4.9 整合发布**：统一版本并整合待合并改进（含插件体系强化、设置/选项页与导入导出、合成相关基础、体验优化与文档更新等）；具体细节见各 PR 与提交记录。
 
-**v1.4.4 AABB 脱困与透明排序**：新增纯逻辑模块 `src/player/unstuck.ts`——按「最小贯穿量」
-搜索把已嵌入实心方块的玩家/实体平滑推出（≤0.4s 缓动，完成后清速度并派发
-`player:unstuck`）；透明通道按距离排序后再渲染，避免远近穿插。新增 `test:unstuck`
-回归（纯 Node，无需浏览器）。
-
-**v1.4.3 生态扩展点与插件化植物**：新增 `botany` 扩展点（`CraftAPI.botany`）与
-`botany:register` 权限，`Botany` 在内置规则未命中时按方块 id 分派插件规则；
-新增内置插件 `core:botany-expansion`，由它注册 **6 种植物**（id 92~97，末位追加）
-与 **3 条生态规则**（异花传粉 / 夜间开花蔓延 / 高山霜线），并通过 `chunk:generated`
-事件按群系补种。所有新植物与规则都由插件注册，停用插件后规则与特性自动注销。
-新增 `test:botany-rules` 回归与 `lint` 门禁，详见 `docs/TESTING.md`。
-
-## English Summary
-
-**Minecraft TS** is a hand-written voxel Minecraft replica in TypeScript. **three.js is the only
-runtime dependency** — chunk streaming, AO + Greedy meshing on a Web Worker pool, dual-channel
-sky/block lighting, procedural pixel textures, day/night sky, physics, survival mode, saves and
-an extension API are all implemented from scratch. `npm run build` emits a **single
-self-contained `dist/index.html`** that runs offline, even from `file://`. Every texture is drawn
-pixel-by-pixel in code — no original game assets.
-
-**▶ Play online:** <https://qwerrrtttyyy.github.io/minecraft-web-replica/>
-
-**Controls:** `WASD` move · `Space` jump · double-`Space`/`F` fly (creative) · hold left-click
-mine · right-click place/eat · `E` block library · `F3` debug · `Esc` menu. On mobile: virtual
-joystick + on-screen buttons (jump / mine / place / up / down).
-
-> Unofficial learning project, not affiliated with Mojang / Microsoft.
-
 ## 版本规范
 
 本项目采用**双轨版本号**，`src/core/version.ts` 是唯一来源：
@@ -161,6 +132,7 @@ joystick + on-screen buttons (jump / mine / place / up / down).
 npm install
 npm run dev      # 开发服务器
 npm run build    # 类型检查 + 构建为单文件 dist/index.html（可直接双击打开）
+npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 ```
 
 构建产物是**自包含的单文件 HTML**（three.js 已内联），无网络、无外部资源即可运行。
@@ -564,6 +536,8 @@ npm run verify
 |---|---|
 | `npm run check:version` | `package.json` / `version.ts` 一致 + README 含当前版本 + 源码唯一版本源扫描 |
 | `npm run typecheck` / `build` | TypeScript strict + 单文件 `dist/index.html` |
+| `npm run lint` | Biome 静态检查（recommended 规则集，91 文件 ≈100ms）；`lint:fix` 自动修复 |
+| `npm run check` / `check:fix` | lint + format + import 排序一站式；`format` 仅格式化（可选） |
 | `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
 | `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
 | `npm run test:light` | 光照 21 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |

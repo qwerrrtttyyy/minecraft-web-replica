@@ -10,7 +10,13 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:version": "node scripts/check-version.mjs",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write",
+    "lint:eslint": "eslint src --max-warnings 0",
+    "check": "biome check",
+    "check:fix": "biome check --write",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "test:snapshot": "node scripts/build-test-snapshot.mjs",
     "test:logic": "node test/logic-check.cjs && node test/terrain-check.cjs",
     "test:mesher": "node test/mesher-check.cjs",
@@ -34,6 +40,7 @@
     "three": "0.170.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.7",
     "@types/three": "0.170.0",
     "@typescript-eslint/eslint-plugin": "^8.72.2",
     "@typescript-eslint/parser": "^8.72.2",

@@ -284,7 +284,7 @@ async function boot() {
           const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy, z = Math.floor(cz) + dz;
           const id = world.getBlock(x, y, z);
           const def = registry.get(id);
-          if (id === AIR || def.liquid || !isFinite(def.hardness)) continue;
+          if (id === AIR || def.liquid || !Number.isFinite(def.hardness)) continue;
           destroyed.push([x, y, z, id]);
         }
       }

@@ -482,7 +482,7 @@ export class Player implements System, PhysicsBody {
       return;
     }
     const def = this.registry.get(hit.block);
-    if (!isFinite(def.hardness)) {
+    if (!Number.isFinite(def.hardness)) {
       this.resetMining();
       return;
     }
@@ -522,7 +522,7 @@ export class Player implements System, PhysicsBody {
       return;
     }
     const hit = this.target;
-    if (!hit || !isFinite(this.registry.get(hit.block).hardness)) return;
+    if (!hit || !Number.isFinite(this.registry.get(hit.block).hardness)) return;
     const def = this.registry.get(hit.block);
     const key = `${hit.x},${hit.y},${hit.z}`;
     if (key !== this.mineKey) {
@@ -557,7 +557,7 @@ export class Player implements System, PhysicsBody {
     const hit = this.target;
     if (!hit) return;
     const def = this.registry.get(hit.block);
-    if (!isFinite(def.hardness)) {
+    if (!Number.isFinite(def.hardness)) {
       this.sound.click(180);
       return;
     }
@@ -706,7 +706,7 @@ export class Player implements System, PhysicsBody {
       const i = this.hotbar.index;
       const old = this.hotbar.slots[i];
       if (old) {
-        const empty = this.hotbar.slots.findIndex((s) => s === null);
+        const empty = this.hotbar.slots.indexOf(null);
         if (empty >= 0) this.hotbar.slots[empty] = old;
       }
       this.hotbar.slots[i] = { kind: 'block', id };

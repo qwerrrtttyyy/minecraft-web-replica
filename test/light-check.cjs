@@ -5,7 +5,7 @@
  * 用最小 World/Chunk 替身驱动 LightEngine，验证天空光列、方块光衰减、
  * 跨区块传播以及放置/破坏后的增量回收。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { LightEngine } = require('./terrain-logic/world/light.js');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 

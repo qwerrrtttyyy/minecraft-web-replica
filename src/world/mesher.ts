@@ -147,10 +147,20 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   const passFor = (def: MeshBlockDef): GeoArrays => {
-    if (def.lightEmission > 0) return (out.emissive ??= newGeo());
-    if (def.liquid) return (out.water ??= newGeo());
-    if (def.transparentPass) return (out.transparent ??= newGeo());
-    return (out.opaque ??= newGeo());
+    if (def.lightEmission > 0) {
+      out.emissive ??= newGeo();
+      return out.emissive;
+    }
+    if (def.liquid) {
+      out.water ??= newGeo();
+      return out.water;
+    }
+    if (def.transparentPass) {
+      out.transparent ??= newGeo();
+      return out.transparent;
+    }
+    out.opaque ??= newGeo();
+    return out.opaque;
   };
 
   /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向 */

@@ -286,6 +286,6 @@ await browser.close();
 fs.writeFileSync(`${SHOTS}/results.json`, JSON.stringify({ results, errors }, null, 2));
 const failed = results.filter((r) => !r.pass);
 console.log(`\n===== ${results.length - failed.length}/${results.length} 通过 =====`);
-if (failed.length) { console.log('失败项:'); failed.forEach((f) => console.log(' -', f.name, f.extra)); }
-if (errors.length) { console.log('错误日志:'); errors.slice(0, 12).forEach((e) => console.log(' -', e)); }
+if (failed.length) { console.log('失败项:'); failed.forEach((f) => { console.log(' -', f.name, f.extra); }); }
+if (errors.length) { console.log('错误日志:'); errors.slice(0, 12).forEach((e) => { console.log(' -', e); }); }
 process.exit(failed.length ? 1 : 0);

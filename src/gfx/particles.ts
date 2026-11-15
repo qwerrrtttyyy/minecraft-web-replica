@@ -94,7 +94,7 @@ export class Particles implements System {
       if (fade < 0.3) {
         const f = fade / 0.3;
         // 与帧率无关的衰减（等价于 60fps 下每帧乘 0.9~1.0）
-        const k = Math.pow(0.9 + f * 0.1, dt * 60);
+        const k = (0.9 + f * 0.1) ** (dt * 60);
         this.colors[i3] *= k;
         this.colors[i3 + 1] *= k;
         this.colors[i3 + 2] *= k;
