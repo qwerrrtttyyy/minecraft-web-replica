@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EventService, GameEvents, EventChannel, EventStats, AnyEventHandler } from '../services/events';
 import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
 import { VERSION, RELEASE } from '../core/version';
+import type { MesherThreads, QualityMode } from '../core/options';
 import type { Engine } from '../core/engine';
 import type { BlockRegistry, BlockInput, BlockDefinition } from '../world/blocks';
 import type { World } from '../world/world';
@@ -105,6 +106,27 @@ export interface CraftAPI {
     sensitivity(v: number): void;
     fov(v: number): void;
     sound(v: boolean): void;
+    /** 音量 0~100 */
+    volume(v: number): void;
+    /** 反转 Y 轴 */
+    invertY(v: boolean): void;
+    /** 画质档位（自动 / 高 / 均衡 / 省电） */
+    quality(v: QualityMode): void;
+    particles(v: boolean): void;
+    viewBob(v: boolean): void;
+    autoJump(v: boolean): void;
+    /** 触控灵敏度 0.5~2（仅移动端生效） */
+    touchSensitivity(v: number): void;
+    /** 开发者：常显调试信息 */
+    debugOverlay(v: boolean): void;
+    greedy(v: boolean): void;
+    mesherThreads(v: MesherThreads): void;
+    /** 自动保存间隔（秒），0 = 关闭 */
+    autosaveInterval(v: number): void;
+    /** 导出当前设置为 JSON 文本 */
+    exportOptions(): string;
+    /** 导入设置 JSON（未知键忽略、越界值钳制），返回生效字段数 */
+    importOptions(json: string): number;
   };
   /** 生存模式：生命 / 饥饿 / 背包（创造模式下多数接口为 no-op） */
   survival: {
@@ -151,6 +173,19 @@ export interface APIDeps {
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
+  setVolume(v: number): void;
+  setInvertY(v: boolean): void;
+  setQuality(v: QualityMode): void;
+  setParticles(v: boolean): void;
+  setViewBob(v: boolean): void;
+  setAutoJump(v: boolean): void;
+  setTouchSensitivity(v: number): void;
+  setDebugOverlay(v: boolean): void;
+  setGreedy(v: boolean): void;
+  setMesherThreads(v: MesherThreads): void;
+  setAutosaveInterval(v: number): void;
+  exportOptions(): string;
+  importOptions(json: string): number;
   diagnostics: {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
@@ -239,6 +274,19 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       sensitivity: (v) => d.setSensitivity(v),
       fov: (v) => d.setFov(v),
       sound: (v) => d.setSound(v),
+      volume: (v) => d.setVolume(v),
+      invertY: (v) => d.setInvertY(v),
+      quality: (v) => d.setQuality(v),
+      particles: (v) => d.setParticles(v),
+      viewBob: (v) => d.setViewBob(v),
+      autoJump: (v) => d.setAutoJump(v),
+      touchSensitivity: (v) => d.setTouchSensitivity(v),
+      debugOverlay: (v) => d.setDebugOverlay(v),
+      greedy: (v) => d.setGreedy(v),
+      mesherThreads: (v) => d.setMesherThreads(v),
+      autosaveInterval: (v) => d.setAutosaveInterval(v),
+      exportOptions: () => d.exportOptions(),
+      importOptions: (json) => d.importOptions(json),
     },
     survival: {
       mode: () => d.survival.mode,

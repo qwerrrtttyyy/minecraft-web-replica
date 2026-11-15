@@ -12,6 +12,8 @@ export interface InputEdge {
 export class Input {
   enabled = false;
   sensitivity = 1;
+  /** 反转 Y 轴（设置页可调） */
+  invertY = false;
   touchMoveX = 0;
   touchMoveZ = 0;
   touchSprint = false;
@@ -203,7 +205,8 @@ export class Input {
   }
 
   consumeLook(): [number, number] {
-    const v: [number, number] = [this.lookX * this.sensitivity, this.lookY * this.sensitivity];
+    const dy = this.invertY ? -this.lookY : this.lookY;
+    const v: [number, number] = [this.lookX * this.sensitivity, dy * this.sensitivity];
     this.lookX = 0;
     this.lookY = 0;
     return v;

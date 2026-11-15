@@ -51,6 +51,8 @@ export class Player implements System, PhysicsBody {
   inWater = false;
   eyeInWater = false;
   autoJump: boolean;
+  /** 设置页「视角摇晃」：走路摆动与受击 / 爆炸抖动 */
+  viewBob = true;
   target: RayHit | null = null;
   entityTarget: { entity: Entity; dist: number } | null = null;
   readonly model: PlayerModel;
@@ -207,6 +209,7 @@ export class Player implements System, PhysicsBody {
   }
 
   shake(amp: number) {
+    if (!this.viewBob) return;
     this.shakeAmp = Math.max(this.shakeAmp, amp);
     this.shakeT = 0.4;
   }
@@ -662,13 +665,13 @@ export class Player implements System, PhysicsBody {
       this.shakeT -= dt;
       if (this.shakeT <= 0) this.shakeAmp = 0;
     }
-    const shakeX = this.shakeAmp * (Math.random() - 0.5) * this.shakeT;
-    const shakeY = this.shakeAmp * (Math.random() - 0.5) * this.shakeT;
+    const shakeX = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
+    const shakeY = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
 
     this.eyePosition(this.tmpEye);
     this.viewDirection(this.tmpDir);
 
-    const moving = this.onGround && hSpeed > 0.6 && !this.fly;
+    const moving = this.viewBob && this.onGround && hSpeed > 0.6 && !this.fly;
     const bobY = moving ? Math.sin(this.bobPhase * 2) * 0.045 : 0;
     const bobX = moving ? Math.cos(this.bobPhase) * 0.03 : 0;
 

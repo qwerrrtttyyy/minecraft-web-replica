@@ -25,7 +25,8 @@ npm run verify
 | 11 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
 | 12 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
 | 13 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 14 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 14 | `npm run test:options` | 设置页 41 项：入口 / 控件生效 / 高级项 / 开发者项 / 导入导出 / 跨会话持久化 / 移动端布局 | — |
+| 15 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -59,6 +60,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现。
 - **survival-smoke**：真实浏览器里的完整玩法链路；固定 seed=2026，条件轮询等世界收敛。
 - **visual-check**：固定 seed=2026 / 时段，断言夜间变暗、火光提亮、方块墙颜色丰富。
+- **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
+  FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
+  Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出
+  （合法 JSON）与导入（未知字段过滤 + 即时生效），最后校验 localStorage 跨刷新保留与一键重置。
 
 ## 固定种子与确定性
 
