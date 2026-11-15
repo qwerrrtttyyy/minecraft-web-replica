@@ -2,10 +2,10 @@
  * v1.2.0 服务层纯逻辑回归（Node，无浏览器 / 无 three）。
  * 运行前需先执行 `npm run test:snapshot` 从当前 TS 源码生成快照。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 
 const { ServiceContainer, token } = require('./logic/services/ServiceContainer.js');
-const { EventService, EventBus } = require('./logic/services/events/EventService.js');
+const { EventService } = require('./logic/services/events/EventService.js');
 const { EventChannel } = require('./logic/services/events/EventChannel.js');
 const { PluginService, scopeAPI } = require('./logic/services/plugins/PluginService.js');
 const { validateSave, LocalStorageProvider } = require('./logic/save/save.js');

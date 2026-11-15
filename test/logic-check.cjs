@@ -1,5 +1,5 @@
-const assert = require('assert');
-const { SurvivalState, ITEMS, MAX_HUNGER } = require('./logic/player/survival.js');
+const assert = require('node:assert');
+const { SurvivalState, MAX_HUNGER } = require('./logic/player/survival.js');
 const { EventBus } = require('./logic/core/events.js');
 
 const registry = {

@@ -102,6 +102,7 @@
 npm install
 npm run dev      # 开发服务器
 npm run build    # 类型检查 + 构建为单文件 dist/index.html（可直接双击打开）
+npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 ```
 
 构建产物是**自包含的单文件 HTML**（three.js 已内联），无网络、无外部资源即可运行。
@@ -477,6 +478,8 @@ npm run verify
 |---|---|
 | `npm run check:version` | `package.json` / `version.ts` 一致 + README 含当前版本 + 源码唯一版本源扫描 |
 | `npm run typecheck` / `build` | TypeScript strict + 单文件 `dist/index.html` |
+| `npm run lint` | Biome 静态检查（recommended 规则集，91 文件 ≈100ms）；`lint:fix` 自动修复 |
+| `npm run check` / `check:fix` | lint + format + import 排序一站式；`format` 仅格式化（可选） |
 | `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
 | `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
 | `npm run test:light` | 光照 21 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |

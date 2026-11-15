@@ -58,7 +58,7 @@ const args = [
 rmSync(tmp, { recursive: true, force: true });
 try {
   execFileSync(tsc, args, { cwd: root, stdio: 'inherit' });
-} catch (e) {
+} catch {
   console.error('[snapshot] TypeScript 编译失败，快照未更新');
   process.exit(1);
 }

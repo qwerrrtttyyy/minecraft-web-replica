@@ -11,7 +11,7 @@
  *    顶点组织方式，不允许改变画面。
  * 3. **收益**：quad 数 / 顶点数显著下降，且 merged 计数与差值吻合。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { DefaultGenerator } = require('./terrain-logic/world/generator.js');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { meshChunk } = require('./terrain-logic/world/mesher.js');

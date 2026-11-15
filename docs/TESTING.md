@@ -14,19 +14,21 @@ npm run verify
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
 | 2 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 3 | `npm run build` | 单文件 `dist/index.html` | — |
-| 4 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 5 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
-| 6 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 7 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 8 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
-| 9 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 10 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
-| 11 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
-| 12 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
-| 13 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 14 | `npm run test:options` | 设置页 41 项：入口 / 控件生效 / 高级项 / 开发者项 / 导入导出 / 跨会话持久化 / 移动端布局 | — |
-| 15 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 3 | `npm run lint` | Biome recommended 规则集静态检查 | — |
+| 4 | `npm run build` | 单文件 `dist/index.html` | — |
+| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 6 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
+| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
+| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
+| 11 | `npm run test:worker-pool` / `test:edits` | Worker 池回滚 + 编辑差分 | ✓ |
+| 12 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
+| 13 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
+| 14 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
+| 15 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 16 | `npm run test:options` | 设置页 41 项：入口 / 控件生效 / 高级项 / 开发者项 / 导入导出 / 跨会话持久化 / 移动端布局 | — |
+| 17 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 

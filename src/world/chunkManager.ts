@@ -123,7 +123,6 @@ export class ChunkManager implements System {
   private busy: number[] = [];
   /** 每个 Worker 已确认的配置 revision（-1 表示尚未收到 config） */
   private workerConfig: number[] = [];
-  private poolSize = 0;
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
   private config: MeshConfig | null = null;
@@ -201,7 +200,6 @@ export class ChunkManager implements System {
       this.busy.push(0);
       this.workerConfig.push(-1);
     }
-    this.poolSize = this.workers.length;
   }
 
   /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
@@ -210,7 +208,6 @@ export class ChunkManager implements System {
     this.workers = [];
     this.busy = [];
     this.workerConfig = [];
-    this.poolSize = 0;
     // 旧池的回传消息不能再计入新池的 busy / config，直接丢弃
     this.pendingResults.length = 0;
     const pending = [...this.inFlight.entries()];

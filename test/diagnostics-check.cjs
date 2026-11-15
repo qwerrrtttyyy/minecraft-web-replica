@@ -5,7 +5,7 @@
  * Worker 配置、区块网格收敛、暂停态输入残留、插件失败、
  * 死亡状态一致性、玩家/存档异常。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { runRuntimeDiagnostics } = require('./logic/diagnostics/RuntimeDiagnostics.js');
 const { VERSION } = require('./logic/core/version.js');
 
