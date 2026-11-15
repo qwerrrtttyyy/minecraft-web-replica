@@ -629,7 +629,11 @@ async function boot() {
         missingMeshes,
         unlitChunks,
       },
-      plugins: plugins.list().map((p) => ({ id: p.manifest.id, state: p.state })),
+      plugins: plugins.list().map((p) => ({
+        id: p.manifest.id,
+        state: p.state,
+        dependencies: p.manifest.dependencies ?? [],
+      })),
       events: {
         subscribers: ev.subscribers,
         channels: ev.channels.length,

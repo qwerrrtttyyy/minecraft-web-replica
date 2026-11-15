@@ -1,5 +1,5 @@
 import type { GameEvents } from './GameEvents';
-import { EventChannel } from './EventChannel';
+import { EventChannel, type EventChannelOptions } from './EventChannel';
 import type { Disposable } from '../ServiceContainer';
 
 type Handler<T> = (payload: T) => void;
@@ -141,8 +141,8 @@ export class EventService implements Disposable {
   }
 
   /** 创建归属命名空间的订阅通道（插件上下文默认拿到这个） */
-  scope(namespace: string): EventChannel {
-    return new EventChannel(this, namespace);
+  scope(namespace: string, options?: EventChannelOptions): EventChannel {
+    return new EventChannel(this, namespace, options);
   }
 
   /** @internal 由 EventChannel 构造时调用 */
