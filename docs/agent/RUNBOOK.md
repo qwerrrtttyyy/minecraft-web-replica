@@ -7,6 +7,28 @@
 3. 改完后按顺序跑回归（见下），提交前必须 `npm run verify` 全绿
 4. 提交信息说明「修了什么 / 为什么」，不要只写「update」
 
+## 合并与发布纪律（铁律）
+
+1. **版本 bump = 同 commit 改断言**：任何推进 `VERSION`（`src/core/version.ts` /
+   `package.json`）的 commit，必须在**同一个 commit** 里同步更新所有断言旧版本号的
+   位置（测试、README 版本行、文档）。禁止把 bump 与断言同步拆成两个 commit——
+   中间的红色窗口就是 2026-11-15 的教训：v1.4.2 的 bump（1.4.1 → 1.4.2）没有同步
+   `test/survival-smoke.mjs` 的版本断言，main 的 `verify` 红掉
+   （`FAIL 版本号单一来源为 1.4.0 — 1.4.2`）。更优做法：版本断言动态读
+   `package.json` / `version.ts`（`e31c482` 写法），断言中禁止硬编码版本字面量。
+2. **一次只合一个 PR**：合并队列按 PR 编号一次处理一个。每次合并后**立即**在 main
+   上跑全量 `npm run verify` 回归（CI 的 `verify` 检查是闸门，main 分支保护要求
+   `verify` 绿）；绿了才允许开始下一个合并。禁止多个 PR 排队后批量合入（「排队打饭」）。
+   - 队首 PR 红着或冲突：先跳过（记录原因），单独修好 / rebase 后再回队列，
+     不允许它堵住后面绿的 PR。
+   - 合并前分支必须 rebase 到最新 main；rebase 中出现的版本 bump 冲突
+     按第 1 条解决（断言同步进同一个 commit）。
+3. **每个 tag 配 Release**：打 tag 的同时必须创建对应 GitHub Release——
+   标题格式 `vX.Y.Z 预发布  <主题>`（正式版：`vN 正式版  <主题>`），正文包含
+   自上一个 tag 起的 changelog（新增 / 修复 / 流程）与验证情况，pre-release 标记
+   与版本轨道一致（迭代版 = prerelease，正式版 = release）。禁止裸 tag（v1.4.2
+   曾裸奔，2026-11-15 已补 Release）。
+
 ## 基线命令
 
 ```bash

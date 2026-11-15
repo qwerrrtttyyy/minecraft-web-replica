@@ -24,6 +24,15 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `RELEASE`（正式版 `vN`）分开维护；`package.json` 只跟 `VERSION` 一致，README 必须含两行版本标记。
   `npm run check:version` 机械校验双轨格式、一致性与源码唯一版本源。日常迭代只动 `VERSION`，
   `RELEASE` 仅在发布正式版时推进；Git 标签统一带 `v`：正式版打 `vN`，历史迭代标签为 `vX.Y.Z`（`v1.3.0` / `v1.3.1`）。
+- **版本 bump 与断言同步同 commit**：任何推进 `VERSION` 的 commit 必须同 commit
+  更新所有断言版本号的位置（测试 / README / 文档），禁止拆成两个 commit；版本断言
+  一律动态读 `package.json` / `version.ts`，断言中禁止硬编码版本字面量
+  （2026-11-15 v1.4.2 教训：bump 未同步断言，main `verify` 红掉）。
+- **一次只合一个 PR，绿了再下一个**：合并队列按 PR 编号一次处理一个，每次合并后立即
+  在 main 跑全量 `npm run verify` 回归，绿了才合下一个；禁止批量合入。细则见 RUNBOOK「合并与发布纪律」。
+- **tag 与 Release 成对**：打 tag 的同时创建对应 GitHub Release（标题
+  `vX.Y.Z 预发布  <主题>` / `vN 正式版  <主题>`，正文含自上一 tag 的 changelog 与验证情况），
+  禁止裸 tag。
 - **方块 id 只追加**：内置方块 id 1..91 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
   插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），不要占用内置区间。
