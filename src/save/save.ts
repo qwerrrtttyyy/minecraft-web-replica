@@ -17,7 +17,16 @@ export interface SaveData {
   dayTime: number;
   hotbar: (Stack | null)[];
   slot: number;
-  settings: { sound: boolean; renderDistance: number; sensitivity: number; fov: number };
+  settings: {
+    sound: boolean;
+    renderDistance: number;
+    sensitivity: number;
+    fov: number;
+    /** 设置页：音量 0~100（旧档缺省 50） */
+    volume?: number;
+    /** 设置页：反转 Y 轴（旧档缺省 false） */
+    invertY?: boolean;
+  };
   savedAt: number;
 }
 
@@ -95,6 +104,9 @@ export function validateSave(data: unknown): data is SaveData {
   const st = d.settings;
   if (!st || typeof st.sound !== 'boolean' || !finite(st.renderDistance) ||
       !finite(st.sensitivity) || !finite(st.fov)) return false;
+  // 设置页新增字段为可选：旧档没有时按默认值处理，不影响校验通过
+  if (st.volume !== undefined && !finite(st.volume)) return false;
+  if (st.invertY !== undefined && typeof st.invertY !== 'boolean') return false;
   return finite(d.savedAt);
 }
 

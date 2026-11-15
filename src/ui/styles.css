@@ -289,7 +289,6 @@ img { image-rendering: pixelated; }
 
 /* ============ 菜单 ============ */
 .menu-panel { width: min(400px, 94vw); max-height: 88vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.sliders { display: flex; flex-direction: column; gap: 12px; padding: 6px 0; }
 .slider-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; color: #d8d8d8; }
 .slider-val { color: #ffffa0; font-weight: 700; }
 .mc-slider {
@@ -313,6 +312,39 @@ img { image-rendering: pixelated; }
 .menu-new-world { display: flex; gap: 8px; }
 .menu-new-world .mc-input { flex: 1; }
 .menu-note { color: #a8a8a8; font-size: 11px; text-align: center; margin-top: 2px; }
+
+/* ============ 设置页 ============ */
+.options-panel {
+  width: min(440px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.opt-group { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.opt-group h3 {
+  margin: 0; font-size: 13px; color: #ffffa0; letter-spacing: 2px;
+  text-shadow: 1px 1px 0 #222;
+  border-bottom: 1px solid rgba(255, 255, 255, .16);
+  padding-bottom: 4px;
+}
+.opt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+.opt-label { flex: 1; }
+.opt-val { color: #ffffa0; font-weight: 700; min-width: 52px; text-align: right; }
+.opt-row.off .opt-val { color: #e08a8a; }
+/* 开发者分组：标题用冷色区分，避免被误当成普通项 */
+.opt-group.dev h3 { color: #a8d8ff; }
+.opt-group.dev { border-left: 3px solid rgba(168, 216, 255, .35); padding-left: 8px; }
+.title-links { display: flex; gap: 20px; justify-content: center; }
+
+/* 设置导入 / 导出 */
+.options-io-panel { width: min(520px, 94vw); display: flex; flex-direction: column; gap: 10px; }
+.mc-textarea {
+  min-height: 200px; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.5;
+  white-space: pre; overflow: auto;
+}
+.mc-textarea[readonly] { opacity: .85; }
 
 /* ============ 方块库 ============ */
 .palette-panel { width: min(560px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }

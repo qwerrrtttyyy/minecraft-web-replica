@@ -188,27 +188,72 @@ export class ChunkManager implements System {
     if (options.forceMainThread) {
       this.mode = 'main';
     } else {
-      const want = ChunkManager.decidePoolSize(options.workers);
-      // 构造期失败统一由 createWorkerPool 回滚：不再留下「部分 Worker + worker 模式」的残池
-      const pool = createWorkerPool(MeshWorker, want);
-      if (pool.partial) {
-        console.warn('[mesher] Worker 池构造不完整，整体回退主线程同步网格化');
-        this.fallbackToMain();
-      } else {
-        for (const w of pool.workers) {
-          w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
-          w.onerror = (e) => {
-            console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
-            this.fallbackToMain();
-          };
-          this.workers.push(w);
-          this.busy.push(0);
-          this.workerConfig.push(-1);
-        }
-        this.poolSize = this.workers.length;
-      }
+      this.spawnWorkers(ChunkManager.decidePoolSize(options.workers));
     }
     this.getConfig(); // 建立低频配置并向所有 Worker 下发
+  }
+
+  /** 建立 Worker 池；构造不完整时整体回退主线程，不留「部分 Worker」残池 */
+  private spawnWorkers(want: number): void {
+    // 构造期失败统一由 createWorkerPool 回滚：不再留下「部分 Worker + worker 模式」的残池
+    const pool = createWorkerPool(MeshWorker, want);
+    if (pool.partial) {
+      console.warn('[mesher] Worker 池构造不完整，整体回退主线程同步网格化');
+      this.fallbackToMain();
+      return;
+    }
+    this.mode = 'worker';
+    for (const w of pool.workers) {
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+      w.onerror = (e) => {
+        console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
+        this.fallbackToMain();
+      };
+      this.workers.push(w);
+      this.busy.push(0);
+      this.workerConfig.push(-1);
+    }
+    this.poolSize = this.workers.length;
+  }
+
+  /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
+  private teardownWorkers(): void {
+    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    this.workers = [];
+    this.busy = [];
+    this.workerConfig = [];
+    this.poolSize = 0;
+    // 旧池的回传消息不能再计入新池的 busy / config，直接丢弃
+    this.pendingResults.length = 0;
+    const pending = [...this.inFlight.entries()];
+    this.inFlight.clear();
+    for (const [key, rec] of pending) {
+      const [cx, cz] = key.split(',').map(Number);
+      this.applySync(cx, cz);
+      rec.resolve();
+    }
+  }
+
+  /**
+   * 开发者设置：运行期调整网格化线程数。
+   * 0 = 主线程同步网格化；1~8 = 重建对应规模的 Worker 池。
+   * 重建期间在途任务由主线程补算，已有网格保留，不会丢区块。
+   */
+  setWorkerPoolSize(want: number): void {
+    const n = Math.max(0, Math.min(8, Math.floor(want)));
+    if (n === 0) {
+      if (this.mode !== 'main') this.fallbackToMain();
+      return;
+    }
+    if (this.mode === 'worker' && this.workers.length === n) return;
+    this.teardownWorkers();
+    this.spawnWorkers(n);
+    this.getConfig();
+  }
+
+  /** 自动档推荐的 Worker 池规模（设置页展示用） */
+  recommendedPoolSize(): number {
+    return ChunkManager.decidePoolSize(undefined);
   }
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
@@ -293,18 +338,7 @@ export class ChunkManager implements System {
   private fallbackToMain(): void {
     if (this.mode === 'main') return;
     this.mode = 'main';
-    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
-    this.workers = [];
-    this.busy = [];
-    this.workerConfig = [];
-    this.poolSize = 0;
-    const pending = [...this.inFlight.entries()];
-    this.inFlight.clear();
-    for (const [key, rec] of pending) {
-      const [cx, cz] = key.split(',').map(Number);
-      this.applySync(cx, cz);
-      rec.resolve();
-    }
+    this.teardownWorkers();
   }
 
   setCenter(x: number, z: number) {

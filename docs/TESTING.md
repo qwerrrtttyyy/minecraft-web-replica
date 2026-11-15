@@ -13,6 +13,9 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
+| # | 命令 | 内容 | 依赖快照 |
+|---|---|---|---|
+| 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
 | 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
 | 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
 | 4 | `npm run build` | 单文件 `dist/index.html` | — |
@@ -22,12 +25,16 @@ npm run verify
 | 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
 | 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
 | 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 11 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组（含 id 57~91 与自然植物位置） | ✓ |
-| 12 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
-| 13 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
-| 14 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 6 植物 / 3 规则 / 生成选种 | ✓ |
-| 15 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 16 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 | ✓ |
+| 15 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
+| 16 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 | ✓ |
+| 17 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
+| 18 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 19 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
+| 20 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -67,6 +74,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   `plugins.dependency`：启用中的插件缺少已启用依赖）。
 - **survival-smoke**：真实浏览器里的完整玩法链路；固定 seed=2026，条件轮询等世界收敛。
 - **visual-check**：固定 seed=2026 / 时段，断言夜间变暗、火光提亮、方块墙颜色丰富。
+- **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
+  FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
+  Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出
+  （合法 JSON）与导入（未知字段过滤 + 即时生效），最后校验 localStorage 跨刷新保留与一键重置。
 
 ## 固定种子与确定性
 

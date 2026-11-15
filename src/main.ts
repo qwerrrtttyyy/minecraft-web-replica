@@ -3,6 +3,10 @@ import * as THREE from 'three';
 import { Engine } from './core/engine';
 import { VERSION, RELEASE } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
+import {
+  loadOptions, normalizeOptions, persistOptions, qualityScale,
+  type MesherThreads, type Options, type QualityMode,
+} from './core/options';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
@@ -62,7 +66,6 @@ async function boot() {
   const isMobile = engine.isMobile;
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
 
-  const settings = { sound: true, renderDistance: isMobile ? 3 : 5, sensitivity: 1, fov: 72 };
   const idOf = (n: string) => registry.byNameGet(n)!.id;
   const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'torch']
     .map((n) => ({ kind: 'block' as const, id: idOf(n) }));
@@ -85,10 +88,6 @@ async function boot() {
     seed = saved?.seed ?? randomSeed();
   }
   if (saved) {
-    settings.sound = saved.settings?.sound ?? true;
-    settings.renderDistance = clamp(saved.settings?.renderDistance ?? settings.renderDistance, 2, 8);
-    settings.sensitivity = clamp(saved.settings?.sensitivity ?? 1, 0.4, 2);
-    settings.fov = clamp(saved.settings?.fov ?? 72, 60, 95);
     if (Array.isArray(saved.hotbar) && saved.hotbar.length === 9) {
       hotbar.slots = saved.hotbar.map((s) => {
         if (!s || s.kind === undefined) return null;
@@ -103,6 +102,17 @@ async function boot() {
       hotbar.index = clamp(saved.slot ?? 0, 0, 8);
     }
   }
+  // 设置以本地全局配置为准（设置页自动保存，换世界不丢）；
+  // 旧存档里的 settings 仅作为「本机从未保存过设置」时的兜底。
+  const settings: Options = loadOptions({
+    sound: saved?.settings?.sound ?? true,
+    renderDistance: saved?.settings?.renderDistance ?? (isMobile ? 3 : 5),
+    sensitivity: saved?.settings?.sensitivity ?? 1,
+    fov: saved?.settings?.fov ?? 72,
+    volume: saved?.settings?.volume ?? 50,
+    invertY: saved?.settings?.invertY ?? false,
+    autoJump: isMobile,
+  });
   sound.setEnabled(settings.sound);
 
   // ---- 世界 ----
@@ -117,6 +127,12 @@ async function boot() {
     workers: workersParam != null ? Number(workersParam) : undefined,
     camera: engine.camera,
   });
+  // 开发者设置：网格化线程（URL 调试参数优先，其次才看设置页）
+  if (workersParam == null && qs.get('mesher') !== 'main') {
+    if (settings.mesherThreads === 'main') chunks.setWorkerPoolSize(0);
+    else if (settings.mesherThreads !== 'auto') chunks.setWorkerPoolSize(settings.mesherThreads);
+  }
+  if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events);
@@ -162,14 +178,27 @@ async function boot() {
     }
     survival.dead = false;
   }
+  /** 画质档位：自动档回到 100% 分辨率，交给自适应逐帧调整 */
+  const applyQuality = (mode: QualityMode) => {
+    engine.setQualityScale(qualityScale(mode) ?? 1);
+  };
+
   engine.camera.fov = settings.fov;
   engine.camera.updateProjectionMatrix();
   input.sensitivity = settings.sensitivity;
+  input.invertY = settings.invertY;
+  sound.setVolume(settings.volume);
+  chunks.setRenderDistance(settings.renderDistance);
+  particles.enabled = settings.particles;
+  player.viewBob = settings.viewBob;
+  player.autoJump = settings.autoJump;
+  applyQuality(settings.quality);
 
   const tntList: PrimedTnt[] = [];
   const highlight = new BlockHighlight(engine.scene);
   let mode: Mode = 'title';
-  let debugOn = false;
+  // 开发者设置「显示调试信息」：常显 F3 面板
+  let debugOn = settings.debugOverlay;
   let dirtySave = false;
   /** 脏标记版本：保存期间产生的编辑不能被旧保存的回调清掉（异步 provider 竞态） */
   let dirtyVersion = 0;
@@ -189,6 +218,7 @@ async function boot() {
 
   const touch = isMobile ? new TouchControls(input, uiRoot, engine.renderer.domElement) : null;
   touch?.setVisible(false);
+  if (touch) touch.lookScale = settings.touchSensitivity;
   /** 关键操作的轻触感反馈（仅移动端、不支持时静默跳过） */
   const buzz = (ms: number) => {
     if (!isMobile) return;
@@ -332,6 +362,7 @@ async function boot() {
       sound.setEnabled(settings.sound);
       hud.setSound(settings.sound);
       if (settings.sound) sound.click(880);
+      persistOptions(settings);
       markDirty();
     },
     onCamera: () => { if (mode === 'playing') cycleCamera(); },
@@ -348,9 +379,52 @@ async function boot() {
       if (mode === 'playing') openMenu();
       else if (mode === 'paused') resumeGame();
     },
-    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); markDirty(); },
-    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; markDirty(); },
-    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); markDirty(); },
+    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); persistOptions(settings); markDirty(); },
+    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; persistOptions(settings); markDirty(); },
+    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); persistOptions(settings); markDirty(); },
+    onVolume: (v) => { settings.volume = v; sound.setVolume(v); persistOptions(settings); markDirty(); },
+    onInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); markDirty(); },
+    onQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); markDirty(); },
+    onParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); markDirty(); },
+    onViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); markDirty(); },
+    onAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); markDirty(); },
+    onTouchSensitivity: (v) => {
+      settings.touchSensitivity = v;
+      if (touch) touch.lookScale = v;
+      persistOptions(settings);
+      markDirty();
+    },
+    onDebugOverlay: (v) => {
+      settings.debugOverlay = v;
+      debugOn = v;
+      if (!v) hud.setDebug(null);
+      persistOptions(settings);
+      markDirty();
+    },
+    onGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); markDirty(); },
+    onMesherThreads: (v) => {
+      settings.mesherThreads = v;
+      applyMesherThreads(v);
+      hud.toast(v === 'main' ? '网格化已切到主线程（对照基准会变慢）' : '网格化线程已调整');
+      persistOptions(settings);
+      markDirty();
+    },
+    onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
+    onExportOptions: () => JSON.stringify(settings, null, 2),
+    onCopyOptions: (json) => {
+      void copyText(json);
+    },
+    onImportOptions: (json) => importOptions(json),
+    onResetOptions: () => {
+      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5 }));
+      applyAllSettings();
+      persistOptions(settings);
+      hud.syncOptions(settings);
+      markDirty();
+    },
+    onOptionsOpen: (from) => openOptions(from),
+    onOptionsClose: () => closeOptions(),
+    getOptions: () => settings,
     onPaletteOpen: (from) => openPalette(from),
     onPaletteClose: () => closePalette(),
     onRespawn: () => respawn(),
@@ -361,6 +435,77 @@ async function boot() {
   hud.setSound(settings.sound);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
+
+  /** 开发者设置：网格化线程（auto = 按核数推断，main = 主线程同步） */
+  const applyMesherThreads = (v: MesherThreads) => {
+    if (v === 'auto') chunks.setWorkerPoolSize(chunks.recommendedPoolSize());
+    else if (v === 'main') chunks.setWorkerPoolSize(0);
+    else chunks.setWorkerPoolSize(v);
+  };
+
+  /** 导出面板用：写进剪贴板，失败时提示手动复制 */
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      hud.toast('设置 JSON 已复制到剪贴板');
+    } catch {
+      hud.toast('复制失败：请手动全选文本框内容复制');
+    }
+  };
+
+  /** 导入面板用：只接受设置里已知的键，逐字段钳制后整体生效；返回生效字段数 */
+  const importOptions = (json: string): number => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      hud.toast('导入失败：不是有效的 JSON');
+      return 0;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      hud.toast('导入失败：设置 JSON 应该是对象');
+      return 0;
+    }
+    const src = parsed as Record<string, unknown>;
+    const filtered: Record<string, unknown> = {};
+    for (const key of Object.keys(settings)) {
+      if (key in src) filtered[key] = src[key];
+    }
+    const keys = Object.keys(filtered);
+    if (keys.length === 0) {
+      hud.toast('导入失败：JSON 里没有可识别的设置项');
+      return 0;
+    }
+    Object.assign(settings, normalizeOptions(filtered as Partial<Options>, settings));
+    applyAllSettings();
+    persistOptions(settings);
+    hud.syncOptions(settings);
+    hud.showOptionsIO(false);
+    hud.toast(`已导入 ${keys.length} 项设置`);
+    markDirty();
+    return keys.length;
+  };
+
+  /** 把设置一次性推到各子系统（启动与「重置全部设置」共用） */
+  const applyAllSettings = () => {
+    sound.setEnabled(settings.sound);
+    sound.setVolume(settings.volume);
+    input.sensitivity = settings.sensitivity;
+    input.invertY = settings.invertY;
+    chunks.setRenderDistance(settings.renderDistance);
+    engine.camera.fov = settings.fov;
+    engine.camera.updateProjectionMatrix();
+    hud.setSound(settings.sound);
+    particles.enabled = settings.particles;
+    player.viewBob = settings.viewBob;
+    player.autoJump = settings.autoJump;
+    if (touch) touch.lookScale = settings.touchSensitivity;
+    applyQuality(settings.quality);
+    debugOn = settings.debugOverlay;
+    if (!debugOn) hud.setDebug(null);
+    chunks.greedy = settings.greedy;
+    applyMesherThreads(settings.mesherThreads);
+  };
 
   const cycleCamera = () => {
     player.cycleCamera();
@@ -451,7 +596,6 @@ async function boot() {
     input.enabled = false;
     input.reset();
     input.exitLock();
-    hud.syncSettings(settings.renderDistance, settings.sensitivity, settings.fov);
     hud.setMenuMode(survival.mode, survival.health, survival.hunger);
     hud.showMenu(true);
     saveNow();
@@ -463,6 +607,7 @@ async function boot() {
     hud.showMenu(false);
     hud.showPalette(false);
     hud.showHelp(false);
+    hud.showOptions(false);
     mode = 'playing';
     input.enabled = true;
     input.requestLock();
@@ -489,6 +634,30 @@ async function boot() {
     else resumeGame();
   }
 
+  /** 设置页：可从游戏中 / 暂停菜单 / 标题屏进入，关闭时回到来源处 */
+  let optionsReturn: 'game' | 'menu' | 'title' = 'game';
+
+  function openOptions(from: 'game' | 'menu' | 'title') {
+    optionsReturn = from;
+    if (mode === 'playing') {
+      mode = 'paused';
+      input.enabled = false;
+      input.reset();
+      input.exitLock();
+      // 与方块库一致：属于暂停态，插件依赖此钩子
+      events.emit('game:pause', { paused: true });
+    }
+    hud.showMenu(false);
+    hud.showOptions(true);
+  }
+
+  function closeOptions() {
+    hud.showOptions(false);
+    if (optionsReturn === 'menu') hud.showMenu(true);
+    else if (optionsReturn === 'game') resumeGame();
+    // 标题屏：直接盖回标题，无需额外操作
+  }
+
   function quitToTitle() {
     saveNow();
     saved = collectSave();
@@ -502,6 +671,7 @@ async function boot() {
     hud.showMenu(false);
     hud.showPalette(false);
     hud.showHelp(false);
+    hud.showOptions(false);
     hud.showTitle(true);
     hud.refreshTitleButtons(true, survival.mode);
   }
@@ -697,7 +867,29 @@ async function boot() {
     setRenderDistance: (v) => { settings.renderDistance = clamp(v, 2, 8); chunks.setRenderDistance(settings.renderDistance); },
     setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
     setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
-    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); },
+    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); persistOptions(settings); },
+    setVolume: (v) => { settings.volume = clamp(v, 0, 100); sound.setVolume(settings.volume); persistOptions(settings); },
+    setInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); },
+    setQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); },
+    setParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); },
+    setViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); },
+    setAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); },
+    setTouchSensitivity: (v) => {
+      settings.touchSensitivity = clamp(v, 0.5, 2);
+      if (touch) touch.lookScale = settings.touchSensitivity;
+      persistOptions(settings);
+    },
+    setDebugOverlay: (v) => {
+      settings.debugOverlay = v;
+      debugOn = v;
+      if (!v) hud.setDebug(null);
+      persistOptions(settings);
+    },
+    setGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); },
+    setMesherThreads: (v) => { settings.mesherThreads = v; applyMesherThreads(v); persistOptions(settings); },
+    setAutosaveInterval: (v) => { settings.autosaveInterval = clamp(v, 0, 120); persistOptions(settings); },
+    exportOptions: () => JSON.stringify(settings, null, 2),
+    importOptions: (json) => importOptions(json),
     setMode: (m) => applyMode(m),
     respawn,
     parseStack: parseKey,
@@ -722,7 +914,13 @@ async function boot() {
       }
       switch (e.type) {
         case 'pause':
-          if (mode === 'playing') openMenu();
+          // 导入/导出面板盖在最上层，Esc 先关它，再轮到设置页
+          if (hud.optionsIOOpen) {
+            hud.showOptionsIO(false);
+          } else if (hud.optionsOpen) {
+            // 设置页盖在最上层，Esc 先关它（标题屏打开时也适用）
+            closeOptions();
+          } else if (mode === 'playing') openMenu();
           else if (mode === 'paused') {
             if (hud.helpOpen) hud.showHelp(false);
             else if (hud.paletteOpen) closePalette();
@@ -889,7 +1087,8 @@ async function boot() {
       }
       if (mode === 'playing') {
         saveAcc += dt;
-        if (saveAcc > 8 && dirtySave) saveNow();
+        // 自动保存间隔由设置页控制，0 = 关闭自动保存（手动存档仍可用）
+        if (settings.autosaveInterval > 0 && saveAcc > settings.autosaveInterval && dirtySave) saveNow();
         debugAcc += dt;
         if (debugOn && debugAcc > 0.2) {
           debugAcc = 0;
@@ -918,6 +1117,8 @@ async function boot() {
     name: 'quality',
     update: (dt) => {
       if (!isMobile || mode !== 'playing') return;
+      // 固定画质档位不做自适应（仅「自动」档逐帧调分辨率）
+      if (settings.quality !== 'auto') return;
       qualityAcc += dt;
       if (qualityAcc < 1.2) return;
       qualityAcc = 0;
@@ -952,7 +1153,7 @@ async function boot() {
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
-    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, tntList, survival,
+    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
     botany,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),

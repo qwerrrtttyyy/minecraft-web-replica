@@ -361,11 +361,14 @@ try {
     // 立即重算准星，避免「准星命中」断言读到设置视角之前的旧值
     mc.player.update(0.016);
   }, mineCell);
-  await sleep(250);
-  const aim = await page.evaluate(() => {
+  // 轮询等待而不是固定 sleep：整套 verify 高负载下渲染帧可能延迟，
+  // 单帧读取容易拿到设置视角之前的旧 target（历史 flake）
+  const aim = await page.waitForFunction((c) => {
     const t = window.__mc.player.target;
-    return t ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name } : null;
-  });
+    return t && t.x === c.x && t.y === c.y && t.z === c.z
+      ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name }
+      : null;
+  }, { timeout: 8000 }, mineCell).then((h) => h.jsonValue()).catch(() => null);
   ok('准星命中测试方块', !!aim && aim.x === mineCell.x && aim.y === mineCell.y && aim.z === mineCell.z,
     aim ? `${aim.name}@${aim.x},${aim.y},${aim.z}` : 'null');
 

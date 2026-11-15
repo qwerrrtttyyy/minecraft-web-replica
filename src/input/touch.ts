@@ -12,6 +12,8 @@ export class TouchControls {
   private lookLast = { x: 0, y: 0 };
   private lookStart = { x: 0, y: 0, t: 0 };
   private lastJumpTap = 0;
+  /** 视角拖动倍率（设置页「触控灵敏度」，1 = 默认） */
+  lookScale = 1;
 
   constructor(private input: Input, uiRoot: HTMLElement, canvas: HTMLCanvasElement) {
     this.root = document.createElement('div');
@@ -111,8 +113,8 @@ export class TouchControls {
       const dx = e.clientX - this.lookLast.x;
       const dy = e.clientY - this.lookLast.y;
       this.lookLast = { x: e.clientX, y: e.clientY };
-      // 灵敏度统一由 Input.consumeLook() 施加，这里再乘一次会被平方
-      this.input.addLook(dx * 2.3, dy * 2.3);
+      // 基础系数 2.3 是触屏拖动相对鼠标的补偿；设置页「触控灵敏度」再乘在它之上
+      this.input.addLook(dx * 2.3 * this.lookScale, dy * 2.3 * this.lookScale);
     });
     const lookEnd = (e: PointerEvent) => {
       if (e.pointerId !== this.lookId) return;
