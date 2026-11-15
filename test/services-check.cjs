@@ -189,14 +189,23 @@ okAsync('waitFor 超时 reject', async () => {
 const fakeApi = () => ({
   version: '1.2.0',
   world: { setBlock: () => true, getBlock: () => 0 },
-  player: { teleport() {}, setFly() {}, break() {}, place() {} },
+  player: { teleport() {}, setFly() {}, break() {}, place() {}, setCamera() {} },
   save: { import() {}, setProvider() {} },
   blocks: { register() {}, get: (id) => id },
   tnt: { ignite() {} },
   entities: { spawn() {}, list: () => [] },
   survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
+  time: { set() {}, setDayLength() {} },
+  settings: { renderDistance() {}, sensitivity() {}, fov() {}, sound() {} },
+  plugins: { register() {}, enable() {}, disable() {}, unload() {}, list: () => [] },
   registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
   on() { return () => {}; }, off() {}, emit() {},
+  events: {
+    scope(ns, options) { return { ns, options }; },
+    stats: () => ({ emitted: {}, subscribers: 0, channels: [] }),
+    onAny() { return () => {}; },
+    waitFor() { return Promise.resolve(); },
+  },
 });
 const makePluginService = () => {
   const ev = new EventService();
@@ -347,6 +356,29 @@ okAsync('EventChannel.waitFor 收到事件后自动退订', async () => {
   assert.strictEqual(ev.stats().subscribers, before);
   ch.dispose();
 });
+ok('EventChannel.fork 子通道随父通道销毁且继承 emit 门禁', () => {
+  const ev = new EventService();
+  const parent = ev.scope('demo:parent', { canEmit: false });
+  const child = parent.fork('demo:child');
+  child.on('game:start', () => {});
+  assert.strictEqual(ev.stats().subscribers, 1);
+  assert.ok(ev.stats().channels.includes('demo:child'));
+  assert.throws(() => child.emit('game:start', { seed: 1 }), /未授权发送事件/);
+  parent.dispose();
+  assert.strictEqual(ev.stats().subscribers, 0);
+  assert.ok(!ev.stats().channels.includes('demo:child'));
+});
+ok('EventChannel.onAny 归属通道，dispose 时撤销', () => {
+  const ev = new EventService();
+  const ch = ev.scope('demo:any');
+  let seen = 0;
+  ch.onAny(() => seen++);
+  ev.emit('game:start', { seed: 1 });
+  assert.strictEqual(seen, 1);
+  ch.dispose();
+  ev.emit('game:start', { seed: 2 });
+  assert.strictEqual(seen, 1);
+});
 ok('权限裁剪：未声明 world:write 时 setBlock 抛错', () => {
   const base = fakeApi();
   const scoped = scopeAPI(base, []);
@@ -375,6 +407,128 @@ ok('权限裁剪：blocks 只读代理与 tnt / entities / survival 写入口', 
   // 声明权限后，blocks.register 仍必须走门面（真实环境会触发配置刷新）
   const allowed = scopeAPI(fakeApi(), ['blocks:register']);
   assert.doesNotThrow(() => allowed.blocks.register({}));
+});
+ok('权限裁剪：time / settings / plugins 写入口默认拒绝', () => {
+  const scoped = scopeAPI(fakeApi(), []);
+  assert.throws(() => scoped.time.set(0.5), /缺少权限 time:write/);
+  assert.throws(() => scoped.time.setDayLength(100), /缺少权限 time:write/);
+  assert.throws(() => scoped.settings.sound(false), /缺少权限 settings:write/);
+  assert.throws(() => scoped.settings.fov(80), /缺少权限 settings:write/);
+  assert.throws(() => scoped.plugins.register({}), /缺少权限 plugins:manage/);
+  assert.throws(() => scoped.plugins.enable('demo:x'), /缺少权限 plugins:manage/);
+  assert.throws(() => scoped.plugins.disable('demo:x'), /缺少权限 plugins:manage/);
+  assert.throws(() => scoped.plugins.unload('demo:x'), /缺少权限 plugins:manage/);
+  assert.doesNotThrow(() => scoped.plugins.list()); // 读能力保留
+});
+ok('权限裁剪：声明 time / settings / plugins:manage 后放行', () => {
+  const scoped = scopeAPI(fakeApi(), ['time:write', 'settings:write', 'plugins:manage']);
+  assert.doesNotThrow(() => scoped.time.set(0.5));
+  assert.doesNotThrow(() => scoped.settings.fov(80));
+  assert.doesNotThrow(() => scoped.plugins.disable('demo:x'));
+});
+ok('权限裁剪：player.setCamera 归 player:write 管', () => {
+  const scoped = scopeAPI(fakeApi(), []);
+  assert.throws(() => scoped.player.setCamera(1), /缺少权限 player:write/);
+  assert.doesNotThrow(() => scopeAPI(fakeApi(), ['player:write']).player.setCamera(1));
+});
+okAsync('api:emit 同时约束 ctx.events.emit 与 api.events.scope 子通道', async () => {
+  const { ev, ps } = makePluginService();
+  let denied = null;
+  let scopedDenied = null;
+  ps.register({
+    manifest: { id: 'demo:emit' },
+    setup(ctx) {
+      try { ctx.events.emit('game:start', { seed: 1 }); } catch (e) { denied = e.message; }
+      try { ctx.api.events.scope('demo:child').emit('game:start', { seed: 1 }); } catch (e) { scopedDenied = e.message; }
+    },
+  });
+  await ps.enable('demo:emit');
+  assert.match(denied, /api:emit/);
+  assert.match(scopedDenied, /api:emit/);
+  assert.ok(ev.stats().channels.includes('demo:child'));
+
+  let emitted = 0;
+  ev.on('game:start', () => emitted++);
+  ps.register({
+    manifest: { id: 'demo:emit-ok', permissions: ['api:emit'] },
+    setup(ctx) {
+      ctx.events.emit('game:start', { seed: 2 });
+      ctx.api.events.scope('demo:child-ok').emit('game:start', { seed: 3 });
+    },
+  });
+  await ps.enable('demo:emit-ok');
+  assert.strictEqual(emitted, 2);
+  assert.ok(ev.stats().channels.includes('demo:child-ok'));
+  ps.disable('demo:emit-ok');
+  assert.ok(!ev.stats().channels.includes('demo:child-ok'), '子通道应随插件停用销毁');
+});
+okAsync('api.on / api.events.waitFor 归属插件通道，disable 后清理', async () => {
+  const { ev, ps } = makePluginService();
+  ps.register({
+    manifest: { id: 'demo:scoped-subs' },
+    setup(ctx) {
+      ctx.api.on('block:break', () => {});
+      ctx.api.events.waitFor('game:start', 5000).catch(() => {});
+    },
+  });
+  const before = ev.stats().subscribers;
+  await ps.enable('demo:scoped-subs');
+  assert.strictEqual(ev.stats().subscribers, before + 2);
+  ps.disable('demo:scoped-subs');
+  assert.strictEqual(ev.stats().subscribers, before);
+});
+okAsync('list()/get() 的 manifest 是副本，改写无法自我提权', async () => {
+  const { ps } = makePluginService();
+  let denied = false;
+  ps.register({
+    manifest: { id: 'demo:tamper', permissions: [] },
+    setup(ctx) {
+      try { ctx.api.world.setBlock(0, 0, 0, 1); } catch (e) { denied = /world:write/.test(e.message); }
+    },
+  });
+  ps.list()[0].manifest.permissions.push('world:write');
+  ps.get('demo:tamper').manifest.permissions.push('world:write');
+  await ps.enable('demo:tamper');
+  assert.strictEqual(denied, true);
+  assert.deepStrictEqual(ps.get('demo:tamper').manifest.permissions, []);
+});
+ok('register 校验 setup / 未知权限 / 自依赖', () => {
+  const { ps } = makePluginService();
+  assert.throws(() => ps.register({ manifest: { id: 'demo:a' } }), /setup/);
+  assert.throws(
+    () => ps.register({ manifest: { id: 'demo:b', permissions: ['world:writ'] }, setup() {} }),
+    /未知权限/,
+  );
+  assert.throws(
+    () => ps.register({ manifest: { id: 'demo:c', dependencies: ['demo:c'] }, setup() {} }),
+    /自己/,
+  );
+});
+okAsync('停用依赖插件会级联停用下游（依赖方先 teardown）', async () => {
+  const { ps } = makePluginService();
+  const order = [];
+  ps.register({
+    manifest: { id: 'demo:base' },
+    setup() { order.push('base-setup'); return () => order.push('base-teardown'); },
+  });
+  ps.register({
+    manifest: { id: 'demo:mid', dependencies: ['demo:base'] },
+    setup() { order.push('mid-setup'); return () => order.push('mid-teardown'); },
+  });
+  ps.register({
+    manifest: { id: 'demo:leaf', dependencies: ['demo:mid'] },
+    setup() { order.push('leaf-setup'); return () => order.push('leaf-teardown'); },
+  });
+  await ps.enable('demo:leaf');
+  assert.deepStrictEqual(order, ['base-setup', 'mid-setup', 'leaf-setup']);
+  ps.disable('demo:base');
+  assert.strictEqual(ps.get('demo:leaf').state, 'disabled');
+  assert.strictEqual(ps.get('demo:mid').state, 'disabled');
+  assert.strictEqual(ps.get('demo:base').state, 'disabled');
+  assert.deepStrictEqual(order, [
+    'base-setup', 'mid-setup', 'leaf-setup',
+    'leaf-teardown', 'mid-teardown', 'base-teardown',
+  ]);
 });
 ok('插件 dispose 停用全部插件', () => {
   const { ps } = makePluginService();

@@ -41,7 +41,7 @@ export interface DiagnosticSnapshot {
     missingMeshes: number;
     unlitChunks: number;
   };
-  plugins: { id: string; state: string }[];
+  plugins: { id: string; state: string; dependencies?: string[] }[];
   events: { subscribers: number; channels: number; emitted: number };
   survival: { health: number; hunger: number; breath: number; dead: boolean } | null;
   entities: number;
@@ -116,6 +116,14 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
   const failed = s.plugins.filter((pl) => pl.state === 'failed');
   check('plugins.failed', failed.length === 0,
     `插件初始化失败：${failed.map((pl) => pl.id).join(', ')}`);
+  // 级联停用后不应出现「enabled 但依赖未启用」；出现即说明注册表被外部改写或漏了级联
+  const byId = new Map(s.plugins.map((pl) => [pl.id, pl]));
+  const dangling = s.plugins.filter(
+    (pl) => pl.state === 'enabled'
+      && (pl.dependencies ?? []).some((dep) => byId.get(dep)?.state !== 'enabled'),
+  );
+  check('plugins.dependency', dangling.length === 0,
+    `启用中的插件缺少已启用的依赖：${dangling.map((pl) => `${pl.id}→${(pl.dependencies ?? []).join(',')}`).join('；')}`);
   check('events.subscribers', s.events.subscribers >= 0 && s.events.channels >= 0,
     '事件服务统计为负值');
   if (s.mode === 'playing') {
