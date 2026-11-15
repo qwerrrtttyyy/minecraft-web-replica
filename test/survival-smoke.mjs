@@ -603,6 +603,65 @@ try {
   ok('可切回生存模式', (await page.evaluate(() => window.__mc.survival.mode)) === 'survival');
   ok('生存模式再次显示生命条', await page.$eval('.stats-wrap', (el) => el.style.display !== 'none'));
 
+  // ---- v1.4.0 工程续作：透明通道按几何距离排序 ----
+  await page.evaluate(() => {
+    const mc = window.__mc;
+    const p = mc.player.pos;
+    const glass = mc.registry.byNameGet('glass').id;
+    const fx = Math.floor(p.x), fy = Math.floor(p.y), fz = Math.floor(p.z);
+    // 只在玩家周围环形造玻璃（跳过中心 3×3 列），避免把玩家自己卡进实体
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      if (dx === 0 && dz === 0) continue;
+      for (let y = fy - 1; y <= fy + 3; y++) mc.world.setBlock(fx + dx, y, fz + dz, glass);
+    }
+  });
+  await sleep(900);
+  const sort = await page.evaluate(() => {
+    const ord = window.__mc.chunks.transparentOrder;
+    if (!ord.length) return { n: 0, monotone: false, ascending: false, minOrder: 0 };
+    let monotone = true, ascending = true, minOrder = Infinity;
+    for (let i = 1; i < ord.length; i++) if (ord[i].dist > ord[i - 1].dist + 1e-6) monotone = false;
+    for (let i = 1; i < ord.length; i++) if (ord[i].order <= ord[i - 1].order) ascending = false;
+    minOrder = Math.min(...ord.map((o) => o.order));
+    return { n: ord.length, monotone, ascending, minOrder };
+  });
+  ok('透明/水通道产生了排序条目', sort.n > 0, `n=${sort.n}`);
+  ok('透明排序按几何中心距离远→近单调', sort.monotone, `n=${sort.n}`);
+  ok('renderOrder 严格递增且 ≥10', sort.ascending && sort.minOrder >= 10, `min=${sort.minOrder}`);
+
+  // ---- v1.4.0 工程续作：AABB 脱困 ----
+  {
+    const before = await page.evaluate(() => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      // 在玩家即将落入的格子里塞进一个实心块，再传送进去 → 身体必然与实心块相交
+      const x = Math.floor(p.x), z = Math.floor(p.z), y = Math.floor(p.y) - 2;
+      if (!mc.registry.isSolid(mc.world.getBlock(x, y, z))) {
+        mc.world.setBlock(x, y, z, mc.registry.byNameGet('stone').id);
+      }
+      mc.player.teleport(x + 0.5, y, z + 0.5);
+      return { count: mc.player.unstuckCount, isStuck: mc.player.isStuck, x, y, z, ox: p.x, oy: p.y, oz: p.z };
+    });
+    ok('玩家嵌入实心方块后被判定为卡住', before.isStuck);
+    await page.waitForFunction(
+      (n) => window.__mc.player.unstuckCount > n && !window.__mc.player.isStuck,
+      { timeout: 8000 }, before.count,
+    ).catch(() => {});
+    const after = await page.evaluate(() => ({
+      count: window.__mc.player.unstuckCount,
+      isStuck: window.__mc.player.isStuck,
+    }));
+    ok('AABB 脱困自动完成并计数', after.count > before.count && !after.isStuck,
+      `${before.count}→${after.count}`);
+    // 恢复现场：清除嵌入的石头并回到原位，避免污染后续存档 / 重载断言
+    await page.evaluate((b) => {
+      const mc = window.__mc;
+      mc.world.setBlock(b.x, b.y, b.z, 0);
+      mc.player.teleport(b.ox, b.oy, b.oz);
+    }, before);
+    await sleep(200);
+  }
+
   // ---- 存档 v2 ----
   const save = await page.evaluate(() => window.CraftAPI.save.export());
   ok('存档版本为 v2', save.version === 2);

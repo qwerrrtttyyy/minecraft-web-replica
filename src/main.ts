@@ -115,6 +115,7 @@ async function boot() {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
+    camera: engine.camera,
   });
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
@@ -796,6 +797,7 @@ async function boot() {
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
+      `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
     ].join('\n');
   }
 
