@@ -8,7 +8,8 @@ export type PluginPermission =
   | 'player:write'
   | 'save:write'
   | 'api:emit'
-  | 'blocks:register';
+  | 'blocks:register'
+  | 'botany:register';
 
 export interface PluginManifest {
   /** 全局唯一 id，建议 `作者:名称`（如 `core:autosave`） */

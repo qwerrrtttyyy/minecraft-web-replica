@@ -24,8 +24,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `RELEASE`（正式版 `vN`）分开维护；`package.json` 只跟 `VERSION` 一致，README 必须含两行版本标记。
   `npm run check:version` 机械校验双轨格式、一致性与源码唯一版本源。日常迭代只动 `VERSION`，
   `RELEASE` 仅在发布正式版时推进；Git 标签统一带 `v`：正式版打 `vN`，历史迭代标签为 `vX.Y.Z`（`v1.3.0` / `v1.3.1`）。
-- **方块 id 只追加**：内置方块 id 1..56 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+- **方块 id 只追加**：内置方块 id 1..91 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
+  插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），不要占用内置区间。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
   `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止
@@ -42,6 +43,10 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **权限是护栏不是沙箱**：`scopeAPI` 会拦截 world/player/save/api/blocks 的写入口，
   但 `ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
+- **生态扩展点**：插件植物通过 `CraftAPI.botany.registerPlant/registerRule` 接入，
+  `Botany` 只在内置规则全部未命中时按方块 id 兜底分派；禁止把插件植物写进
+  `PLANT_TRAITS` / `BotanyIds`，也不要为单个插件植物加 `if` 分支。插件停用必须
+  按 owner 注销规则与特性，规则写入统一走 `PlantRuleContext`（自带 `plant:grow` 事件）。
 - **诊断**：新增高风险不变量时，优先在 `src/diagnostics/RuntimeDiagnostics.ts` 增加检查，
   并在 `test/diagnostics-check.cjs` 补一条注入式回归。
 - **Worker 池构造**：`createWorkerPool()` 任一构造失败必须整体 terminate 并回退主线程，

@@ -412,3 +412,16 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 
 **当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
 下一步做透明排序与 AABB 脱困。
+
+## 生态扩展点（v1.4.3）
+
+`src/world/plantRules.ts` 提供 `PlantRuleRegistry`（按 owner 批量注销、按方块 id
+动态解析名称、支持一个方块命中多条规则）。`Botany` 持有该表，在 `applyAt()` 的
+内置分支全部未命中时才构造 `PlantRuleContext` 分派；上下文只暴露读世界、带能量
+消耗的写入、能量微调三类能力，写入统一经 `plant:grow` 事件，插件拿不到 `World`。
+
+`CraftAPI.botany` 是对应门面，`PluginService.scopeAPI()` 按 `botany:register`
+权限裁剪写入口。内置插件 `core:botany-expansion` 的数据与规则放在
+`src/plugins/builtin/botanyContent.ts`（纯数据，可编译进测试快照），装配逻辑放在
+`botanyExpansion.ts`。依赖方向仍是 `main.ts → services → api → 业务模块`，
+插件不 import 引擎内部实现。
