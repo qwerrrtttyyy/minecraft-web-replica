@@ -164,6 +164,7 @@ export class ChunkManager implements System {
   private loading = false;
 
   // ---- Worker 调度状态 ----
+  private poolSize = 0;
   private workers: Worker[] = [];
   /** 每个 Worker 当前在途任务数，用于 least-busy 派发 */
   private busy: number[] = [];
