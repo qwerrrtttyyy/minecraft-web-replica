@@ -1,10 +1,49 @@
 # Minecraft TS —— TypeScript 体素引擎复刻
 
+<p align="center">
+  <img src="docs/assets/showcase.gif" width="720" alt="实机演示：清晨森林 → 挖掘 → 黄昏 TNT → 星空">
+</p>
+
+<p align="center">
+  <b><a href="https://qwerrrtttyyy.github.io/minecraft-web-replica/">▶ 在线试玩</a></b>
+  &nbsp;·&nbsp; <a href="#快速开始">本地运行</a>
+  &nbsp;·&nbsp; <a href="docs/ARCHITECTURE.md">架构</a>
+  &nbsp;·&nbsp; <a href="docs/TESTING.md">测试</a>
+  &nbsp;·&nbsp; <a href="#english-summary">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml"><img alt="verify CI" src="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml/badge.svg"></a>
+  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/tags"><img alt="version" src="https://img.shields.io/github/v/tag/qwerrrtttyyy/minecraft-web-replica?label=version"></a>
+  <img alt="TypeScript 5.6" src="https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white">
+  <img alt="three.js 0.170" src="https://img.shields.io/badge/three.js-0.170-049ef4?logo=threedotjs&logoColor=white">
+  <img alt="runtime deps: three.js only" src="https://img.shields.io/badge/runtime%20deps-three.js%20only-2ea44f">
+  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
 一个架构清晰、依赖极轻的前端 Minecraft 基础复刻。运行时唯一依赖为 **three.js**（渲染），
 其余全部手写：体素世界、区块流式加载、带 AO 的网格生成、程序化像素纹理、昼夜天空、
-物理碰撞、实体 AI、触控适配、存档与扩展 API。
+物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
+离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
 > 当前正式版：v1 ｜ 当前非正式版：1.4.2（双轨版本号，规则见下方「版本规范」）
+
+## English Summary
+
+**Minecraft TS** is a hand-written voxel Minecraft replica in TypeScript. **three.js is the only
+runtime dependency** — chunk streaming, AO + Greedy meshing on a Web Worker pool, dual-channel
+sky/block lighting, procedural pixel textures, day/night sky, physics, survival mode, saves and
+an extension API are all implemented from scratch. `npm run build` emits a **single
+self-contained `dist/index.html`** that runs offline, even from `file://`. Every texture is drawn
+pixel-by-pixel in code — no original game assets.
+
+**▶ Play online:** <https://qwerrrtttyyy.github.io/minecraft-web-replica/>
+
+**Controls:** `WASD` move · `Space` jump · double-`Space`/`F` fly (creative) · hold left-click
+mine · right-click place/eat · `E` block library · `F3` debug · `Esc` menu. On mobile: virtual
+joystick + on-screen buttons (jump / mine / place / up / down).
+
+> Unofficial learning project, not affiliated with Mojang / Microsoft.
 
 ## 版本规范
 
