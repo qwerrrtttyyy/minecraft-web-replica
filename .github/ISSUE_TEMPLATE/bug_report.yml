@@ -1,0 +1,77 @@
+name: 缺陷报告
+description: 报告一个可复现的缺陷
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间报告缺陷！请尽量填写完整信息，可复现的报告能被修复得更快。
+        **安全漏洞请勿在此提交**，见 [SECURITY.md](../blob/main/SECURITY.md)。
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 按 F3 打开调试面板，标题显示的版本（如 `Minecraft TS v1 (1.4.2)`）
+      placeholder: "Minecraft TS v1 (1.4.2)"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 游戏模式
+      options:
+        - 生存模式
+        - 创造模式
+        - 标题页 / 菜单
+        - 与模式无关
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 运行环境
+      description: 浏览器及版本、操作系统、设备（桌面 / 手机型号）、是否移动端
+      placeholder: |
+        - 浏览器：Chrome 141 / Safari 26
+        - 系统：Android 15 / Windows 11
+        - 设备：Pixel 9 / 桌面（是否触摸屏）
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从打开游戏开始，一步步描述
+      placeholder: |
+        1. 打开在线试玩链接，进入生存模式
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 附加信息
+      description: 截图 / 录屏、F3 诊断输出（`CraftAPI.diagnostics.run()`）、控制台报错等
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 Issue，没有重复报告
+          required: true
+        - label: 我已在最新 main / 在线试玩版本上复现
+          required: true
