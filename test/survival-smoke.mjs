@@ -9,6 +9,8 @@ import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+/** 版本唯一来源：src/core/version.ts ↔ package.json 由 check:version 机械校验，
+ *  这里只读 package.json，避免在测试里再抄一份版本字面量（抄一次就漂移一次）。 */
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist/index.html')}`;
 const CHROME = process.env.CHROME_PATH ??
   ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']

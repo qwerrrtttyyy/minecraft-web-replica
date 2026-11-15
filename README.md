@@ -32,7 +32,9 @@
 物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
 离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.4.4（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.4.9（双轨版本号，规则见下方「版本规范」）
+
+**v1.4.9 整合发布**：整合多项待合并改进（含插件体系强化、设置与合成、体验优化等）并统一版本号；详见变更记录与 PR 历史。
 
 **v1.4.4 AABB 脱困与透明排序**：新增纯逻辑模块 `src/player/unstuck.ts`——按「最小贯穿量」
 搜索把已嵌入实心方块的玩家/实体平滑推出（≤0.4s 缓动，完成后清速度并派发
@@ -503,8 +505,12 @@ CraftAPI.events.stats();                    // { emitted, subscribers, channels 
 CraftAPI.events.scope('demo:ns');           // 返回 EventChannel，dispose() 一键清理
 ```
 
-权限白名单 `world:write` / `player:write` / `save:write` / `api:emit` / `blocks:register`：
+权限白名单 `world:write` / `player:write` / `save:write` / `api:emit` / `blocks:register` /
+`time:write` / `settings:write` / `plugins:manage`：
 未声明的写能力在插件上下文里会被拦截并抛错，读能力默认开放。
+`api:emit` 同时约束 `ctx.events.emit` 与 `api.events.scope(...).emit`；
+`api.on / off` 与 `api.events.waitFor / onAny` 都归属插件通道，停用时一并清理。
+`disable(A)` 会级联停用依赖 A 的下游插件。
 内置插件 `core:autosave`、`core:hud-feedback` 就是用同一套契约实现的，见
 `src/plugins/builtin/`。完整契约与迁移路径见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -854,6 +860,11 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 | 初始化中 disable 后回写 enabled | `src/services/plugins/PluginService.ts` | 每次 enable/disable 递增 epoch；setup 返回后检测代次，只清理不回写 |
 | `EventChannel.waitFor` 不受作用域管理 | `src/services/events/EventChannel.ts` | 改为通道内 `once` + 定时器，dispose 时统一退订并 reject |
 | 权限可经 `blocks.register` 绕过 | `src/services/plugins/PluginService.ts` | 无 `blocks:register` 时暴露只读 Proxy；`tnt.ignite` / `entities.spawn` 归入 `world:write`，`survival` 写入口归入 `player:write` |
+| `api:emit` 被 `ctx.events.emit` 绕过 | `src/services/events/EventChannel.ts`、`src/services/plugins/PluginService.ts` | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
+| `api.on` 订阅在停用后仍存活 | `src/services/plugins/PluginService.ts` | `api.on / off`、`api.events.waitFor / onAny` 路由进插件通道，停用时随通道一起撤销 |
+| manifest 可被改写来自我提权 | `src/services/plugins/PluginService.ts` | `register` 时做防御性拷贝，`list() / get()` 返回的也是副本 |
+| 停用依赖后下游插件仍 enabled | `src/services/plugins/PluginService.ts` | `disable` 级联停用下游依赖，teardown 顺序为依赖方先释放 |
+| `time` / `settings` / 插件管理无权限约束 | `src/services/plugins/PluginService.ts` | 写入口集中登记在 `WRITE_CAPABILITIES` 表，新增 `time:write` / `settings:write` / `plugins:manage` |
 | 异步存档回调吞掉新编辑 | `src/main.ts` | 增加 `dirtyVersion` + `saveSeq`，只有最新保存且期间无新编辑时才清脏 |
 | 天空光列回收平方级开销 | `src/world/light.ts` | 旧实现沿列逐格 `removeLight`，在洞穴/悬崖上方放置方块会重复遍历同一依赖链；改为整列清零 + 多源 BFS，每格只处理一次 |
 | 云层每 96 格跳变 / 长时间挂机漂出视野 | `src/gfx/sky.ts` | 云块以世界格为锚点、按 1/4 网格宽度重建，漂移与移动均无接缝 |
@@ -869,15 +880,15 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 - 每 10 秒自动采样一次，异常集合变化时才输出 `console.groupCollapsed` 分组（warn 不触发
   浏览器 `pageerror` 断言，因此可在实景测试中安全开启）。
 - 检查项：版本一致性、玩家坐标 / 摔落值、playing 输入状态、暂停态残留按键、Worker 配置 ACK、
-  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、事件订阅、
-  生存数值与死亡状态一致、实体数量、存档脏标记老化。
+  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、插件依赖悬空、
+  事件订阅、生存数值与死亡状态一致、实体数量、存档脏标记老化。
 
 ### 验证
 
 | 项 | 结果 |
 |---|---|
-| `test:services` | 38 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限） |
-| `test:diagnostics` | 20 组断言（健康快照 + 各类异常注入） |
+| `test:services` | 48 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限 / emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用） |
+| `test:diagnostics` | 22 组断言（健康快照 + 各类异常注入 + 插件依赖悬空） |
 | `test:smoke` | 95/95；新增诊断组、运行时注册方块 Config ACK、菜单方块库返回、keyup 清理断言；固定 seed=2026 + 条件轮询，消除地形随机性导致的假失败 |
 | `test:visual` | 9/9 |
 
@@ -960,6 +971,44 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 - 🔒 发现安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告，**不要**公开提 Issue
 
 AI 辅助的贡献同样欢迎：请由提交者逐行核验、如实标注 `Co-authored-by`，并对照硬规则自查。
+
+---
+
+## v1.5.0 插件体系强化
+
+### 修掉的确定性缺陷
+
+| 缺陷 | 根因 | 修法 |
+|---|---|---|
+| `api:emit` 被 `ctx.events.emit` 绕过 | `EventChannel.emit` 直接走总线，与权限表无关 | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
+| `api:emit` 被 `api.events.scope(ns).emit` 绕过 | 插件可自建任意命名空间通道 | `scopeAPI` 的 `events.scope` 改为返回插件通道的**子通道**，随插件一起销毁 |
+| `api.on` 订阅在停用后仍存活 | `api.on` 继承自 base，订阅不归属通道 | `api.on / off`、`api.events.waitFor / onAny` 全部路由进插件通道 |
+| manifest 可被改写来自我提权 | manifest 按引用存储，`list()/get()` 原样返回 | `register` 时做防御性拷贝，`list() / get()` / `register()` 返回的都是再副本 |
+| 停用依赖后下游插件仍 enabled | `disable` 只处理目标插件 | 级联停用下游依赖，teardown 顺序为依赖方先释放 |
+
+### 权限体系
+
+- 写入口从散落的 `if` 收敛为 `WRITE_CAPABILITIES` 表（`world/player/save/api/blocks/
+  time/settings/plugins`），新增能力时只改一张表，不会漏拦截。
+- 新增 `time:write`（`time.set` / `setDayLength`）、`settings:write`（`settings.*`）、
+  `plugins:manage`（插件注册 / 启停 / 卸载，`list` 只读）三项权限。
+- `register` 期校验：`setup` 必须是函数、权限名必须在白名单内、依赖必须是非空 id 数组、
+  不能自依赖——拼错立即失败，而不是运行时静默拒绝。
+
+### 生命周期与诊断
+
+- `disable` 级联停用下游依赖插件；`unload` 同理，依赖方随后可重新 enable。
+- 新增诊断项 `plugins.dependency`：启用中的插件若依赖未启用（含被外部改写的注册表）即报错。
+- `EventChannel` 新增 `fork()`（子通道随父通道销毁）、`onAny()`（归属通道，随 dispose 撤销）。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `test:services` | 48 项（新增 emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用 / fork 与 onAny 共 10 项） |
+| `test:diagnostics` | 22 组断言（新增插件依赖悬空注入） |
+| `test:logic` / `test:light` / `test:mesher` / `test:worker-pool` / `test:edits` / `test:terrain-system` | 全通过 |
+| `test:smoke` / `test:visual` | 本机 Chromium 二进制 SIGBUS 无法启动，需在 CI（apt chromium + xvfb）跑 |
 
 ---
 

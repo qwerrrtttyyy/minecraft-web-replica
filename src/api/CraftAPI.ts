@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import type { EventService, GameEvents, EventChannel, EventStats, AnyEventHandler } from '../services/events';
+import type {
+  EventService,
+  GameEvents,
+  EventChannel,
+  EventChannelOptions,
+  EventStats,
+  AnyEventHandler,
+} from '../services/events';
 import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
 import { VERSION, RELEASE } from '../core/version';
 import type { Engine } from '../core/engine';
@@ -46,7 +53,8 @@ export interface CraftAPI {
 
   /** v1.2.0：事件服务视图（作用域订阅、异步等待、派发统计、全局观测） */
   events: {
-    scope(ns: string): EventChannel;
+    /** options.canEmit 用于创建受权限约束的插件通道（默认放行） */
+    scope(ns: string, options?: EventChannelOptions): EventChannel;
     stats(): EventStats;
     onAny(fn: AnyEventHandler): () => void;
     waitFor<K extends keyof GameEvents>(type: K, timeoutMs?: number): Promise<GameEvents[K]>;
@@ -199,7 +207,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     off: (t, fn) => d.events.off(t, fn),
     emit: (t, p) => d.events.emit(t, p),
     events: {
-      scope: (ns) => d.events.scope(ns),
+      scope: (ns, options) => d.events.scope(ns, options),
       stats: () => d.events.stats(),
       onAny: (fn) => d.events.onAny(fn),
       waitFor: (t, ms) => d.events.waitFor(t, ms),

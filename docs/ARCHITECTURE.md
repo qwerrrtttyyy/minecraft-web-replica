@@ -1,4 +1,4 @@
-# Minecraft TS 架构说明（v1.4.1）
+# Minecraft TS 架构说明（v1.4.9）
 
 > 目标：把**插件**与**事件**相关的 API 从 `main.ts` 中彻底独立为服务，形成可替换、
 > 可测试、有生命周期的架构分层；同时修复实测暴露的缺陷并补齐工程化闭环。
@@ -141,14 +141,28 @@ register ──► registered ──► enable ──► [递归启用依赖] �
 
 | 权限 | 放行能力 |
 |---|---|
-| `world:write` | `world.setBlock` |
-| `player:write` | `player.teleport` / `setFly` / `break` / `place` |
+| `world:write` | `world.setBlock` / `tnt.ignite` / `entities.spawn` |
+| `player:write` | `player.teleport` / `setFly` / `break` / `place` / `setCamera`；`survival.setMode` / `respawn` / `give` / `damage` / `heal` |
 | `save:write` | `save.import` / `setProvider` |
-| `api:emit` | `CraftAPI.emit` |
-| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` |
+| `api:emit` | `CraftAPI.emit`、`ctx.events.emit`、`api.events.scope(...).emit` |
+| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` / `blocks.register` |
+| `time:write` | `time.set` / `time.setDayLength` |
+| `settings:write` | `settings.renderDistance` / `sensitivity` / `fov` / `sound` |
+| `plugins:manage` | `plugins.register` / `enable` / `disable` / `unload`（`list` 只读） |
 
-未声明的写能力在插件上下文里会抛错（读能力默认全开）。初始化失败被隔离为
-`failed` 并发出 `plugin:error`，**不会拖垮启动流程**。
+未声明的写能力在插件上下文里会抛错（读能力默认全开）。写入口集中登记在
+`PluginService.ts` 的 `WRITE_CAPABILITIES` 表中，新增能力时同步维护该表，避免
+「加了写入口忘了加拦截」。初始化失败被隔离为 `failed` 并发出 `plugin:error`，
+**不会拖垮启动流程**。
+
+**权限边界**：`api:emit` 同时约束 `ctx.events` 与 `api.events.scope()` 派生的子通道；
+`api.on / off`、`api.events.waitFor / onAny` 都归属插件通道，停用时一并清理。
+manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是副本，插件无法
+改写自己的 `permissions`。`ctx.services` 与 `ctx.api.engine` 仍是受信内部对象，
+权限是护栏不是沙箱。
+
+**停用级联**：`disable(A)` 会先递归停用所有依赖 A 的下游插件（依赖方先 teardown），
+避免出现「B 仍 enabled 但它依赖的 A 已停用」的悬浮依赖。
 
 ---
 
@@ -258,7 +272,7 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
 | 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
 | 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
-| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 43 项（含并发启用、初始化中停用、waitFor 清理） |
+| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 46 项（含并发启用、初始化中停用、waitFor 清理、emit 门禁、级联停用） |
 | 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
 | 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组 |
 | 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
