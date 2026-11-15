@@ -672,7 +672,7 @@ async function boot() {
   container.provide(TOKENS.BuiltinDeps, builtinDeps);
 
   const api = createCraftAPI({
-    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival,
+    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
     getSaveProvider: () => provider,
     setSaveProvider: (p) => { provider = p; },
     collectSave,

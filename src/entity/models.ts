@@ -34,7 +34,6 @@ function faceTexture(draw: (ctx: CanvasRenderingContext2D) => void): THREE.Canva
 }
 
 const SKIN = 0xb9855c;
-const HAIR = 0x3c2e1e;
 const SHIRT = 0x00a8a8;
 const PANTS = 0x3b3b8f;
 const SHOE = 0x4a4a4a;

@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
 import type { EventService } from '../services/events';
-import type { BlockRegistry } from './blocks';
-import { AIR } from './blocks';
+import { AIR, type BlockRegistry } from './blocks';
 import type { IWorldGenerator } from './generator';
 import { LightEngine } from './light';
 

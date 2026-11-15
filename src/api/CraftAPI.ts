@@ -16,6 +16,9 @@ import type { SoundEngine } from '../audio/sound';
 import type { SurvivalState } from '../player/survival';
 import type { GameMode } from '../core/types';
 import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
+import type { Botany, BotanyStats } from '../world/botany';
+import type { PlantTrait } from '../world/plantTraits';
+import type { PlantRule, PlantRuleInfo } from '../world/plantRules';
 
 /**
  * 公开扩展门面（挂载到 window.CraftAPI）。
@@ -56,6 +59,16 @@ export interface CraftAPI {
     disable(id: string): void;
     unload(id: string): void;
     list(): PluginRecord[];
+  };
+
+  /** v1.4.3：生态扩展点。插件注册植物特性与生态规则（需 botany:register 权限） */
+  botany: {
+    registerPlant(name: string, trait: PlantTrait): void;
+    unregisterPlant(name: string): void;
+    registerRule(rule: PlantRule): void;
+    unregisterRules(owner: string): number;
+    listRules(): PlantRuleInfo[];
+    stats(): BotanyStats;
   };
 
   /** v1.3.2：运行时诊断组（Worker 配置 / 区块收敛 / 输入 / 插件 / 存档） */
@@ -151,6 +164,7 @@ export interface APIDeps {
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
+  botany: Botany;
   diagnostics: {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
@@ -194,6 +208,14 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       disable: (id) => d.plugins.disable(id),
       unload: (id) => d.plugins.unload(id),
       list: () => d.plugins.list(),
+    },
+    botany: {
+      registerPlant: (name, trait) => d.botany.registerTrait(name, trait),
+      unregisterPlant: (name) => d.botany.unregisterTrait(name),
+      registerRule: (rule) => d.botany.registerRule(rule),
+      unregisterRules: (owner) => d.botany.unregisterRules(owner),
+      listRules: () => d.botany.listRules(),
+      stats: () => d.botany.stats(),
     },
     diagnostics: {
       run: () => d.diagnostics.run(),
