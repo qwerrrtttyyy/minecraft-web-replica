@@ -23,7 +23,7 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **版本双轨单一来源**：`src/core/version.ts` 是唯一来源——`VERSION`（非正式版 `X.Y.Z`）与
   `RELEASE`（正式版 `vN`）分开维护；`package.json` 只跟 `VERSION` 一致，README 必须含两行版本标记。
   `npm run check:version` 机械校验双轨格式、一致性与源码唯一版本源。日常迭代只动 `VERSION`，
-  `RELEASE` 仅在发布正式版时推进，Git 标签同步打 `vN`（历史迭代标签 `1.3.0` / `1.3.1` 不带 `v`）。
+  `RELEASE` 仅在发布正式版时推进；Git 标签统一带 `v`：正式版打 `vN`，历史迭代标签为 `vX.Y.Z`（`v1.3.0` / `v1.3.1`）。
 - **方块 id 只追加**：内置方块 id 1..56 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
