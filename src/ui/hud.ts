@@ -5,6 +5,7 @@ import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
 import { CraftingPanel, type CraftingHost } from './crafting';
+import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
 
 /**
  * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
@@ -176,6 +177,7 @@ export class HUD {
   private ioTextArea!: HTMLTextAreaElement;
   private ioCopyBtn!: HTMLButtonElement;
   private ioApplyBtn!: HTMLButtonElement;
+  private aboutOverlay!: HTMLElement;
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
   private crafting!: CraftingPanel;
@@ -197,6 +199,7 @@ export class HUD {
     this.buildGameHud();
     this.buildMenu();
     this.buildOptions();
+    this.buildAbout();
     this.buildPalette();
     this.buildHelp();
     this.buildKeybinds();
@@ -278,7 +281,9 @@ export class HUD {
     helpLink.addEventListener('click', () => this.showHelp(true));
     const optionsLink = h('button', 'link-btn', '设置');
     optionsLink.addEventListener('click', () => this.opts.onOptionsOpen('title'));
-    linkRow.append(helpLink, optionsLink);
+    const aboutLink = h('button', 'link-btn', '关于本项目');
+    aboutLink.addEventListener('click', () => this.showAbout(true));
+    linkRow.append(helpLink, optionsLink, aboutLink);
     inner.appendChild(linkRow);
 
     inner.appendChild(h('div', 'title-footer',
@@ -632,6 +637,7 @@ export class HUD {
     panel.appendChild(newWorldRow);
 
     panel.appendChild(this.mcButton('保存并返回标题', () => this.opts.onQuitToTitle()));
+    panel.appendChild(this.mcButton('关于本项目', () => this.showAbout(true)));
     panel.appendChild(h('div', 'menu-note', '进度已自动保存到本机浏览器'));
     this.menuOverlay.appendChild(panel);
     this.menuOverlay.style.display = 'none';
@@ -826,10 +832,13 @@ export class HUD {
     dev.appendChild(ioRow);
     dev.appendChild(h('div', 'menu-note', '开发者项用于调试与基准，改动立即生效'));
 
-    panel.appendChild(this.mcButton('重置全部设置', () => {
+    const footer = h('div', 'menu-row options-footer');
+    footer.appendChild(this.mcButton('关于本项目', () => this.showAbout(true)));
+    footer.appendChild(this.mcButton('重置全部设置', () => {
       this.opts.onResetOptions();
       this.syncOptions(this.opts.getOptions());
     }));
+    panel.appendChild(footer);
     panel.appendChild(this.mcButton('完成', () => this.opts.onOptionsClose(), 'mc-btn-big'));
     panel.appendChild(h('div', 'menu-note', '设置自动保存，换世界也保留'));
     this.optionsOverlay.appendChild(panel);
@@ -917,6 +926,53 @@ export class HUD {
 
   get optionsOpen() {
     return this.optionsOverlay.style.display !== 'none';
+  }
+
+  // ---------- 关于本项目 ----------
+  /** 游戏内「关于」页：版本信息全部来自 version.ts 唯一来源，不在此硬编码 */
+  private buildAbout() {
+    this.aboutOverlay = h('div', 'overlay about-overlay');
+    const panel = h('div', 'mc-panel about-panel');
+    panel.appendChild(h('div', 'panel-title', '关于本项目'));
+
+    const meta = h('div', 'about-meta');
+    const metaRow = (label: string, value: string) => {
+      const r = h('div', 'about-meta-row');
+      r.append(h('span', 'about-meta-label', label), h('span', 'about-meta-val', value));
+      meta.appendChild(r);
+    };
+    metaRow('项目', ENGINE_NAME);
+    metaRow('正式里程碑', RELEASE);
+    metaRow('迭代版本', VERSION);
+    metaRow('插件 API 契约', PLUGIN_API_VERSION);
+    panel.appendChild(meta);
+
+    const body = h('div', 'about-text');
+    const para = (text: string) => body.appendChild(h('p', '', text));
+    para('一个架构清晰、依赖极轻的体素 Minecraft 复刻：运行时唯一依赖 three.js，'
+      + '体素世界、网格生成、程序化纹理、昼夜天空、物理与 AI 全部手写。');
+    para('构建产物是单个自包含 HTML：离线、无外部资源，file:// 双击即可游玩；'
+      + '所有纹理均为代码逐像素绘制，不含任何原版资源。');
+    para('本项目完全由 AI 生成——全部源码、测试与文档均出自 AI 编程代理，人类仅提出方向。'
+      + '生成方式与质量边界见仓库 README 的「关于本项目（诚实说明）」。');
+    para('双轨版本号：vN 是正式里程碑（只在发布时推进），X.Y.Z 是日常迭代版；'
+      + '实验性内容（WASM 内核 / 插件载体）默认关闭，可在设置页开启。');
+    panel.appendChild(body);
+
+    panel.appendChild(h('div', 'menu-note',
+      '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'));
+    panel.appendChild(this.mcButton('返回', () => this.showAbout(false), 'mc-btn-big'));
+    this.aboutOverlay.appendChild(panel);
+    this.aboutOverlay.style.display = 'none';
+    this.root.appendChild(this.aboutOverlay);
+  }
+
+  showAbout(v: boolean) {
+    this.aboutOverlay.style.display = v ? '' : 'none';
+  }
+
+  get aboutOpen() {
+    return this.aboutOverlay.style.display !== 'none';
   }
 
   // ---------- 方块库 ----------

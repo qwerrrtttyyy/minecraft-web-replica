@@ -1127,8 +1127,10 @@ async function boot() {
       }
       switch (e.type) {
         case 'pause':
-          // 导入/导出面板盖在最上层，Esc 先关它，再轮到设置页
-          if (hud.optionsIOOpen) {
+          // 导入/导出面板与关于页盖在最上层，Esc 先关它们，再轮到设置页
+          if (hud.aboutOpen) {
+            hud.showAbout(false);
+          } else if (hud.optionsIOOpen) {
             hud.showOptionsIO(false);
           } else if (hud.optionsOpen) {
             // 设置页盖在最上层，Esc 先关它（标题屏打开时也适用）

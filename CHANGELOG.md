@@ -2,7 +2,7 @@
 
 本项目所有值得注意的变更都记录在此文件。
 版本号遵循「双轨版本」约定：正式版 `vN`（里程碑）/ 迭代版 `X.Y.Z`（日常迭代），
-唯一来源为 `src/core/version.ts`。更详细的演进实录见 README 各版本记录章节。
+唯一来源为 `src/core/version.ts`。更详细的演进实录见 [docs/HISTORY.md](docs/HISTORY.md)。
 
 ## [Unreleased]
 
