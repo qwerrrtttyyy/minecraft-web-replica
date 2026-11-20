@@ -164,7 +164,6 @@ export class ChunkManager implements System {
   private loading = false;
 
   // ---- Worker 调度状态 ----
-  private poolSize = 0;
   private workers: Worker[] = [];
   /** 每个 Worker 当前在途任务数，用于 least-busy 派发 */
   private busy: number[] = [];
@@ -257,7 +256,6 @@ export class ChunkManager implements System {
       this.busy.push(0);
       this.workerConfig.push(-1);
     }
-    this.poolSize = this.workers.length;
   }
 
   /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
@@ -266,7 +264,6 @@ export class ChunkManager implements System {
     this.workers = [];
     this.busy = [];
     this.workerConfig = [];
-    this.poolSize = 0;
     // 旧池的回传消息不能再计入新池的 busy / config，直接丢弃
     this.pendingResults.length = 0;
     const pending = [...this.inFlight.entries()];

@@ -17,6 +17,9 @@ export default defineConfig({
       injectRegister: false,
       manifest: false, // 手写 manifest 到 public，路径更可控（相对 base: './'）
       workbox: {
+        // 避免 SW 生成阶段 terser 挂起（部分 Node 版本下 renderChunk Promise 不收敛）；
+        // 开发模式仅关闭压缩，功能与缓存策略不变
+        mode: 'development',
         // 单文件构建：只有 index.html 需要缓存（JS/CSS 已内联其中）
         globPatterns: ['**/*.{html,png,webmanifest}'],
         maximumFileSizeToCacheInBytes: 100_000_000, // 内联后的 HTML 体积较大

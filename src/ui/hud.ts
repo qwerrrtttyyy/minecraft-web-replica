@@ -608,9 +608,7 @@ export class HUD {
     btnRow.appendChild(this.mcButton('设置', () => this.opts.onOptionsOpen('menu')));
     // 工作台：生存模式下随时可开（材料来自背包），与右键工作台方块等价
     btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
-    if (typeof (this as any).showKeybinds === 'function') {
-      btnRow.appendChild(this.mcButton('按键设置', () => (this as any).showKeybinds(true)));
-    }
+    btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
 
     const saveRow = h('div', 'menu-row');

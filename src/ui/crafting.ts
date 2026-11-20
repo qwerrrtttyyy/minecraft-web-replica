@@ -172,7 +172,7 @@ export class CraftingPanel {
 
   /** 点背包条目：放进选中的格子 */
   private onBagClick(material: MaterialId) {
-    const target = this.selected >= 0 ? this.selected : this.cells.findIndex((c) => c === null);
+    const target = this.selected >= 0 ? this.selected : this.cells.indexOf(null);
     if (target < 0) {
       this.hintEl.textContent = '合成格已满';
       return;

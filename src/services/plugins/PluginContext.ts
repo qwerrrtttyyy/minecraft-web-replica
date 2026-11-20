@@ -9,10 +9,10 @@ export type PluginPermission =
   | 'save:write'
   | 'api:emit'
   | 'blocks:register'
-  | 'botany:register'
   | 'time:write'
   | 'settings:write'
-  | 'plugins:manage';
+  | 'plugins:manage'
+  | 'botany:register';
 
 /** 全部合法权限名（register 时校验，拼错立即失败而不是静默放行/拒绝） */
 export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = [
@@ -21,10 +21,10 @@ export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = [
   'save:write',
   'api:emit',
   'blocks:register',
-  'botany:register',
   'time:write',
   'settings:write',
   'plugins:manage',
+  'botany:register',
 ];
 
 export interface PluginManifest {

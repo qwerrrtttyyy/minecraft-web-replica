@@ -3,15 +3,15 @@ import type { EventChannel, EventChannelOptions } from '../events/EventChannel';
 import type { GameEvents } from '../events/GameEvents';
 import type { Disposable, ServiceContainer } from '../ServiceContainer';
 import type { CraftAPI } from '../../api/CraftAPI';
-import type {
-  PluginContext,
-  PluginDefinition,
-  PluginManifest,
-  PluginPermission,
-  PluginRecord,
-  PluginState,
+import {
+  PLUGIN_PERMISSIONS,
+  type PluginContext,
+  type PluginDefinition,
+  type PluginManifest,
+  type PluginPermission,
+  type PluginRecord,
+  type PluginState,
 } from './PluginContext';
-import { PLUGIN_PERMISSIONS } from './PluginContext';
 
 interface InternalRecord {
   def: PluginDefinition;
@@ -36,7 +36,12 @@ const deny = (p: PluginPermission): never => {
  * 读能力不在此表中，一律经原型链保留。
  */
 const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
-  'world:write': [['world', 'setBlock'], ['tnt', 'ignite'], ['entities', 'spawn']],
+  'world:write': [
+    ['world', 'setBlock'],
+    ['world', 'decorate'],
+    ['tnt', 'ignite'],
+    ['entities', 'spawn'],
+  ],
   'player:write': [
     ['player', 'teleport'],
     ['player', 'setFly'],
@@ -51,12 +56,6 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
   ],
   'save:write': [['save', 'import'], ['save', 'setProvider']],
   'blocks:register': [['registerBlock'], ['registerTile'], ['registerEntity'], ['setGenerator']],
-  'botany:register': [
-    ['botany', 'registerPlant'],
-    ['botany', 'unregisterPlant'],
-    ['botany', 'registerRule'],
-    ['botany', 'unregisterRules'],
-  ],
   'time:write': [['time', 'set'], ['time', 'setDayLength']],
   'settings:write': [
     ['settings', 'renderDistance'],
@@ -69,6 +68,12 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
     ['plugins', 'enable'],
     ['plugins', 'disable'],
     ['plugins', 'unload'],
+  ],
+  'botany:register': [
+    ['botany', 'registerPlant'],
+    ['botany', 'unregisterPlant'],
+    ['botany', 'registerRule'],
+    ['botany', 'unregisterRules'],
   ],
   'api:emit': [['emit']],
 };
@@ -276,86 +281,110 @@ export class PluginService implements Disposable {
         // 否则「依赖初始化失败 / 循环依赖」会被误当作成功继续 setup。
         const depRec = this.records.get(dep);
         if (!depRec || depRec.state !== 'enabled') {
-          throw new Error(`依赖未就绪: ${dep} (${depRec?.state ?? 'missing'})`);
+          throw new Error(`依赖 ${dep} 未成功启用（${depRec?.state ?? 'missing'} ${depRec?.error ?? ''}）`);
         }
+        if (rec.epoch !== epoch || this.disposed) throw new Error('初始化期间被停用');
       }
-
-      const teardown: (() => void)[] = [];
+      const base = this.api();
+      const scoped = scopeAPI(base, rec.manifest.permissions, channel);
       const ctx: PluginContext = {
         id,
         events: channel,
         services: this.services,
-        api: scopeAPI(this.api(), rec.manifest.permissions, channel),
-        log: (...args) => console.log(`[plugin:${id}]`, ...args),
-        onDispose: (fn) => { if (typeof fn === 'function') teardown.push(fn); },
+        api: scoped,
+        log: (...args: unknown[]) => console.log(`[plugin:${id}]`, ...args),
+        onDispose: (fn) => rec.teardown.push(fn),
       };
-
-      const maybeTeardown = await rec.def.setup(ctx);
-      if (typeof maybeTeardown === 'function') teardown.push(maybeTeardown);
-
-      // setup 完成时检查代次：若期间被 disable/dispose，已产物必须回收且不能落为 enabled
-      if (this.disposed || rec.epoch !== epoch || rec.state !== 'registered') {
-        for (const fn of [...teardown].reverse()) { try { fn(); } catch { /* ignore */ } }
+      const result = await rec.def.setup(ctx);
+      if (rec.epoch !== epoch || this.disposed) {
+        // 初始化期间被 disable / unload：清理，但不要覆盖 disabled 状态
+        if (typeof result === 'function') rec.teardown.push(result);
+        this.runTeardown(rec);
         channel.dispose();
+        if (rec.channel === channel) rec.channel = undefined;
         return;
       }
-
-      rec.teardown = teardown;
+      if (typeof result === 'function') rec.teardown.push(result);
       rec.state = 'enabled';
       rec.error = undefined;
       this.events.emit('plugin:enabled', { id });
-    } catch (err) {
-      // 失败后必须清理本次已创建的通道/副作用，避免半启用泄漏
-      try { channel.dispose(); } catch { /* ignore */ }
-      if (rec.epoch === epoch) {
-        rec.teardown = [];
-        rec.channel = undefined;
-        rec.state = 'failed';
-        rec.error = err instanceof Error ? err.message : String(err);
+    } catch (e) {
+      if (rec.epoch !== epoch || this.disposed) {
+        // 取消路径：不标 failed，也不污染 plugin:error
+        this.runTeardown(rec);
+        channel.dispose();
+        if (rec.channel === channel) rec.channel = undefined;
+        return;
       }
-      this.events.emit('plugin:error', { id, error: rec.error ?? String(err) });
-      throw err;
+      rec.state = 'failed';
+      rec.error = e instanceof Error ? e.message : String(e);
+      // 初始化中途失败也要清理已注册的订阅与钩子
+      this.runTeardown(rec);
+      channel.dispose();
+      if (rec.channel === channel) rec.channel = undefined;
+      this.events.emit('plugin:error', { id, error: rec.error });
     }
   }
 
-  async disable(id: string): Promise<void> {
-    if (this.disposed) throw new Error('[plugins] 服务已销毁');
-    const rec = this.records.get(id);
-    if (!rec) throw new Error(`[plugins] 插件未注册: ${id}`);
-    if (rec.state !== 'enabled' && rec.state !== 'failed') return;
-    // 先自增代次，让正在进行的 setup 在返回后感知到取消
-    rec.epoch++;
-    for (const fn of [...rec.teardown].reverse()) {
-      try { fn(); } catch (err) { console.warn(`[plugins] ${id} teardown error:`, err); }
+  private runTeardown(rec: InternalRecord): void {
+    for (const fn of rec.teardown.splice(0).reverse()) {
+      try {
+        fn();
+      } catch (e) {
+        console.error(`[plugins] ${rec.manifest.id} teardown 失败`, e);
+      }
     }
-    rec.teardown = [];
-    try { rec.channel?.dispose(); } catch { /* ignore */ }
+  }
+
+  disable(id: string): void {
+    this.disableInternal(id, new Set());
+  }
+
+  /**
+   * 级联停用：依赖本插件的下游插件会先被停用（teardown 顺序 = 依赖方先释放），
+   * 避免出现「B 处于 enabled 但它依赖的 A 已经不在」的悬浮依赖。
+   * `visited` 防止循环依赖注册（enable 阶段才会拦截）时无限递归。
+   */
+  private disableInternal(id: string, visited: Set<string>): void {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const rec = this.records.get(id);
+    // 从未启用的插件也要落到 disabled 终态（dispose 时统一收口）
+    if (!rec || rec.state === 'disabled') return;
+    for (const other of this.records.values()) {
+      if (other.state !== 'enabled') continue;
+      if ((other.manifest.dependencies ?? []).includes(id)) {
+        this.disableInternal(other.manifest.id, visited);
+      }
+    }
+    // 使进行中的 setup 失效：它返回后只做清理，不会再写回 enabled
+    rec.epoch++;
+    this.runTeardown(rec);
+    rec.channel?.dispose();
     rec.channel = undefined;
     rec.state = 'disabled';
     this.events.emit('plugin:disabled', { id });
   }
 
-  async unload(id: string): Promise<void> {
-    await this.disable(id);
+  /** 卸载：停用后从注册表移除，可再次注册同 id */
+  unload(id: string): void {
+    this.disable(id);
     this.records.delete(id);
-  }
-
-  get(id: string): PluginRecord | undefined {
-    const rec = this.records.get(id);
-    return rec ? this.snapshot(rec) : undefined;
   }
 
   list(): PluginRecord[] {
     return [...this.records.values()].map((r) => this.snapshot(r));
   }
 
-  async dispose(): Promise<void> {
+  get(id: string): PluginRecord | undefined {
+    const r = this.records.get(id);
+    return r ? this.snapshot(r) : undefined;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
-    const ids = [...this.records.keys()].reverse();
-    for (const id of ids) {
-      try { await this.disable(id); } catch { /* ignore */ }
-    }
-    this.records.clear();
-    this.pending.clear();
+    for (const id of [...this.records.keys()]) this.disable(id);
+    // 保留注册表以便 service:ready / 调试面板在销毁后仍能查看最终状态
   }
 }

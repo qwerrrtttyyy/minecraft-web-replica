@@ -10,7 +10,7 @@
  * 4. 病态地形（全空间实心）不死循环、位移有界、如实返回 resolved=false；
  * 5. 纯函数语义：不修改传入的 pos。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { overlappingBlocks, isStuck, resolvePenetration } = require('./logic/player/unstuck.js');
 
 const WIDTH = 0.6;

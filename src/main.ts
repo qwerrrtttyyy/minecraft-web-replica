@@ -19,7 +19,6 @@ import { BlockHighlight } from './gfx/highlight';
 import { Player, type HotbarState } from './player/player';
 import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
 import {
-  CRAFTING_RECIPES,
   inventoryKeyToMaterial,
   materialToStack,
   type MaterialId,

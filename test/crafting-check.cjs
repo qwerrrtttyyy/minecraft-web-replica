@@ -6,7 +6,7 @@
  * 材料组（#planks）、2×2 个人合成格与 3×3 工作台的尺寸差异、
  * 以及「多放一个材料就不该匹配」这类严格性约束。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { BlockRegistry, registerBuiltinBlocks } = require('./logic/world/blocks.js');
 const {
   matchRecipe,
@@ -36,7 +36,6 @@ const id = (n) => {
 };
 /** 网格元素用材料标识：方块名或 'item:xxx'（与 UI 层一致） */
 const blk = (n) => n;
-const item = (n) => `item:${n}`;
 
 /** 造一个 size×size 的空网格 */
 const grid = (size) => new Array(size * size).fill(null);
