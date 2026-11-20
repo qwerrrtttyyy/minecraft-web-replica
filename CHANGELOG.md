@@ -6,9 +6,27 @@
 
 ## [Unreleased]
 
-### 计划中
-- 透明通道按距离排序、AABB 脱困（PR 审阅中）
-- 插件体系强化：权限门禁补全、订阅归属、manifest 防篡改、级联停用（PR 审阅中）
+## [1.5.0] - 2026-11-20
+
+### 新增
+- **实验性内容开关**（设置页，默认关闭）：开启后启用真实 WebAssembly 噪声内核（逐位等价性自检 + 失败自动回退）、插件三载体（js / wasm:module / wasm:host）与扩展点注册表（世界生成 / 游戏循环）；关闭后回到与 v1.4.9 一致的纯 JS 路径。
+- 插件体系 v2：semver 依赖约束、可选依赖、apiVersion/capabilities/priority/timeoutMs/config、热重载、enableAll、stats、命名空间存储、私有服务、反向依赖保护（force=true 级联）。
+- 代码审查修复：EventService/EventChannel.once 幂等、Engine.dispose 解绑监听、相机远平面共享常量、fallbackToMain 先 settle、moveBody 最近面钳制等 8 项。
+- 新增回归：`test:wasm`(24)、`test:plugin-v2`(21)、`test:plugin-carrier`(15)、`test:review-fixes`(15)。
+
+### 保留（自 v1.4.9）
+- 设置页高级项与导入导出、生存合成系统、IndexedDB 存档、PWA、按键重绑定与手柄、AABB 脱困与透明排序、群系染色与方块重力、Biome 门禁。
+- 双轨版本：`RELEASE=v1`（正式里程碑）/ `VERSION=1.5.0`（迭代）；预览版标签 `1.5.0-alpha.1` → `beta.1` → `rc.1` → `1.5.0`。
+
+## [1.4.9] - 2026-11-15
+
+### 新增
+- 整合此前的开放 PR：插件体系强化、设置页、合成系统、体验优化（群系染色/方块重力/IndexedDB/PWA/按键重绑定与手柄）、Biome 门禁、文档工程化。
+- 统一版本号为 1.4.9，`check:version` 与全量回归通过。
+
+### 修复
+- 透明通道按距离排序、AABB 脱困（原 PR #7）
+- 插件权限门禁补全、订阅归属、manifest 防篡改、级联停用（原 PR #5）
 
 ## [1.4.2] - 2026-11-15
 
