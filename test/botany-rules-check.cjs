@@ -124,8 +124,9 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块仍为 91 种，插件未挤占内置表', t.reg.all().length === 91, `${t.reg.all().length}`);
-  ok('内置最大 id 为 91', Math.max(...t.reg.all().map((d) => d.id)) === 91);
+  ok('内置方块仍为 103 种，插件未挤占内置表（群系扩充追加 12 种）',
+    t.reg.all().length === 103, `${t.reg.all().length}`);
+  ok('内置最大 id 为 109（cherry_leaves）', Math.max(...t.reg.all().map((d) => d.id)) === 109);
   install(t);
   ok('6 种植物 id 92~97 连续末位追加',
     EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 92 + i),
@@ -161,14 +162,14 @@ log('\n[2] 规则注册表契约');
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
   late.register({ id: 'late', owner: 'late', plants: ['future_plant'], tick: () => false });
-  ok('注册时方块尚未存在 → 不命中', late.ruleFor(98).length === 0);
+  ok('注册时方块尚未存在 → 不命中', late.ruleFor(110).length === 0);
   t.reg.register({
-    id: 98, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
+    id: 110, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
     opaque: false, liquid: false, transparentPass: false, lightEmission: 0,
     hardness: 0, sound: 'plant',
     tiles: { top: 'x', bottom: 'x', side: 'x' },
   });
-  ok('方块补齐后按名称重新解析即命中', late.ruleFor(98).length === 1);
+  ok('方块补齐后按名称重新解析即命中', late.ruleFor(110).length === 1);
 }
 
 log('\n[3] botany:register 权限裁剪');
@@ -297,7 +298,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 91);
+  ok('内置方块总数未变', t.reg.all().length === 103);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

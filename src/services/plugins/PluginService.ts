@@ -190,16 +190,14 @@ export function scopeAPI(
   const canRegisterBlocks = perms.has('blocks:register');
   if (base.blocks) {
     const registerThroughFacade = base.registerBlock;
-    api.blocks = new Proxy(base.blocks, {
-      get(target, prop) {
-        if (prop === 'register') {
-          if (!canRegisterBlocks) return () => deny('blocks:register');
-          return (input: Parameters<CraftAPI['registerBlock']>[0]) => registerThroughFacade(input);
-        }
-        const value = Reflect.get(target, prop, target);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
+    // Node 24 的 Proxy 完整性校验会拒绝 get 拦截把「只读不可配置」的 register
+    // 换成权限桩（TypeError 而非预期的 deny）。这里改用冻结的普通对象副本：
+    // 原注册表不在原型链上，getPrototypeOf 摸不到真方法，读能力由 copyObject 保留。
+    const blocksView = copyObject(base.blocks) as Record<string, unknown>;
+    blocksView.register = canRegisterBlocks
+      ? (input: Parameters<CraftAPI['registerBlock']>[0]) => registerThroughFacade(input)
+      : () => deny('blocks:register');
+    api.blocks = Object.freeze(blocksView) as unknown as typeof base.blocks;
   }
 
   // 事件视图：api:emit 必须同时约束 ctx.events.emit 与 api.events.scope(...).emit，

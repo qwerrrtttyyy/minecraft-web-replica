@@ -37,7 +37,7 @@
   Worker 池上跑 Greedy Meshing（quad 数约降 40%）
 - **光照**：天空光 + 方块光双通道 BFS（0–15 级），增量更新，烘焙进顶点属性（零额外 draw call）
 - **地形**：四阶段管线 `columns → ores → trees → decorate`，域扭曲 + `ridged fBm` 山脊与河道，
-  温度 × 湿度双轴群系，渐隐洞穴，分层矿脉，跨区块树冠
+  温度 × 湿度双轴群系（11 个：恶地 / 沼泥 / 干草原 / 樱花林增新），渐隐洞穴，分层矿脉，跨区块树冠
 - **生存循环**：生命 / 饥饿 / 呼吸 / 挖掘硬度 / 掉落入包 / 敌对生物 / 死亡重生 / 3×3 合成
 - **植物生态**：随机刻引擎 + 内在能量体系（solar / hydro / fungal 三类代谢、根系共享、开花反馈）
 - **91+ 方块**：全部经 `BlockRegistry` 数据驱动注册，8×8 → 16×16 程序化图集（256 槽）
@@ -104,7 +104,8 @@ src/
 
 - **域扭曲 + 脊线山脉 + 河道**：低频噪声扰动采样坐标；`ridged fBm` 生成山脊，`|n|≈0`
   等值线切出河谷，河谷按距海平面高度平滑淡出、不在海床拉沟
-- **群系**：温度 × 湿度双轴 + 坡度决定 `ocean / beach / desert / plains / forest / taiga / alpine` 地表
+- **群系**：温度 × 湿度双轴 + 坡度决定 `ocean / beach / desert / plains / forest / taiga / alpine / mesa / swamp / savanna / cherry` 地表
+  （恶地按 `strata` 彩色陶瓦层分层 + 红沙；沼泥地表 + 苔藓等高湿装饰；干草原草皮 + 金合欢伞形树；樱花林粉冠粉色树）
 - **洞穴**：脊线隧道 + 团块洞穴双 3D 噪声，按距地表深度渐隐；水下地层不挖，杜绝空气袋
 - **矿脉**：煤 / 铁 / 金 / 钻 / 铜 / 红石 / 青金石 / 绿宝石按深度分层，绿宝石逐格校验群系边界
 - **跨区块树木**：6×6 候选点扫描，树冠裁剪写入覆盖区块，双向无「半棵树」
@@ -162,6 +163,7 @@ npm run verify   # 唯一验收入口，要求浏览器测试 100% PASS
 | `test:light` / `test:mesher` | 光照 21 组；网格快照保真、Greedy 光照逐格等价、quad 收益 |
 | `test:services` / `test:diagnostics` | 服务容器 / 事件 / 插件 / 存档 38 项；运行时诊断 20 组 |
 | `test:terrain-system` / `test:botany` / `test:plant-energy` | 方块 id append-only 校验、生态随机刻、能量体系 |
+| `test:feel` | 跳跃输入缓冲 8 组（按下沿 / 120ms 窗口 / 消费 / 按住 / reset） |
 | `test:crafting` | 配方表、有序 / 无序匹配、2×2 与 3×3 尺寸差异 43 组 |
 | `test:wasm` / `test:plugin-v2` / `test:plugin-carrier` | WASM 自检回退、插件体系 v2、三载体 |
 | `test:smoke` / `test:visual` | Chromium 实景 + 像素级视觉回归（Xvfb 软渲染） |

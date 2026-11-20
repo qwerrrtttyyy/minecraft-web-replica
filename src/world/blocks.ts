@@ -336,4 +336,34 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
     drops: [{ name: 'spruce_sapling', chance: 0.08 }, { name: 'spruce_leaves', chance: 0.5 }],
   });
+
+  // ---- 群系扩充（id 98 起，末位追加；92~97 保留给 core:botany-expansion 插件） ----
+  // 恶地彩色陶瓦：按深度分层，构成彩色丘陵地貌
+  cube('terracotta_red', '红色陶瓦', {}, { id: 98, sound: 'stone', hardness: 1.5 });
+  cube('terracotta_orange', '橙色陶瓦', {}, { id: 99, sound: 'stone', hardness: 1.5 });
+  cube('terracotta_yellow', '黄色陶瓦', {}, { id: 100, sound: 'stone', hardness: 1.5 });
+  cube('terracotta_white', '白色陶瓦', {}, { id: 101, sound: 'stone', hardness: 1.5 });
+  cube('terracotta_blue', '蓝色陶瓦', {}, { id: 102, sound: 'stone', hardness: 1.5 });
+  cube('red_sand', '红沙', {}, { id: 103, sound: 'sand', hardness: 0.5, falling: true });
+  // 沼泽泥：沼泽群系的地表 / 填充
+  cube('mud', '泥', {}, { id: 104, sound: 'dirt', hardness: 0.6 });
+  // 干草原草皮：暖黄草色由 shader 的群系色调制
+  cube('dry_grass', '干草方块', { top: 'dry_grass_top', bottom: 'dirt', side: 'dry_grass_side' },
+    { id: 105, sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true });
+  // 金合欢：热带草原的伞形乔木
+  cube('acacia_log', '金合欢原木',
+    { top: 'acacia_log_top', bottom: 'acacia_log_top', side: 'acacia_log_side' },
+    { id: 106, sound: 'wood', hardness: 2 });
+  cube('acacia_leaves', '金合欢树叶', {}, {
+    id: 107, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
+    drops: [{ name: 'self' }],
+  });
+  // 樱花：樱花林的粉冠乔木
+  cube('cherry_log', '樱花原木',
+    { top: 'cherry_log_top', bottom: 'cherry_log_top', side: 'cherry_log_side' },
+    { id: 108, sound: 'wood', hardness: 2 });
+  cube('cherry_leaves', '樱花树叶', {}, {
+    id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
+    drops: [{ name: 'self' }],
+  });
 }

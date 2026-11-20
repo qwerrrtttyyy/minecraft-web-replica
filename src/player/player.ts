@@ -32,6 +32,9 @@ const GRAVITY = 27;
 const JUMP_VEL = 8.4;
 const REACH = 6;
 const ENTITY_REACH = 4.2;
+/** 屏震：幅度上限 + 时长，连击不叠加（见 shake） */
+const SHAKE_MAX = 0.24;
+const SHAKE_TIME = 0.32;
 
 /**
  * 玩家控制器：物理、第一/第三人称相机、挖掘/放置/进食/攻击、手持物品动画。
@@ -224,8 +227,13 @@ export class Player implements System, PhysicsBody {
 
   shake(amp: number) {
     if (!this.viewBob) return;
-    this.shakeAmp = Math.max(this.shakeAmp, amp);
-    this.shakeT = 0.4;
+    // 幅度封顶；连击只在强于当前剩余强度时才覆盖，避免叠加到眩晕 / 粘滞
+    const a = Math.min(SHAKE_MAX, amp);
+    const remaining = this.shakeAmp * (this.shakeT / SHAKE_TIME);
+    if (a > remaining) {
+      this.shakeAmp = a;
+      this.shakeT = SHAKE_TIME;
+    }
   }
 
   toggleFly(): boolean {
@@ -312,6 +320,7 @@ export class Player implements System, PhysicsBody {
     }
     const input = this.input;
     const [dx, dy] = input.consumeLook();
+    const jumpBuffered = input.sampleJump();
     this.yaw -= dx * 0.0022;
     this.pitch = clamp(this.pitch - dy * 0.0022, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
 
@@ -358,9 +367,10 @@ export class Player implements System, PhysicsBody {
     } else {
       this.vel.y -= GRAVITY * dt;
       this.vel.y = Math.max(this.vel.y, -46);
-      if (input.jump && this.onGround) {
+      if (jumpBuffered && this.onGround) {
         this.vel.y = JUMP_VEL;
         this.onGround = false;
+        input.consumeJumpBuffer();
         this.survival.exhaust(0.12);
       }
     }
@@ -728,6 +738,11 @@ export class Player implements System, PhysicsBody {
     target.entity.hurt(dmg, this.pos.x, this.pos.z);
     this.survival.exhaust(0.1);
     this.sound.hit();
+    // 命中确认：碎屑贴在被击者身上（世界空间生成），小幅度屏震不抢操作
+    const e = target.entity;
+    this.particles.burst(e.pos.x, e.pos.y + e.height * 0.65, e.pos.z,
+      [0.92, 0.18, 0.16], 9, 0.16, 2.2);
+    this.shake(0.07);
   }
 
   pickBlock() {
@@ -754,12 +769,19 @@ export class Player implements System, PhysicsBody {
 
   private updateCamera(dt: number, hSpeed: number) {
     this.swingT = Math.min(1, this.swingT + dt / 0.26);
+    // 视角摇晃关闭期间清掉残留震动，避免重新开启时突然抖一下
+    if (!this.viewBob && this.shakeT > 0) {
+      this.shakeT = 0;
+      this.shakeAmp = 0;
+    }
     if (this.shakeT > 0) {
       this.shakeT -= dt;
       if (this.shakeT <= 0) this.shakeAmp = 0;
     }
-    const shakeX = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
-    const shakeY = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
+    // 快速收尾包络（outCubic）：起手干脆、衰减平滑，静止时幅度严格归零
+    const env = this.shakeT > 0 ? (this.shakeT / SHAKE_TIME) ** 1.4 : 0;
+    const shakeX = this.viewBob ? this.shakeAmp * (Math.random() * 2 - 1) * env : 0;
+    const shakeY = this.viewBob ? this.shakeAmp * (Math.random() * 2 - 1) * env : 0;
 
     this.eyePosition(this.tmpEye);
     this.viewDirection(this.tmpDir);

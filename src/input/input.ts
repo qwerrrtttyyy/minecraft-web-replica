@@ -53,6 +53,9 @@ export class Input {
   private gamepadNotified = false;
   onGamepadConnected: ((label: string) => void) | null = null;
   private wasLocked = false;
+  /** 跳跃输入缓冲：按下瞬间记时，落地前 120ms 内的提前按键仍然生效 */
+  private jumpPressedAt = -Infinity;
+  private jumpPrev = false;
   private lastSpace = 0;
   private lastW = 0;
   private sprintLatch = false;
@@ -220,6 +223,8 @@ export class Input {
   reset() {
     this.keys.clear();
     this.sprintLatch = false;
+    this.jumpPressedAt = -Infinity;
+    this.jumpPrev = false;
     this.breakHeld = false;
     this.placeHeld = false;
     this.dragging = false;
@@ -290,6 +295,22 @@ export class Input {
 
   get jump(): boolean {
     return this.keys.has(this.bindings.jump) || this.touchJump || this.padJump;
+  }
+
+  /**
+   * 每帧帧首采样一次跳跃：按下沿记录时间戳，落地前 ≤120ms 的提前输入仍算数。
+   * 持续按住依旧返回 true（保留原版「按住连跳」行为），缓冲只补提前量。
+   */
+  sampleJump(now = performance.now()): boolean {
+    const down = this.jump;
+    if (down && !this.jumpPrev) this.jumpPressedAt = now;
+    this.jumpPrev = down;
+    return down || now - this.jumpPressedAt <= 120;
+  }
+
+  /** 起跳成功后清掉缓冲，避免一次提前按键在落地瞬间连跳多次 */
+  consumeJumpBuffer() {
+    this.jumpPressedAt = -Infinity;
   }
 
   get sneak(): boolean {
