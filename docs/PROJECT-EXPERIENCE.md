@@ -86,6 +86,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **冻结场景不是「把 system 过滤掉」**：`main.ts` 注册的是**闭包** system
   （内部自己调 `chunks.update` / `sky.update`），按对象引用过滤无效，必须整体替换 `engine.systems`；
   且 `chunks.waterTime` / `sky.localTime` 是持续动画，冻结时要归零再 `sky.update(0,0)`，否则两次探针不是同一帧。
+- **大二进制不入库**：禁止向 git 提交 >1MB 的二进制（演示动画 / 视频 / 打包产物等）。
+  演示媒体优先转成 animated WebP（README 首屏 `docs/assets/showcase.webp`），否则放 GitHub
+  Release 资产或 Actions Artifacts；录制与压缩流程见 `.github/workflows/showcase.yml`。
 
 ## 常见排查
 

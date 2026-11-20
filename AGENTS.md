@@ -122,6 +122,8 @@ src/
     先定假设 / 对照 / 翻转方式 / 判据，再用 `npm run test:experiment` 同页翻转测量。
     A/B 必须同页（跨页区块集合不可比），对比前证场景一致，并单独测噪声底。
     设置与数据见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)；测量工具不挂 `verify`。
+15. **大二进制不入库**：>1MB 的媒体 / 产物不提交 git；演示动画用 WebP
+    （`docs/assets/showcase.webp`），否则放 Release / Artifacts。详见 `docs/PROJECT-EXPERIENCE.md`。
 
 ---
 
