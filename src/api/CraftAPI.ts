@@ -7,7 +7,13 @@ import type {
   EventStats,
   AnyEventHandler,
 } from '../services/events';
-import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
+import type {
+  PluginService, PluginDefinition, PluginRecord, PluginStats,
+  ExtensionRegistry, ExtensionInfo, ExtensionStats,
+} from '../services/plugins';
+import type {
+  WasmRuntime, WasmStatus, WasmStats, WasmBenchmark, WasmModuleInfo,
+} from '../wasm/runtime';
 import { VERSION, RELEASE } from '../core/version';
 import type { MesherThreads, QualityMode } from '../core/options';
 import type { Engine } from '../core/engine';
@@ -69,6 +75,33 @@ export interface CraftAPI {
     disable(id: string): void;
     unload(id: string): void;
     list(): PluginRecord[];
+    get(id: string): PluginRecord | undefined;
+    reload(id: string): Promise<void>;
+    enableAll(): Promise<void>;
+    stats(): PluginStats;
+    install(source: string): PluginRecord;
+    findByCapability(capability: string): string[];
+  };
+
+  /** 实验性功能：WebAssembly 运行时视图（开关由设置页「实验性内容」控制） */
+  wasm: {
+    status(): WasmStatus;
+    stats(): WasmStats;
+    benchmark(iterations?: number): WasmBenchmark | null;
+    setEnabled(v: boolean): WasmStatus;
+    listModules(): WasmModuleInfo[];
+    call(name: string, ...args: number[]): number;
+    callModule(id: string, fn: string, ...args: number[]): number;
+    registerModule(id: string, data: Uint8Array | ArrayBuffer | string): WasmModuleInfo;
+    unregisterModule(id: string): boolean;
+  };
+
+  /** 实验性功能：扩展点注册表视图（只读查询，注册请通过 ctx.extensions） */
+  extensions: {
+    points(): ExtensionInfo[];
+    stats(): ExtensionStats;
+    has(point: string): boolean;
+    list(point?: string): ExtensionInfo[];
   };
 
   /** v1.4.3：生态扩展点。插件注册植物特性与生态规则（需 botany:register 权限） */
@@ -228,6 +261,8 @@ export interface APIDeps {
   exportOptions(): string;
   importOptions(json: string): number;
   botany: Botany;
+  wasm: WasmRuntime;
+  extensions: ExtensionRegistry;
   diagnostics: {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
@@ -260,7 +295,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     off: (t, fn) => d.events.off(t, fn),
     emit: (t, p) => d.events.emit(t, p),
     events: {
-      scope: (ns, options) => d.events.scope(ns, options),
+      scope: (ns) => d.events.scope(ns),
       stats: () => d.events.stats(),
       onAny: (fn) => d.events.onAny(fn),
       waitFor: (t, ms) => d.events.waitFor(t, ms),
@@ -271,6 +306,29 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       disable: (id) => d.plugins.disable(id),
       unload: (id) => d.plugins.unload(id),
       list: () => d.plugins.list(),
+      get: (id) => d.plugins.get(id),
+      reload: (id) => d.plugins.reload(id),
+      enableAll: () => d.plugins.enableAll(),
+      stats: () => d.plugins.stats(),
+      install: (source) => d.plugins.install(source),
+      findByCapability: (c) => d.plugins.findByCapability(c),
+    },
+    wasm: {
+      status: () => d.wasm.getState(),
+      stats: () => d.wasm.stats(),
+      benchmark: (n) => d.wasm.benchmark(n),
+      setEnabled: (v) => d.wasm.setEnabled(v),
+      listModules: () => d.wasm.listModules(),
+      call: (name, ...args) => d.wasm.callKernel(name, args),
+      callModule: (id, fn, ...args) => d.wasm.callModule(id, fn, args),
+      registerModule: (id, data) => d.wasm.registerModule(id, data),
+      unregisterModule: (id) => d.wasm.unregisterModule(id),
+    },
+    extensions: {
+      points: () => d.extensions.list(),
+      stats: () => d.extensions.stats(),
+      has: (point) => d.extensions.has(point),
+      list: (point) => d.extensions.list(point),
     },
     botany: {
       registerPlant: (name, trait) => d.botany.registerTrait(name, trait),

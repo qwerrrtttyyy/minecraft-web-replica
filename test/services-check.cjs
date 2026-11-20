@@ -521,7 +521,8 @@ okAsync('停用依赖插件会级联停用下游（依赖方先 teardown）', as
   });
   await ps.enable('demo:leaf');
   assert.deepStrictEqual(order, ['base-setup', 'mid-setup', 'leaf-setup']);
-  ps.disable('demo:base');
+  // v2：默认启用反向依赖保护，级联停用需显式 force=true
+  ps.disable('demo:base', true);
   assert.strictEqual(ps.get('demo:leaf').state, 'disabled');
   assert.strictEqual(ps.get('demo:mid').state, 'disabled');
   assert.strictEqual(ps.get('demo:base').state, 'disabled');

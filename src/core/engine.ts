@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import { clamp, type System } from './types';
 
 /**
+ * 相机默认远平面。与 main.ts 的 farplane 系统共用同一常量，
+ * 避免构造初值（旧为 900）与首帧收敛值不一致导致的深度精度浪费。
+ */
+export const CAMERA_DEFAULT_FAR = 520;
+
+/**
  * 引擎主循环：渲染器、场景、相机、系统调度、尺寸自适应。
  * 扩展点：engine.addSystem() 可挂入任意自定义更新逻辑。
  */
@@ -25,6 +31,11 @@ export class Engine {
   private disposed = false;
   private fpsAcc = 0;
   private fpsCount = 0;
+  /** 保存监听器引用，dispose 时解绑，避免组件化复用时累积泄漏 */
+  private readonly onWindowResize: () => void;
+  private readonly onOrientation: () => void;
+  private readonly onVisualResize: () => void;
+  private orientationTimer = 0;
 
   constructor(container: HTMLElement) {
     // 粗指针优先；触摸设备再要求「无悬停」，避免触摸屏笔记本被当成手机
@@ -41,14 +52,20 @@ export class Engine {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.08, 900);
+    this.camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.08, CAMERA_DEFAULT_FAR);
     this.scene.add(this.camera);
 
-    addEventListener('resize', () => this.resize(container));
-    addEventListener('orientationchange', () => setTimeout(() => this.resize(container), 120));
+    this.onWindowResize = () => this.resize(container);
+    this.onOrientation = () => {
+      clearTimeout(this.orientationTimer);
+      this.orientationTimer = window.setTimeout(() => this.resize(container), 120);
+    };
+    this.onVisualResize = () => this.resize(container);
+    addEventListener('resize', this.onWindowResize);
+    addEventListener('orientationchange', this.onOrientation);
     // 移动端地址栏收放会改变可视区域，需要同步画布尺寸
     if (this.isMobile && window.visualViewport) {
-      window.visualViewport.addEventListener('resize', () => this.resize(container));
+      window.visualViewport.addEventListener('resize', this.onVisualResize);
     }
   }
 
@@ -98,8 +115,15 @@ export class Engine {
   }
 
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.orientationTimer);
+    removeEventListener('resize', this.onWindowResize);
+    removeEventListener('orientationchange', this.onOrientation);
+    if (this.isMobile && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.onVisualResize);
+    }
     this.renderer.dispose();
   }
 }

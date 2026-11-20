@@ -45,6 +45,8 @@ export interface HUDOptions {
   onGreedy: (v: boolean) => void;
   onMesherThreads: (v: MesherThreads) => void;
   onAutosaveInterval: (v: number) => void;
+  /** 实验性内容开关（WASM 内核 / 插件载体） */
+  onExperimental: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
   onCopyOptions: (json: string) => void;
@@ -168,6 +170,7 @@ export class HUD {
   private greedyRow!: HTMLButtonElement;
   private threadsRow!: HTMLButtonElement;
   private autosaveRow!: HTMLButtonElement;
+  private experimentalRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
   private ioTitle!: HTMLElement;
   private ioTextArea!: HTMLTextAreaElement;
@@ -790,6 +793,15 @@ export class HUD {
       this.touchSensVal = ts.val;
     }
 
+    // ---- 实验性内容（类似原版的实验性玩法，可随时关闭）----
+    const exp = group('实验性内容');
+    this.experimentalRow = this.optionRow('WASM 内核 / 插件载体', () => {
+      this.opts.onExperimental(!this.opts.getOptions().experimental);
+      this.syncOptions(this.opts.getOptions());
+    });
+    exp.appendChild(this.experimentalRow);
+    exp.appendChild(h('div', 'menu-note', '默认关闭；开启后启用 WebAssembly 计算内核与插件三载体，关闭即回到纯 JS 路径。'));
+
     // ---- 开发者 ----
     const dev = group('开发者');
     this.debugRow = this.optionRow('显示调试信息', () => {
@@ -890,6 +902,7 @@ export class HUD {
     this.setRowVal(this.qualityRow, choiceLabel(QUALITY_CHOICES, o.quality));
     this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
+    if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
   }
 
   showOptions(v: boolean) {

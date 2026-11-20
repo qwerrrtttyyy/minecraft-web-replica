@@ -67,9 +67,10 @@ export class Sky implements System {
   private cWhite = new THREE.Color(0xffffff);
   private cWarm = new THREE.Color(0xffb066);
   private cUnderFog = new THREE.Color(UNDERWATER_FOG);
+  private tmpUnder = new THREE.Color();
 
   constructor(
-    scene: THREE.Scene,
+    private scene: THREE.Scene,
     private camera: THREE.PerspectiveCamera,
     private getRenderDistance: () => number,
     private events: EventService,

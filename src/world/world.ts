@@ -1,6 +1,9 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
 import type { EventService } from '../services/events';
+import {
+  EXTENSION_POINTS, type ExtensionRegistry, type WorldgenColumnPayload,
+} from '../services/plugins/extensions';
 import { AIR, type BlockRegistry } from './blocks';
 import type { IWorldGenerator } from './generator';
 import { LightEngine } from './light';
@@ -55,6 +58,8 @@ export class World {
     readonly registry: BlockRegistry,
     public generator: IWorldGenerator,
     readonly events: EventService,
+    /** v1.6.0：扩展点注册表，可选（不传则无世界生成钩子，旧测试零改动） */
+    readonly extensions?: ExtensionRegistry,
   ) {
     this.bedrockId = registry.byNameGet('bedrock')?.id ?? 3;
     this.light = new LightEngine(this);
@@ -97,6 +102,27 @@ export class World {
     }
     if (!chunk.generated) {
       this.generator.generateChunk(cx, cz, chunk.data);
+      // v1.6.0：世界生成扩展点。插件（JS / WASM）可在地形落地后改写列内容，
+      // 发生在玩家编辑差分与光照初始化之前：编辑仍优先，新方块参与光照计算。
+      if (this.extensions?.has(EXTENSION_POINTS.WORLDGEN_COLUMN)) {
+        const x0 = cx * CS, z0 = cz * CS;
+        const payload: WorldgenColumnPayload = {
+          cx, cz, data: chunk.data,
+          get: (x, y, z) => {
+            if (y < 0 || y >= H) return 0;
+            const lx = x - x0, lz = z - z0;
+            if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return 0;
+            return chunk.data[chunk.idx(lx, y, lz)];
+          },
+          set: (x, y, z, id) => {
+            if (y < 1 || y >= H) return;
+            const lx = x - x0, lz = z - z0;
+            if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return;
+            chunk.data[chunk.idx(lx, y, lz)] = id;
+          },
+        };
+        this.extensions.emit(EXTENSION_POINTS.WORLDGEN_COLUMN, payload);
+      }
       // 应用玩家编辑差分（分桶后不再扫描全档，也不再逐条 split 坐标字符串）
       const x0 = cx * CS;
       const z0 = cz * CS;

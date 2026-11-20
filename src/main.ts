@@ -38,6 +38,7 @@ import {
 } from './save/save';
 import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
+import { WasmRuntime } from './wasm/runtime';
 import type { BuiltinDeps } from './plugins/builtin/deps';
 import { builtinPlugins } from './plugins/builtin';
 import {
@@ -69,7 +70,8 @@ async function boot() {
     return;
   }
 
-  const { container, events, plugins } = createServices();
+  const qs = new URLSearchParams(location.search);
+  const { container, events, plugins, extensions } = createServices();
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
   const atlas = new TextureAtlas();
@@ -127,12 +129,30 @@ async function boot() {
     autoJump: isMobile,
   });
   sound.setEnabled(settings.sound);
+  plugins.setExperimental(settings.experimental);
+
+  // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭）----
+  // 必须在 DefaultGenerator 构造前完成自检与后端安装；失败自动回退纯 JS。
+  const wasm = new WasmRuntime({
+    enabled: settings.experimental && qs.get('wasm') !== '0',
+    onReady: (e) => events.emit('wasm:ready', e),
+    onFallback: (e) => events.emit('wasm:fallback', e),
+  });
+  container.provide(TOKENS.Wasm, wasm);
+  wasm.init();
+  /** 设置页开关：立即生效；WASM 的噪声后端切换不需要重载，插件载体在下次启用插件时读取最新状态 */
+  const setExperimental = (v: boolean) => {
+    settings.experimental = v;
+    persistOptions(settings);
+    wasm.setEnabled(v && qs.get('wasm') !== '0');
+    plugins.setExperimental(v);
+    hud.toast(v ? '已进入实验性内容：WASM 内核已启用' : '实验性内容已关闭：回到纯 JS 内核');
+  };
 
   // ---- 世界 ----
-  const world = new World(registry, new DefaultGenerator(seed, registry), events);
+  const world = new World(registry, new DefaultGenerator(seed, registry), events, extensions);
   if (saved) world.loadEdits(saved.edits);
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
-  const qs = new URLSearchParams(location.search);
   const workersParam = qs.get('workers');
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
     forceMainThread: qs.get('mesher') === 'main',
@@ -488,6 +508,7 @@ async function boot() {
       markDirty();
     },
     onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
+    onExperimental: (v) => setExperimental(v),
     onExportOptions: () => JSON.stringify(settings, null, 2),
     onCopyOptions: (json) => {
       void copyText(json);
@@ -942,6 +963,15 @@ async function boot() {
         state: p.state,
         dependencies: p.manifest.dependencies ?? [],
       })),
+      wasm: (() => {
+        const ws = wasm.stats();
+        return {
+          status: ws.status,
+          abi: ws.abi,
+          fallbackCount: ws.fallbacks,
+          selfCheckMismatches: ws.selfCheckMismatches,
+        };
+      })(),
       events: {
         subscribers: ev.subscribers,
         channels: ev.channels.length,
@@ -986,6 +1016,7 @@ async function boot() {
 
   const api = createCraftAPI({
     engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
+    wasm, extensions,
     getSaveProvider: () => provider,
     setSaveProvider: (p) => { provider = p; },
     input: {

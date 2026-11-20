@@ -65,4 +65,10 @@ export interface GameEvents {
   'plugin:enabled': { id: string };
   'plugin:disabled': { id: string };
   'plugin:error': { id: string; error: string };
+  /** v1.5.0：插件热重载完成 */
+  'plugin:reloaded': { id: string };
+  /** v1.5.0：WASM 内核通过自检并接管噪声计算 */
+  'wasm:ready': { abi: number; bytes: number; sha256: string; samples: number };
+  /** v1.5.0：WASM 失败已回退纯 JS */
+  'wasm:fallback': { reason: string; code?: string };
 }

@@ -44,6 +44,8 @@ export interface Options {
   mesherThreads: MesherThreads;
   /** 开发者：自动保存间隔（秒），0 = 关闭自动保存 */
   autosaveInterval: number;
+  /** 实验性内容：WASM 内核 / 插件三载体（默认关闭，开启后重启生效） */
+  experimental: boolean;
 }
 
 export const OPTIONS_KEY = 'minecraft-ts-options-v1';
@@ -65,6 +67,7 @@ export const DEFAULT_OPTIONS: Options = {
   greedy: true,
   mesherThreads: 'auto',
   autosaveInterval: 8,
+  experimental: false,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];
@@ -117,6 +120,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       greedy: bool(o.greedy, base.greedy),
       mesherThreads: pick(o.mesherThreads, MESHER_THREAD_OPTIONS, base.mesherThreads),
       autosaveInterval: Math.round(num(o.autosaveInterval, base.autosaveInterval, 0, 120)),
+      experimental: bool(o.experimental, base.experimental),
     };
   } catch {
     return base;
@@ -151,5 +155,6 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     greedy: bool(base.greedy, DEFAULT_OPTIONS.greedy),
     mesherThreads: pick(base.mesherThreads, MESHER_THREAD_OPTIONS, DEFAULT_OPTIONS.mesherThreads),
     autosaveInterval: Math.round(num(base.autosaveInterval, DEFAULT_OPTIONS.autosaveInterval, 0, 120)),
+    experimental: bool(base.experimental, DEFAULT_OPTIONS.experimental),
   };
 }

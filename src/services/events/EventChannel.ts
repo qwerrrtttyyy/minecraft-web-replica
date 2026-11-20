@@ -56,11 +56,18 @@ export class EventChannel {
 
   once<K extends keyof GameEvents>(type: K, fn: Handler<GameEvents[K]>): () => void {
     let off: () => void = () => {};
+    let fired = false;
     off = this.on(type, (p) => {
+      if (fired) return;
+      fired = true;
       off();
       fn(p);
     });
-    return off;
+    return () => {
+      if (fired) return;
+      fired = true;
+      off();
+    };
   }
 
   /**
