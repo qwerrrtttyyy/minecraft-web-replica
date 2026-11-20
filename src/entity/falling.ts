@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
-import type { BlockId } from '../core/types';
 import type { World } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { EventService } from '../services/events';
-import { WORLD_HEIGHT } from '../core/types';
+import { WORLD_HEIGHT, type BlockId } from '../core/types';
 
 /**
  * 沙 / 沙砾重力（借鉴原版 FallingBlock）。

@@ -44,6 +44,8 @@ export interface BlockDefinition {
   tiles: { top: string; bottom: string; side: string };
   /** 生存模式掉落表，缺省掉落自身 */
   drops: DropSpec[];
+  /** 受重力下落（沙子 / 沙砾）：失去支撑时转为下落实体（FallingSystem） */
+  falling?: boolean;
 }
 
 export type BlockInput = Omit<BlockDefinition, 'id' | 'drops'> & {
@@ -158,7 +160,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('dirt', '泥土', {}, { sound: 'dirt', hardness: 0.5 });
   cube('stone', '石头', {}, { hardness: 1.5, drops: [{ name: 'cobblestone' }] });
   cube('cobblestone', '圆石', {}, { hardness: 2 });
-  cube('sand', '沙子', {}, { sound: 'sand', hardness: 0.5 });
+  cube('sand', '沙子', {}, { sound: 'sand', hardness: 0.5, falling: true });
   cube('oak_log', '橡木原木', { top: 'log_top', bottom: 'log_top', side: 'log_side' }, { sound: 'wood', hardness: 2 });
   cube('oak_planks', '橡木木板', {}, { sound: 'wood', hardness: 2 });
   cube('oak_leaves', '橡树树叶', {}, {
@@ -215,7 +217,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('stone_bricks', '石砖', {}, { hardness: 2 });
   cube('mossy_cobblestone', '苔石圆石', {}, { hardness: 2 });
   cube('obsidian', '黑曜石', {}, { hardness: 12 });
-  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6 });
+  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6, falling: true });
   cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
   cube('ice', '冰', {}, {
     opaque: false, transparentPass: true, sound: 'glass', hardness: 0.5, drops: [],
