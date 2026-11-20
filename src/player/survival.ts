@@ -74,6 +74,11 @@ export class SurvivalState {
   dead = false;
   deathCause = '';
   spawn: Vec3Like = { x: 0.5, y: 40, z: 0.5 };
+  /**
+   * 实验性玩法「死亡保留物品」（对应 /gamerule keepInventory）。
+   * 默认 true 保持项目原有的友好行为；关闭后死亡会清空背包（原版默认行为）。
+   */
+  keepInventory = true;
 
   /** key -> 数量，key 形如 b:12 / i:apple */
   readonly inventory = new Map<string, number>();
@@ -176,7 +181,16 @@ export class SurvivalState {
     if (this.dead) return;
     this.dead = true;
     this.deathCause = cause;
-    this.events.emit('survival:death', { cause });
+    // 原版默认：死亡掉落（这里简化为清空背包）；开启 keepInventory 则保留。
+    let lost = 0;
+    if (!this.keepInventory && this.isSurvival) {
+      for (const [key] of this.inventory) {
+        this.events.emit('inventory:change', { key, count: 0 });
+        lost++;
+      }
+      this.inventory.clear();
+    }
+    this.events.emit('survival:death', { cause, itemsLost: lost, keepInventory: this.keepInventory });
   }
 
   respawn(pos: Vec3Like) {

@@ -18,6 +18,16 @@ export class Sky implements System {
   dayTime = 0.32;
   dayLength = 600;
   daylight = 1;
+  /** 实验性玩法「昼夜循环」：false 时 dayTime 定格，太阳/光照停在当前时刻（对应 /gamerule doDaylightCycle） */
+  advanceTime = true;
+  /** 实验性玩法「体素云层」：false 时隐藏云并跳过云几何重建（省电） */
+  showClouds = true;
+
+  /** 即时切换云层显示（不必等下一帧 update） */
+  setCloudsEnabled(v: boolean): void {
+    this.showClouds = v;
+    this.clouds.visible = v && this.sub < 0.99;
+  }
 
   private dome: THREE.Mesh;
   private domeMat: THREE.ShaderMaterial;
@@ -293,7 +303,9 @@ export class Sky implements System {
   update(dt: number, _elapsed: number) {
     this.localTime += dt;
     const elapsed = this.localTime;
-    this.dayTime = (this.dayTime + dt / this.dayLength) % 1;
+    // 昼夜冻结只停时间推进；云漂移 / 星空闪烁用 localTime，不受影响，
+    // 这样关闭循环后太阳定格但天空仍有微动，符合原版观感且回档不跳变。
+    if (this.advanceTime) this.dayTime = (this.dayTime + dt / this.dayLength) % 1;
     const sunDir = this.sunDirection(this.tmpSunDir);
     const elev = sunDir.y;
     this.daylight = smoothstep(-0.14, 0.16, elev);
@@ -346,11 +358,13 @@ export class Sky implements System {
     this.starsB.rotation.y = elapsed * 0.004 + 0.35;
 
     // 云漂移：以世界格为锚点重建，移动/漂移超过 1/4 网格宽度才重建，接缝连续
+    // 关闭云层时跳过重建（省 CPU），但不改 cloudDrift 相位——重新开启时云位置连续
     const cam = this.camera.position;
     this.cloudDrift = elapsed * 0.55;
     const patchRadius = (this.cloudSize * this.cloudCell) / 4;
-    if (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
-        Math.abs(cam.z - this.cloudOriginZ) > patchRadius) {
+    if (this.showClouds &&
+        (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
+         Math.abs(cam.z - this.cloudOriginZ) > patchRadius)) {
       this.rebuildClouds(cam.x - this.cloudDrift, cam.z);
     }
     this.clouds.position.set(
@@ -365,7 +379,7 @@ export class Sky implements System {
     cloudMat.color.lerp(this.tmpSun, dusk * 0.22);
     cloudMat.color.multiplyScalar(0.5 + this.daylight * 0.5);
     cloudMat.opacity = (0.28 + this.daylight * 0.6) * (1 - sub * 0.9);
-    this.clouds.visible = sub < 0.99;
+    this.clouds.visible = this.showClouds && sub < 0.99;
 
     // 雾：水下切换为近距蓝雾；世界亮度由区块 shader 的天空光 / 方块光分别处理
     const R = this.getRenderDistance() * 16;

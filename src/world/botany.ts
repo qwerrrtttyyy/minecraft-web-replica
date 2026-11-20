@@ -83,7 +83,10 @@ const DIRS: readonly (readonly [number, number, number])[] = [
 export class Botany {
   private readonly rng: () => number;
   private readonly interval: number;
-  private readonly attempts: number;
+  /** 基础采样尝试数（档位 2「标准」），由构造参数决定 */
+  private readonly baseAttempts: number;
+  /** 当前采样尝试数，随实验性玩法「随机刻速度」档位变化（0 = 暂停） */
+  private attempts: number;
   /** 对外只读：F3 / 调试面板按同一半径统计生态能量 */
   readonly sampleRadius: number;
   private acc = 0;
@@ -119,7 +122,8 @@ export class Botany {
     this.rng = mulberry32((seed ^ 0x5bd1e995) >>> 0);
     this.rules = new PlantRuleRegistry((name) => this.registry.byNameGet(name)?.id ?? 0);
     this.interval = options.interval ?? 0.3;
-    this.attempts = options.attempts ?? (options.isMobile ? 24 : 56);
+    this.baseAttempts = options.attempts ?? (options.isMobile ? 24 : 56);
+    this.attempts = this.baseAttempts;
     this.sampleRadius = options.radius ?? 24;
 
     const byName = (name: string) => registry.byNameGet(name)?.id ?? 0;
@@ -179,10 +183,21 @@ export class Botany {
     this.events?.on('block:place', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
   }
 
+  /**
+   * 实验性玩法「随机刻速度」：0=暂停 / 1=慢 / 2=标准 / 3=快。
+   * 通过缩放每次随机刻的采样尝试数实现，档位 2 严格保持原有行为。
+   */
+  setTickSpeed(tier: 0 | 1 | 2 | 3): void {
+    const scale = [0, 0.35, 1, 2.2][tier];
+    this.attempts = Math.round(this.baseAttempts * scale);
+  }
+
   /** 主循环入口：只在玩家附近推进随机刻 */
   update(dt: number, focusX: number, focusZ: number, daylight: number): void {
     this.focusX = focusX;
     this.focusZ = focusZ;
+    // 暂停档：清空累加器，恢复时不会因积压的时间瞬间爆发一批随机刻
+    if (this.attempts <= 0) { this.acc = 0; return; }
     this.acc += Math.min(dt, 0.25);
     if (this.acc < this.interval) return;
     this.acc -= this.interval;

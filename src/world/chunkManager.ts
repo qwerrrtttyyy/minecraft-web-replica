@@ -185,6 +185,9 @@ export class ChunkManager implements System {
   private lastSortCam = new THREE.Vector3(Infinity, Infinity, Infinity);
   private sortAcc = 0;
   private sortDirty = true;
+  /** 实验性玩法「透明排序」：false 时不做距离排序，透明网格用固定 renderOrder=2 */
+  transparentSortEnabled = true;
+  private sortWasEnabled = true;
   private transparentOrderCache: { key: string; pass: 'transparent' | 'water'; dist: number; order: number }[] = [];
 
   constructor(
@@ -538,10 +541,22 @@ export class ChunkManager implements System {
     this.waterTime.value += dt;
     this.drainResults();
     if (this.loading) return;
-    this.sortAcc += dt;
-    if (this.sortAcc >= 0.1) {
-      this.sortAcc = 0;
-      this.sortTransparent();
+    // 透明排序开关：关闭瞬间把透明/水网格复位到默认 renderOrder（对照未排序效果），
+    // 只复位一次；重新开启后由 sortTransparent() 恢复按距离排序。
+    if (!this.transparentSortEnabled && this.sortWasEnabled) {
+      this.sortWasEnabled = false;
+      for (const entry of this.meshes.values()) {
+        if (entry.transparent) entry.transparent.renderOrder = 2;
+        if (entry.water) entry.water.renderOrder = 2;
+      }
+      this.transparentOrderCache = [];
+    } else if (this.transparentSortEnabled) {
+      this.sortWasEnabled = true;
+      this.sortAcc += dt;
+      if (this.sortAcc >= 0.1) {
+        this.sortAcc = 0;
+        this.sortTransparent();
+      }
     }
 
     const R = this.renderDistance;

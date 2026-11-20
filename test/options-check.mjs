@@ -6,6 +6,7 @@
  *  - 控件（音效开关、音量、渲染距离、FOV、灵敏度、反转 Y 轴、重置）；
  *  - 高级项（画质档位、粒子、视角摇晃、自动跳跃、触控灵敏度）；
  *  - 开发者项（调试信息、Greedy、网格化线程、自动保存间隔、导入 / 导出）；
+ *  - 实验性玩法（随机刻速度 / 昼夜循环 / 死亡保留物品 / 生物生成 / 体素云层 / 方块重力 / 透明排序）即时生效与持久化；
  *  - 立即生效（引擎 / 输入 / 音频 / 网格化）；
  *  - localStorage 持久化与跨会话恢复；
  *  - 移动端布局无横向溢出、触控目标尺寸达标。
@@ -122,8 +123,8 @@ try {
   }));
   await page.screenshot({ path: path.join(OUT, 'options-desktop.png') });
   ok('标题屏打开设置页', opened.open, JSON.stringify(opened.groups));
-  ok('设置页含音效/视频/控制/实验性内容/开发者分组',
-    opened.groups.join(',') === '音效,视频,控制,实验性内容,开发者', opened.groups.join(','));
+  ok('设置页含音效/视频/控制/实验性内容/实验性玩法/开发者分组',
+    opened.groups.join(',') === '音效,视频,控制,实验性内容,实验性玩法,开发者', opened.groups.join(','));
   ok('设置页滑杆齐全', ['音量', '渲染距离', '视野 FOV', '视角灵敏度'].every((s) => opened.sliders.includes(s)),
     opened.sliders.join(','));
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));
@@ -254,6 +255,109 @@ try {
   ok('自动保存间隔可调并持久化', autosave.label === '关闭' && autosave.stored === 0, JSON.stringify(autosave));
   const debugLabel = await clickRow(page, '显示调试信息');
   ok('显示调试信息开关同步', debugLabel === '开', `label=${debugLabel}`);
+
+  // ---- 实验性玩法（4 个 gamerule 风格开关） ----
+  ok('实验性玩法分组存在', await page.evaluate(() =>
+    [...document.querySelectorAll('.options-panel .opt-group h3')].some((e) => e.textContent === '实验性玩法')));
+
+  // 随机刻速度：cycleRow 点击轮转 暂停→慢→标准→快，默认「标准」
+  const tickDefault = await page.evaluate(() => ({
+    label: [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '随机刻速度')?.querySelector('.opt-val')?.textContent,
+    attempts: window.__mc.botany.attempts,
+  }));
+  ok('随机刻速度默认「标准」且采样数>0', tickDefault.label === '标准' && tickDefault.attempts > 0,
+    JSON.stringify(tickDefault));
+  // 点 3 次：标准→快→暂停→慢（轮转 4 档），验证到「暂停」时 attempts=0
+  const tickCycle = [];
+  for (let i = 0; i < 4; i++) {
+    tickCycle.push(await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.options-panel .opt-row')]
+        .find((b) => b.querySelector('.opt-label')?.textContent === '随机刻速度');
+      row.click();
+      return { label: row.querySelector('.opt-val').textContent, attempts: window.__mc.botany.attempts };
+    }));
+  }
+  ok('随机刻速度档位轮转正确（暂停时采样数=0）',
+    tickCycle[1].label === '暂停' && tickCycle[1].attempts === 0 &&
+    tickCycle[0].attempts > tickCycle[3].attempts,
+    JSON.stringify(tickCycle));
+  // 回到「标准」档，避免影响后续生态
+  await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '随机刻速度');
+    const labels = ['暂停', '慢', '标准', '快'];
+    while (row.querySelector('.opt-val').textContent !== '标准') row.click();
+    return labels;
+  });
+
+  // 昼夜循环：关闭后 sky.advanceTime=false
+  const daylightOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '昼夜循环');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, advance: window.__mc.sky.advanceTime,
+      stored: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || 'null')?.doDaylightCycle };
+  });
+  ok('昼夜循环可冻结并即时生效', daylightOff.label === '关' && daylightOff.advance === false && daylightOff.stored === false,
+    JSON.stringify(daylightOff));
+  await clickRow(page, '昼夜循环'); // 恢复开启
+
+  // 死亡保留物品：关闭后 survival.keepInventory=false
+  const keepInvOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '死亡保留物品');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, keep: window.__mc.survival.keepInventory };
+  });
+  ok('死亡保留物品可关闭并即时生效', keepInvOff.label === '关' && keepInvOff.keep === false,
+    JSON.stringify(keepInvOff));
+  await clickRow(page, '死亡保留物品'); // 恢复开启
+
+  // 生物生成：关闭后 entities.allowSpawn=false
+  const spawnOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '生物生成');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, allow: window.__mc.entities.allowSpawn };
+  });
+  ok('生物生成可关闭并即时生效', spawnOff.label === '关' && spawnOff.allow === false,
+    JSON.stringify(spawnOff));
+  await clickRow(page, '生物生成'); // 恢复开启
+
+  // 体素云层：关闭后 sky.showClouds=false，云网格隐藏
+  const cloudsOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '体素云层');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, show: window.__mc.sky.showClouds,
+      visible: window.__mc.sky.clouds.visible };
+  });
+  ok('体素云层可关闭并即时生效', cloudsOff.label === '关' && cloudsOff.show === false && cloudsOff.visible === false,
+    JSON.stringify(cloudsOff));
+  await clickRow(page, '体素云层'); // 恢复开启
+
+  // 方块重力：关闭后 falling.enabled=false
+  const gravityOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '方块重力');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, enabled: window.__mc.falling.enabled };
+  });
+  ok('方块重力可关闭并即时生效', gravityOff.label === '关' && gravityOff.enabled === false,
+    JSON.stringify(gravityOff));
+  await clickRow(page, '方块重力'); // 恢复开启
+
+  // 透明排序：关闭后 chunks.transparentSortEnabled=false
+  const sortOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '透明排序');
+    row.click();
+    return { label: row.querySelector('.opt-val').textContent, sort: window.__mc.chunks.transparentSortEnabled };
+  });
+  ok('透明排序可关闭并即时生效', sortOff.label === '关' && sortOff.sort === false,
+    JSON.stringify(sortOff));
+  await clickRow(page, '透明排序'); // 恢复开启
 
   // Esc 关闭设置 → 回到暂停菜单
   await page.keyboard.press('Escape');
