@@ -8,6 +8,20 @@ import { clamp, type System } from './types';
 export const CAMERA_DEFAULT_FAR = 520;
 
 /**
+ * 抗锯齿档位（实验设置，URL ?aa= 选择）：
+ * - off：原生分辨率，不做抗锯齿（默认，与 v1.5.1 行为一致）
+ * - msaa：创建上下文时打开硬件 MSAA，成本主要在显存与带宽
+ * - ssaa：按 SSAA_SCALE 超采样后降回原生分辨率，质量最好、片段成本最高
+ */
+export type AAMode = 'off' | 'msaa' | 'ssaa';
+
+export const AA_MODES: readonly AAMode[] = ['off', 'msaa', 'ssaa'];
+/** ssaa 的分辨率倍率 */
+export const SSAA_SCALE = 1.5;
+/** 像素比硬上限：避免 ssaa 在高 DPI 屏上把填充率放大到不可玩 */
+export const MAX_PIXEL_RATIO = 2.5;
+
+/**
  * 引擎主循环：渲染器、场景、相机、系统调度、尺寸自适应。
  * 扩展点：engine.addSystem() 可挂入任意自定义更新逻辑。
  */
@@ -25,6 +39,8 @@ export class Engine {
   readonly basePixelRatio: number;
   /** 当前渲染分辨率倍率（1 = 基础，越低越省电） */
   qualityScale = 1;
+  /** 抗锯齿档位（msaa 在创建上下文时生效；ssaa 走像素比） */
+  readonly aaMode: AAMode;
   private container: HTMLElement;
   private clock = new THREE.Clock();
   private raf = 0;
@@ -37,17 +53,19 @@ export class Engine {
   private readonly onVisualResize: () => void;
   private orientationTimer = 0;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, options: { aa?: AAMode } = {}) {
     // 粗指针优先；触摸设备再要求「无悬停」，避免触摸屏笔记本被当成手机
     this.isMobile = matchMedia('(pointer: coarse)').matches ||
       (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
+    // MSAA 只能在创建上下文时决定，运行期改不了 —— 因此档位由启动参数选定
+    this.aaMode = AA_MODES.includes(options.aa as AAMode) ? (options.aa as AAMode) : 'off';
     this.renderer = new THREE.WebGLRenderer({
-      antialias: false,
+      antialias: this.aaMode === 'msaa',
       powerPreference: 'high-performance',
     });
     this.container = container;
     this.basePixelRatio = Math.min(devicePixelRatio || 1, this.isMobile ? 1.5 : 2);
-    this.renderer.setPixelRatio(this.basePixelRatio);
+    this.applyPixelRatio();
     this.renderer.setSize(container.clientWidth || innerWidth, container.clientHeight || innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
@@ -74,8 +92,14 @@ export class Engine {
     const s = clamp(scale, 0.5, 1);
     if (Math.abs(s - this.qualityScale) < 0.02) return;
     this.qualityScale = s;
-    this.renderer.setPixelRatio(this.basePixelRatio * s);
+    this.applyPixelRatio();
     this.renderer.setSize(this.container.clientWidth || innerWidth, this.container.clientHeight || innerHeight);
+  }
+
+  /** 像素比 = 设备基础 × 省电档位 × 超采样档位，钳到硬上限 */
+  private applyPixelRatio() {
+    const ssaa = this.aaMode === 'ssaa' ? SSAA_SCALE : 1;
+    this.renderer.setPixelRatio(clamp(this.basePixelRatio * this.qualityScale * ssaa, 0.5, MAX_PIXEL_RATIO));
   }
 
   resize(container: HTMLElement = this.container) {

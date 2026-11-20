@@ -27,12 +27,22 @@ physics & collision, entity AI, touch support, save system and an extension API.
 
 **▶ Play online (GitHub Pages)**: <https://qwerrrtttyyy.github.io/minecraft-web-replica/>
 
+**v1.5.1 rendering cleanup (round 2 of the 3D optimisation pass)** — three changes, each run as a
+**controlled experiment** (hypothesis / control / flip / verdict, raw data and reproduction steps in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
+
+- **Packed vertex layout** — 60 B → **44 B** per vertex (`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)). Less VRAM and bandwidth, pixel-identical output.
+- **Anti-aliasing tiers** — `?aa=off|msaa|ssaa`. MSAA is enabled when the GL context is created; SSAA renders at 1.5× pixel ratio. Off by default.
+- **Emissive blocks merged into the opaque channel** — glowstone / jack o'lantern / torches reuse the opaque material with `aTint=2`, and the shader skips lighting and foliage tint for them. Draw calls 64 → 47 and emissive meshes 49 → 0 with **byte-identical geometry buffers and zero pixel difference** across 15,552 samples. `?emerge=0` restores the pre-merge separate emissive channel as a control.
+
 ## Highlights
 
 - **Voxel engine** — chunk streaming with back-pressure & self-healing, three-channel mesh
   (data / sky light / block light) with Greedy Meshing on a Web Worker pool (~40% fewer quads)
 - **Lighting** — sky light + block light, dual-channel BFS propagation (0–15 levels),
-  incremental updates, baked into vertex attributes (no extra draw calls)
+  incremental updates, baked into vertex attributes (no extra draw calls).
+  Since v1.5.1 light is **per-vertex**: each corner averages the 4 air-side neighbours
+  (same model as vanilla), so walls and floors shade continuously instead of staying flat
 - **Terrain** — explicit 4-stage pipeline (`columns → ores → trees → decorate`) with
   biome config tables, domain warping, ridge mountains, fading caves, layered ore veins,
   cross-chunk trees
@@ -83,10 +93,12 @@ Requires Node.js 20+. The build output is fully self-contained — no network ne
 npm run verify   # full gate: version + typecheck + build + 16 test suites, 100% PASS required
 ```
 
-Test suites cover: logic, terrain, lighting (21), mesher (43), services, runtime diagnostics,
+Test suites cover: logic, terrain, lighting (21), mesher (51), services, runtime diagnostics,
 worker pool, world edits, terrain system, botany, plant energy, survival smoke (100) and
-**pixel-level visual regression** (headless Chromium under Xvfb in CI). Runtime invariants are
-enforced by a diagnostics group (`CraftAPI.diagnostics.run()`), surfaced on the F3 panel.
+**pixel-level visual regression** (13 assertions, headless Chromium under Xvfb in CI). Runtime
+invariants are enforced by a diagnostics group (`CraftAPI.diagnostics.run()`), surfaced on the F3
+panel. Rendering changes that are hard to judge by eye are additionally measured as controlled
+experiments — see [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ## Architecture
 
@@ -112,7 +124,8 @@ Details in the Chinese README § 版本规范. Full history in [CHANGELOG.md](CH
 ## Known Limitations
 
 - Transparent blocks are not distance-sorted yet (fix in review)
-- 15-level hard-edged lighting (no smooth light interpolation)
+- Lighting is quantised per corner (1/15 steps remain between corners); true per-pixel
+  interpolation would need a lighting texture instead of vertex attributes
 - No AABB unstuck yet (fix in review)
 - ~10 FPS under software rendering (llvmpipe); real GPUs run much faster
 

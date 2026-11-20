@@ -21,7 +21,7 @@ const { AIR_MESH_DEF } = require('./terrain-logic/world/meshTypes.js');
 const { CHUNK_SIZE: CS, WORLD_HEIGHT: H } = require('./terrain-logic/core/types.js');
 
 const W = CS + 2;
-const CHANNELS = ['opaque', 'emissive', 'transparent', 'water'];
+const CHANNELS = ['opaque', 'transparent', 'water'];
 let passed = 0;
 const ok = (name, cond, extra = '') => {
   assert.ok(cond, `${name}${extra ? ' — ' + extra : ''}`);
@@ -31,7 +31,7 @@ const ok = (name, cond, extra = '') => {
 
 // ---------- 配置 ----------
 
-function makeConfig(reg, greedy) {
+function makeConfig(reg, greedy, mergeEmissive = true) {
   // 图集在 Node 侧不可用，用确定性 UV 替身：每个 tile 占 16×16 网格中的一格。
   // 只要同名 tile 映射稳定，就能查出「合并后贴错图」这类错误。
   const order = new Map();
@@ -48,7 +48,7 @@ function makeConfig(reg, greedy) {
       return [u0, v0, u0 + 1 / 16, v0 + 1 / 16];
     },
   };
-  return buildMeshConfig(reg, atlas, greedy, 1);
+  return buildMeshConfig(reg, atlas, greedy, 1, mergeEmissive);
 }
 
 // ---------- 数据源 ----------
@@ -124,6 +124,7 @@ class DirectSource {
     return fakeBlock(this.x0 + lx, y, this.z0 + lz);
   }
   get greedy() { return this.config.greedy; }
+  get mergeEmissive() { return this.config.mergeEmissive; }
 }
 
 // ---------- 面覆盖提取 ----------
@@ -136,6 +137,7 @@ function coverage(mesh) {
   const cells = new Map();
   let quads = 0;
   let maxSpan = 1;
+  let gradientQuads = 0;
   for (const ch of CHANNELS) {
     const g = mesh[ch];
     if (!g || g.positions.length === 0) continue;
@@ -171,10 +173,12 @@ function coverage(mesh) {
         lo2 = Math.min(lo2, v[a2]); hi2 = Math.max(hi2, v[a2]);
       }
       maxSpan = Math.max(maxSpan, Math.round(hi1 - lo1) * Math.round(hi2 - lo2));
-      const bright = (g.colors[q * 12] + g.colors[q * 12 + 3] + g.colors[q * 12 + 6] + g.colors[q * 12 + 9]) / 4;
+      const bright = (g.shade[q * 4] + g.shade[q * 4 + 1] + g.shade[q * 4 + 2] + g.shade[q * 4 + 3]) / 4;
       const light = [0, 1, 2, 3].map((i) => `${g.lights[q * 8 + i * 2].toFixed(3)},${g.lights[q * 8 + i * 2 + 1].toFixed(3)}`);
       const lightKey = light.every((v) => v === light[0]) ? light[0] : light.join('|');
-      const tile = [0, 1, 2, 3].map((i) => g.tiles[q * 16 + i].toFixed(5)).join(',');
+      // 角点光照不全等 → 该 quad 内部存在光照梯度（平滑光照生效的证据）
+      if (lightKey.includes('|')) gradientQuads++;
+      const tile = [g.tile[q * 8].toFixed(5), g.tile[q * 8 + 1].toFixed(5)].join(',');
       for (let c2 = Math.floor(lo2 + 1e-6); c2 <= Math.floor(hi2 - 1e-6); c2++) {
         for (let c1 = Math.floor(lo1 + 1e-6); c1 <= Math.floor(hi1 - 1e-6); c1++) {
           cells.set(`${ch}|${axis}|${sign}|${plane}|${c1}|${c2}`, { bright, tile, lightKey });
@@ -182,7 +186,7 @@ function coverage(mesh) {
       }
     }
   }
-  return { cells, quads, maxSpan };
+  return { cells, quads, maxSpan, gradientQuads };
 }
 
 function compareCoverage(a, b, label) {
@@ -210,7 +214,7 @@ function compareCoverage(a, b, label) {
 function sameArrays(a, b) {
   if (!a && !b) return true;
   if (!a || !b) return false;
-  for (const key of ['positions', 'uvs', 'colors', 'lights', 'tiles', 'indices']) {
+  for (const key of ['positions', 'uvs', 'shade', 'lights', 'tile', 'tints', 'indices']) {
     if (a[key].length !== b[key].length) return false;
     for (let i = 0; i < a[key].length; i++) if (a[key][i] !== b[key][i]) return false;
   }
@@ -223,6 +227,7 @@ console.log('网格生成回归（快照保真 + Greedy 等价 + 收益）');
 
 const seeds = [1337, 20260101, 987654321];
 const total = { legacy: 0, greedy: 0, msLegacy: 0, msGreedy: 0, merged: 0 };
+const grad = { legacy: 0, greedy: 0, quads: 0, greedyQuads: 0 };
 
 for (const seed of seeds) {
   const reg = new BlockRegistry();
@@ -268,10 +273,92 @@ for (const seed of seeds) {
     total.msLegacy += legacy.stats.ms;
     total.msGreedy += greedy.stats.ms;
     total.merged += greedy.stats.merged;
+    grad.legacy += covL.gradientQuads;
+    grad.greedy += covG.gradientQuads;
+    grad.quads += covL.quads;
+    grad.greedyQuads += covG.quads;
   }
 }
 
-// 4) 汇总基准
+// 4) 平滑光照生效性：必须有相当比例的面存在角点光照梯度。
+//    如果逐面输出退化成「整面一个光值」，上面所有等价断言仍然会全绿，
+//    所以这里单独盯住「梯度确实存在」和「梯度没有吃掉整个网格」两端。
+{
+  const ratio = grad.legacy / grad.quads;
+  ok('平滑光照生效（逐面输出存在角点光照梯度）', grad.legacy > 0,
+    `${grad.legacy} / ${grad.quads} 个 quad 有梯度（${(ratio * 100).toFixed(1)}%）`);
+  ok('角点光照梯度占比在合理区间（不是全平也不是全梯度）',
+    ratio > 0.05 && ratio < 0.95,
+    `${(ratio * 100).toFixed(1)}%`);
+  const gradRatio = grad.greedy / grad.greedyQuads;
+  ok('Greedy 与逐面的梯度面占比一致（合并不改变光照结构）',
+    Math.abs(gradRatio - ratio) < 0.2,
+    `greedy ${(gradRatio * 100).toFixed(1)}% vs legacy ${(ratio * 100).toFixed(1)}%`);
+}
+
+/**
+ * 拆出每个 quad 的 11 个顶点分量（与打包后的顶点布局一一对应）。
+ * 用于「自发光并入不透明通道」与「独立 emissive 通道」的逐顶点等价对比。
+ */
+function quadsOf(g) {
+  if (!g || g.positions.length === 0) return [];
+  const n = g.positions.length / 12;
+  const out = [];
+  for (let q = 0; q < n; q++) {
+    const vals = [];
+    for (let i = 0; i < 4; i++) {
+      const b = q * 4 + i;
+      vals.push(
+        g.positions[b * 3], g.positions[b * 3 + 1], g.positions[b * 3 + 2],
+        g.uvs[b * 2], g.uvs[b * 2 + 1],
+        g.shade[b],
+        g.lights[b * 2], g.lights[b * 2 + 1],
+        g.tile[b * 2], g.tile[b * 2 + 1],
+        g.tints[b],
+      );
+    }
+    out.push({ key: vals.join(','), tint: g.tints[q * 4] });
+  }
+  return out;
+}
+
+// 5) 自发光通道对照（E3）：默认「并入不透明 + aTint=2」与 v1.5.1 的「独立 emissive 通道」
+//    必须逐顶点等价 —— 这是「去掉一条渲染通道」不需要改画面的证据。
+{
+  const reg = new BlockRegistry();
+  registerBuiltinBlocks(reg);
+  const glowId = reg.byNameGet('glowstone').id;
+  const stoneId = reg.byNameGet('stone').id;
+  const rockId = reg.byNameGet('bedrock').id;
+  // 手工世界：石头地面上摆一排萤石，其余为空气
+  const readGlow = (x, y, z) => {
+    if (y < 0) return rockId;
+    if (y >= H) return 0;
+    if (y < 3) return stoneId;
+    if (y === 3 && x >= 2 && x <= 6 && z === 4) return glowId;
+    return 0;
+  };
+  const snap = buildSnapshot(readGlow, 0, 0);
+  const merged = meshChunk(new SnapshotMeshSource(makeConfig(reg, true, true), snap));
+  const split = meshChunk(new SnapshotMeshSource(makeConfig(reg, true, false), snap));
+
+  ok('默认路径不自开 emissive 通道',
+    !merged.emissive || merged.emissive.indices.length === 0);
+  ok('对照路径保留 emissive 通道',
+    !!split.emissive && split.emissive.indices.length > 0,
+    `${quadsOf(split.emissive).length} 个 quad`);
+  ok('默认路径的自发光面带 aTint=2 标记',
+    quadsOf(merged.opaque).some((q) => q.tint === 2));
+  ok('对照路径的 opaque 不含自发光顶点',
+    quadsOf(split.opaque).every((q) => q.tint !== 2));
+  const viaMerge = quadsOf(merged.opaque).filter((q) => q.tint === 2).map((q) => q.key);
+  const viaSplit = quadsOf(split.emissive).map((q) => q.key);
+  ok('自发光几何逐顶点一致（并入 vs 独立通道）',
+    viaMerge.length === viaSplit.length && viaMerge.every((k, i) => k === viaSplit[i]),
+    `${viaMerge.length} 个 quad`);
+}
+
+// 6) 汇总基准
 const drop = (1 - total.greedy / total.legacy) * 100;
 ok('总体 quad 减少 ≥ 30%', drop >= 30, `${total.legacy} → ${total.greedy}（-${drop.toFixed(1)}%）`);
 console.log('\n基准（快照数据源，含 6 个区块）：');
