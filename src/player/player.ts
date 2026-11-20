@@ -75,6 +75,7 @@ export class Player implements System, PhysicsBody {
   private attackTimer = 0;
   private mineKey = '';
   private mineTime = 0.2;
+  private lastTapBreakAt = 0;
   private mineSoundAcc = 0;
   private mineIdle = 0;
   private fallVy = 0;
@@ -520,6 +521,10 @@ export class Player implements System, PhysicsBody {
 
   /** 轻点破坏（移动端）：生存模式给一小段挖掘进度 */
   tapBreak() {
+    // H12：每次轻点 ≥0.25s 冷却——连点不应比长按快约 3 倍
+    const now = performance.now();
+    if (now - this.lastTapBreakAt < 250) return;
+    this.lastTapBreakAt = now;
     if (!this.survival.isSurvival) {
       this.breakBlock();
       return;

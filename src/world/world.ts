@@ -69,6 +69,32 @@ export class World {
     return this.chunks.get(chunkKey(cx, cz));
   }
 
+  /**
+   * M01：热路径单条目区块缓存。getBlock/isSolidAt 被射线（每帧最多 256 步）、
+   * 物理、随机刻、爆炸高频调用——命中时免去 chunkKey 字符串构造 + Map 哈希。
+   * 失效点：ensureChunk 新建区块、unloadChunk 卸载区块。
+   */
+  private cacheCx = Number.NaN;
+  private cacheCz = Number.NaN;
+  private cacheChunk: Chunk | null = null;
+
+  private chunkAt(x: number, z: number): Chunk | null {
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    if (cx !== this.cacheCx || cz !== this.cacheCz) {
+      this.cacheCx = cx;
+      this.cacheCz = cz;
+      this.cacheChunk = this.chunks.get(chunkKey(cx, cz)) ?? null;
+    }
+    return this.cacheChunk;
+  }
+
+  /** 区块卸载（ChunkManager 视距裁剪）：必须让热路径缓存失效 */
+  unloadChunk(key: string): void {
+    this.chunks.delete(key);
+    this.cacheCx = Number.NaN;
+  }
+
   /** 记录一条玩家编辑，同时维护分桶索引（幂等：同坐标后写覆盖前写） */
   private recordEdit(k: string, id: BlockId): void {
     this.edits.set(k, id);
@@ -99,6 +125,8 @@ export class World {
     if (!chunk) {
       chunk = new Chunk(cx, cz);
       this.chunks.set(key, chunk);
+      // M01：热路径缓存可能已把该 key 记成 null（未生成），插入后失效
+      this.cacheCx = Number.NaN;
     }
     if (!chunk.generated) {
       this.generator.generateChunk(cx, cz, chunk.data);
@@ -151,43 +179,35 @@ export class World {
   getBlock(x: number, y: number, z: number): BlockId {
     if (y < 0) return this.bedrockId;
     if (y >= H) return AIR;
-    const cx = Math.floor(x / CS);
-    const cz = Math.floor(z / CS);
-    const chunk = this.chunks.get(chunkKey(cx, cz));
+    const chunk = this.chunkAt(x, z);
     if (!chunk || !chunk.generated) return AIR;
-    return chunk.data[chunk.idx(x - cx * CS, y, z - cz * CS)];
+    return chunk.data[chunk.idx(x - chunk.cx * CS, y, z - chunk.cz * CS)];
   }
 
   /** 渲染用天空光（未加载 / 未初始化区块按露天处理，避免边界发黑） */
   getSkyLight(x: number, y: number, z: number): number {
     if (y >= H) return 15;
     if (y < 0) return 0;
-    const cx = Math.floor(x / CS);
-    const cz = Math.floor(z / CS);
-    const chunk = this.chunks.get(chunkKey(cx, cz));
+    const chunk = this.chunkAt(x, z);
     if (!chunk || !chunk.lit) return 15;
-    return chunk.sky[chunk.idx(x - cx * CS, y, z - cz * CS)];
+    return chunk.sky[chunk.idx(x - chunk.cx * CS, y, z - chunk.cz * CS)];
   }
 
   /** 渲染用方块光（未加载区块为 0） */
   getBlockLight(x: number, y: number, z: number): number {
     if (y < 0 || y >= H) return 0;
-    const cx = Math.floor(x / CS);
-    const cz = Math.floor(z / CS);
-    const chunk = this.chunks.get(chunkKey(cx, cz));
+    const chunk = this.chunkAt(x, z);
     if (!chunk || !chunk.lit) return 0;
-    return chunk.block[chunk.idx(x - cx * CS, y, z - cz * CS)];
+    return chunk.block[chunk.idx(x - chunk.cx * CS, y, z - chunk.cz * CS)];
   }
 
   /** 物理碰撞用：未加载区块视为实心，防止掉出世界 */
   isSolidAt(x: number, y: number, z: number): boolean {
     if (y < 0) return true;
     if (y >= H) return false;
-    const cx = Math.floor(x / CS);
-    const cz = Math.floor(z / CS);
-    const chunk = this.chunks.get(chunkKey(cx, cz));
+    const chunk = this.chunkAt(x, z);
     if (!chunk || !chunk.generated) return true;
-    return this.registry.isSolid(chunk.data[chunk.idx(x - cx * CS, y, z - cz * CS)]);
+    return this.registry.isSolid(chunk.data[chunk.idx(x - chunk.cx * CS, y, z - chunk.cz * CS)]);
   }
 
   setBlock(x: number, y: number, z: number, id: BlockId, record = true): boolean {

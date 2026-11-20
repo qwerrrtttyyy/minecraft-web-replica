@@ -20,6 +20,8 @@ export class FallingBlock {
   private mat: THREE.MeshBasicMaterial;
   private vel = -1.5;
   private onPlantDrop: ((def: BlockDefinition) => void) | null;
+  /** H09：落点被玩家/生物 AABB 占据时返回 true（落地悬停，不实体化进实体） */
+  isBlocked: ((x: number, y: number, z: number) => boolean) | null = null;
   done = false;
 
   constructor(
@@ -52,15 +54,35 @@ export class FallingBlock {
       this.finish();
       return;
     }
+    // H09：逐格步进检测——每步最多下落 1 格，高速（终端速度 2.1 格/帧）
+    // 不再只查终点底格穿透薄地板
+    let py = this.mesh.position.y;
+    while (py - ny > 1) {
+      py -= 1;
+      const feetCell = Math.floor(py - 0.5);
+      if (feetCell >= 0 && this.world.isSolidAt(this.x, feetCell, this.z)) {
+        if (this.tryLand(feetCell)) return;
+      }
+    }
     const feetCell = Math.floor(ny - 0.5);
     if (feetCell >= 0 && this.world.isSolidAt(this.x, feetCell, this.z)) {
-      // 帧位移可能跨多格：从命中格向上找第一个空位，落在实心柱顶上
-      let landY = feetCell + 1;
-      while (landY < WORLD_HEIGHT && this.world.isSolidAt(this.x, landY, this.z)) landY++;
-      this.land(landY);
-      return;
+      if (this.tryLand(feetCell)) return;
     }
     this.mesh.position.y = ny;
+  }
+
+  /** 命中实心柱后的落地流程：从命中格向上找第一个空位；被实体挡住则悬停等待。返回是否已结束 */
+  private tryLand(feetCell: number): boolean {
+    let landY = feetCell + 1;
+    while (landY < WORLD_HEIGHT && this.world.isSolidAt(this.x, landY, this.z)) landY++;
+    // H09：落点在玩家/生物体内时先悬停，等让开后落地——不实体化进实体
+    if (this.isBlocked?.(this.x, landY, this.z)) {
+      this.mesh.position.y = landY + 0.5;
+      this.vel = 0;
+      return false;
+    }
+    this.land(landY);
+    return true;
   }
 
   private land(landY: number) {
@@ -94,6 +116,8 @@ export class FallingSystem {
   readonly list: FallingBlock[] = [];
   /** 植物失去支撑的掉落回调（组装根接到生存背包，创造模式忽略） */
   onPlantDrop: ((def: BlockDefinition) => void) | null = null;
+  /** H09：落点阻挡检查（玩家/实体 AABB），由组装根注入 */
+  isBlocked: ((x: number, y: number, z: number) => boolean) | null = null;
 
   constructor(
     private world: World,
@@ -122,12 +146,14 @@ export class FallingSystem {
         started = true;
         this.world.setBlock(x, yy, z, AIR);
         this.events.emit('block:break', { x, y: yy, z, block: id });
-        this.list.push(new FallingBlock(
+        const fb = new FallingBlock(
           this.world, this.registry, this.atlas, this.scene, this.events,
           x, yy, z, id,
           (lx, ly, lz) => this.triggerColumn(lx, ly, lz),
           this.onPlantDrop,
-        ));
+        );
+        fb.isBlocked = this.isBlocked;
+        this.list.push(fb);
         continue;
       }
       if (def.shape === 'cross' && !supported) {
