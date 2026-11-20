@@ -5,7 +5,7 @@
  * 权限裁剪、ABI 校验、确定性 PRNG、事件桥接、卸载自动清理、负例隔离。
  * 依赖 test:snapshot 快照与内联的 host 插件 fixture（CI 不需要 clang）。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 
 const { PluginService } = require('./logic/services/plugins/PluginService.js');
 const { ExtensionRegistry, EXTENSION_POINTS } = require('./logic/services/plugins/extensions.js');
@@ -17,15 +17,13 @@ const { ServiceContainer } = require('./logic/services/ServiceContainer.js');
 const { EventService } = require('./logic/services/events/EventService.js');
 const { MemoryPluginStorageProvider } = require('./logic/services/plugins/storage.js');
 const { WasmRuntime } = require('./logic/wasm/runtime.js');
-const { VERSION, PLUGIN_API_VERSION } = require('./logic/core/version.js');
-const { parseVersion } = require('./logic/services/plugins/semver.js');
+const { VERSION } = require('./logic/core/version.js');
 const { KERNEL_BASE64 } = require('./logic/wasm/kernelBinary.js');
 const {
   HOST_PLUGIN_BASE64, BAD_HOST_PLUGIN_BASE64,
 } = require('./logic/plugins/example/hostPluginFixtureBinary.js');
 
 // 真实内核字节（从内联 base64 解码，走 WasmRuntime 内置加载）
-const { decodeBase64 } = require('./logic/wasm/protocol.js');
 
 let passed = 0, failures = 0;
 const ok = async (name, fn) => {
@@ -33,7 +31,6 @@ const ok = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name} — ${e.stack || e.message}`); }
 };
 const rejects = (fn, re) => assert.throws(fn, re);
-const PLUGIN_API_MAJOR = parseVersion(PLUGIN_API_VERSION).major;
 
 /** 构造一个可写世界的 fake CraftAPI，记录 setBlock 调用 */
 function fakeApi() {
@@ -74,7 +71,7 @@ function fakeApi() {
 }
 
 /** 构造一个「桥接到真实 WasmRuntime」的 wasmHost + PluginService */
-function make(opts = {}) {
+function make(_opts = {}) {
   const ev = new EventService();
   const container = new ServiceContainer();
   const base = fakeApi();
@@ -197,7 +194,7 @@ async function main() {
 
   // ---------- wasm:host 载体 ----------
   await ok('wasm:host：_start 打招呼 + 注册两个扩展点 + ABI 内省', async () => {
-    const { ps, extensions, ev } = make();
+    const { ps, extensions } = make();
     const logs = [];
     const origLog = console.log;
     console.log = (...a) => { logs.push(a.join(' ')); };

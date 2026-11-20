@@ -122,8 +122,8 @@ try {
   }));
   await page.screenshot({ path: path.join(OUT, 'options-desktop.png') });
   ok('标题屏打开设置页', opened.open, JSON.stringify(opened.groups));
-  ok('设置页含音效/视频/控制/开发者分组',
-    opened.groups.join(',') === '音效,视频,控制,开发者', opened.groups.join(','));
+  ok('设置页含音效/视频/控制/实验性内容/开发者分组',
+    opened.groups.join(',') === '音效,视频,控制,实验性内容,开发者', opened.groups.join(','));
   ok('设置页滑杆齐全', ['音量', '渲染距离', '视野 FOV', '视角灵敏度'].every((s) => opened.sliders.includes(s)),
     opened.sliders.join(','));
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));

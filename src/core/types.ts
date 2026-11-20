@@ -22,7 +22,7 @@ export interface System {
   update(dt: number, elapsed: number): void;
 }
 
-export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const smoothstep = (a: number, b: number, x: number) => {
   const t = clamp((x - a) / (b - a), 0, 1);

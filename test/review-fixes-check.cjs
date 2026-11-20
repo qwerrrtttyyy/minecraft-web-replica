@@ -11,9 +11,8 @@
  *
  * M/L 编号见审查报告。依赖 test:snapshot 快照。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { EventService } = require('./logic/services/events/EventService.js');
-const { EventChannel } = require('./logic/services/events/EventChannel.js');
 const { CAMERA_DEFAULT_FAR } = require('./logic/core/engine.js');
 const { createNoiseBackend, loadBuiltinKernel } = require('./logic/wasm/kernel.js');
 const { makePermutation } = require('./logic/world/noiseMath.js');

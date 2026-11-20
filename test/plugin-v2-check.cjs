@@ -5,10 +5,10 @@
  * setup 超时、热重载、按优先级启用、统计与能力发现、上下文（config/storage/私有服务）、
  * 源码加载器与权限裁剪。依赖 test:snapshot 快照。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 
 const semver = require('./logic/services/plugins/semver.js');
-const { PluginService, scopeAPI } = require('./logic/services/plugins/PluginService.js');
+const { PluginService } = require('./logic/services/plugins/PluginService.js');
 const { MemoryPluginStorageProvider } = require('./logic/services/plugins/storage.js');
 const { loadPluginDefinition } = require('./logic/services/plugins/loader.js');
 const { ServiceContainer } = require('./logic/services/ServiceContainer.js');

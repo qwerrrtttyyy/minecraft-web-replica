@@ -5,7 +5,7 @@
  * WasmRuntime 生命周期、自定义模块准入、权限裁剪。
  * 依赖 test:snapshot 生成的 CommonJS 快照，验证前必须先跑 npm run test:snapshot。
  */
-const assert = require('assert');
+const assert = require('node:assert');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 

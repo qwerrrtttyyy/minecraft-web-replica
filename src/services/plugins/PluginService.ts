@@ -480,7 +480,7 @@ export class PluginService implements Disposable {
 
       // v1.6.0：载体分派。JS 走 setup；WASM 走适配器（统一返回 teardown + carrier 信息）。
       // 两条路径共用上面的 ctx / 权限裁剪 / 依赖解析，因此行为一致。
-      let result: void | (() => void) = undefined;
+      let result: void | (() => void) | undefined;
       const def = rec.def;
       if (def.carrier) {
         const bridge: CarrierHost = {

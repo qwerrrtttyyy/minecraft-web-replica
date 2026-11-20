@@ -16,10 +16,8 @@
  */
 import type { Disposable } from '../ServiceContainer';
 
-export interface ExtensionHandler<P = unknown> {
-  /** 处理扩展点事件；返回值被忽略（扩展点是通知语义，不是管道语义） */
-  (payload: P): void;
-}
+/** 处理扩展点事件；返回值被忽略（扩展点是通知语义，不是管道语义） */
+export type ExtensionHandler<P = unknown> = (payload: P) => void;
 
 export interface ExtensionRecord<P = unknown> {
   /** 注册表内唯一序号，作为取消句柄 */
