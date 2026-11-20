@@ -113,7 +113,7 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
   'events:subscribe': [['on'], ['off']],
 };
 
-/** 在冻结副本上打 deny 桩（副本不是原型链 shadow，桩之外没有可爬升的原型） */
+/** 在白名单副本上打 deny 桩（副本原型是 Object.prototype，桩之外爬不到原对象） */
 const denyPath = (root: Record<string, unknown>, path: readonly string[], permission: PluginPermission): void => {
   let obj = root;
   for (let i = 0; i < path.length - 1; i++) {
@@ -153,7 +153,68 @@ function copyObject(src: object): Record<string, unknown> {
 }
 
 /**
- * 按权限裁剪公开 API：未授权的写能力换成抛错桩，读能力全部保留。
+ * 公开 API 的命名空间级白名单：只暴露 CraftAPI interface 声明的成员。
+ * 白名单决定「可见性」，WRITE_CAPABILITIES 决定「可写性」，二者不混用。
+ * 原型链隔离由 copyObject 负责（产出对象的原型是 Object.prototype），
+ * 不再依赖 Proxy 或 Object.freeze——冻结 Proxy 的 target 会触发 Node 24
+ * 的不变式校验，把 deny 桩换成真方法时抛 TypeError。
+ */
+const API_TOP_LEVEL = [
+  'version', 'release', 'registerBlock', 'registerTile', 'registerEntity', 'setGenerator',
+  'on', 'off', 'emit',
+] as const;
+
+const API_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
+  events: ['scope', 'stats', 'onAny', 'waitFor'],
+  plugins: [
+    'register', 'enable', 'disable', 'unload', 'list', 'get', 'reload', 'enableAll',
+    'stats', 'install', 'findByCapability',
+  ],
+  wasm: [
+    'status', 'stats', 'benchmark', 'setEnabled', 'listModules', 'call', 'callModule',
+    'registerModule', 'unregisterModule',
+  ],
+  extensions: ['points', 'stats', 'has', 'list'],
+  botany: ['registerPlant', 'unregisterPlant', 'registerRule', 'unregisterRules', 'listRules', 'stats'],
+  diagnostics: ['run', 'last'],
+  world: [
+    'seed', 'getBlock', 'setBlock', 'decorate', 'surfaceHeight', 'biomeAt', 'terrain', 'raycast',
+  ],
+  player: ['position', 'teleport', 'setFly', 'setCamera', 'break', 'place', 'selectedBlock'],
+  time: ['get', 'set', 'setDayLength', 'text'],
+  entities: ['spawn', 'list'],
+  tnt: ['ignite'],
+  save: ['export', 'import', 'setProvider', 'exportFile', 'importFile'],
+  settings: [
+    'renderDistance', 'sensitivity', 'fov', 'sound', 'volume', 'invertY', 'quality',
+    'particles', 'viewBob', 'autoJump', 'touchSensitivity', 'debugOverlay', 'greedy',
+    'mesherThreads', 'autosaveInterval', 'exportOptions', 'importOptions',
+  ],
+  input: ['getBinding', 'setBinding', 'resetBindings', 'gamepadConnected'],
+  survival: [
+    'mode', 'setMode', 'health', 'hunger', 'breath', 'damage', 'heal', 'give', 'count',
+    'inventory', 'respawn',
+  ],
+  // 不透明门面：整段复制（见 OPAQUE_NAMESPACES）
+  blocks: [],
+  engine: [],
+};
+
+/** 不透明门面（注册表 / 引擎）：整段复制，不按成员白名单裁剪。 */
+const OPAQUE_NAMESPACES = new Set(['blocks', 'engine']);
+
+/** 只挑白名单成员，保留 getter/setter 描述符与 bind 后的函数。 */
+function pickAllowed(src: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    const d = Object.getOwnPropertyDescriptor(src, key);
+    if (d) Object.defineProperty(out, key, d);
+  }
+  return out;
+}
+
+/**
+ * 按权限裁剪公开 API：只暴露命名空间白名单内的成员，未授权的写能力换成抛错桩。
  *
  * `channel` 是插件的命名空间通道（PluginService 启用时注入）：
  * - `api.on / off` 路由进通道，停用时自动撤销，杜绝「api.on 订阅泄漏」；
@@ -166,13 +227,14 @@ export function scopeAPI(
   channel?: EventChannel,
 ): CraftAPI {
   const perms = new Set(permissions);
-  // H13：api 与每个命名空间都是「冻结副本」——全新普通对象（原型是
-  // Object.prototype），原始对象不在原型链上，getPrototypeOf 无法
-  // 再摸到未裁剪的真方法。deny 桩打在副本上，最后整体冻结。
-  const rec = copyObject(base) as unknown as Record<string, unknown>;
-  for (const key of Object.keys(rec)) {
-    const v = rec[key];
-    if (v && typeof v === 'object') rec[key] = copyObject(v as object);
+  const baseCopy = copyObject(base) as Record<string, unknown>;
+  const rec: Record<string, unknown> = pickAllowed(baseCopy, API_TOP_LEVEL);
+
+  for (const [ns, keys] of Object.entries(API_NAMESPACES)) {
+    const value = baseCopy[ns];
+    if (!value || typeof value !== 'object') continue;
+    const copied = copyObject(value as object);
+    rec[ns] = OPAQUE_NAMESPACES.has(ns) ? copied : pickAllowed(copied, keys);
   }
 
   for (const [permission, paths] of Object.entries(WRITE_CAPABILITIES) as [
@@ -184,20 +246,16 @@ export function scopeAPI(
   }
   const api = rec as unknown as CraftAPI;
 
-  // 旧 22 项里直接暴露了 BlockRegistry。代理保证 register 永远走权限与
+  // 旧 22 项里直接暴露了 BlockRegistry：register 必须走权限与
   // CraftAPI.registerBlock 门面（否则不会触发 onBlockRegistered / Worker 配置刷新），
-  // 同时保留 get / isSolid / all 等读能力（方法必须 bind 回原对象，私有字段才有效）。
+  // 同时保留 get / isSolid / all 等读能力（方法 bind 回原对象，私有字段才有效）。
   const canRegisterBlocks = perms.has('blocks:register');
   if (base.blocks) {
     const registerThroughFacade = base.registerBlock;
-    // Node 24 的 Proxy 完整性校验会拒绝 get 拦截把「只读不可配置」的 register
-    // 换成权限桩（TypeError 而非预期的 deny）。这里改用冻结的普通对象副本：
-    // 原注册表不在原型链上，getPrototypeOf 摸不到真方法，读能力由 copyObject 保留。
-    const blocksView = copyObject(base.blocks) as Record<string, unknown>;
+    const blocksView = rec.blocks as Record<string, unknown>;
     blocksView.register = canRegisterBlocks
       ? (input: Parameters<CraftAPI['registerBlock']>[0]) => registerThroughFacade(input)
       : () => deny('blocks:register');
-    api.blocks = Object.freeze(blocksView) as unknown as typeof base.blocks;
   }
 
   // 事件视图：api:emit 必须同时约束 ctx.events.emit 与 api.events.scope(...).emit，
@@ -223,19 +281,14 @@ export function scopeAPI(
       base.off(type, fn)) as CraftAPI['off'];
   }
   // v2：插件管理面默认只读；写操作需 plugins:manage（避免插件互相劫持）。
-  // rec.plugins 已是冻结前的副本，补上 denyPath 未覆盖的三个写方法。
+  // rec.plugins 是白名单副本，补上 denyPath 未覆盖的三个写方法。
   if (!perms.has('plugins:manage') && rec.plugins) {
     const plugins = rec.plugins as Record<string, unknown>;
     for (const m of ['reload', 'enableAll', 'install']) {
       plugins[m] = () => deny('plugins:manage');
     }
   }
-  // 全部裁剪完成后逐层冻结：副本从此不可增删改，权限表即最终形态
-  for (const key of Object.keys(rec)) {
-    const v = rec[key];
-    if (v && typeof v === 'object') Object.freeze(v);
-  }
-  return Object.freeze(api);
+  return api;
 }
 
 const CAPABILITY_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,63}$/i;

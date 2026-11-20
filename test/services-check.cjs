@@ -379,6 +379,18 @@ ok('EventChannel.onAny 归属通道，dispose 时撤销', () => {
   ev.emit('game:start', { seed: 2 });
   assert.strictEqual(seen, 1);
 });
+ok('权限裁剪：scoped API 不冻结且只暴露命名空间白名单成员', () => {
+  const base = fakeApi();
+  base.__privateTop = () => 'secret';
+  base.world.__privateMember = () => 'secret';
+  const scoped = scopeAPI(base, []);
+  assert.strictEqual(Object.isFrozen(scoped), false, '顶层不应被 freeze');
+  assert.strictEqual(Object.isFrozen(scoped.world), false, '命名空间不应被 freeze');
+  assert.strictEqual(Object.isFrozen(scoped.blocks), false, 'blocks 不应被 freeze');
+  assert.strictEqual('__privateTop' in scoped, false, '非白名单顶层成员不应暴露');
+  assert.strictEqual('__privateMember' in scoped.world, false, '非白名单命名空间成员不应暴露');
+  assert.strictEqual(Object.getPrototypeOf(scoped.world), Object.prototype, '不应爬到原对象原型');
+});
 ok('权限裁剪：未声明 world:write 时 setBlock 抛错', () => {
   const base = fakeApi();
   const scoped = scopeAPI(base, []);
