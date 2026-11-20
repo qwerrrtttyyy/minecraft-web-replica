@@ -1,13 +1,11 @@
 import type { BlockId, GameMode } from '../core/types';
-import type { MesherThreads, Options, QualityMode } from '../core/options';
 import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
-import { CraftingPanel, type CraftingHost } from './crafting';
 
 /**
- * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
+ * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 死亡界面。
  * 原版风格 UI：泥土面板、立体按钮、像素图标；移动端为加大触控与安全区布局。
  */
 
@@ -30,39 +28,10 @@ export interface HUDOptions {
   onRenderDistance: (v: number) => void;
   onSensitivity: (v: number) => void;
   onFov: (v: number) => void;
-  onVolume: (v: number) => void;
-  onInvertY: (v: boolean) => void;
-  onResetOptions: () => void;
-  onOptionsOpen: (from: 'game' | 'menu' | 'title') => void;
-  onOptionsClose: () => void;
-  getOptions: () => Options;
-  onQuality: (v: QualityMode) => void;
-  onParticles: (v: boolean) => void;
-  onViewBob: (v: boolean) => void;
-  onAutoJump: (v: boolean) => void;
-  onTouchSensitivity: (v: number) => void;
-  onDebugOverlay: (v: boolean) => void;
-  onGreedy: (v: boolean) => void;
-  onMesherThreads: (v: MesherThreads) => void;
-  onAutosaveInterval: (v: number) => void;
-  /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
-  onExportOptions: () => string;
-  onCopyOptions: (json: string) => void;
-  onImportOptions: (json: string) => void;
   onPaletteOpen: (from: 'game' | 'menu') => void;
   onPaletteClose: () => void;
-  /** 合成面板：背包宿主（由组装根实现，UI 不直接碰 SurvivalState） */
-  craftingHost: CraftingHost;
-  /** 打开合成界面（from: 'game' = 游戏中，'menu' = 从菜单进入） */
-  onCraftOpen: (from: 'game' | 'menu') => void;
   onRespawn: () => void;
   onModeToggle: () => void;
-  onExportSave: () => void;
-  onImportSave: () => void;
-  /** 按键设置：读取绑定行（动作 / 名称 / 当前键标签）与写回 */
-  getBindings: () => Array<{ action: string; label: string; keyLabel: string }>;
-  onRebind: (action: string, code: string) => void;
-  onResetBindings: () => void;
   isSurvival: () => boolean;
   getCount: (s: Stack) => number;
 }
@@ -79,32 +48,6 @@ const STAT_PATHS: Record<'heart' | 'hunger' | 'bubble', string> = {
   hunger: '<path d="M14.6 3.2a6.2 6.2 0 0 1 6.2 6.2c0 3.1-2.2 5.2-5.6 5.4l-4.4 4.4a2.7 2.7 0 1 1-3.8-3.8l4.4-4.4C13.6 7.6 14.4 5.3 14.6 3.2z"/>',
   bubble: '<circle cx="12" cy="12" r="7.4" fill="none" stroke-width="3.2"/>',
 };
-
-/** 设置页循环行的候选值：画质 / 网格化线程 / 自动保存间隔 */
-const QUALITY_CHOICES: { value: QualityMode; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'high', label: '高' },
-  { value: 'balanced', label: '均衡' },
-  { value: 'power', label: '省电' },
-];
-const THREAD_CHOICES: { value: MesherThreads; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'main', label: '主线程' },
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 4, label: '4' },
-];
-const AUTOSAVE_CHOICES: { value: number; label: string }[] = [
-  { value: 0, label: '关闭' },
-  { value: 8, label: '8 秒' },
-  { value: 15, label: '15 秒' },
-  { value: 30, label: '30 秒' },
-];
-
-/** 循环行当前值对应的展示文案（找不到候选时退回原始值） */
-const choiceLabel = <T extends string | number>(
-  choices: readonly { value: T; label: string }[], v: T,
-): string => choices.find((c) => c.value === v)?.label ?? String(v);
 
 export class HUD {
   readonly root: HTMLElement;
@@ -136,14 +79,10 @@ export class HUD {
   private miningBar!: HTMLElement;
   private miningFill!: HTMLElement;
   private menuOverlay!: HTMLElement;
-  private optionsOverlay!: HTMLElement;
   private paletteOverlay!: HTMLElement;
   private paletteGrid!: HTMLElement;
   private paletteSearch!: HTMLInputElement;
   private helpOverlay!: HTMLElement;
-  private keybindOverlay!: HTMLElement;
-  private keybindList!: HTMLElement;
-  private keybindCapture: string | null = null;
   private deathOverlay!: HTMLElement;
   private deathCause!: HTMLElement;
   private soundBtn!: HTMLButtonElement;
@@ -151,31 +90,11 @@ export class HUD {
   private rdSlider!: HTMLInputElement;
   private sensSlider!: HTMLInputElement;
   private fovSlider!: HTMLInputElement;
-  private volumeSlider!: HTMLInputElement;
   private rdVal!: HTMLElement;
   private sensVal!: HTMLElement;
   private fovVal!: HTMLElement;
-  private volumeVal!: HTMLElement;
-  private soundRow!: HTMLButtonElement;
-  private invertRow!: HTMLButtonElement;
-  private touchSensSlider!: HTMLInputElement;
-  private touchSensVal!: HTMLElement;
-  private qualityRow!: HTMLButtonElement;
-  private particlesRow!: HTMLButtonElement;
-  private viewBobRow!: HTMLButtonElement;
-  private autoJumpRow!: HTMLButtonElement;
-  private debugRow!: HTMLButtonElement;
-  private greedyRow!: HTMLButtonElement;
-  private threadsRow!: HTMLButtonElement;
-  private autosaveRow!: HTMLButtonElement;
-  private ioOverlay!: HTMLElement;
-  private ioTitle!: HTMLElement;
-  private ioTextArea!: HTMLTextAreaElement;
-  private ioCopyBtn!: HTMLButtonElement;
-  private ioApplyBtn!: HTMLButtonElement;
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
-  private crafting!: CraftingPanel;
 
   hudHidden = false;
   private itemNameTimer = 0;
@@ -193,14 +112,9 @@ export class HUD {
     this.buildLoading();
     this.buildGameHud();
     this.buildMenu();
-    this.buildOptions();
     this.buildPalette();
     this.buildHelp();
-    this.buildKeybinds();
     this.buildDeath();
-    // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
-    this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
-    this.root.appendChild(this.crafting.root);
   }
 
   private icon(stack: Stack): string {
@@ -270,13 +184,9 @@ export class HUD {
     seedRow.append(seedInput, seedBtn);
     inner.appendChild(seedRow);
 
-    const linkRow = h('div', 'title-links');
     const helpLink = h('button', 'link-btn', '操作说明');
     helpLink.addEventListener('click', () => this.showHelp(true));
-    const optionsLink = h('button', 'link-btn', '设置');
-    optionsLink.addEventListener('click', () => this.opts.onOptionsOpen('title'));
-    linkRow.append(helpLink, optionsLink);
-    inner.appendChild(linkRow);
+    inner.appendChild(helpLink);
 
     inner.appendChild(h('div', 'title-footer',
       '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'));
@@ -600,21 +510,40 @@ export class HUD {
     panel.appendChild(this.menuModeBtn);
     panel.appendChild(this.mcButton('继续游戏', () => this.opts.onResume(), 'mc-btn-big'));
 
+    const sliders = h('div', 'sliders');
+    const mkSlider = (label: string, min: number, max: number, step: number, val: number,
+      fmt: (v: number) => string, cb: (v: number) => void): [HTMLInputElement, HTMLElement] => {
+      const row = h('div', 'slider-row');
+      const head = h('div', 'slider-head');
+      head.appendChild(h('span', '', label));
+      const valEl = h('span', 'slider-val', fmt(val));
+      head.appendChild(valEl);
+      const input = h('input', 'mc-slider') as HTMLInputElement;
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(val);
+      input.addEventListener('input', () => {
+        const v = Number(input.value);
+        valEl.textContent = fmt(v);
+        cb(v);
+      });
+      row.append(head, input);
+      sliders.appendChild(row);
+      return [input, valEl];
+    };
+    [this.rdSlider, this.rdVal] = mkSlider('渲染距离', 2, 8, 1, 5, (v) => `${v} 区块`, (v) => this.opts.onRenderDistance(v));
+    [this.sensSlider, this.sensVal] = mkSlider('视角灵敏度', 40, 200, 5, 100, (v) => `${v}%`, (v) => this.opts.onSensitivity(v / 100));
+    [this.fovSlider, this.fovVal] = mkSlider('视野 FOV', 60, 95, 1, 72, (v) => `${v}°`, (v) => this.opts.onFov(v));
+    panel.appendChild(sliders);
+
     const btnRow = h('div', 'menu-row');
     btnRow.appendChild(this.mcButton('操作说明', () => this.showHelp(true)));
     // 必须交给组装根打开面板：paletteReturn 需要记住 'menu'，
     // 否则关闭面板会直接恢复游戏而不是回到菜单（v1.3.2 修复）。
     btnRow.appendChild(this.mcButton('方块库', () => this.opts.onPaletteOpen('menu')));
-    btnRow.appendChild(this.mcButton('设置', () => this.opts.onOptionsOpen('menu')));
-    // 工作台：生存模式下随时可开（材料来自背包），与右键工作台方块等价
-    btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
-    btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
-
-    const saveRow = h('div', 'menu-row');
-    saveRow.appendChild(this.mcButton('导出存档', () => this.opts.onExportSave(), 'mc-btn-small'));
-    saveRow.appendChild(this.mcButton('导入存档', () => this.opts.onImportSave(), 'mc-btn-small'));
-    panel.appendChild(saveRow);
 
     const newWorldRow = h('div', 'menu-new-world');
     const seedInput = h('input', 'mc-input') as HTMLInputElement;
@@ -646,264 +575,13 @@ export class HUD {
     this.menuOverlay.style.display = v ? '' : 'none';
   }
 
-  // ---------- 设置页 ----------
-  /** 原版风滑杆行：菜单与设置页共用，避免两处各写一份 */
-  private sliderRow(
-    label: string, min: number, max: number, step: number, val: number,
-    fmt: (v: number) => string, cb: (v: number) => void,
-  ): { row: HTMLElement; input: HTMLInputElement; val: HTMLElement } {
-    const row = h('div', 'slider-row');
-    const head = h('div', 'slider-head');
-    head.appendChild(h('span', '', label));
-    const valEl = h('span', 'slider-val', fmt(val));
-    head.appendChild(valEl);
-    const input = h('input', 'mc-slider') as HTMLInputElement;
-    input.type = 'range';
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.value = String(val);
-    input.addEventListener('input', () => {
-      const v = Number(input.value);
-      valEl.textContent = fmt(v);
-      cb(v);
-    });
-    row.append(head, input);
-    return { row, input, val: valEl };
-  }
-
-  /** 原版选项行：整行可点，右侧显示当前值（开 / 关） */
-  private optionRow(label: string, onToggle: () => void): HTMLButtonElement {
-    const b = h('button', 'mc-btn opt-row') as HTMLButtonElement;
-    b.append(h('span', 'opt-label', label), h('span', 'opt-val', ''));
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onToggle();
-    });
-    return b;
-  }
-
-  /** 循环选项行：整行可点，点击在候选值间轮转（画质 / 线程数 / 保存间隔） */
-  private cycleRow<T extends string | number>(
-    label: string, choices: readonly { value: T; label: string }[], get: () => T,
-    cb: (v: T) => void,
-  ): HTMLButtonElement {
-    const b = h('button', 'mc-btn opt-row') as HTMLButtonElement;
-    const valEl = h('span', 'opt-val', '');
-    b.append(h('span', 'opt-label', label), valEl);
-    const sync = () => {
-      const cur = get();
-      const hit = choices.find((c) => c.value === cur);
-      valEl.textContent = hit ? hit.label : String(cur);
-      b.title = `${label}：${choices.map((c) => c.label).join(' / ')}`;
-    };
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const cur = get();
-      const i = choices.findIndex((c) => c.value === cur);
-      const next = choices[(i + 1 + choices.length) % choices.length].value;
-      cb(next);
-      sync();
-    });
-    sync();
-    return b;
-  }
-
-  /** 刷新某个选项行右侧的值显示 */
-  private setRowVal(row: HTMLButtonElement, text: string, off = false) {
-    const el = row.querySelector('.opt-val') as HTMLElement | null;
-    if (el) el.textContent = text;
-    row.classList.toggle('off', off);
-  }
-
-  private buildOptions() {
-    const o = this.opts.getOptions();
-    this.optionsOverlay = h('div', 'overlay options-overlay');
-    const panel = h('div', 'mc-panel options-panel');
-    panel.appendChild(h('div', 'panel-title', '设置'));
-
-    const group = (title: string): HTMLElement => {
-      const g = h('div', 'opt-group');
-      g.appendChild(h('h3', '', title));
-      panel.appendChild(g);
-      return g;
-    };
-
-    // ---- 音效 ----
-    const audio = group('音效');
-    this.soundRow = this.optionRow('音效', () => {
-      this.opts.onSoundToggle();
-      this.syncOptions(this.opts.getOptions());
-    });
-    audio.appendChild(this.soundRow);
-    const vol = this.sliderRow('音量', 0, 100, 5, o.volume, (v) => `${v}%`, (v) => this.opts.onVolume(v));
-    audio.appendChild(vol.row);
-    this.volumeSlider = vol.input;
-    this.volumeVal = vol.val;
-
-    // ---- 视频 ----
-    const video = group('视频');
-    const rd = this.sliderRow('渲染距离', 2, 8, 1, o.renderDistance, (v) => `${v} 区块`, (v) => this.opts.onRenderDistance(v));
-    video.appendChild(rd.row);
-    this.rdSlider = rd.input;
-    this.rdVal = rd.val;
-    const fov = this.sliderRow('视野 FOV', 60, 95, 1, o.fov, (v) => `${v}°`, (v) => this.opts.onFov(v));
-    video.appendChild(fov.row);
-    this.fovSlider = fov.input;
-    this.fovVal = fov.val;
-    this.qualityRow = this.cycleRow('画质', QUALITY_CHOICES,
-      () => this.opts.getOptions().quality, (v) => this.opts.onQuality(v));
-    video.appendChild(this.qualityRow);
-    this.particlesRow = this.optionRow('粒子效果', () => {
-      this.opts.onParticles(!this.opts.getOptions().particles);
-      this.syncOptions(this.opts.getOptions());
-    });
-    video.appendChild(this.particlesRow);
-    this.viewBobRow = this.optionRow('视角摇晃', () => {
-      this.opts.onViewBob(!this.opts.getOptions().viewBob);
-      this.syncOptions(this.opts.getOptions());
-    });
-    video.appendChild(this.viewBobRow);
-
-    // ---- 控制 ----
-    const ctrl = group('控制');
-    const sens = this.sliderRow('视角灵敏度', 40, 200, 5, Math.round(o.sensitivity * 100),
-      (v) => `${v}%`, (v) => this.opts.onSensitivity(v / 100));
-    ctrl.appendChild(sens.row);
-    this.sensSlider = sens.input;
-    this.sensVal = sens.val;
-    this.invertRow = this.optionRow('反转 Y 轴', () => {
-      this.opts.onInvertY(!this.opts.getOptions().invertY);
-      this.syncOptions(this.opts.getOptions());
-    });
-    ctrl.appendChild(this.invertRow);
-    this.autoJumpRow = this.optionRow('自动跳跃', () => {
-      this.opts.onAutoJump(!this.opts.getOptions().autoJump);
-      this.syncOptions(this.opts.getOptions());
-    });
-    ctrl.appendChild(this.autoJumpRow);
-    if (this.opts.isMobile) {
-      const ts = this.sliderRow('触控灵敏度', 50, 200, 10, Math.round(o.touchSensitivity * 100),
-        (v) => `${v}%`, (v) => this.opts.onTouchSensitivity(v / 100));
-      ctrl.appendChild(ts.row);
-      this.touchSensSlider = ts.input;
-      this.touchSensVal = ts.val;
-    }
-
-    // ---- 开发者 ----
-    const dev = group('开发者');
-    this.debugRow = this.optionRow('显示调试信息', () => {
-      this.opts.onDebugOverlay(!this.opts.getOptions().debugOverlay);
-      this.syncOptions(this.opts.getOptions());
-    });
-    dev.appendChild(this.debugRow);
-    this.greedyRow = this.optionRow('Greedy 网格合并', () => {
-      this.opts.onGreedy(!this.opts.getOptions().greedy);
-      this.syncOptions(this.opts.getOptions());
-    });
-    dev.appendChild(this.greedyRow);
-    this.threadsRow = this.cycleRow('网格化线程', THREAD_CHOICES,
-      () => this.opts.getOptions().mesherThreads, (v) => this.opts.onMesherThreads(v));
-    dev.appendChild(this.threadsRow);
-    this.autosaveRow = this.cycleRow('自动保存间隔', AUTOSAVE_CHOICES,
-      () => this.opts.getOptions().autosaveInterval, (v) => this.opts.onAutosaveInterval(v));
-    dev.appendChild(this.autosaveRow);
-    const ioRow = h('div', 'menu-row');
-    ioRow.appendChild(this.mcButton('导出设置', () => this.showOptionsIO('export')));
-    ioRow.appendChild(this.mcButton('导入设置', () => this.showOptionsIO('import')));
-    dev.appendChild(ioRow);
-    dev.appendChild(h('div', 'menu-note', '开发者项用于调试与基准，改动立即生效'));
-
-    panel.appendChild(this.mcButton('重置全部设置', () => {
-      this.opts.onResetOptions();
-      this.syncOptions(this.opts.getOptions());
-    }));
-    panel.appendChild(this.mcButton('完成', () => this.opts.onOptionsClose(), 'mc-btn-big'));
-    panel.appendChild(h('div', 'menu-note', '设置自动保存，换世界也保留'));
-    this.optionsOverlay.appendChild(panel);
-    this.optionsOverlay.style.display = 'none';
-    this.root.appendChild(this.optionsOverlay);
-
-    // 设置导入 / 导出面板（复用 overlay + mc-panel）
-    this.ioOverlay = h('div', 'overlay options-io-overlay');
-    const ioPanel = h('div', 'mc-panel options-io-panel');
-    this.ioTitle = h('div', 'panel-title', '导出设置');
-    ioPanel.appendChild(this.ioTitle);
-    const ta = h('textarea', 'mc-input mc-textarea') as HTMLTextAreaElement;
-    ta.spellcheck = false;
-    ta.placeholder = '粘贴设置 JSON，然后点「应用」';
-    this.ioTextArea = ta;
-    ioPanel.appendChild(ta);
-    const ioBtns = h('div', 'menu-row');
-    this.ioCopyBtn = this.mcButton('复制', () => this.opts.onCopyOptions(ta.value));
-    this.ioApplyBtn = this.mcButton('应用', () => this.opts.onImportOptions(ta.value));
-    ioBtns.append(this.ioCopyBtn, this.ioApplyBtn, this.mcButton('关闭', () => this.showOptionsIO(false)));
-    ioPanel.appendChild(ioBtns);
-    this.ioOverlay.appendChild(ioPanel);
-    this.ioOverlay.style.display = 'none';
-    this.root.appendChild(this.ioOverlay);
-
-    this.syncOptions(o);
-  }
-
-  /** 打开 / 关闭设置导入导出面板；mode=false 关闭 */
-  showOptionsIO(mode: 'export' | 'import' | false) {
-    if (mode === false) {
-      this.ioOverlay.style.display = 'none';
-      return;
-    }
-    const exportMode = mode === 'export';
-    this.ioTitle.textContent = exportMode ? '导出设置' : '导入设置';
-    this.ioTextArea.readOnly = exportMode;
-    this.ioTextArea.value = exportMode ? this.opts.onExportOptions() : '';
-    this.ioCopyBtn.style.display = exportMode ? '' : 'none';
-    this.ioApplyBtn.style.display = exportMode ? 'none' : '';
-    this.ioOverlay.style.display = '';
-    if (!exportMode) this.ioTextArea.focus();
-  }
-
-  get optionsIOOpen() {
-    return this.ioOverlay.style.display !== 'none';
-  }
-
-  /** 用当前设置刷新控件（打开页面、切换开关、重置后调用） */
-  syncOptions(o: Options) {
-    this.rdSlider.value = String(o.renderDistance);
-    this.rdVal.textContent = `${o.renderDistance} 区块`;
-    this.sensSlider.value = String(Math.round(o.sensitivity * 100));
-    this.sensVal.textContent = `${Math.round(o.sensitivity * 100)}%`;
-    this.fovSlider.value = String(o.fov);
-    this.fovVal.textContent = `${o.fov}°`;
-    this.volumeSlider.value = String(o.volume);
-    this.volumeVal.textContent = `${o.volume}%`;
-    if (this.touchSensSlider) {
-      this.touchSensSlider.value = String(Math.round(o.touchSensitivity * 100));
-      this.touchSensVal.textContent = `${Math.round(o.touchSensitivity * 100)}%`;
-    }
-    this.setRowVal(this.soundRow, o.sound ? '开' : '关', !o.sound);
-    this.setRowVal(this.invertRow, o.invertY ? '开' : '关', !o.invertY);
-    this.setRowVal(this.particlesRow, o.particles ? '开' : '关', !o.particles);
-    this.setRowVal(this.viewBobRow, o.viewBob ? '开' : '关', !o.viewBob);
-    this.setRowVal(this.autoJumpRow, o.autoJump ? '开' : '关', !o.autoJump);
-    this.setRowVal(this.debugRow, o.debugOverlay ? '开' : '关', !o.debugOverlay);
-    this.setRowVal(this.greedyRow, o.greedy ? '开' : '关', !o.greedy);
-    this.setRowVal(this.qualityRow, choiceLabel(QUALITY_CHOICES, o.quality));
-    this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
-    this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
-  }
-
-  showOptions(v: boolean) {
-    this.optionsOverlay.style.display = v ? '' : 'none';
-    if (!v) this.ioOverlay.style.display = 'none';
-    if (v) {
-      this.syncOptions(this.opts.getOptions());
-      const panel = this.optionsOverlay.querySelector('.options-panel');
-      if (panel) panel.scrollTop = 0;
-    }
-  }
-
-  get optionsOpen() {
-    return this.optionsOverlay.style.display !== 'none';
+  syncSettings(rd: number, sens: number, fov: number) {
+    this.rdSlider.value = String(rd);
+    this.rdVal.textContent = `${rd} 区块`;
+    this.sensSlider.value = String(Math.round(sens * 100));
+    this.sensVal.textContent = `${Math.round(sens * 100)}%`;
+    this.fovSlider.value = String(fov);
+    this.fovVal.textContent = `${fov}°`;
   }
 
   // ---------- 方块库 ----------
@@ -940,7 +618,7 @@ export class HUD {
       const i = this.opts.hotbar.index;
       const old = this.opts.hotbar.slots[i];
       if (old && (old.kind !== stack.kind || old.id !== stack.id)) {
-        const empty = this.opts.hotbar.slots.indexOf(null);
+        const empty = this.opts.hotbar.slots.findIndex((s) => s === null);
         if (empty >= 0) this.opts.hotbar.slots[empty] = old;
       }
       this.opts.hotbar.slots[i] = stack;
@@ -1004,22 +682,6 @@ export class HUD {
     return this.menuOverlay.style.display !== 'none';
   }
 
-  // ---------- 合成 ----------
-
-  /** 打开合成界面（工作台 3×3） */
-  showCrafting(title: string) {
-    this.crafting.show(3, title);
-  }
-
-  /** 关闭合成界面（材料退回背包由 CraftingPanel 负责） */
-  hideCrafting() {
-    this.crafting.hide();
-  }
-
-  get craftingOpen() {
-    return this.crafting.isOpen;
-  }
-
   // ---------- 死亡 ----------
   private buildDeath() {
     this.deathOverlay = h('div', 'overlay death-overlay');
@@ -1058,7 +720,7 @@ export class HUD {
     const cols = h('div', 'help-cols');
 
     const desk = h('div', 'help-col');
-    desk.appendChild(h('h3', '', '键盘 / 鼠标（可在菜单中重绑定）'));
+    desk.appendChild(h('h3', '', '键盘 / 鼠标'));
     const rows: [string, string][] = [
       ['W A S D', '移动'],
       ['空格', '跳跃 / 水中上浮'],
@@ -1103,31 +765,6 @@ export class HUD {
     }
     mob.appendChild(h('div', 'help-tip', '生存提示：树叶可能掉苹果，猪掉猪排，夜晚僵尸会出现。摔落、溺水、饥饿都会掉血。'));
     cols.appendChild(mob);
-
-    const pad = h('div', 'help-col');
-    pad.appendChild(h('h3', '', '手柄（Gamepad）'));
-    const prows: [string, string][] = [
-      ['左摇杆', '移动'],
-      ['右摇杆', '转动视角'],
-      ['A', '跳跃 / 上浮'],
-      ['B', '潜行 / 下降'],
-      ['RB / 按下左摇杆', '疾跑'],
-      ['RT / X', '破坏方块'],
-      ['LT', '放置方块'],
-      ['LB / RB', '上一格 / 下一格'],
-      ['Y', '方块库'],
-      ['Start', '菜单 / 暂停'],
-      ['十字键上/下', '视角 / 飞行'],
-      ['十字键左/右', '选第1格 / 隐藏界面'],
-    ];
-    for (const [k, v] of prows) {
-      const row = h('div', 'help-row');
-      row.appendChild(h('kbd', '', k));
-      row.appendChild(h('span', '', v));
-      pad.appendChild(row);
-    }
-    pad.appendChild(h('div', 'help-tip', '插入手柄或通过蓝牙配对后按任意键即可启用；热插拔无需刷新页面。'));
-    cols.appendChild(pad);
     panel.appendChild(cols);
     panel.appendChild(this.mcButton('关闭', () => this.showHelp(false), 'mc-btn-big'));
     this.helpOverlay.appendChild(panel);
@@ -1141,71 +778,6 @@ export class HUD {
 
   get helpOpen() {
     return this.helpOverlay.style.display !== 'none';
-  }
-
-  // ---------- 按键设置 ----------
-  private buildKeybinds() {
-    this.keybindOverlay = h('div', 'overlay keybind-overlay');
-    const panel = h('div', 'mc-panel keybind-panel');
-    panel.appendChild(h('div', 'panel-title', '按键设置'));
-    panel.appendChild(h('div', 'menu-note', '点击键位后按下新按键；Esc 取消，冲突键会自动交换。'));
-    this.keybindList = h('div', 'keybind-list');
-    panel.appendChild(this.keybindList);
-    const row = h('div', 'menu-row');
-    row.appendChild(this.mcButton('恢复默认', () => {
-      this.opts.onResetBindings();
-      this.refreshKeybinds();
-      this.toast('已恢复默认按键');
-    }, 'mc-btn-small'));
-    row.appendChild(this.mcButton('完成', () => this.showKeybinds(false), 'mc-btn-big'));
-    panel.appendChild(row);
-    this.keybindOverlay.appendChild(panel);
-    this.keybindOverlay.style.display = 'none';
-    this.root.appendChild(this.keybindOverlay);
-  }
-
-  /** 重建键位行；捕获中的行显示「按下按键…」 */
-  refreshKeybinds() {
-    this.keybindList.innerHTML = '';
-    for (const b of this.opts.getBindings()) {
-      const line = h('div', 'keybind-row');
-      line.appendChild(h('span', 'keybind-label', b.label));
-      const btn = h('button', 'mc-btn mc-btn-small keybind-key') as HTMLButtonElement;
-      const capturing = this.keybindCapture === b.action;
-      btn.textContent = capturing ? '按下按键…' : b.keyLabel;
-      if (capturing) btn.classList.add('capturing');
-      btn.addEventListener('click', () => {
-        this.keybindCapture = b.action;
-        this.refreshKeybinds();
-      });
-      line.appendChild(btn);
-      this.keybindList.appendChild(line);
-    }
-  }
-
-  /** 捕获一个按键：若正在等待绑定则消费它，返回是否已消费 */
-  captureKey(code: string): boolean {
-    if (!this.keybindCapture) return false;
-    const action = this.keybindCapture;
-    this.keybindCapture = null;
-    if (code !== 'Escape') {
-      this.opts.onRebind(action, code);
-      this.toast('按键已更新');
-    }
-    this.refreshKeybinds();
-    return true;
-  }
-
-  showKeybinds(v: boolean) {
-    if (v) {
-      this.keybindCapture = null;
-      this.refreshKeybinds();
-    }
-    this.keybindOverlay.style.display = v ? '' : 'none';
-  }
-
-  get keybindOpen() {
-    return this.keybindOverlay.style.display !== 'none';
   }
 }
 

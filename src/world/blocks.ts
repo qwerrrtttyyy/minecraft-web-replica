@@ -44,13 +44,6 @@ export interface BlockDefinition {
   tiles: { top: string; bottom: string; side: string };
   /** 生存模式掉落表，缺省掉落自身 */
   drops: DropSpec[];
-  /**
-   * 群系染色（草 / 叶 / 藤蔓）：图集纹理画成灰度，
-   * 区块 shader 按世界坐标噪声乘群系色（chunkManager.injectLight）。
-   */
-  tint?: boolean;
-  /** 受重力下落（沙子 / 沙砾）：失去支撑时转为下落实体（FallingSystem） */
-  falling?: boolean;
 }
 
 export type BlockInput = Omit<BlockDefinition, 'id' | 'drops'> & {
@@ -161,15 +154,15 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   };
 
   cube('grass', '草方块', { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
-    { sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true });
+    { sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }] });
   cube('dirt', '泥土', {}, { sound: 'dirt', hardness: 0.5 });
   cube('stone', '石头', {}, { hardness: 1.5, drops: [{ name: 'cobblestone' }] });
   cube('cobblestone', '圆石', {}, { hardness: 2 });
-  cube('sand', '沙子', {}, { sound: 'sand', hardness: 0.5, falling: true });
+  cube('sand', '沙子', {}, { sound: 'sand', hardness: 0.5 });
   cube('oak_log', '橡木原木', { top: 'log_top', bottom: 'log_top', side: 'log_side' }, { sound: 'wood', hardness: 2 });
   cube('oak_planks', '橡木木板', {}, { sound: 'wood', hardness: 2 });
   cube('oak_leaves', '橡树树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [
       { name: 'oak_sapling', chance: 0.08 },
       { name: 'oak_leaves', chance: 0.5 },
@@ -191,14 +184,14 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('blue_wool', '蓝色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('yellow_wool', '黄色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
 
-  const plant = (name: string, label: string, drops?: DropSpec[], extra: Partial<BlockInput> = {}) =>
+  const plant = (name: string, label: string, drops?: DropSpec[]) =>
     reg.register({
       name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
       transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-      tiles: { top: name, bottom: name, side: name }, drops, ...extra,
+      tiles: { top: name, bottom: name, side: name }, drops,
     });
   // 草丛是生存模式最早的小麦种子来源（对应原版打草掉种子）
-  plant('tall_grass', '草丛', [{ name: 'self' }, { name: 'item:wheat_seeds', chance: 0.25 }], { tint: true });
+  plant('tall_grass', '草丛', [{ name: 'self' }, { name: 'item:wheat_seeds', chance: 0.25 }]);
   plant('poppy', '虞美人');
   plant('dandelion', '蒲公英');
 
@@ -222,7 +215,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('stone_bricks', '石砖', {}, { hardness: 2 });
   cube('mossy_cobblestone', '苔石圆石', {}, { hardness: 2 });
   cube('obsidian', '黑曜石', {}, { hardness: 12 });
-  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6, falling: true });
+  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6 });
   cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
   cube('ice', '冰', {}, {
     opaque: false, transparentPass: true, sound: 'glass', hardness: 0.5, drops: [],
@@ -254,7 +247,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('cactus', '仙人掌', {}, { sound: 'plant', hardness: 0.4 });
   // 植物（十字面，地形装饰生成）
   plant('sugar_cane', '甘蔗');
-  plant('fern', '蕨', undefined, { tint: true });
+  plant('fern', '蕨');
   cube('granite', '花岗岩', {}, { hardness: 1.5 });
 
   // ---- 新增方块（id 55、56，末位追加，旧存档 edits 差分保持有效） ----
@@ -279,10 +272,10 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('lilac', '丁香');
   plant('rose_bush', '玫瑰丛');
   plant('peony', '牡丹');
-  plant('tall_fern', '高蕨', undefined, { tint: true });
+  plant('tall_fern', '高蕨');
 
   // 攀爬 / 水生 / 洞穴植物：藤蔓向下蔓延、睡莲在水面铺开、海草与海带成片生长
-  plant('vine', '藤蔓', undefined, { tint: true });
+  plant('vine', '藤蔓');
   plant('lily_pad', '睡莲');
   reg.register({
     name: 'seagrass', label: '海草', shape: 'cross', solid: false, opaque: false, liquid: false,
@@ -327,13 +320,13 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('birch_log', '白桦原木', { top: 'birch_log_top', bottom: 'birch_log_top', side: 'birch_log_side' },
     { sound: 'wood', hardness: 2 });
   cube('birch_leaves', '白桦树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [{ name: 'birch_sapling', chance: 0.08 }, { name: 'birch_leaves', chance: 0.5 }],
   });
   cube('spruce_log', '云杉原木', { top: 'spruce_log_top', bottom: 'spruce_log_top', side: 'spruce_log_side' },
     { sound: 'wood', hardness: 2 });
   cube('spruce_leaves', '云杉树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
+    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [{ name: 'spruce_sapling', chance: 0.08 }, { name: 'spruce_leaves', chance: 0.5 }],
   });
 }

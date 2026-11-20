@@ -7,36 +7,19 @@
 3. 改完后按顺序跑回归（见下），提交前必须 `npm run verify` 全绿
 4. 提交信息说明「修了什么 / 为什么」，不要只写「update」
 
-## 合并与发布纪律（铁律）
-
-1. **版本 bump = 同 commit 改断言**：任何推进 `VERSION`（`src/core/version.ts` /
-   `package.json`）的 commit，必须在**同一个 commit** 里同步更新所有断言旧版本号的
-   位置（测试、README 版本行、文档）。禁止把 bump 与断言同步拆成两个 commit——
-   中间的红色窗口就是 2026-11-15 的教训：v1.4.2 的 bump（1.4.1 → 1.4.2）没有同步
-   `test/survival-smoke.mjs` 的版本断言，main 的 `verify` 红掉
-   （`FAIL 版本号单一来源为 1.4.0 — 1.4.2`）。更优做法：版本断言动态读
-   `package.json` / `version.ts`（`e31c482` 写法），断言中禁止硬编码版本字面量。
-2. **一次只合一个 PR**：合并队列按 PR 编号一次处理一个。每次合并后**立即**在 main
-   上跑全量 `npm run verify` 回归（CI 的 `verify` 检查是闸门，main 分支保护要求
-   `verify` 绿）；绿了才允许开始下一个合并。禁止多个 PR 排队后批量合入（「排队打饭」）。
-   - 队首 PR 红着或冲突：先跳过（记录原因），单独修好 / rebase 后再回队列，
-     不允许它堵住后面绿的 PR。
-   - 合并前分支必须 rebase 到最新 main；rebase 中出现的版本 bump 冲突
-     按第 1 条解决（断言同步进同一个 commit）。
-3. **每个 tag 配 Release**：打 tag 的同时必须创建对应 GitHub Release——
-   标题格式 `vX.Y.Z 预发布  <主题>`（正式版：`vN 正式版  <主题>`），正文包含
-   自上一个 tag 起的 changelog（新增 / 修复 / 流程）与验证情况，pre-release 标记
-   与版本轨道一致（迭代版 = prerelease，正式版 = release）。禁止裸 tag（v1.4.2
-   曾裸奔，2026-11-15 已补 Release）。
-
 ## 基线命令
 
 ```bash
 npm ci
 npm run check:version
+npm run wasm:check
 npm run lint
 npm run typecheck
 npm run test:snapshot
+npm run test:wasm
+npm run test:plugin-v2
+npm run test:plugin-carrier
+npm run test:review-fixes
 npm run test:logic
 npm run test:light
 npm run test:mesher
@@ -49,10 +32,13 @@ npm run test:botany
 npm run test:plant-energy
 npm run test:botany-rules
 npm run verify          # 以上全部 + build + 浏览器实景 + 视觉回归
+
+# 仅在修改 native/mc_kernel.c 后执行（需要 clang --target=wasm32）
+npm run build:wasm      # 重新编译并生成 src/wasm/kernelBinary.ts
 ```
 
 `test:snapshot` 必须先于全部 require CJS 快照的纯逻辑测试
-（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system / test:botany / test:plant-energy / test:botany-rules`）。
+（`test:wasm / test:plugin-v2 / test:plugin-carrier / test:review-fixes / test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system / test:botany / test:plant-energy / test:botany-rules`）。
 
 浏览器实景在 Linux 无 GPU 环境下：
 
@@ -68,7 +54,21 @@ xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run t
 - 自动采样每 10 秒一次，仅当异常集合变化时输出 `console.groupCollapsed`
 
 新增检查项时，同时更新 `test/diagnostics-check.cjs`，并在注入异常的快照上断言对应
-`issue.id`，确保检查项本身不会静默失效。
+`issue.id`，确保检查项本身不会静默失效。v1.5.0 的 WASM 检查为
+`wasm.status` / `wasm.abi` / `wasm.fallback` / `wasm.selfcheck`。
+
+## WASM 与插件 v2
+
+- 内核导出或浮点表达式变更：`native/mc_kernel.c` ↔ `src/world/noiseMath.ts`
+  必须同步，推进 `KERNEL_ABI`，重跑 `npm run build:wasm`；`test:wasm` 的
+  `Object.is` 对拍不允许放宽。
+- `wasm:check` 不调用编译器，CI 只校验内联产物与 `.wasm` 一致；两者必须同时提交。
+- `?wasm=0` 强制关闭 WASM，用于 A/B 对比；`CraftAPI.wasm.stats()` 看自检样本、
+  调用数与回退次数。
+- 新增 `CraftAPI` 命名空间写方法时同步 `scopeAPI` 裁剪；新增 manifest 字段同步
+  `validateManifest` 与 `test:plugin-v2`。
+- `CraftAPI.plugins.install(source)` 等价 eval，只加载可信且已审计的源码，
+  不要接远程自动下载。
 
 ## 地形与方块
 
@@ -85,3 +85,7 @@ xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run t
   为 true；否则检查 `config-ack` 是否被 `drainResults` 消费
 - **CI 浏览器启动超时**：基础设施抖动时重跑；持续失败检查 Chromium / Xvfb / Mesa 安装
 - **旧存档方块错位**：方块 id 必须保持 append-only，禁止在中间插入内置方块
+- **WASM 一直 fallback**：先看 `CraftAPI.wasm.stats().lastError`；「等价性自检失败」
+  说明 C 与 `noiseMath.ts` 表达式顺序漂移，修实现而不是放宽对拍
+- **插件被判 failed**：看 `plugins.get(id).error` / `.warnings`；`apiVersion` 不匹配、
+  依赖版本不满足、setup 超时都在注册 / 启用期给出明确原因

@@ -2,7 +2,7 @@ import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 /**
- * 轻量静态门禁（v1.4.3）。
+ * 轻量静态门禁（v1.5.0）。
  *
  * 项目此前只靠 tsc --noEmit 兜底，没有 lint / format 配置。这里只开启
  * 「零误报、能机械执行」的规则，避免一次性引入大面积整改：

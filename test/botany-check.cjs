@@ -7,12 +7,12 @@
  * 草方块与花草蔓延、蘑菇在暗处扩散、藤蔓垂挂、睡莲铺水、南瓜藤结瓜，
  * 以及支撑方块被拆后整列枯萎。
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { World } = require('./terrain-logic/world/world.js');
 const { Botany } = require('./terrain-logic/world/botany.js');
 const { EventService } = require('./terrain-logic/services/events/EventService.js');
-const { CHUNK_SIZE: CS } = require('./terrain-logic/core/types.js');
+const { CHUNK_SIZE: CS, WORLD_HEIGHT: H } = require('./terrain-logic/core/types.js');
 
 const log = (...a) => console.log(...a);
 let passed = 0;
@@ -36,7 +36,7 @@ function makeWorld(seed = 20261115) {
     seed,
     surfaceHeight: () => 20,
     biomeAt: () => 'plains',
-    generateChunk(_cx, _cz, data) {
+    generateChunk(cx, cz, data) {
       const idx = (x, y, z) => (y * CS + z) * CS + x;
       for (let z = 0; z < CS; z++) {
         for (let x = 0; x < CS; x++) {
@@ -118,24 +118,27 @@ log('植物生态随机刻回归（生长 / 蔓延 / 枯萎）');
   put(t, 5, 21, 3, 'sweet_berry_bush');
   ok('甜浆果丛成熟', until(t, 5, 21, 3, () => get(t, 5, 21, 3) === t.id('sweet_berry_bush_ripe')));
 }
+
 // 3) 树苗长成对应树种
-for (const [sapling, logName, leafName] of [
-  ['oak_sapling', 'oak_log', 'oak_leaves'],
-  ['birch_sapling', 'birch_log', 'birch_leaves'],
-  ['spruce_sapling', 'spruce_log', 'spruce_leaves'],
-]) {
-  const t = makeWorld();
-  put(t, 8, 21, 8, sapling);
-  // 清空 5×5 树冠空间，避免被地表其他测试残留阻挡
-  for (let dx = -3; dx <= 3; dx++) {
-    for (let dz = -3; dz <= 3; dz++) {
-      for (let y = 21; y < 40; y++) t.world.setBlock(8 + dx, y, 8 + dz, 0);
+{
+  for (const [sapling, logName, leafName] of [
+    ['oak_sapling', 'oak_log', 'oak_leaves'],
+    ['birch_sapling', 'birch_log', 'birch_leaves'],
+    ['spruce_sapling', 'spruce_log', 'spruce_leaves'],
+  ]) {
+    const t = makeWorld();
+    put(t, 8, 21, 8, sapling);
+    // 清空 5×5 树冠空间，避免被地表其他测试残留阻挡
+    for (let dx = -3; dx <= 3; dx++) {
+      for (let dz = -3; dz <= 3; dz++) {
+        for (let y = 21; y < 40; y++) t.world.setBlock(8 + dx, y, 8 + dz, 0);
+      }
     }
+    put(t, 8, 21, 8, sapling);
+    const grew = until(t, 8, 21, 8, () => get(t, 8, 21, 8) === t.id(logName), 12000);
+    ok(`${sapling} 长成${logName}`, grew);
+    ok(`${sapling} 生成${leafName}树冠`, count(t, leafName) > 8, `${count(t, leafName)} 片`);
   }
-  put(t, 8, 21, 8, sapling);
-  const grew = until(t, 8, 21, 8, () => get(t, 8, 21, 8) === t.id(logName), 12000);
-  ok(`${sapling} 长成${logName}`, grew);
-  ok(`${sapling} 生成${leafName}树冠`, count(t, leafName) > 8, `${count(t, leafName)} 片`);
 }
 
 // 4) 草方块 / 花草蔓延与支撑枯萎
@@ -225,7 +228,7 @@ for (const [sapling, logName, leafName] of [
 // 7) 生态事件可观测
 {
   const t = makeWorld();
-  const kinds = new Set();
+  let kinds = new Set();
   t.events.on('plant:grow', (e) => kinds.add(e.kind));
   put(t, 3, 21, 3, 'sugar_cane');
   until(t, 3, 21, 3, () => get(t, 3, 22, 3) === t.id('sugar_cane'));

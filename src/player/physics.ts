@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { World } from '../world/world';
 
 /**
@@ -39,32 +39,40 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
     const maxY = Math.floor(body.pos.y + body.height);
     const minZ = Math.floor(body.pos.z - half);
     const maxZ = Math.floor(body.pos.z + half);
+    const forward = delta > 0;
+    // 收集同轴所有重叠方块，取移动方向上最近的阻挡面后再钳制。
+    // 旧实现「第一个命中即 return」在高速斜向移动、AABB 同轴覆盖多个方块时可能钳制到
+    // 较远的那个（遍历顺序而非最近距离），造成穿透或抖动；dt 已钳制到 0.05 故实际罕见，
+    // 这里按最近距离选择以彻底消除该隐患。
+    let nearest: number | null = null;
     for (let y = minY; y <= maxY; y++) {
       for (let z = minZ; z <= maxZ; z++) {
         for (let x = minX; x <= maxX; x++) {
           if (!world.isSolidAt(x, y, z)) continue;
-          if (axis === 'x') {
-            body.pos.x = delta > 0 ? x - half - EPS : x + 1 + half + EPS;
-            body.vel.x = 0;
-            res.hitX = true;
-          } else if (axis === 'z') {
-            body.pos.z = delta > 0 ? z - half - EPS : z + 1 + half + EPS;
-            body.vel.z = 0;
-            res.hitZ = true;
-          } else {
-            if (delta > 0) {
-              body.pos.y = y - body.height - EPS;
-              res.hitHead = true;
-            } else {
-              body.pos.y = y + 1 + EPS;
-              body.onGround = true;
-              if (!wasGround && body.vel.y < -8) res.landed = true;
-            }
-            body.vel.y = 0;
-          }
-          return;
+          const c = axis === 'x' ? x : axis === 'z' ? z : y;
+          if (nearest === null || (forward ? c < nearest : c > nearest)) nearest = c;
         }
       }
+    }
+    if (nearest === null) return;
+    if (axis === 'x') {
+      body.pos.x = forward ? nearest - half - EPS : nearest + 1 + half + EPS;
+      body.vel.x = 0;
+      res.hitX = true;
+    } else if (axis === 'z') {
+      body.pos.z = forward ? nearest - half - EPS : nearest + 1 + half + EPS;
+      body.vel.z = 0;
+      res.hitZ = true;
+    } else {
+      if (forward) {
+        body.pos.y = nearest - body.height - EPS;
+        res.hitHead = true;
+      } else {
+        body.pos.y = nearest + 1 + EPS;
+        body.onGround = true;
+        if (!wasGround && body.vel.y < -8) res.landed = true;
+      }
+      body.vel.y = 0;
     }
   };
 

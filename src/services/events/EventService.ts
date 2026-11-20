@@ -1,6 +1,5 @@
 import type { GameEvents } from './GameEvents';
 import { EventChannel } from './EventChannel';
-import type { EventChannelOptions } from './EventChannel';
 import type { Disposable } from '../ServiceContainer';
 
 type Handler<T> = (payload: T) => void;
@@ -76,12 +75,23 @@ export class EventService implements Disposable {
   }
 
   once<K extends keyof GameEvents>(type: K, fn: Handler<GameEvents[K]>, label = 'anonymous'): () => void {
+    // fired 先于 off 赋值：极端重入（回调在 on 返回前被同步触发）时 off 仍是空函数，
+    // 用 fired 保证 fn 只执行一次、移除只做一次，避免订阅泄漏与重复回调。
     let off: () => void = () => {};
+    let fired = false;
     off = this.on(type, (p) => {
+      if (fired) return;
+      fired = true;
       off();
       fn(p);
     }, label);
-    return off;
+    // 调用方提前 off 时也要置 fired，防止之后同事件仍触发残留回调
+    const wrappedOff = (): void => {
+      if (fired) return;
+      fired = true;
+      off();
+    };
+    return wrappedOff;
   }
 
   /** 等待某事件首次到达；超时 reject，便于插件异步启动编排 */
@@ -142,8 +152,8 @@ export class EventService implements Disposable {
   }
 
   /** 创建归属命名空间的订阅通道（插件上下文默认拿到这个） */
-  scope(namespace: string, options?: EventChannelOptions): EventChannel {
-    return new EventChannel(this, namespace, options);
+  scope(namespace: string): EventChannel {
+    return new EventChannel(this, namespace);
   }
 
   /** @internal 由 EventChannel 构造时调用 */

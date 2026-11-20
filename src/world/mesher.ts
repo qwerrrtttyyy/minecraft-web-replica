@@ -28,7 +28,7 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], colors: [], lights: [], tiles: [], tints: [], indices: [] });
+const newGeo = (): GeoArrays => ({ positions: [], uvs: [], colors: [], lights: [], tiles: [], indices: [] });
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -147,24 +147,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   const passFor = (def: MeshBlockDef): GeoArrays => {
-    if (def.lightEmission > 0) {
-      out.emissive ??= newGeo();
-      return out.emissive;
-    }
-    if (def.liquid) {
-      out.water ??= newGeo();
-      return out.water;
-    }
-    if (def.transparentPass) {
-      out.transparent ??= newGeo();
-      return out.transparent;
-    }
-    out.opaque ??= newGeo();
-    return out.opaque;
+    if (def.lightEmission > 0) return (out.emissive ??= newGeo());
+    if (def.liquid) return (out.water ??= newGeo());
+    if (def.transparentPass) return (out.transparent ??= newGeo());
+    return (out.opaque ??= newGeo());
   };
 
-  /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；tint 为群系染色开关（0/1） */
-  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, sky: number, block: number, tint: number) => {
+  /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向 */
+  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, sky: number, block: number) => {
     const base = g.positions.length / 3;
     const u0 = tile[0];
     const v0 = tile[1];
@@ -175,7 +165,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const T = g.tiles;
     const C = g.colors;
     const L = g.lights;
-    const N = g.tints;
     for (let i = 0; i < 4; i++) {
       P.push(qx[i], qy[i], qz[i]);
       U.push(qu[i], qv[i]);
@@ -183,7 +172,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
       const b = qb[i];
       C.push(b, b, b);
       L.push(sky, block);
-      N.push(tint);
     }
     const I = g.indices;
     if (flip) I.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
@@ -218,7 +206,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     // 采样面外侧空气格的光照（跨区块与未加载边界都能安全取值）
     const lightSky = src.getSkyLight(bx + face.normal[0], by + face.normal[1], bz + face.normal[2]) / 15;
     const lightBlock = src.getBlockLight(bx + face.normal[0], by + face.normal[1], bz + face.normal[2]) / 15;
-    pushQuad(g, tile, flip, lightSky, lightBlock, def.tint ? 1 : 0);
+    pushQuad(g, tile, flip, lightSky, lightBlock);
   };
 
   /** 交叉面片（草丛 / 花）：两片，每片正反各一次 */
@@ -227,7 +215,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const tile = src.uv(def.tiles.side);
     const lightSky = src.getSkyLight(bx, by, bz) / 15;
     const lightBlock = src.getBlockLight(bx, by, bz) / 15;
-    const tint = def.tint ? 1 : 0;
     const x0 = bx + 0.15, x1 = bx + 0.85;
     const z0 = bz + 0.15, z1 = bz + 0.85;
     const y0 = by, y1 = by + 1;
@@ -238,7 +225,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x1; qy[2] = y1; qz[2] = z1;
     qx[3] = x0; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, lightSky, lightBlock);
     // 面 A（反面：顶点反序 + UV 反序，亮度保持原顺序）
     qx[0] = x0; qy[0] = y1; qz[0] = z0;
     qx[1] = x1; qy[1] = y1; qz[1] = z1;
@@ -246,7 +233,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x0; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, lightSky, lightBlock);
 
     // 面 B（正面）
     qx[0] = x1; qy[0] = y0; qz[0] = z0;
@@ -254,7 +241,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x0; qy[2] = y1; qz[2] = z1;
     qx[3] = x1; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, lightSky, lightBlock);
     // 面 B（反面）
     qx[0] = x1; qy[0] = y1; qz[0] = z0;
     qx[1] = x0; qy[1] = y1; qz[1] = z1;
@@ -262,7 +249,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x1; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, lightSky, lightBlock);
   };
 
   /** 逐方块逐面输出（greedy 关闭时的完整路径，或特殊方块的兜底路径） */
@@ -377,7 +364,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
           duV[0] = duV[1] = duV[2] = 0; duV[uAxis] = uDir;
           dvV[0] = dvV[1] = dvV[2] = 0; dvV[vAxis] = vDir;
           const bright = face.shade * AO_LEVELS[ao];
-          const tint = def.tint ? 1 : 0;
           for (let i = 0; i < 4; i++) {
             const c = face.corners[i];
             const ww = c[3] * w;
@@ -389,7 +375,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
             qv[i] = cu(hh);
             qb[i] = bright;
           }
-          pushQuad(g, tile, false, lightSky, lightBlock, tint);
+          pushQuad(g, tile, false, lightSky, lightBlock);
           out.stats.merged += w * h - 1;
           U += w;
         }

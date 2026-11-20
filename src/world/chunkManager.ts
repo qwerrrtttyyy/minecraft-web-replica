@@ -43,8 +43,6 @@ export interface ChunkManagerOptions {
   greedy?: boolean;
   /** 网格化 Worker 池大小覆盖（默认按 navigator.hardwareConcurrency 推断，?workers=N 传入） */
   workers?: number;
-  /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
-  camera?: THREE.Camera;
 }
 
 const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
@@ -56,8 +54,6 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
   // 每个顶点的图集 tile 区域，shader 用 fract(局部UV) 平铺
   g.setAttribute('aTileRect', new THREE.BufferAttribute(p.tiles, 4));
-  // 每个顶点的群系染色开关（0/1），shader 据此给草/叶/藤蔓乘群系色
-  g.setAttribute('aTint', new THREE.BufferAttribute(p.tints, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
   return g;
@@ -70,64 +66,22 @@ interface ChunkShader {
   fragmentShader: string;
 }
 
-/**
- * 群系植被染色（草 / 叶 / 藤蔓）：灰度纹理 × 世界坐标噪声群系色。
- *
- * 纹理在图集里画成灰度（atlas.ts 的 gray()），这里按世界 XZ 的双层值噪声
- * 在「冷绿 / 基准绿 / 暖黄绿」之间平滑过渡，模拟群系色带；每株植物之间再叠
- * 一层中频噪声打散边界。aTint 顶点属性做门控（只有 tint 方块参与），
- * 草方块侧面的泥土保留彩色，用饱和度掩膜只染灰度条带。
- */
-const FOLIAGE_GLSL = `
-float foliageHash(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.x + p3.y) * p3.z);
-}
-float foliageNoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(foliageHash(i), foliageHash(i + vec2(1.0, 0.0)), f.x),
-    mix(foliageHash(i + vec2(0.0, 1.0)), foliageHash(i + vec2(1.0, 1.0)), f.x),
-    f.y);
-}
-vec3 foliageTint(vec2 wxz) {
-  float band = foliageNoise(wxz * 0.012);
-  // 注意：patch 是 GLSL ES 保留字（细分着色器），不可作变量名
-  float patchN = foliageNoise(wxz * 0.055 + 17.3);
-  vec3 cool = vec3(0.62, 0.98, 0.62);
-  vec3 base = vec3(0.82, 1.12, 0.50);
-  vec3 warm = vec3(1.06, 1.10, 0.42);
-  vec3 t = mix(cool, base, smoothstep(0.25, 0.62, band));
-  t = mix(t, warm, smoothstep(0.58, 0.88, band));
-  return t * (1.0 - 0.10 * patchN);
-}
-`;
-
 function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
   shader.uniforms.uDaylight = daylight;
   shader.uniforms.uSunTint = sunTint;
-  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nvarying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
+  shader.vertexShader = 'attribute vec2 aLight;\nvarying vec2 vLight;\n' + shader.vertexShader.replace(
     '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
+    '#include <begin_vertex>\n\tvLight = aLight;',
   );
-  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
+  shader.fragmentShader = 'varying vec2 vLight;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + shader.fragmentShader.replace(
     '#include <color_fragment>',
     `#include <color_fragment>
-    // 植被掩膜：必须在光照染色之前采样饱和度，否则天空/太阳色会把灰度误判成彩色
-    float folMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
-    float folMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
-    float folMask = vTint * (1.0 - smoothstep(0.10, 0.22, folMx > 0.0 ? (folMx - folMn) / folMx : 0.0));
-    vec3 folTint = foliageTint(vFolPos.xz);
     float skyPart = vLight.x * uDaylight;
     float lit = max(skyPart, vLight.y);
     float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
     vec3 skyTint = mix(vec3(0.56, 0.65, 0.94), vec3(1.0), clamp(uDaylight * 1.35, 0.0, 1.0));
     vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
-    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;
-    diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
+    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;`,
   );
 }
 
@@ -169,6 +123,7 @@ export class ChunkManager implements System {
   private busy: number[] = [];
   /** 每个 Worker 已确认的配置 revision（-1 表示尚未收到 config） */
   private workerConfig: number[] = [];
+  private poolSize = 0;
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
   private config: MeshConfig | null = null;
@@ -177,15 +132,6 @@ export class ChunkManager implements System {
   private inFlight = new Map<string, InFlight>();
   private pendingResults: WorkerResponse[] = [];
   private totals: MeshStats & { chunks: number } = { quads: 0, vertices: 0, merged: 0, ms: 0, chunks: 0 };
-
-  // ---- 透明通道按几何距离排序（解决玻璃/水叠加穿帮） ----
-  private camera: THREE.Camera | null = null;
-  private sortTmp = new THREE.Vector3();
-  private camWorld = new THREE.Vector3();
-  private lastSortCam = new THREE.Vector3(Infinity, Infinity, Infinity);
-  private sortAcc = 0;
-  private sortDirty = true;
-  private transparentOrderCache: { key: string; pass: 'transparent' | 'water'; dist: number; order: number }[] = [];
 
   constructor(
     private world: World,
@@ -197,7 +143,6 @@ export class ChunkManager implements System {
   ) {
     this.renderDistance = renderDistance;
     this.greedyOption = options.greedy ?? true;
-    this.camera = options.camera ?? null;
     this.materials = {
       opaque: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
       emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
@@ -231,70 +176,27 @@ export class ChunkManager implements System {
     if (options.forceMainThread) {
       this.mode = 'main';
     } else {
-      this.spawnWorkers(ChunkManager.decidePoolSize(options.workers));
+      const want = ChunkManager.decidePoolSize(options.workers);
+      // 构造期失败统一由 createWorkerPool 回滚：不再留下「部分 Worker + worker 模式」的残池
+      const pool = createWorkerPool(MeshWorker, want);
+      if (pool.partial) {
+        console.warn('[mesher] Worker 池构造不完整，整体回退主线程同步网格化');
+        this.fallbackToMain();
+      } else {
+        for (const w of pool.workers) {
+          w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+          w.onerror = (e) => {
+            console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
+            this.fallbackToMain();
+          };
+          this.workers.push(w);
+          this.busy.push(0);
+          this.workerConfig.push(-1);
+        }
+        this.poolSize = this.workers.length;
+      }
     }
     this.getConfig(); // 建立低频配置并向所有 Worker 下发
-  }
-
-  /** 建立 Worker 池；构造不完整时整体回退主线程，不留「部分 Worker」残池 */
-  private spawnWorkers(want: number): void {
-    // 构造期失败统一由 createWorkerPool 回滚：不再留下「部分 Worker + worker 模式」的残池
-    const pool = createWorkerPool(MeshWorker, want);
-    if (pool.partial) {
-      console.warn('[mesher] Worker 池构造不完整，整体回退主线程同步网格化');
-      this.fallbackToMain();
-      return;
-    }
-    this.mode = 'worker';
-    for (const w of pool.workers) {
-      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
-      w.onerror = (e) => {
-        console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
-        this.fallbackToMain();
-      };
-      this.workers.push(w);
-      this.busy.push(0);
-      this.workerConfig.push(-1);
-    }
-  }
-
-  /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
-  private teardownWorkers(): void {
-    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
-    this.workers = [];
-    this.busy = [];
-    this.workerConfig = [];
-    // 旧池的回传消息不能再计入新池的 busy / config，直接丢弃
-    this.pendingResults.length = 0;
-    const pending = [...this.inFlight.entries()];
-    this.inFlight.clear();
-    for (const [key, rec] of pending) {
-      const [cx, cz] = key.split(',').map(Number);
-      this.applySync(cx, cz);
-      rec.resolve();
-    }
-  }
-
-  /**
-   * 开发者设置：运行期调整网格化线程数。
-   * 0 = 主线程同步网格化；1~8 = 重建对应规模的 Worker 池。
-   * 重建期间在途任务由主线程补算，已有网格保留，不会丢区块。
-   */
-  setWorkerPoolSize(want: number): void {
-    const n = Math.max(0, Math.min(8, Math.floor(want)));
-    if (n === 0) {
-      if (this.mode !== 'main') this.fallbackToMain();
-      return;
-    }
-    if (this.mode === 'worker' && this.workers.length === n) return;
-    this.teardownWorkers();
-    this.spawnWorkers(n);
-    this.getConfig();
-  }
-
-  /** 自动档推荐的 Worker 池规模（设置页展示用） */
-  recommendedPoolSize(): number {
-    return ChunkManager.decidePoolSize(undefined);
   }
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
@@ -315,12 +217,6 @@ export class ChunkManager implements System {
   /** 运行时诊断：该区块是否已有网格 / 是否在途 */
   hasMesh(cx: number, cz: number): boolean { return this.meshes.has(chunkKey(cx, cz)); }
   hasInFlight(cx: number, cz: number): boolean { return this.inFlight.has(chunkKey(cx, cz)); }
-  /** 透明/水通道的当前排序结果（按几何中心到相机距离远→近），用于调试与自动化断言 */
-  get transparentOrder() {
-    return this.transparentOrderCache.map((e) => ({ ...e }));
-  }
-  /** 每个 Worker 当前在途任务数（诊断用） */
-  get workerBusy(): number[] { return [...this.busy]; }
   get greedy() { return this.getConfig().greedy; }
   set greedy(v: boolean) {
     if (this.greedyOption === v) return;
@@ -379,7 +275,25 @@ export class ChunkManager implements System {
   private fallbackToMain(): void {
     if (this.mode === 'main') return;
     this.mode = 'main';
-    this.teardownWorkers();
+    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    this.workers = [];
+    this.busy = [];
+    this.workerConfig = [];
+    this.poolSize = 0;
+    const pending = [...this.inFlight.entries()];
+    this.inFlight.clear();
+    // 先统一 settle 全部在途 promise：resolve 触发的 .then 是微任务，会在本同步段结束后才运行，
+    // 因此不会先于下面的补算被消费；同时避免某次补算抛错导致其余 promise 永久悬挂。
+    for (const [, rec] of pending) rec.resolve();
+    for (const [key] of pending) {
+      const [cx, cz] = key.split(',').map(Number);
+      try {
+        this.applySync(cx, cz);
+      } catch (e) {
+        // 单个区块补算失败不应中断其余区块，也不影响已 settle 的 promise
+        console.error(`[chunks] 主线程补算 ${key} 失败`, e);
+      }
+    }
   }
 
   setCenter(x: number, z: number) {
@@ -499,50 +413,13 @@ export class ChunkManager implements System {
       water: make(data.water, this.materials.water, 2),
     };
     this.meshes.set(key, entry);
-    this.sortDirty = true;
     this.events.emit('chunk:meshed', { cx, cz });
-  }
-
-  /**
-   * 透明通道（玻璃/水）按几何包围球中心 + mesh 位置到相机距离远→近排序，
-   * 递增写入 renderOrder，解决「透明原点是区块坐标而非真实几何中心」导致的叠加穿帮。
-   * 相机位移超 0.25 格或网格变化（sortDirty）时才重算，平时 0.1s 节流一次。
-   */
-  private sortTransparent(): void {
-    if (!this.camera) return;
-    const cam = this.camera.getWorldPosition(this.camWorld);
-    if (!this.sortDirty && cam.distanceToSquared(this.lastSortCam) < 0.25 * 0.25) return;
-    this.lastSortCam.copy(cam);
-    this.sortDirty = false;
-
-    const items: { key: string; pass: 'transparent' | 'water'; mesh: THREE.Mesh; dist: number }[] = [];
-    for (const [key, entry] of this.meshes) {
-      for (const pass of ['transparent', 'water'] as const) {
-        const mesh = entry[pass];
-        if (!mesh) continue;
-        this.sortTmp.copy(mesh.position);
-        const bs = mesh.geometry.boundingSphere;
-        if (bs) this.sortTmp.add(bs.center);
-        items.push({ key, pass, mesh, dist: this.sortTmp.distanceTo(cam) });
-      }
-    }
-    items.sort((a, b) => (b.dist - a.dist) || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
-    this.transparentOrderCache = items.map((it, i) => {
-      const order = 10 + i;
-      it.mesh.renderOrder = order;
-      return { key: it.key, pass: it.pass, dist: it.dist, order };
-    });
   }
 
   update(dt: number) {
     this.waterTime.value += dt;
     this.drainResults();
     if (this.loading) return;
-    this.sortAcc += dt;
-    if (this.sortAcc >= 0.1) {
-      this.sortAcc = 0;
-      this.sortTransparent();
-    }
 
     const R = this.renderDistance;
     const cx = this.centerX;
@@ -611,7 +488,6 @@ export class ChunkManager implements System {
       if (m) {
         this.disposeMeshes(m);
         this.meshes.delete(key);
-        this.sortDirty = true;
       }
       this.world.chunks.delete(key);
       this.world.dirty.delete(key);

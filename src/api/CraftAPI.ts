@@ -1,15 +1,13 @@
 import * as THREE from 'three';
+import type { EventService, GameEvents, EventChannel, EventStats, AnyEventHandler } from '../services/events';
 import type {
-  EventService,
-  GameEvents,
-  EventChannel,
-  EventChannelOptions,
-  EventStats,
-  AnyEventHandler,
-} from '../services/events';
-import type { PluginService, PluginDefinition, PluginRecord } from '../services/plugins';
+  PluginService, PluginDefinition, PluginRecord, PluginStats,
+  ExtensionRegistry, ExtensionInfo, ExtensionStats,
+} from '../services/plugins';
+import type {
+  WasmRuntime, WasmStatus, WasmStats, WasmBenchmark, WasmModuleInfo,
+} from '../wasm/runtime';
 import { VERSION, RELEASE } from '../core/version';
-import type { MesherThreads, QualityMode } from '../core/options';
 import type { Engine } from '../core/engine';
 import type { BlockRegistry, BlockInput, BlockDefinition } from '../world/blocks';
 import type { World } from '../world/world';
@@ -20,7 +18,6 @@ import type { Sky } from '../gfx/sky';
 import type { ChunkManager } from '../world/chunkManager';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { ISaveProvider, SaveData } from '../save/save';
-import { downloadSave, parseSaveFile } from '../save/save';
 import type { SoundEngine } from '../audio/sound';
 import type { SurvivalState } from '../player/survival';
 import type { GameMode } from '../core/types';
@@ -55,20 +52,50 @@ export interface CraftAPI {
 
   /** v1.2.0：事件服务视图（作用域订阅、异步等待、派发统计、全局观测） */
   events: {
-    /** options.canEmit 用于创建受权限约束的插件通道（默认放行） */
-    scope(ns: string, options?: EventChannelOptions): EventChannel;
+    scope(ns: string): EventChannel;
     stats(): EventStats;
     onAny(fn: AnyEventHandler): () => void;
     waitFor<K extends keyof GameEvents>(type: K, timeoutMs?: number): Promise<GameEvents[K]>;
   };
 
-  /** v1.2.0：插件服务（注册 / 启用 / 停用 / 卸载 / 列表） */
+  /** v1.2.0 起：插件服务；v1.5.0 增加热重载 / 统计 / 源码安装 / 能力发现 */
   plugins: {
     register(def: PluginDefinition): PluginRecord;
     enable(id: string): Promise<void>;
     disable(id: string): void;
     unload(id: string): void;
     list(): PluginRecord[];
+    get(id: string): PluginRecord | undefined;
+    reload(id: string): Promise<void>;
+    enableAll(): Promise<void>;
+    stats(): PluginStats;
+    /** 仅加载可信源码（等价于 eval，见 services/plugins/loader.ts） */
+    install(source: string): PluginRecord;
+    findByCapability(capability: string): string[];
+  };
+
+  /** v1.5.0：WebAssembly 运行时视图（status/stats/benchmark/listModules 只读） */
+  wasm: {
+    status(): WasmStatus;
+    stats(): WasmStats;
+    benchmark(iterations?: number): WasmBenchmark | null;
+    /** 需 wasm:use 权限（插件视图） */
+    setEnabled(v: boolean): WasmStatus;
+    listModules(): WasmModuleInfo[];
+    /** 调用内置内核的数值导出，如 mc_ao / mc_crc32 / mc_noise2 */
+    call(name: string, ...args: number[]): number;
+    /** 调用插件注册的自定义 WASM 模块导出 */
+    callModule(id: string, fn: string, ...args: number[]): number;
+    registerModule(id: string, data: Uint8Array | ArrayBuffer | string): WasmModuleInfo;
+    unregisterModule(id: string): boolean;
+  };
+
+  /** v1.6.0：扩展点注册表视图（只读查询，注册请通过 ctx.extensions） */
+  extensions: {
+    points(): ExtensionInfo[];
+    stats(): ExtensionStats;
+    has(point: string): boolean;
+    list(point?: string): ExtensionInfo[];
   };
 
   /** v1.4.3：生态扩展点。插件注册植物特性与生态规则（需 botany:register 权限） */
@@ -124,44 +151,12 @@ export interface CraftAPI {
     export(): SaveData;
     import(data: SaveData): Promise<void>;
     setProvider(p: ISaveProvider): void;
-    /** v1.5.0：导出为 .json 文件下载（备份 / 跨浏览器迁移） */
-    exportFile(): void;
-    /** v1.5.0：从 .json 文件导入（校验失败抛错），成功后重载世界 */
-    importFile(file: File): Promise<void>;
   };
   settings: {
     renderDistance(v: number): void;
     sensitivity(v: number): void;
     fov(v: number): void;
     sound(v: boolean): void;
-    /** 音量 0~100 */
-    volume(v: number): void;
-    /** 反转 Y 轴 */
-    invertY(v: boolean): void;
-    /** 画质档位（自动 / 高 / 均衡 / 省电） */
-    quality(v: QualityMode): void;
-    particles(v: boolean): void;
-    viewBob(v: boolean): void;
-    autoJump(v: boolean): void;
-    /** 触控灵敏度 0.5~2（仅移动端生效） */
-    touchSensitivity(v: number): void;
-    /** 开发者：常显调试信息 */
-    debugOverlay(v: boolean): void;
-    greedy(v: boolean): void;
-    mesherThreads(v: MesherThreads): void;
-    /** 自动保存间隔（秒），0 = 关闭 */
-    autosaveInterval(v: number): void;
-    /** 导出当前设置为 JSON 文本 */
-    exportOptions(): string;
-    /** 导入设置 JSON（未知键忽略、越界值钳制），返回生效字段数 */
-    importOptions(json: string): number;
-  };
-  /** 输入：可重绑定按键 + 手柄状态（v1.5.0） */
-  input: {
-    getBinding(action: string): string;
-    setBinding(action: string, code: string): void;
-    resetBindings(): void;
-    gamepadConnected: boolean;
   };
   /** 生存模式：生命 / 饥饿 / 背包（创造模式下多数接口为 no-op） */
   survival: {
@@ -205,29 +200,12 @@ export interface APIDeps {
   igniteTnt(x: number, y: number, z: number): void;
   onBlockRegistered(): void;
   setRenderDistance(v: number): void;
-  input: {
-    getBinding(action: string): string;
-    setBinding(action: string, code: string): void;
-    resetBindings(): void;
-    gamepadConnected: boolean;
-  };
   setSensitivity(v: number): void;
   setFov(v: number): void;
   setSound(v: boolean): void;
-  setVolume(v: number): void;
-  setInvertY(v: boolean): void;
-  setQuality(v: QualityMode): void;
-  setParticles(v: boolean): void;
-  setViewBob(v: boolean): void;
-  setAutoJump(v: boolean): void;
-  setTouchSensitivity(v: number): void;
-  setDebugOverlay(v: boolean): void;
-  setGreedy(v: boolean): void;
-  setMesherThreads(v: MesherThreads): void;
-  setAutosaveInterval(v: number): void;
-  exportOptions(): string;
-  importOptions(json: string): number;
   botany: Botany;
+  wasm: WasmRuntime;
+  extensions: ExtensionRegistry;
   diagnostics: {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
@@ -260,7 +238,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     off: (t, fn) => d.events.off(t, fn),
     emit: (t, p) => d.events.emit(t, p),
     events: {
-      scope: (ns, options) => d.events.scope(ns, options),
+      scope: (ns) => d.events.scope(ns),
       stats: () => d.events.stats(),
       onAny: (fn) => d.events.onAny(fn),
       waitFor: (t, ms) => d.events.waitFor(t, ms),
@@ -271,6 +249,29 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       disable: (id) => d.plugins.disable(id),
       unload: (id) => d.plugins.unload(id),
       list: () => d.plugins.list(),
+      get: (id) => d.plugins.get(id),
+      reload: (id) => d.plugins.reload(id),
+      enableAll: () => d.plugins.enableAll(),
+      stats: () => d.plugins.stats(),
+      install: (source) => d.plugins.install(source),
+      findByCapability: (c) => d.plugins.findByCapability(c),
+    },
+    wasm: {
+      status: () => d.wasm.getState(),
+      stats: () => d.wasm.stats(),
+      benchmark: (n) => d.wasm.benchmark(n),
+      setEnabled: (v) => d.wasm.setEnabled(v),
+      listModules: () => d.wasm.listModules(),
+      call: (name, ...args) => d.wasm.callKernel(name, args),
+      callModule: (id, fn, ...args) => d.wasm.callModule(id, fn, args),
+      registerModule: (id, data) => d.wasm.registerModule(id, data),
+      unregisterModule: (id) => d.wasm.unregisterModule(id),
+    },
+    extensions: {
+      points: () => d.extensions.list(),
+      stats: () => d.extensions.stats(),
+      has: (point) => d.extensions.has(point),
+      list: (point) => d.extensions.list(point),
     },
     botany: {
       registerPlant: (name, trait) => d.botany.registerTrait(name, trait),
@@ -319,37 +320,12 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       export: () => d.collectSave(),
       import: (data) => d.applySave(data),
       setProvider: (p) => d.setSaveProvider(p),
-      exportFile: () => downloadSave(d.collectSave()),
-      importFile: async (file) => {
-        const data = parseSaveFile(await file.text());
-        if (!data) throw new Error('存档文件格式校验失败');
-        await d.applySave(data);
-      },
     },
     settings: {
       renderDistance: (v) => d.setRenderDistance(v),
       sensitivity: (v) => d.setSensitivity(v),
       fov: (v) => d.setFov(v),
       sound: (v) => d.setSound(v),
-      volume: (v) => d.setVolume(v),
-      invertY: (v) => d.setInvertY(v),
-      quality: (v) => d.setQuality(v),
-      particles: (v) => d.setParticles(v),
-      viewBob: (v) => d.setViewBob(v),
-      autoJump: (v) => d.setAutoJump(v),
-      touchSensitivity: (v) => d.setTouchSensitivity(v),
-      debugOverlay: (v) => d.setDebugOverlay(v),
-      greedy: (v) => d.setGreedy(v),
-      mesherThreads: (v) => d.setMesherThreads(v),
-      autosaveInterval: (v) => d.setAutosaveInterval(v),
-      exportOptions: () => d.exportOptions(),
-      importOptions: (json) => d.importOptions(json),
-    },
-    input: {
-      getBinding: (a) => d.input.getBinding(a),
-      setBinding: (a, code) => d.input.setBinding(a, code),
-      resetBindings: () => d.input.resetBindings(),
-      get gamepadConnected() { return d.input.gamepadConnected; },
     },
     survival: {
       mode: () => d.survival.mode,

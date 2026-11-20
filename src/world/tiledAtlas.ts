@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 
 /**
  * Greedy Meshing 的图集 UV 平铺。

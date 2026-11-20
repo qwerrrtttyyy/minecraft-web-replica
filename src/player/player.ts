@@ -6,14 +6,12 @@ import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { Input } from '../input/input';
 import { moveBody, boxIntersectsBlock, type PhysicsBody } from './physics';
-import { isStuck, resolvePenetration, type SolidPredicate } from './unstuck';
 import { PlayerModel } from '../entity/models';
 import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
-import { INTERACTIVE_BLOCK } from './crafting';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -53,8 +51,6 @@ export class Player implements System, PhysicsBody {
   inWater = false;
   eyeInWater = false;
   autoJump: boolean;
-  /** 设置页「视角摇晃」：走路摆动与受击 / 爆炸抖动 */
-  viewBob = true;
   target: RayHit | null = null;
   entityTarget: { entity: Entity; dist: number } | null = null;
   readonly model: PlayerModel;
@@ -87,20 +83,9 @@ export class Player implements System, PhysicsBody {
   private lastEmitZ = 0;
   private eatTimer = 0;
   private botany: Botany | null = null;
-  /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
-  private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
   private tmpEye = new THREE.Vector3();
   private tmpV = new THREE.Vector3();
-
-  // ---- AABB 脱困（被方块挤住时平滑推出） ----
-  unstuckCount = 0;
-  private stuckTarget: {
-    fx: number; fy: number; fz: number; tx: number; ty: number; tz: number;
-    t: number; dur: number; dist: number;
-  } | null = null;
-  private readonly solidPredicate: SolidPredicate = (x, y, z) =>
-    this.registry.isSolid(this.world.getBlock(x, y, z));
 
   constructor(
     private world: World,
@@ -222,7 +207,6 @@ export class Player implements System, PhysicsBody {
   }
 
   shake(amp: number) {
-    if (!this.viewBob) return;
     this.shakeAmp = Math.max(this.shakeAmp, amp);
     this.shakeT = 0.4;
   }
@@ -246,15 +230,7 @@ export class Player implements System, PhysicsBody {
     this.pos.set(x, y, z);
     this.vel.set(0, 0, 0);
     this.resetFallDistance();
-    this.stuckTarget = null;
   }
-
-  /** 当前 AABB 是否与真实实心方块相交（未生成区块视为空气） */
-  get isStuck(): boolean {
-    return isStuck(this.pos, this.width, this.height, this.solidPredicate);
-  }
-  /** 是否正在执行脱困缓动 */
-  get isUnstucking(): boolean { return this.stuckTarget !== null; }
 
   /** 传送 / 入水 / 切模式后必须清零，否则旧下落速度会在下一次落地时结算伤害 */
   resetFallDistance() {
@@ -267,48 +243,8 @@ export class Player implements System, PhysicsBody {
 
   // ---------- 主循环 ----------
 
-  /**
-   * AABB 脱困：被实体方块包围时平滑推出。moveBody 只能阻止穿入、无法把已嵌入的身体推出，
-   * 这里检测到相交后用最小贯穿量搜索出最近脱离点，并以 ≤0.4s 缓动把玩家推过去，
-   * 完成后清速度、置空中、计数并派发 player:unstuck。
-   */
-  private stepUnstuck(dt: number): boolean {
-    if (this.stuckTarget) {
-      const s = this.stuckTarget;
-      s.t += dt;
-      const k = Math.min(1, s.t / s.dur);
-      const ease = k * k * (3 - 2 * k);
-      this.pos.set(lerp(s.fx, s.tx, ease), lerp(s.fy, s.ty, ease), lerp(s.fz, s.tz, ease));
-      if (k >= 1) {
-        this.stuckTarget = null;
-        this.vel.set(0, 0, 0);
-        this.onGround = false;
-        this.unstuckCount++;
-        this.events.emit('player:unstuck', {
-          position: { x: this.pos.x, y: this.pos.y, z: this.pos.z }, distance: s.dist,
-        });
-      }
-      return true;
-    }
-    if (!this.isStuck) return false;
-    const r = resolvePenetration(this.pos, this.width, this.height, this.solidPredicate);
-    if (!r.moved || !r.resolved) return false;
-    const dist = Math.hypot(r.dx, r.dy, r.dz);
-    this.stuckTarget = {
-      fx: this.pos.x, fy: this.pos.y, fz: this.pos.z, tx: r.x, ty: r.y, tz: r.z,
-      t: 0, dur: Math.min(0.4, 0.12 + dist * 0.02), dist,
-    };
-    this.vel.set(0, 0, 0);
-    return true;
-  }
-
   update(dt: number) {
     if (this.survival.dead) return;
-    // AABB 脱困优先于常规物理：被方块挤住时先平滑推出，避免 moveBody 反复钳制卡死
-    if (this.stepUnstuck(dt)) {
-      this.updateCamera(dt, 0);
-      return;
-    }
     const input = this.input;
     const [dx, dy] = input.consumeLook();
     this.yaw -= dx * 0.0022;
@@ -485,7 +421,7 @@ export class Player implements System, PhysicsBody {
       return;
     }
     const def = this.registry.get(hit.block);
-    if (!Number.isFinite(def.hardness)) {
+    if (!isFinite(def.hardness)) {
       this.resetMining();
       return;
     }
@@ -525,7 +461,7 @@ export class Player implements System, PhysicsBody {
       return;
     }
     const hit = this.target;
-    if (!hit || !Number.isFinite(this.registry.get(hit.block).hardness)) return;
+    if (!hit || !isFinite(this.registry.get(hit.block).hardness)) return;
     const def = this.registry.get(hit.block);
     const key = `${hit.x},${hit.y},${hit.z}`;
     if (key !== this.mineKey) {
@@ -555,17 +491,12 @@ export class Player implements System, PhysicsBody {
     this.botany = botany;
   }
 
-  /** 沙类重力系统注入（FallingSystem），替代 breakBlock 的内联植物连带检查 */
-  setFalling(falling: { triggerColumn(x: number, y: number, z: number): void } | null) {
-    this.falling = falling;
-  }
-
   /** 破坏准星方块（含掉落、上方植物连带与蓄能采集结算） */
   breakBlock() {
     const hit = this.target;
     if (!hit) return;
     const def = this.registry.get(hit.block);
-    if (!Number.isFinite(def.hardness)) {
+    if (!isFinite(def.hardness)) {
       this.sound.click(180);
       return;
     }
@@ -583,23 +514,18 @@ export class Player implements System, PhysicsBody {
     this.sound.dig(def.sound, def.hardness);
     this.collectDrops(def);
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
-    // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
-    // 未注入重力系统时保留旧的植物连带行为
-    if (this.falling) {
-      this.falling.triggerColumn(hit.x, hit.y + 1, hit.z);
-    } else {
-      const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
-      const above = this.registry.get(aboveId);
-      if (above.shape === 'cross') {
-        this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
-        this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
-        this.collectDrops(above);
-      }
+    // 上方植物随之掉落
+    const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
+    const above = this.registry.get(aboveId);
+    if (above.shape === 'cross') {
+      this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
+      this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
+      this.collectDrops(above);
     }
   }
 
-  /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
-  collectDrops(def: BlockDefinition) {
+  /** 生存模式把掉落物放进背包，创造模式忽略 */
+  private collectDrops(def: BlockDefinition) {
     if (!this.survival.isSurvival) return;
     for (const d of def.drops) {
       if (d.chance !== undefined && Math.random() > d.chance) continue;
@@ -614,8 +540,6 @@ export class Player implements System, PhysicsBody {
   useSelected() {
     const stack = this.selectedStack();
     if (!stack) {
-      // 空手右键可交互方块（如工作台）：交给上层打开对应界面
-      if (this.tryInteract()) return;
       this.harvestPlant();
       return;
     }
@@ -633,19 +557,6 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
-  }
-
-  /**
-   * 空手右键可交互方块 → 发出交互事件。
-   * 只有 survival 模式可交互：创造模式没有背包，合成界面无意义。
-   */
-  private tryInteract(): boolean {
-    const hit = this.target;
-    if (!hit || !this.survival.isSurvival) return false;
-    const def = this.registry.get(hit.block);
-    if (def.name !== INTERACTIVE_BLOCK) return false;
-    this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
-    return true;
   }
 
   /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */
@@ -689,8 +600,6 @@ export class Player implements System, PhysicsBody {
     if (this.survival.isSurvival && !this.survival.consume(stack, 1)) return false;
     this.world.setBlock(x, y, z, def.id);
     this.events.emit('block:place', { x, y, z, block: def.id });
-    // 沙类失去支撑立即下落（受更新下落：放置也算一次方块更新）
-    this.falling?.triggerColumn(x, y, z);
     this.sound.place(def.sound);
     this.swing();
     return true;
@@ -736,7 +645,7 @@ export class Player implements System, PhysicsBody {
       const i = this.hotbar.index;
       const old = this.hotbar.slots[i];
       if (old) {
-        const empty = this.hotbar.slots.indexOf(null);
+        const empty = this.hotbar.slots.findIndex((s) => s === null);
         if (empty >= 0) this.hotbar.slots[empty] = old;
       }
       this.hotbar.slots[i] = { kind: 'block', id };
@@ -753,13 +662,13 @@ export class Player implements System, PhysicsBody {
       this.shakeT -= dt;
       if (this.shakeT <= 0) this.shakeAmp = 0;
     }
-    const shakeX = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
-    const shakeY = this.viewBob ? this.shakeAmp * (Math.random() - 0.5) * this.shakeT : 0;
+    const shakeX = this.shakeAmp * (Math.random() - 0.5) * this.shakeT;
+    const shakeY = this.shakeAmp * (Math.random() - 0.5) * this.shakeT;
 
     this.eyePosition(this.tmpEye);
     this.viewDirection(this.tmpDir);
 
-    const moving = this.viewBob && this.onGround && hSpeed > 0.6 && !this.fly;
+    const moving = this.onGround && hSpeed > 0.6 && !this.fly;
     const bobY = moving ? Math.sin(this.bobPhase * 2) * 0.045 : 0;
     const bobX = moving ? Math.cos(this.bobPhase) * 0.03 : 0;
 

@@ -54,7 +54,7 @@ export const hudFeedbackPlugin: PluginDefinition = {
         const stack = d.parseKey(key);
         const exists = d.hotbar.slots.some((s) => s && s.kind === stack.kind && s.id === stack.id);
         if (!exists) {
-          const empty = d.hotbar.slots.indexOf(null);
+          const empty = d.hotbar.slots.findIndex((s) => s === null);
           if (empty >= 0) d.hotbar.slots[empty] = stack;
         }
       }

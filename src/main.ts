@@ -1,12 +1,8 @@
 import './ui/styles.css';
 import * as THREE from 'three';
-import { Engine } from './core/engine';
+import { Engine, CAMERA_DEFAULT_FAR } from './core/engine';
 import { VERSION, RELEASE } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
-import {
-  loadOptions, normalizeOptions, persistOptions, qualityScale,
-  type MesherThreads, type Options, type QualityMode,
-} from './core/options';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
@@ -18,26 +14,16 @@ import { Particles } from './gfx/particles';
 import { BlockHighlight } from './gfx/highlight';
 import { Player, type HotbarState } from './player/player';
 import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
-import {
-  inventoryKeyToMaterial,
-  materialToStack,
-  type MaterialId,
-} from './player/crafting';
-import type { CraftingHost, CraftingMaterial } from './ui/crafting';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
 import { PrimedTnt } from './entity/tnt';
-import { FallingSystem } from './entity/falling';
 import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
-import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
-import {
-  createDefaultSaveProvider, downloadSave, pickSaveFile,
-  validateSave, type ISaveProvider, type SaveData,
-} from './save/save';
+import { LocalStorageProvider, validateSave, type ISaveProvider, type SaveData } from './save/save';
 import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
+import { WasmRuntime } from './wasm/runtime';
 import type { BuiltinDeps } from './plugins/builtin/deps';
 import { builtinPlugins } from './plugins/builtin';
 import {
@@ -69,7 +55,7 @@ async function boot() {
     return;
   }
 
-  const { container, events, plugins } = createServices();
+  const { container, events, plugins, extensions } = createServices();
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
   const atlas = new TextureAtlas();
@@ -77,15 +63,14 @@ async function boot() {
   const isMobile = engine.isMobile;
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
 
+  const settings = { sound: true, renderDistance: isMobile ? 3 : 5, sensitivity: 1, fov: 72 };
   const idOf = (n: string) => registry.byNameGet(n)!.id;
   const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'torch']
     .map((n) => ({ kind: 'block' as const, id: idOf(n) }));
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
 
   // ---- 存档 ----
-  // 默认 IndexedDB（localStorage 5MB 上限是丢档隐患），不可用时自动降级；
-  // localStorage 里的历史存档会一次性迁移（createDefaultSaveProvider）
-  let provider: ISaveProvider = await createDefaultSaveProvider();
+  let provider: ISaveProvider = new LocalStorageProvider();
   let saved = await provider.load();
   const pendingSeed = sessionStorage.getItem('mc-ts-new-seed');
   const pendingModeRaw = sessionStorage.getItem('mc-ts-new-mode');
@@ -101,6 +86,10 @@ async function boot() {
     seed = saved?.seed ?? randomSeed();
   }
   if (saved) {
+    settings.sound = saved.settings?.sound ?? true;
+    settings.renderDistance = clamp(saved.settings?.renderDistance ?? settings.renderDistance, 2, 8);
+    settings.sensitivity = clamp(saved.settings?.sensitivity ?? 1, 0.4, 2);
+    settings.fov = clamp(saved.settings?.fov ?? 72, 60, 95);
     if (Array.isArray(saved.hotbar) && saved.hotbar.length === 9) {
       hotbar.slots = saved.hotbar.map((s) => {
         if (!s || s.kind === undefined) return null;
@@ -115,37 +104,31 @@ async function boot() {
       hotbar.index = clamp(saved.slot ?? 0, 0, 8);
     }
   }
-  // 设置以本地全局配置为准（设置页自动保存，换世界不丢）；
-  // 旧存档里的 settings 仅作为「本机从未保存过设置」时的兜底。
-  const settings: Options = loadOptions({
-    sound: saved?.settings?.sound ?? true,
-    renderDistance: saved?.settings?.renderDistance ?? (isMobile ? 3 : 5),
-    sensitivity: saved?.settings?.sensitivity ?? 1,
-    fov: saved?.settings?.fov ?? 72,
-    volume: saved?.settings?.volume ?? 50,
-    invertY: saved?.settings?.invertY ?? false,
-    autoJump: isMobile,
-  });
   sound.setEnabled(settings.sound);
 
-  // ---- 世界 ----
-  const world = new World(registry, new DefaultGenerator(seed, registry), events);
-  if (saved) world.loadEdits(saved.edits);
-  // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
+  // 调试/基准开关：?mesher=main / ?greedy=0 / ?workers=N / ?wasm=0
   const qs = new URLSearchParams(location.search);
+
+  // ---- WASM 运行时 ----
+  // 必须在 DefaultGenerator 构造之前完成「加载 → 自检 → 安装噪声后端」：
+  // 之后创建的 Noise 实例才会持有 WASM 后端。任何失败都会自动回退纯 JS。
+  const wasm = new WasmRuntime({
+    enabled: qs.get('wasm') !== '0',
+    onReady: (e) => events.emit('wasm:ready', e),
+    onFallback: (e) => events.emit('wasm:fallback', e),
+  });
+  container.provide(TOKENS.Wasm, wasm);
+  wasm.init();
+
+  // ---- 世界 ----
+  const world = new World(registry, new DefaultGenerator(seed, registry), events, extensions);
+  if (saved) world.loadEdits(saved.edits);
   const workersParam = qs.get('workers');
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
-    camera: engine.camera,
   });
-  // 开发者设置：网格化线程（URL 调试参数优先，其次才看设置页）
-  if (workersParam == null && qs.get('mesher') !== 'main') {
-    if (settings.mesherThreads === 'main') chunks.setWorkerPoolSize(0);
-    else if (settings.mesherThreads !== 'auto') chunks.setWorkerPoolSize(settings.mesherThreads);
-  }
-  if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events);
@@ -172,10 +155,6 @@ async function boot() {
     survival, hotbar, entities, engine.scene, isMobile);
   const botany = new Botany(world, registry, seed, events, { isMobile });
   player.setBotany(botany);
-  // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
-  const falling = new FallingSystem(world, registry, atlas, engine.scene, events);
-  falling.onPlantDrop = (def) => player.collectDrops(def);
-  player.setFalling(falling);
   // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
     const def = registry.get(block);
@@ -195,27 +174,14 @@ async function boot() {
     }
     survival.dead = false;
   }
-  /** 画质档位：自动档回到 100% 分辨率，交给自适应逐帧调整 */
-  const applyQuality = (mode: QualityMode) => {
-    engine.setQualityScale(qualityScale(mode) ?? 1);
-  };
-
   engine.camera.fov = settings.fov;
   engine.camera.updateProjectionMatrix();
   input.sensitivity = settings.sensitivity;
-  input.invertY = settings.invertY;
-  sound.setVolume(settings.volume);
-  chunks.setRenderDistance(settings.renderDistance);
-  particles.enabled = settings.particles;
-  player.viewBob = settings.viewBob;
-  player.autoJump = settings.autoJump;
-  applyQuality(settings.quality);
 
   const tntList: PrimedTnt[] = [];
   const highlight = new BlockHighlight(engine.scene);
   let mode: Mode = 'title';
-  // 开发者设置「显示调试信息」：常显 F3 面板
-  let debugOn = settings.debugOverlay;
+  let debugOn = false;
   let dirtySave = false;
   /** 脏标记版本：保存期间产生的编辑不能被旧保存的回调清掉（异步 provider 竞态） */
   let dirtyVersion = 0;
@@ -230,14 +196,11 @@ async function boot() {
   let debugAcc = 0;
   let wasUnderwater = false;
   let paletteReturn: 'game' | 'menu' = 'game';
-  /** 合成界面的来源：关闭后回到菜单还是直接恢复游戏 */
-  let craftingReturn: 'game' | 'menu' = 'game';
   /** 新世界 / 导入存档触发 reload 时，禁止 beforeunload 用旧状态反写存档 */
   let suppressUnloadSave = false;
 
   const touch = isMobile ? new TouchControls(input, uiRoot, engine.renderer.domElement) : null;
   touch?.setVisible(false);
-  if (touch) touch.lookScale = settings.touchSensitivity;
   /** 关键操作的轻触感反馈（仅移动端、不支持时静默跳过） */
   const buzz = (ms: number) => {
     if (!isMobile) return;
@@ -280,15 +243,6 @@ async function boot() {
     saveAcc = 0;
   };
 
-  /** 导入存档（文件 / CraftAPI 同路径）：校验 → 落盘 → 重载世界 */
-  const applySaveData = async (data: SaveData) => {
-    if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
-    await provider.save(data);
-    // 导入成功后禁止卸载保存，否则 reload 会把当前状态覆盖到刚导入的存档上
-    suppressUnloadSave = true;
-    location.reload();
-  };
-
   // ---- TNT ----
   const igniteTnt = (x: number, y: number, z: number, playSound: boolean) => {
     const def = registry.get(world.getBlock(x, y, z));
@@ -312,7 +266,7 @@ async function boot() {
           const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy, z = Math.floor(cz) + dz;
           const id = world.getBlock(x, y, z);
           const def = registry.get(id);
-          if (id === AIR || def.liquid || !Number.isFinite(def.hardness)) continue;
+          if (id === AIR || def.liquid || !isFinite(def.hardness)) continue;
           destroyed.push([x, y, z, id]);
         }
       }
@@ -324,8 +278,6 @@ async function boot() {
       } else {
         events.emit('block:break', { x, y, z, block: id });
       }
-      // 爆炸也是一次方块更新：上方失支撑的沙类 / 植物随之处理
-      falling.triggerColumn(x, y + 1, z);
     }
     particles.burst(cx, cy, cz, [1, 0.72, 0.3], isMobile ? 55 : 90, r * 0.45, 9);
     particles.burst(cx, cy, cz, [0.45, 0.42, 0.4], isMobile ? 40 : 60, r * 0.5, 7);
@@ -359,56 +311,8 @@ async function boot() {
     markDirty();
   };
 
-  /**
-   * 合成背包宿主：把 SurvivalState 的背包（'b:<id>' / 'i:<name>' 键）
-   * 与合成核心的材料标识（方块名 / 'item:xxx'）互相转换。
-   *
-   * UI 只认材料标识，生存状态只认背包键，转换全部收在这里。
-   */
-  const craftingHost: CraftingHost = {
-    getMaterials(): CraftingMaterial[] {
-      const out: CraftingMaterial[] = [];
-      for (const [key, count] of survival.inventory) {
-        if (count <= 0) continue;
-        const material = inventoryKeyToMaterial(key, registry);
-        if (!material) continue;
-        out.push({ material, count });
-      }
-      return out;
-    },
-    take(material: MaterialId): boolean {
-      const stack = materialToStack(material, registry);
-      if (!stack) return false;
-      const key = stack.kind === 'block' ? `b:${stack.id}` : `i:${stack.id}`;
-      if (survival.countKey(key) <= 0) return false;
-      survival.consume(stack, 1);
-      return true;
-    },
-    giveBack(material: MaterialId): void {
-      const stack = materialToStack(material, registry);
-      if (!stack) return;
-      if (stack.kind === 'block') survival.addBlock(stack.id, 1);
-      else survival.addItem(stack.id, 1);
-    },
-    produce(material: MaterialId, count: number): void {
-      const stack = materialToStack(material, registry);
-      if (!stack) return;
-      if (stack.kind === 'block') survival.addBlock(stack.id, count);
-      else survival.addItem(stack.id, count);
-    },
-    onCrafted(recipe, result) {
-      events.emit('crafting:crafted', { recipe: recipe.id, result: result.material, count: result.count });
-      sound.click(880);
-      hud.toast(`合成成功：${recipe.label} ×${result.count}`);
-    },
-    onClose() {
-      closeCrafting();
-    },
-  };
-
   const hud = new HUD({
     uiRoot, atlas, registry, hotbar, isMobile,
-    craftingHost,
     onStart: (cont, chosen) => {
       if (cont) { void startGame(true); return; } // 继续游戏保留存档模式
       // 标题页选的模式必须真正写回状态机，否则选「创造」仍会进入生存
@@ -440,7 +344,6 @@ async function boot() {
       sound.setEnabled(settings.sound);
       hud.setSound(settings.sound);
       if (settings.sound) sound.click(880);
-      persistOptions(settings);
       markDirty();
     },
     onCamera: () => { if (mode === 'playing') cycleCamera(); },
@@ -457,165 +360,20 @@ async function boot() {
       if (mode === 'playing') openMenu();
       else if (mode === 'paused') resumeGame();
     },
-    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); persistOptions(settings); markDirty(); },
-    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; persistOptions(settings); markDirty(); },
-    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); persistOptions(settings); markDirty(); },
-    onVolume: (v) => { settings.volume = v; sound.setVolume(v); persistOptions(settings); markDirty(); },
-    onInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); markDirty(); },
-    onQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); markDirty(); },
-    onParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); markDirty(); },
-    onViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); markDirty(); },
-    onAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); markDirty(); },
-    onTouchSensitivity: (v) => {
-      settings.touchSensitivity = v;
-      if (touch) touch.lookScale = v;
-      persistOptions(settings);
-      markDirty();
-    },
-    onDebugOverlay: (v) => {
-      settings.debugOverlay = v;
-      debugOn = v;
-      if (!v) hud.setDebug(null);
-      persistOptions(settings);
-      markDirty();
-    },
-    onGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); markDirty(); },
-    onMesherThreads: (v) => {
-      settings.mesherThreads = v;
-      applyMesherThreads(v);
-      hud.toast(v === 'main' ? '网格化已切到主线程（对照基准会变慢）' : '网格化线程已调整');
-      persistOptions(settings);
-      markDirty();
-    },
-    onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
-    onExportOptions: () => JSON.stringify(settings, null, 2),
-    onCopyOptions: (json) => {
-      void copyText(json);
-    },
-    onImportOptions: (json) => importOptions(json),
-    onResetOptions: () => {
-      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5 }));
-      applyAllSettings();
-      persistOptions(settings);
-      hud.syncOptions(settings);
-      markDirty();
-    },
-    onOptionsOpen: (from) => openOptions(from),
-    onOptionsClose: () => closeOptions(),
-    getOptions: () => settings,
+    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); markDirty(); },
+    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; markDirty(); },
+    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); markDirty(); },
     onPaletteOpen: (from) => openPalette(from),
     onPaletteClose: () => closePalette(),
-    onCraftOpen: (from) => openCrafting(from),
     onRespawn: () => respawn(),
     onModeToggle: () => toggleGameMode(),
-    onExportSave: () => {
-      downloadSave(collectSave());
-      hud.toast('存档已导出为 .json 文件');
-    },
-    onImportSave: () => {
-      void pickSaveFile().then((data) => {
-        if (!data) return;
-        void applySaveData(data);
-      }, (e) => {
-        hud.toast(`导入失败：${e instanceof Error ? e.message : '文件无法读取'}`);
-      });
-    },
-    getBindings: () => {
-      const b = input.getBindings();
-      return ACTION_KEYS.map((a) => ({ action: a, label: ACTION_LABELS[a], keyLabel: codeLabel(b[a]) }));
-    },
-    onRebind: (action, code) => {
-      input.setBinding(action as Parameters<typeof input.setBinding>[0], code);
-    },
-    onResetBindings: () => input.resetBindings(),
     isSurvival: () => survival.isSurvival,
     getCount: (s) => survival.countStack(s),
   });
-
-  // 按键捕获阶段优先于 Input：重绑定面板等待按键时消费该事件，避免触发游戏动作
-  addEventListener('keydown', (e) => {
-    if (hud.keybindOpen && hud.captureKey(e.code)) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }
-  }, true);
   hud.setSound(settings.sound);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
 
-  /** 开发者设置：网格化线程（auto = 按核数推断，main = 主线程同步） */
-  const applyMesherThreads = (v: MesherThreads) => {
-    if (v === 'auto') chunks.setWorkerPoolSize(chunks.recommendedPoolSize());
-    else if (v === 'main') chunks.setWorkerPoolSize(0);
-    else chunks.setWorkerPoolSize(v);
-  };
-
-  /** 导出面板用：写进剪贴板，失败时提示手动复制 */
-  const copyText = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      hud.toast('设置 JSON 已复制到剪贴板');
-    } catch {
-      hud.toast('复制失败：请手动全选文本框内容复制');
-    }
-  };
-
-  /** 导入面板用：只接受设置里已知的键，逐字段钳制后整体生效；返回生效字段数 */
-  const importOptions = (json: string): number => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(json);
-    } catch {
-      hud.toast('导入失败：不是有效的 JSON');
-      return 0;
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      hud.toast('导入失败：设置 JSON 应该是对象');
-      return 0;
-    }
-    const src = parsed as Record<string, unknown>;
-    const filtered: Record<string, unknown> = {};
-    for (const key of Object.keys(settings)) {
-      if (key in src) filtered[key] = src[key];
-    }
-    const keys = Object.keys(filtered);
-    if (keys.length === 0) {
-      hud.toast('导入失败：JSON 里没有可识别的设置项');
-      return 0;
-    }
-    Object.assign(settings, normalizeOptions(filtered as Partial<Options>, settings));
-    applyAllSettings();
-    persistOptions(settings);
-    hud.syncOptions(settings);
-    hud.showOptionsIO(false);
-    hud.toast(`已导入 ${keys.length} 项设置`);
-    markDirty();
-    return keys.length;
-  };
-
-  /** 把设置一次性推到各子系统（启动与「重置全部设置」共用） */
-  const applyAllSettings = () => {
-    sound.setEnabled(settings.sound);
-    sound.setVolume(settings.volume);
-    input.sensitivity = settings.sensitivity;
-    input.invertY = settings.invertY;
-    chunks.setRenderDistance(settings.renderDistance);
-    engine.camera.fov = settings.fov;
-    engine.camera.updateProjectionMatrix();
-    hud.setSound(settings.sound);
-    particles.enabled = settings.particles;
-    player.viewBob = settings.viewBob;
-    player.autoJump = settings.autoJump;
-    if (touch) touch.lookScale = settings.touchSensitivity;
-    applyQuality(settings.quality);
-    debugOn = settings.debugOverlay;
-    if (!debugOn) hud.setDebug(null);
-    chunks.greedy = settings.greedy;
-    applyMesherThreads(settings.mesherThreads);
-  };
-
-  // 空手右键工作台方块 → 打开合成界面
-  events.on('crafting:open', () => openCrafting('game'));
   const cycleCamera = () => {
     player.cycleCamera();
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
@@ -705,6 +463,7 @@ async function boot() {
     input.enabled = false;
     input.reset();
     input.exitLock();
+    hud.syncSettings(settings.renderDistance, settings.sensitivity, settings.fov);
     hud.setMenuMode(survival.mode, survival.health, survival.hunger);
     hud.showMenu(true);
     saveNow();
@@ -716,7 +475,6 @@ async function boot() {
     hud.showMenu(false);
     hud.showPalette(false);
     hud.showHelp(false);
-    hud.showOptions(false);
     mode = 'playing';
     input.enabled = true;
     input.requestLock();
@@ -743,59 +501,6 @@ async function boot() {
     else resumeGame();
   }
 
-  /** 设置页：可从游戏中 / 暂停菜单 / 标题屏进入，关闭时回到来源处 */
-  let optionsReturn: 'game' | 'menu' | 'title' = 'game';
-
-  function openOptions(from: 'game' | 'menu' | 'title') {
-    optionsReturn = from;
-    if (mode === 'playing') {
-      mode = 'paused';
-      input.enabled = false;
-      input.reset();
-      input.exitLock();
-      // 与方块库一致：属于暂停态，插件依赖此钩子
-      events.emit('game:pause', { paused: true });
-    }
-    hud.showMenu(false);
-    hud.showOptions(true);
-  }
-
-  function closeOptions() {
-    hud.showOptions(false);
-    if (optionsReturn === 'menu') hud.showMenu(true);
-    else if (optionsReturn === 'game') resumeGame();
-    // 标题屏：直接盖回标题，无需额外操作
-  }
-
-  /**
-   * 打开合成界面。
-   *
-   * 生存模式专用：创造模式背包为空，合成没有意义。
-   * 与方块库一样属于暂停态（游戏暂停 + 释放指针锁），否则鼠标会被游戏吃掉。
-   */
-  function openCrafting(from: 'game' | 'menu') {
-    if (!survival.isSurvival) {
-      hud.toast('创造模式不需要合成');
-      return;
-    }
-    craftingReturn = from;
-    if (mode === 'playing') {
-      mode = 'paused';
-      input.enabled = false;
-      input.reset();
-      input.exitLock();
-      events.emit('game:pause', { paused: true });
-    }
-    hud.showMenu(false);
-    hud.showCrafting('工作台');
-  }
-
-  function closeCrafting() {
-    hud.hideCrafting();
-    if (craftingReturn === 'menu') hud.showMenu(true);
-    else resumeGame();
-  }
-
   function quitToTitle() {
     saveNow();
     saved = collectSave();
@@ -809,7 +514,6 @@ async function boot() {
     hud.showMenu(false);
     hud.showPalette(false);
     hud.showHelp(false);
-    hud.showOptions(false);
     hud.showTitle(true);
     hud.refreshTitleButtons(true, survival.mode);
   }
@@ -914,6 +618,7 @@ async function boot() {
       }
     }
     const ev = events.stats();
+    const ws = wasm.stats();
     return {
       version: VERSION,
       mode,
@@ -937,11 +642,13 @@ async function boot() {
         missingMeshes,
         unlitChunks,
       },
-      plugins: plugins.list().map((p) => ({
-        id: p.manifest.id,
-        state: p.state,
-        dependencies: p.manifest.dependencies ?? [],
-      })),
+      plugins: plugins.list().map((p) => ({ id: p.manifest.id, state: p.state })),
+      wasm: {
+        status: ws.status,
+        abi: ws.abi,
+        fallbackCount: ws.fallbacks,
+        selfCheckMismatches: ws.selfCheckMismatches,
+      },
       events: {
         subscribers: ev.subscribers,
         channels: ev.channels.length,
@@ -985,17 +692,17 @@ async function boot() {
   container.provide(TOKENS.BuiltinDeps, builtinDeps);
 
   const api = createCraftAPI({
-    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
+    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany, wasm, extensions,
     getSaveProvider: () => provider,
     setSaveProvider: (p) => { provider = p; },
-    input: {
-      getBinding: (a) => input.getBinding(a as Parameters<typeof input.getBinding>[0]),
-      setBinding: (a, code) => input.setBinding(a as Parameters<typeof input.setBinding>[0], code),
-      resetBindings: () => input.resetBindings(),
-      get gamepadConnected() { return input.gamepadConnected; },
-    },
     collectSave,
-    applySave: applySaveData,
+    applySave: async (data) => {
+      if (!validateSave(data)) throw new Error('存档格式校验失败：缺少必要字段或字段类型错误');
+      await provider.save(data);
+      // 导入成功后禁止卸载保存，否则 reload 会把当前状态覆盖到刚导入的存档上
+      suppressUnloadSave = true;
+      location.reload();
+    },
     igniteTnt: (x, y, z) => igniteTnt(x, y, z, true),
     onBlockRegistered: () => {
       hud.rebuildPalette();
@@ -1005,29 +712,7 @@ async function boot() {
     setRenderDistance: (v) => { settings.renderDistance = clamp(v, 2, 8); chunks.setRenderDistance(settings.renderDistance); },
     setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
     setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
-    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); persistOptions(settings); },
-    setVolume: (v) => { settings.volume = clamp(v, 0, 100); sound.setVolume(settings.volume); persistOptions(settings); },
-    setInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); },
-    setQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); },
-    setParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); },
-    setViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); },
-    setAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); },
-    setTouchSensitivity: (v) => {
-      settings.touchSensitivity = clamp(v, 0.5, 2);
-      if (touch) touch.lookScale = settings.touchSensitivity;
-      persistOptions(settings);
-    },
-    setDebugOverlay: (v) => {
-      settings.debugOverlay = v;
-      debugOn = v;
-      if (!v) hud.setDebug(null);
-      persistOptions(settings);
-    },
-    setGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); },
-    setMesherThreads: (v) => { settings.mesherThreads = v; applyMesherThreads(v); persistOptions(settings); },
-    setAutosaveInterval: (v) => { settings.autosaveInterval = clamp(v, 0, 120); persistOptions(settings); },
-    exportOptions: () => JSON.stringify(settings, null, 2),
-    importOptions: (json) => importOptions(json),
+    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); },
     setMode: (m) => applyMode(m),
     respawn,
     parseStack: parseKey,
@@ -1038,7 +723,8 @@ async function boot() {
   events.emit('service:ready', { services: container.keys() });
 
   for (const def of builtinPlugins) plugins.register(def);
-  await Promise.all(builtinPlugins.map((p) => plugins.enable(p.manifest.id)));
+  // v1.5.0：按 manifest.priority 顺序启用，依赖会自行递归先启用
+  await plugins.enableAll();
 
   // ---- 输入边缘事件 ----
   function processEdges() {
@@ -1052,17 +738,9 @@ async function boot() {
       }
       switch (e.type) {
         case 'pause':
-          // 导入/导出面板盖在最上层，Esc 先关它，再轮到设置页
-          if (hud.optionsIOOpen) {
-            hud.showOptionsIO(false);
-          } else if (hud.optionsOpen) {
-            // 设置页盖在最上层，Esc 先关它（标题屏打开时也适用）
-            closeOptions();
-          } else if (mode === 'playing') openMenu();
+          if (mode === 'playing') openMenu();
           else if (mode === 'paused') {
-            if (hud.keybindOpen) hud.showKeybinds(false);
-            else if (hud.helpOpen) hud.showHelp(false);
-            else if (hud.craftingOpen) closeCrafting();
+            if (hud.helpOpen) hud.showHelp(false);
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
           }
@@ -1139,7 +817,6 @@ async function boot() {
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
-      `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
     ].join('\n');
   }
 
@@ -1159,11 +836,18 @@ async function boot() {
       chunks.update(dt);
     },
   });
+  // v1.6.0：给 WASM / JS 插件的周期钩子，固定 2Hz，避免逐帧跨界调用抖动
+  let tickAccum = 0;
   engine.addSystem({
     name: 'gameplay',
     update: (dt, t) => {
-      // 手柄每帧轮询：暂停时也要读 Start 键（processEdges 处理恢复）
-      input.pollGamepad(dt);
+      if (mode === 'playing' && extensions.has('gameplay:tick')) {
+        tickAccum += dt;
+        if (tickAccum >= 0.5) {
+          tickAccum = 0;
+          extensions.emit('gameplay:tick', { now: performance.now() });
+        }
+      }
       if (mode === 'playing') {
         player.update(dt);
         entities.update(dt, {
@@ -1177,7 +861,6 @@ async function boot() {
           tnt.update(dt);
           if (tnt.done) tntList.splice(tntList.indexOf(tnt), 1);
         }
-        falling.update(dt);
       } else if (mode === 'title') {
         cinematic(t);
         entities.update(dt, {
@@ -1230,8 +913,7 @@ async function boot() {
       }
       if (mode === 'playing') {
         saveAcc += dt;
-        // 自动保存间隔由设置页控制，0 = 关闭自动保存（手动存档仍可用）
-        if (settings.autosaveInterval > 0 && saveAcc > settings.autosaveInterval && dirtySave) saveNow();
+        if (saveAcc > 8 && dirtySave) saveNow();
         debugAcc += dt;
         if (debugOn && debugAcc > 0.2) {
           debugAcc = 0;
@@ -1245,8 +927,8 @@ async function boot() {
   engine.addSystem({
     name: 'farplane',
     update: () => {
-      // 天穹半径 460 / 星空 430 / 日月 400 必须留在视锥内，下限不能小于 520
-      const far = Math.max(520, chunks.renderDistance * 16 * 1.3);
+      // 天穹半径 460 / 星空 430 / 日月 400 必须留在视锥内，下限不能小于 CAMERA_DEFAULT_FAR
+      const far = Math.max(CAMERA_DEFAULT_FAR, chunks.renderDistance * 16 * 1.3);
       if (Math.abs(engine.camera.far - far) > 1) {
         engine.camera.far = far;
         engine.camera.updateProjectionMatrix();
@@ -1260,8 +942,6 @@ async function boot() {
     name: 'quality',
     update: (dt) => {
       if (!isMobile || mode !== 'playing') return;
-      // 固定画质档位不做自适应（仅「自动」档逐帧调分辨率）
-      if (settings.quality !== 'auto') return;
       qualityAcc += dt;
       if (qualityAcc < 1.2) return;
       qualityAcc = 0;
@@ -1296,12 +976,11 @@ async function boot() {
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
-    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling,
+    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, tntList, survival,
+    botany,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
-    openCrafting, closeCrafting,
   };
 }
 

@@ -1,40 +1,37 @@
 # Minecraft TS —— TypeScript 体素引擎复刻
 
-<p align="center">
-  <img src="docs/assets/showcase.gif" width="720" alt="实机演示：清晨森林 → 挖掘 → 黄昏 TNT → 星空">
-</p>
-
-<p align="center">
-  <b><a href="https://qwerrrtttyyy.github.io/minecraft-web-replica/">▶ 在线试玩</a></b>
-  &nbsp;·&nbsp; <a href="#快速开始">本地运行</a>
-  &nbsp;·&nbsp; <a href="docs/ARCHITECTURE.md">架构</a>
-  &nbsp;·&nbsp; <a href="docs/TESTING.md">测试</a>
-  &nbsp;·&nbsp; <a href="#english-summary">English</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml"><img alt="verify CI" src="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml/badge.svg"></a>
-  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/tags"><img alt="version" src="https://img.shields.io/github/v/tag/qwerrrtttyyy/minecraft-web-replica?label=version"></a>
-  <img alt="TypeScript 5.6" src="https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white">
-  <img alt="three.js 0.170" src="https://img.shields.io/badge/three.js-0.170-049ef4?logo=threedotjs&logoColor=white">
-  <img alt="runtime deps: three.js only" src="https://img.shields.io/badge/runtime%20deps-three.js%20only-2ea44f">
-  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-</p>
-
-> 🤖 **本项目完全由 AI 生成**——全部源码、测试与文档均出自 AI 编程代理，人类仅提出方向。  
-> ⚠️ **警告：项目处于激进改进阶段**——迭代极快，API、存档格式与游戏行为随时可能变动，请勿用于生产环境。  
-> 📖 生成方式、审核边界与质量边界见 [「关于本项目（诚实说明）」](#关于本项目诚实说明)。
-
-**简体中文** | [English](README_EN.md)
-
 一个架构清晰、依赖极轻的前端 Minecraft 基础复刻。运行时唯一依赖为 **three.js**（渲染），
 其余全部手写：体素世界、区块流式加载、带 AO 的网格生成、程序化像素纹理、昼夜天空、
-物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
-离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
+物理碰撞、实体 AI、触控适配、存档与扩展 API。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.4.9（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.6.0（双轨版本号，规则见下方「版本规范」）
 
-**v1.4.9 整合发布**：统一版本并整合待合并改进（含插件体系强化、设置/选项页与导入导出、合成相关基础、体验优化与文档更新等）；具体细节见各 PR 与提交记录。
+**v1.6.0 多载体插件**：插件体系升级为三载体——JS `setup`、`wasm:module`（零 import 纯计算模块）、
+`wasm:host`（受控白名单 host-import，可主动读世界/订阅游戏事件/注册扩展点）。新增统一扩展点注册表
+`ExtensionRegistry`，先落地「事件与游戏逻辑」+「世界生成与地形」两层；插件 API 契约推进到 2.1.0。
+
+**v1.5.0 WASM 支持与插件体系 v2**：新增真实 WebAssembly 计算内核
+（`native/mc_kernel.c` → clang `--target=wasm32` → 2.4KB 二进制，base64 内联进单文件 HTML），
+覆盖 2D/3D 值噪声、fBm、脊线噪声、批量采样、AO 与 CRC32。运行时先做**逐位等价性对拍**
+（多 seed × 5 类函数 × 数百采样），通过后接管 `Noise` 后端；加载失败 / 自检不过 / 运行期异常
+一律自动回退纯 JS，固定 seed 地形与旧存档完全不变。插件可通过 `CraftAPI.wasm` 调用内核原语、
+注册自定义 WASM 模块（无 import / 体积内存受限）。批量路径基准实测约 **1.7× 加速**，
+逐点跨界调用因边界开销反而略慢——详见 [docs/WASM.md](docs/WASM.md)。
+
+插件体系升级为 v2：依赖支持 semver 版本约束与可选依赖，manifest 增加 `apiVersion` 兼容范围、
+`capabilities`、`priority`、`timeoutMs`、`config`；上下文增加命名空间 `storage`、只读 `config`、
+插件私有 `provide/require`；服务增加 setup 超时保护、反向依赖保护、热重载 `reload()`、
+按优先级 `enableAll()`、`stats()`；新增 `wasm:use` / `plugins:manage` 权限并加固 `scopeAPI`
+（此前任何插件都能卸载别的插件）；支持从可信源码 `install()` 加载插件。
+新增 `core:wasm-monitor` 内置插件与 `example/wasm-probe` 示例，`test:wasm` / `test:plugin-v2`
+两组回归纳入 `npm run verify`。
+
+**v1.4.3 生态扩展点与插件化植物**：新增 `botany` 扩展点（`CraftAPI.botany`）与
+`botany:register` 权限，`Botany` 在内置规则未命中时按方块 id 分派插件规则；
+新增内置插件 `core:botany-expansion`，由它注册 **6 种植物**（id 92~97，末位追加）
+与 **3 条生态规则**（异花传粉 / 夜间开花蔓延 / 高山霜线），并通过 `chunk:generated`
+事件按群系补种。所有新植物与规则都由插件注册，停用插件后规则与特性自动注销。
+新增 `test:botany-rules` 回归与 `lint` 门禁，详见 `docs/TESTING.md`。
 
 ## 版本规范
 
@@ -51,11 +48,6 @@
 - 达到里程碑时由维护者把 `RELEASE` 推进到下一个 `vN`，并在该提交打同名轻量标签。
 - 所有标签统一带 `v` 前缀：正式版里程碑为 `vN`（`v1`、`v2`…），历史迭代标签为 `vX.Y.Z`（`v1.3.0`、`v1.3.1`）。
 - `npm run check:version` 机械校验双轨格式与一致性，并扫描 `src/**/*.ts` 禁止硬编码版本字面量。
-
-**v1.5.0 生存模式合成系统**：新增可用的工作台合成界面（3×3 材料网格 + 结果槽 + 背包区 +
-配方列表），生存模式下从暂停菜单「工作台」或**空手右键工作台方块**均可打开。内置最小闭环配方：
-原木 → 木板、4 木板 → 工作台、4 沙 → 砂岩、4 圆石 → 石砖、2 木板 → 4 木棍（新增物品）。
-新增 `test:crafting`（43 组）回归。
 
 **v1.4.2 合并光照/天空增强**：合并 `trae/agent-9z2CVz` 分支——天空光/方块光双通道 BFS 传播、
 44 种方块（光源/建材/植物/羊毛）、Greedy Meshing 光照通道、Web Worker 网格化池、
@@ -77,25 +69,6 @@
 `columns → ores → trees → decorate` 四个显式阶段 + **群系配置表** `BIOME_PROFILES`，
 新方块全部由配置表驱动自然生成（浅海黏土、针叶林灰化土、沙漠仙人掌、临水甘蔗、高山绿宝石）。
 新增 `test:terrain-system`（18 组断言），测试体系文档化见 [docs/TESTING.md](docs/TESTING.md)。
-
-**v1.5.0 设置页**：新增独立 **Options 设置页**（标题屏「设置」/ 暂停菜单「设置」），
-把原先挤在暂停菜单里的渲染距离 / 灵敏度 / FOV 收拢进去，并补上**音量**与**反转 Y 轴**；
-新增 `core/options.ts` 作为设置的唯一权威来源，独立持久化到 localStorage（跨世界、跨存档），
-旧存档内嵌 settings 仅作无本地配置时的兜底；音效引擎与输入层相应支持音量与 Y 轴反转，
-`CraftAPI.settings` 扩展 `volume(v)` / `invertY(v)`。新增 `test:options`（24 项，含桌面 / 移动端 / 持久化）
-并纳入 `npm run verify`。
-
-**v1.6.0 高级与开发者设置**：设置页拆出 **视频** 与 **开发者** 两组，新增 **画质档位**
-（自动 / 高 / 均衡 / 省电，映射 `engine.setQualityScale()`，自动档仍交给自适应逐帧调整）、
-**粒子效果**、**视角摇晃**、**自动跳跃**、**触控灵敏度**（仅移动端显示），开发者组含
-**显示调试信息**（常显 F3 面板）、**Greedy 网格合并**、**网格化线程**（自动 / 主线程 / 1 / 2 / 4，
-运行期重建 Worker 池，在途任务由主线程补算）、**自动保存间隔**（关闭 / 8 / 15 / 30 秒）与
-**设置导入导出**（JSON 文本互拷，导入按已知字段过滤 + 规范化）。`ChunkManager` 新增
-`setWorkerPoolSize()` / `recommendedPoolSize()`，Worker 池重建期间到达的网格请求改为先排队、
-配置下发后补算，不再报「配置未就绪」。`CraftAPI.settings` 相应扩展 `quality` / `particles` /
-`viewBob` / `autoJump` / `touchSensitivity` / `debugOverlay` / `greedy` / `mesherThreads` /
-`autosaveInterval` / `exportOptions()` / `importOptions(json)`。`test:options` 增至 41 项
-（桌面 / 移动端 / 高级项 / 开发者项 / 导入导出 / 跨会话持久化）。
 
 **v1.1.0 新增**：完整可玩的**生存模式**（生命 / 饥饿 / 挖掘耗时 / 掉落背包 / 僵尸 / 死亡重生），
 以及面向手机的**性能与交互优化**（动态分辨率、更低渲染距离与粒子预算、触控震动反馈与大按钮布局）。
@@ -137,10 +110,13 @@
 npm install
 npm run dev      # 开发服务器
 npm run build    # 类型检查 + 构建为单文件 dist/index.html（可直接双击打开）
-npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
+npm run wasm:check  # 校验内联 WASM 产物与 native/mc_kernel.wasm 一致（CI 同款）
+npm run verify   # 全量核验：版本 / 静态门禁 / 构建 / 19 组回归 / 浏览器实景
 ```
 
-构建产物是**自包含的单文件 HTML**（three.js 已内联），无网络、无外部资源即可运行。
+构建产物是**自包含的单文件 HTML**（three.js 与 WASM 内核均已内联），无网络、
+无外部资源即可运行。修改 `native/mc_kernel.c` 后才需要 `npm run build:wasm`
+（要求 clang 支持 wasm32）；日常开发与 CI 不需要编译器。
 
 ## 操作
 
@@ -159,14 +135,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | F5 | 第一 / 第三人称视角 |
 | F3 | 调试面板 |
 | F1 | 隐藏 HUD |
-| Esc | 菜单（菜单里可进「设置」） |
-
-**设置页**（标题屏「设置」链接 / 暂停菜单「设置」按钮）：音效开关与音量、视野 FOV、
-渲染距离、视角灵敏度、反转 Y 轴，以及一键重置；**视频**组新增画质档位、粒子效果、视角摇晃，
-**控制**组新增自动跳跃与触控灵敏度（仅移动端），**开发者**组提供调试信息常显、Greedy 网格合并、
-网格化线程、自动保存间隔与设置导入导出。设置自动写入本机 localStorage，
-换世界 / 删存档都不丢；游戏内核可用 `CraftAPI.settings.volume(v)` / `invertY(v)` /
-`quality(v)` / `mesherThreads(v)` 等接口调整。
+| Esc | 菜单 |
 
 移动端：左下虚拟摇杆移动（推满疾跑），右侧空白处拖动转视角，
 右下按钮为跳跃 / 破坏（长按持续挖）/ 放置（手持食物时变“进食”）/ 上升 / 下降，自带自动跳台阶。
@@ -185,32 +154,11 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 挖掘 | 每方块按 `硬度 × 1.1 秒` 计时，准星处显示进度条；半途松手保留 1 秒后清零；轻点一下只推进 0.3 秒（手机点按也能挖） |
 | 掉落 | 方块与生物死亡都会掉落进背包，新获得的物品自动补进快捷栏空位；草→泥土、石→圆石、树叶 50% 掉自身 + 20% 掉苹果、玻璃/水/基岩/TNT 不掉、猪掉猪排 |
 | 背包 | 快捷栏 9 格可堆叠，方块库只显示“已拥有的方块”，格子上标 xN；放置消耗、进食消耗 |
-| 合成 | 3×3 材料网格 + 结果槽 + 背包区 + 配方列表；点背包物品放入选中格，点格子退回背包，点配方可自动摆放，点结果槽合成。材料取自生存背包，产物直接进背包 |
 | 敌对生物 | 夜晚在玩家附近生成僵尸（绿皮、双臂前伸、白天会燃烧），追击距离 26 格，接触造成 3 点伤害、冷却 1.05 秒；创造模式左键秒杀，生存模式 3 下击杀 |
 | 死亡重生 | 生命归零 → 死亡界面（死因 + 重生 / 返回标题），重生回到出生点、满血满饥饿，**背包保留** |
 | 存档 | v2 版存档记录模式、生存状态（生命/饥饿/氧气/背包）、快捷栏堆叠；旧 v1 存档自动升级并进入创造模式 |
 
 食物：苹果（+4 饥饿）、猪排（+6 饥饿）。生存模式初始携带 2 个苹果 + 8 支火把；生存模式下飞行被禁用。
-
-### 合成系统（v1.5.0）
-
-生存模式新增可用的工作台界面。两个入口：**暂停菜单里的「工作台」按钮**，或**空手右键已放置的工作台方块**。
-界面为 3×3 材料网格 + 右侧结果槽 + 底部背包区 + 配方列表：
-
-- 点背包条目 → 把材料放进当前选中的格子（没选中就填第一个空格）
-- 点已填的格子 → 材料退回背包
-- 点配方条目 → 按图案自动摆好（材料不足会提示）
-- 点结果槽 → 消耗材料合成，产物直接进背包
-
-内置最小闭环配方（全部可放进 2×2，故不必先有工作台就能起步）：
-
-| 配方 | 材料 | 产物 |
-| --- | --- | --- |
-| 木板 | 1 原木（橡木 / 白桦 / 云杉各一条） | 4 对应木板 |
-| 工作台 | 4 木板（2×2，任一木板均可） | 1 工作台 |
-| 砂岩 | 4 沙（2×2） | 1 砂岩 |
-| 石砖 | 4 圆石（2×2） | 1 石砖 |
-| 木棍 | 2 木板（竖排） | 4 木棍 |
 
 ## 方块扩充与美术（v1.3.0 移植）
 
@@ -529,12 +477,8 @@ CraftAPI.events.stats();                    // { emitted, subscribers, channels 
 CraftAPI.events.scope('demo:ns');           // 返回 EventChannel，dispose() 一键清理
 ```
 
-权限白名单 `world:write` / `player:write` / `save:write` / `api:emit` / `blocks:register` /
-`time:write` / `settings:write` / `plugins:manage`：
+权限白名单 `world:write` / `player:write` / `save:write` / `api:emit` / `blocks:register`：
 未声明的写能力在插件上下文里会被拦截并抛错，读能力默认开放。
-`api:emit` 同时约束 `ctx.events.emit` 与 `api.events.scope(...).emit`；
-`api.on / off` 与 `api.events.waitFor / onAny` 都归属插件通道，停用时一并清理。
-`disable(A)` 会级联停用依赖 A 的下游插件。
 内置插件 `core:autosave`、`core:hud-feedback` 就是用同一套契约实现的，见
 `src/plugins/builtin/`。完整契约与迁移路径见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -562,8 +506,6 @@ npm run verify
 |---|---|
 | `npm run check:version` | `package.json` / `version.ts` 一致 + README 含当前版本 + 源码唯一版本源扫描 |
 | `npm run typecheck` / `build` | TypeScript strict + 单文件 `dist/index.html` |
-| `npm run lint` | Biome 静态检查（recommended 规则集，91 文件 ≈100ms）；`lint:fix` 自动修复 |
-| `npm run check` / `check:fix` | lint + format + import 排序一站式；`format` 仅格式化（可选） |
 | `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
 | `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
 | `npm run test:light` | 光照 21 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |
@@ -575,7 +517,6 @@ npm run verify
 | `npm run test:terrain-system` | **方块扩充 + 生成管线 + 群系配置表** 34 组：id 45~91、阶段顺序、35 种植物与自然生成位置 |
 | `npm run test:botany` | **植物生态随机刻** 28 组：生长 / 蔓延 / 枯萎 / 树种 / `plant:grow` 事件 |
 | `npm run test:plant-energy` | **植物内在能量** 29 组：日照蓄能 / 夜间下限 / 环境枯死 / 开花 / 采集 / 根系共享 |
-| `npm run test:crafting` | **合成系统** 43 组：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、2×2 与 3×3 尺寸差异、背包取放闭环 |
 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端），结果与截图写入 `test/artifacts/` |
 | `npm run test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块展示墙 / 天穹状态断言（13 项） |
 
@@ -887,11 +828,6 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 | 初始化中 disable 后回写 enabled | `src/services/plugins/PluginService.ts` | 每次 enable/disable 递增 epoch；setup 返回后检测代次，只清理不回写 |
 | `EventChannel.waitFor` 不受作用域管理 | `src/services/events/EventChannel.ts` | 改为通道内 `once` + 定时器，dispose 时统一退订并 reject |
 | 权限可经 `blocks.register` 绕过 | `src/services/plugins/PluginService.ts` | 无 `blocks:register` 时暴露只读 Proxy；`tnt.ignite` / `entities.spawn` 归入 `world:write`，`survival` 写入口归入 `player:write` |
-| `api:emit` 被 `ctx.events.emit` 绕过 | `src/services/events/EventChannel.ts`、`src/services/plugins/PluginService.ts` | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
-| `api.on` 订阅在停用后仍存活 | `src/services/plugins/PluginService.ts` | `api.on / off`、`api.events.waitFor / onAny` 路由进插件通道，停用时随通道一起撤销 |
-| manifest 可被改写来自我提权 | `src/services/plugins/PluginService.ts` | `register` 时做防御性拷贝，`list() / get()` 返回的也是副本 |
-| 停用依赖后下游插件仍 enabled | `src/services/plugins/PluginService.ts` | `disable` 级联停用下游依赖，teardown 顺序为依赖方先释放 |
-| `time` / `settings` / 插件管理无权限约束 | `src/services/plugins/PluginService.ts` | 写入口集中登记在 `WRITE_CAPABILITIES` 表，新增 `time:write` / `settings:write` / `plugins:manage` |
 | 异步存档回调吞掉新编辑 | `src/main.ts` | 增加 `dirtyVersion` + `saveSeq`，只有最新保存且期间无新编辑时才清脏 |
 | 天空光列回收平方级开销 | `src/world/light.ts` | 旧实现沿列逐格 `removeLight`，在洞穴/悬崖上方放置方块会重复遍历同一依赖链；改为整列清零 + 多源 BFS，每格只处理一次 |
 | 云层每 96 格跳变 / 长时间挂机漂出视野 | `src/gfx/sky.ts` | 云块以世界格为锚点、按 1/4 网格宽度重建，漂移与移动均无接缝 |
@@ -907,15 +843,15 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 - 每 10 秒自动采样一次，异常集合变化时才输出 `console.groupCollapsed` 分组（warn 不触发
   浏览器 `pageerror` 断言，因此可在实景测试中安全开启）。
 - 检查项：版本一致性、玩家坐标 / 摔落值、playing 输入状态、暂停态残留按键、Worker 配置 ACK、
-  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、插件依赖悬空、
-  事件订阅、生存数值与死亡状态一致、实体数量、存档脏标记老化。
+  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、事件订阅、
+  生存数值与死亡状态一致、实体数量、存档脏标记老化。
 
 ### 验证
 
 | 项 | 结果 |
 |---|---|
-| `test:services` | 48 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限 / emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用） |
-| `test:diagnostics` | 22 组断言（健康快照 + 各类异常注入 + 插件依赖悬空） |
+| `test:services` | 38 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限） |
+| `test:diagnostics` | 20 组断言（健康快照 + 各类异常注入） |
 | `test:smoke` | 95/95；新增诊断组、运行时注册方块 Config ACK、菜单方块库返回、keyup 清理断言；固定 seed=2026 + 条件轮询，消除地形随机性导致的假失败 |
 | `test:visual` | 9/9 |
 
@@ -960,82 +896,6 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 | `test:light` / `test:mesher` / `test:services` / `test:diagnostics` | 全通过 |
 | `test:smoke` | 95/95（版本断言更新为 1.4.0） |
 | `test:visual` | 9/9（方块展示墙加入 10 种新方块） |
-
-## 关于本项目（诚实说明）
-
-### 生成方式
-
-本项目——包括**全部源码、测试、构建脚本、CI 配置与文档**——**完全由 AI 生成**。
-人类维护者的角色仅限于提出方向、拆分任务与决定何时合并，不进行逐行人工编写。
-
-### 关于自动化审核与本文档的改进
-
-- 仓库此前的测试体系、CI 全绿结果、诊断组与「工程化」承诺，**同样是 AI 产出的一部分**，
-  不构成人工代码审计。测试通过只证明既有断言未被违反，不等于没有缺陷。
-- 本文档此前的**工程化改进**（贡献指南、Issue/PR 模板、CHANGELOG、徽章、英文版、
-  「参与贡献」区块）与本节的诚实说明，**也由 AI 分析生成**——包括对项目历史提交、
-  PR 记录与代码质量的审核结论，均来自 AI，请以审慎态度对待。
-
-### 质量边界
-
-- **激进改进阶段**：接口、存档格式与玩法仍在快速演进，破坏性变更是常态，
-  请勿将本项目作为依赖或用于生产。
-- **已知限制**：透明通道未按距离排序、15 级硬边光照、缺少 AABB 脱困、
-  软件渲染约 10 FPS；部分子系统仅有 AI 编写的测试覆盖。
-- **最好的验证方式不是相信本文件，而是亲手跑 `npm run verify` 或打开
-  [在线试玩](https://qwerrrtttyyy.github.io/minecraft-web-replica/) 实际体验**，
-  并以 Issue / PR 指出问题——外部反馈比任何 AI 自评都可靠。
-
-## 参与贡献
-
-欢迎任何形式的贡献——报告缺陷、提议功能、改进文档或提交代码。
-请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，其中包含动代码前必读的**硬规则清单**
-（方块 id 只追加、PR 不动版本号、Worker 数据纯度等，源自
-[docs/PROJECT-EXPERIENCE.md](docs/PROJECT-EXPERIENCE.md)）。
-
-- 🐛 [报告缺陷](../../issues/new?template=bug_report.yml) · [提议功能](../../issues/new?template=feature_request.yml)
-- 📜 [更新日志](CHANGELOG.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全策略](SECURITY.md)
-- 🔒 发现安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告，**不要**公开提 Issue
-
-AI 辅助的贡献同样欢迎：请由提交者逐行核验、如实标注 `Co-authored-by`，并对照硬规则自查。
-
----
-
-## v1.5.0 插件体系强化
-
-### 修掉的确定性缺陷
-
-| 缺陷 | 根因 | 修法 |
-|---|---|---|
-| `api:emit` 被 `ctx.events.emit` 绕过 | `EventChannel.emit` 直接走总线，与权限表无关 | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
-| `api:emit` 被 `api.events.scope(ns).emit` 绕过 | 插件可自建任意命名空间通道 | `scopeAPI` 的 `events.scope` 改为返回插件通道的**子通道**，随插件一起销毁 |
-| `api.on` 订阅在停用后仍存活 | `api.on` 继承自 base，订阅不归属通道 | `api.on / off`、`api.events.waitFor / onAny` 全部路由进插件通道 |
-| manifest 可被改写来自我提权 | manifest 按引用存储，`list()/get()` 原样返回 | `register` 时做防御性拷贝，`list() / get()` / `register()` 返回的都是再副本 |
-| 停用依赖后下游插件仍 enabled | `disable` 只处理目标插件 | 级联停用下游依赖，teardown 顺序为依赖方先释放 |
-
-### 权限体系
-
-- 写入口从散落的 `if` 收敛为 `WRITE_CAPABILITIES` 表（`world/player/save/api/blocks/
-  time/settings/plugins`），新增能力时只改一张表，不会漏拦截。
-- 新增 `time:write`（`time.set` / `setDayLength`）、`settings:write`（`settings.*`）、
-  `plugins:manage`（插件注册 / 启停 / 卸载，`list` 只读）三项权限。
-- `register` 期校验：`setup` 必须是函数、权限名必须在白名单内、依赖必须是非空 id 数组、
-  不能自依赖——拼错立即失败，而不是运行时静默拒绝。
-
-### 生命周期与诊断
-
-- `disable` 级联停用下游依赖插件；`unload` 同理，依赖方随后可重新 enable。
-- 新增诊断项 `plugins.dependency`：启用中的插件若依赖未启用（含被外部改写的注册表）即报错。
-- `EventChannel` 新增 `fork()`（子通道随父通道销毁）、`onAny()`（归属通道，随 dispose 撤销）。
-
-### 验证
-
-| 项 | 结果 |
-|---|---|
-| `test:services` | 48 项（新增 emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用 / fork 与 onAny 共 10 项） |
-| `test:diagnostics` | 22 组断言（新增插件依赖悬空注入） |
-| `test:logic` / `test:light` / `test:mesher` / `test:worker-pool` / `test:edits` / `test:terrain-system` | 全通过 |
-| `test:smoke` / `test:visual` | 本机 Chromium 二进制 SIGBUS 无法启动，需在 CI（apt chromium + xvfb）跑 |
 
 ---
 

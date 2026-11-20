@@ -7,8 +7,6 @@ import type { System } from '../core/types';
  */
 export class Particles implements System {
   readonly name = 'particles';
-  /** 设置页「粒子效果」开关：关闭时不再产生新粒子，已有粒子立即清空 */
-  enabled = true;
   private capacity: number;
   private count = 0;
   private positions: Float32Array;
@@ -40,7 +38,6 @@ export class Particles implements System {
   }
 
   burst(x: number, y: number, z: number, color: [number, number, number], n: number, spread: number, speed: number) {
-    if (!this.enabled) return;
     for (let i = 0; i < n; i++) {
       if (this.count >= this.capacity) return;
       const idx = this.count++;
@@ -60,13 +57,6 @@ export class Particles implements System {
   }
 
   update(dt: number) {
-    if (!this.enabled) {
-      if (this.count > 0) {
-        this.count = 0;
-        this.geo.setDrawRange(0, 0);
-      }
-      return;
-    }
     let i = 0;
     while (i < this.count) {
       this.life[i] -= dt;
@@ -94,7 +84,7 @@ export class Particles implements System {
       if (fade < 0.3) {
         const f = fade / 0.3;
         // 与帧率无关的衰减（等价于 60fps 下每帧乘 0.9~1.0）
-        const k = (0.9 + f * 0.1) ** (dt * 60);
+        const k = Math.pow(0.9 + f * 0.1, dt * 60);
         this.colors[i3] *= k;
         this.colors[i3 + 1] *= k;
         this.colors[i3 + 2] *= k;

@@ -28,8 +28,6 @@ export interface GameEvents {
   'player:spawn': { position: Vec3Like };
   'player:move': { position: Vec3Like };
   'player:camera': { mode: number };
-  /** 玩家被实体方块包围后完成脱困（AABB 推出） */
-  'player:unstuck': { position: Vec3Like; distance: number };
   'hotbar:select': { index: number; block: BlockId };
   'time:change': { dayTime: number; daylight: number };
   'chunk:generated': { cx: number; cz: number };
@@ -52,10 +50,6 @@ export interface GameEvents {
   'survival:eat': { item: string; hunger: number };
   /** 生存模式：背包变化（kind: block/item） */
   'inventory:change': { key: string; count: number };
-  /** 生存模式：空手右键工作台，请求打开合成界面 */
-  'crafting:open': { x: number; y: number; z: number };
-  /** 合成完成（配方 id / 产物材料 / 数量） */
-  'crafting:crafted': { recipe: string; result: string; count: number };
   'game:start': { seed: number };
   'game:pause': { paused: boolean };
   'save:done': { bytes: number };
@@ -65,4 +59,10 @@ export interface GameEvents {
   'plugin:enabled': { id: string };
   'plugin:disabled': { id: string };
   'plugin:error': { id: string; error: string };
+  /** v1.5.0：插件热重载完成（unload + register + enable） */
+  'plugin:reloaded': { id: string };
+  /** v1.5.0：WASM 内核通过自检并接管噪声计算 */
+  'wasm:ready': { abi: number; bytes: number; sha256: string; samples: number };
+  /** v1.5.0：WASM 加载 / 自检 / 运行期失败，已回退到纯 JS */
+  'wasm:fallback': { reason: string; code?: string };
 }

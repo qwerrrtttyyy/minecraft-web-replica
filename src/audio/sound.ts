@@ -1,5 +1,4 @@
 import type { SoundMaterial } from '../world/blocks';
-import { clamp } from '../core/types';
 
 /**
  * 程序化音效：WebAudio 合成，零音频资源。
@@ -7,8 +6,6 @@ import { clamp } from '../core/types';
  */
 export class SoundEngine {
   enabled = true;
-  /** 音量 0~1，默认 0.5（设置页可调） */
-  volume = 0.5;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
@@ -22,7 +19,7 @@ export class SoundEngine {
     try {
       this.ctx = new AudioContext();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.enabled ? this.volume : 0;
+      this.master.gain.value = 0.5;
       this.master.connect(this.ctx.destination);
       const len = this.ctx.sampleRate * 0.5;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -35,13 +32,7 @@ export class SoundEngine {
 
   setEnabled(v: boolean) {
     this.enabled = v;
-    if (this.master) this.master.gain.value = v ? this.volume : 0;
-  }
-
-  /** 音量 0~100（设置页滑杆值），立即生效 */
-  setVolume(v: number) {
-    this.volume = clamp(v, 0, 100) / 100;
-    if (this.master && this.enabled) this.master.gain.value = this.volume;
+    if (this.master) this.master.gain.value = v ? 0.5 : 0;
   }
 
   private burst(freq: number, dur: number, gain: number, type: BiquadFilterType = 'bandpass', q = 1.2) {

@@ -41,11 +41,18 @@ export interface DiagnosticSnapshot {
     missingMeshes: number;
     unlitChunks: number;
   };
-  plugins: { id: string; state: string; dependencies?: string[] }[];
+  plugins: { id: string; state: string }[];
   events: { subscribers: number; channels: number; emitted: number };
   survival: { health: number; hunger: number; breath: number; dead: boolean } | null;
   entities: number;
   save: { dirty: boolean; lastOkAt: number };
+  /** v1.5.0：WASM 运行时快照（可选，旧快照不含此字段时跳过相关检查） */
+  wasm?: {
+    status: string;
+    abi: number;
+    fallbackCount: number;
+    selfCheckMismatches?: number;
+  };
 }
 
 export interface DiagnosticReport {
@@ -116,14 +123,6 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
   const failed = s.plugins.filter((pl) => pl.state === 'failed');
   check('plugins.failed', failed.length === 0,
     `插件初始化失败：${failed.map((pl) => pl.id).join(', ')}`);
-  // 级联停用后不应出现「enabled 但依赖未启用」；出现即说明注册表被外部改写或漏了级联
-  const byId = new Map(s.plugins.map((pl) => [pl.id, pl]));
-  const dangling = s.plugins.filter(
-    (pl) => pl.state === 'enabled'
-      && (pl.dependencies ?? []).some((dep) => byId.get(dep)?.state !== 'enabled'),
-  );
-  check('plugins.dependency', dangling.length === 0,
-    `启用中的插件缺少已启用的依赖：${dangling.map((pl) => `${pl.id}→${(pl.dependencies ?? []).join(',')}`).join('；')}`);
   check('events.subscribers', s.events.subscribers >= 0 && s.events.channels >= 0,
     '事件服务统计为负值');
   if (s.mode === 'playing') {
@@ -145,6 +144,23 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
     check('survival.deadOverlay',
       !(s.mode === 'dead' && !v.dead),
       '主状态机为 dead，但生存状态未标记死亡', 'warn');
+  }
+
+  // ---- WASM（v1.5.0）----
+  const w = s.wasm;
+  if (w) {
+    check('wasm.status',
+      ['disabled', 'unavailable', 'ready', 'fallback'].includes(w.status),
+      `WASM 状态非法：${w.status}`);
+    check('wasm.abi',
+      w.status === 'disabled' || w.status === 'unavailable' || w.abi >= 1,
+      `WASM 已就绪但 ABI 非法：${w.abi}`);
+    check('wasm.fallback',
+      w.status === 'fallback' || w.status === 'disabled' || w.fallbackCount === 0,
+      `WASM 状态 ${w.status} 却记录了 ${w.fallbackCount} 次回退`);
+    check('wasm.selfcheck',
+      (w.selfCheckMismatches ?? 0) === 0 || w.status !== 'ready',
+      `WASM 自检存在 ${w.selfCheckMismatches} 处不一致却仍处于 ready`, 'warn');
   }
 
   // ---- 实体 / 存档 ----

@@ -1,4 +1,4 @@
-# 测试体系（v1.4.9）
+# 测试体系（v1.6.0）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -13,28 +13,31 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| # | 命令 | 内容 | 依赖快照 |
-|---|---|---|---|
-| 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
-| 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 4 | `npm run build` | 单文件 `dist/index.html` | — |
-| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 6 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
-| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
-| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 | ✓ |
-| 15 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 16 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 | ✓ |
-| 17 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 18 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 19 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 20 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 2 | `npm run wasm:check` | 内联 WASM 产物与 `native/mc_kernel.wasm` 一致 + ABI / 零 import 校验 | — |
+| 3 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
+| 4 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
+| 5 | `npm run build` | 单文件 `dist/index.html` | — |
+| 6 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 7 | `npm run test:wasm` | WASM 内核：二进制完整性 / 逐位等价性 / 回退 / 模块准入 / 权限 24 项 | ✓ |
+| 8 | `npm run test:plugin-v2` | 插件 v2：semver / manifest / 依赖 / 超时 / 重载 / 上下文 / 加载器 21 项 | ✓ |
+| 9 | `npm run test:plugin-carrier` | 插件三载体：ExtensionRegistry / js / wasm:module / wasm:host（真实 clang fixture）/ 白名单校验 15 项 | ✓ |
+| 10 | `npm run test:review-fixes` | 代码审查修复回归：once 幂等 / unload 语义 / dispose 释放 / 相机常量 / 碰撞最近面 15 项 | ✓ |
+| 11 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
+| 12 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 13 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 14 | `npm run test:services` | 服务容器 / 事件 / 插件生命周期 / 权限 / 存档校验 39 项 | ✓ |
+| 15 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含 4 项 WASM 检查）27 组 | ✓ |
+| 16 | `npm run test:worker-pool` | Worker 池调度与失败回退 | ✓ |
+| 17 | `npm run test:edits` | 世界编辑差分与存档往返 | ✓ |
+| 18 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 34 组 | ✓ |
+| 19 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 | ✓ |
+| 20 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 | ✓ |
+| 21 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 6 植物 / 3 规则 / 生成选种 | ✓ |
+| 22 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 23 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+
+> `test:snapshot` 必须先于所有 require CJS 快照的纯逻辑测试（7~21）。
+> `wasm:check` 只做校验、不调用编译器，因此 CI 无需 clang；重新编译内核用 `npm run build:wasm`。
 
 ## 快照机制
 
@@ -44,7 +47,12 @@ npm run verify
 Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」。
 
 新增纯逻辑入口时，把文件加进脚本的 `entries` 数组；测试里统一 require
-`./terrain-logic/...` 或 `./logic/...`。
+`./terrain-logic/...` 或 `./logic/...`。v1.6.0 已登记
+`src/world/noiseMath.ts`、`src/wasm/{protocol,kernelBinary,kernel,runtime}.ts`、
+`src/services/plugins/{semver,storage,loader,extensions}.ts`、
+`src/services/plugins/carriers/{types,hostABI,index}.ts`、
+`src/plugins/example/{wasmProbe,hostPluginFixtureBinary}.ts` 等入口
+（`wasmHostPlugin.ts` 含引擎依赖，不进快照，仅作浏览器端示例）。
 
 ## 各测试组的职责
 
@@ -66,21 +74,25 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **plant-energy**：植物特性表（solar / hydro / fungal 分类与花蜜掉落）、白天蓄能、
   夜间呼吸下限、完全黑暗 / 离水 / 火光旁的枯死、`plant:bloom` 开花事件、采集与浆果回退、
   能量不足时禁止树苗生长、向日葵根系共享、`stats()` 统计。
-- **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量）、有序配方的
-  3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
-  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
-- **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
-  manifest 防篡改）、级联停用、存档校验。
-- **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含
-  `plugins.dependency`：启用中的插件缺少已启用依赖）。
+- **services-check**：服务容器、事件服务、插件生命周期、权限（含 `wasm:use` / `plugins:manage`）、存档校验。
+- **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现，含 `wasm.status` / `wasm.abi` / `wasm.fallback` / `wasm.selfcheck`。
+- **wasm-check**：内联二进制完整性、零 import / 14 导出 / ABI / 指纹、1705 项 JS↔WASM 逐位对拍、
+  伪造内核检出、运行期异常回退、ready/fallback/disabled 状态机、`benchmark` 自洽、
+  自定义模块准入与调用、`scopeAPI` 权限裁剪。
+- **plugin-v2-check**：semver 范围、manifest 静态校验、依赖版本约束与可选依赖 warning、
+  反向依赖保护、setup 超时、热重载、`enableAll` 优先级、统计与能力发现、
+  `ctx.config` / `storage` / 私有服务、源码加载器与权限裁剪。
+- **plugin-carrier-check**：`ExtensionRegistry` 的优先级 / owner 隔离 / 异常隔离 / 统计；
+  三种载体端到端启用（js / `wasm:module` 零 import / `wasm:host` 真实 clang fixture），
+  host 插件经白名单 import 订阅事件钩子、注册 `worldgen:column` / `gameplay:tick`、
+  读写命名空间存储；非法 import 拒绝、权限不足注入调用即抛桩、停用后扩展点回收。
+- **review-fixes-check**：代码审查修复的防回归——`once` 幂等（含重入）、`unload` 错误信息
+  指向自身操作且失败不删记录、`NoiseBackend.dispose` 释放后回退 JS 且幂等、
+  `CAMERA_DEFAULT_FAR=520` 与 farplane 下限一致、`moveBody` 同轴多方块时钳制到最近面。
 - **survival-smoke**：真实浏览器里的完整玩法链路；固定 seed=2026，条件轮询等世界收敛。
 - **visual-check**：固定 seed=2026 / 时段，断言夜间变暗、火光提亮、方块墙颜色丰富。
-- **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
-  FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
-  Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出
-  （合法 JSON）与导入（未知字段过滤 + 即时生效），最后校验 localStorage 跨刷新保留与一键重置。
 
 ## 固定种子与确定性
 
@@ -122,3 +134,8 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 4. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
 5. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
 6. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。
+7. 修改 WASM 内核导出或浮点表达式顺序时，必须同步 `native/mc_kernel.c`、
+   `src/world/noiseMath.ts`、`protocol.ts` 的导出表并**推进 ABI**，重跑
+   `npm run build:wasm`；`test:wasm` 的逐位对拍不允许放宽为「近似相等」。
+8. 新增插件 manifest 字段 / 权限时，必须同步 `scopeAPI` 裁剪与 `test:plugin-v2` 断言；
+   新增 API 命名空间写方法默认要落在权限裁剪内，读能力保留。

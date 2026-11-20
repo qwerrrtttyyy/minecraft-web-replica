@@ -9,8 +9,6 @@ import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-/** 版本唯一来源：src/core/version.ts ↔ package.json 由 check:version 机械校验，
- *  这里只读 package.json，避免在测试里再抄一份版本字面量（抄一次就漂移一次）。 */
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist/index.html')}`;
 const CHROME = process.env.CHROME_PATH ??
   ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
@@ -206,7 +204,6 @@ try {
     plugins: CraftAPI.plugins.list().map((p) => `${p.manifest.id}:${p.state}`),
     emittedStart: CraftAPI.events.stats().emitted['game:start'] ?? 0,
   }));
-
   const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
   ok('版本号单一来源与 package.json 一致', svc.version === pkgVersion, `${svc.version} / ${pkgVersion}`);
   ok('服务容器注册了事件/插件/API/内置依赖',
@@ -362,14 +359,11 @@ try {
     // 立即重算准星，避免「准星命中」断言读到设置视角之前的旧值
     mc.player.update(0.016);
   }, mineCell);
-  // 轮询等待而不是固定 sleep：整套 verify 高负载下渲染帧可能延迟，
-  // 单帧读取容易拿到设置视角之前的旧 target（历史 flake）
-  const aim = await page.waitForFunction((c) => {
+  await sleep(250);
+  const aim = await page.evaluate(() => {
     const t = window.__mc.player.target;
-    return t && t.x === c.x && t.y === c.y && t.z === c.z
-      ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name }
-      : null;
-  }, { timeout: 8000 }, mineCell).then((h) => h.jsonValue()).catch(() => null);
+    return t ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name } : null;
+  });
   ok('准星命中测试方块', !!aim && aim.x === mineCell.x && aim.y === mineCell.y && aim.z === mineCell.z,
     aim ? `${aim.name}@${aim.x},${aim.y},${aim.z}` : 'null');
 
@@ -444,7 +438,7 @@ try {
     const mc = window.__mc;
     const dirt = mc.registry.byNameGet('dirt').id;
     mc.survival.addBlock(dirt, 3);
-    const slot = mc.player.hotbar.slots.indexOf(null);
+    const slot = mc.player.hotbar.slots.findIndex((s) => s === null);
     mc.player.hotbar.slots[slot] = { kind: 'block', id: dirt };
     mc.selectSlot(slot);
     const p = mc.player.pos;
@@ -521,7 +515,7 @@ try {
     const stone = mc.registry.byNameGet('stone').id;
     const torch = mc.registry.byNameGet('torch').id;
     mc.survival.addBlock(torch, 2);
-    const slot = mc.player.hotbar.slots.indexOf(null);
+    const slot = mc.player.hotbar.slots.findIndex((s) => s === null);
     mc.player.hotbar.slots[slot] = { kind: 'block', id: torch };
     mc.selectSlot(slot);
     const p = mc.player.pos;
@@ -601,43 +595,6 @@ try {
   ok('僵尸能攻击玩家', hpAfterZombie < 20, `health=${hpAfterZombie}`);
   ok('日照强度随夜晚下降', await page.evaluate(() => window.__mc.sky.daylight < 0.4));
 
-  // ---- 合成界面（v1.5.0）：背包取料 → 合成 → 产出 ----
-  {
-    await page.evaluate(() => {
-      const mc = window.__mc;
-      mc.survival.addBlock(mc.registry.byNameGet('oak_log').id, 1);
-      mc.openCrafting('game');
-    });
-    await page.waitForSelector('.crafting-overlay', { timeout: 8000 });
-    ok('合成界面可打开', await page.$eval('.crafting-overlay', (el) => el.style.display !== 'none'));
-    ok('合成界面是 3×3 网格', await page.$eval('.crafting-grid', (el) => el.dataset.size === '3'));
-    ok('配方列表非空', (await page.$$eval('.crafting-recipe', (e) => e.length)) >= 5);
-
-    // 点「橡木木板」配方自动摆放，再点结果槽合成
-    await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('.crafting-recipe')];
-      rows.find((r) => r.textContent.includes('橡木木板')).click();
-    });
-    await sleep(200);
-    ok('自动摆放把原木放进格子', (await page.$$eval('.crafting-cell img', (e) => e.length)) === 1);
-    ok('结果槽显示可合成产物', (await page.$$eval('.crafting-result.ready', (e) => e.length)) === 1);
-
-    await page.click('.crafting-result');
-    await sleep(250);
-    const craft = await page.evaluate(() => ({
-      planks: window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('oak_planks').id),
-      logs: window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('oak_log').id),
-    }));
-    ok('合成产出 4 橡木木板', craft.planks === 4, `count=${craft.planks}`);
-    ok('原木被消耗', craft.logs === 0, `count=${craft.logs}`);
-
-    // 关闭界面，剩余材料应退回背包
-    await page.click('.crafting-close');
-    await sleep(200);
-    ok('合成界面可关闭', await page.$eval('.crafting-overlay', (el) => el.style.display === 'none'));
-    ok('关闭后游戏恢复', await page.evaluate(() => window.__mc.mode === 'playing'));
-  }
-
   // ---- 模式切换 ----
   await page.evaluate(() => window.__mc.toggleGameMode());
   ok('可切换到创造模式', (await page.evaluate(() => window.__mc.survival.mode)) === 'creative');
@@ -645,65 +602,6 @@ try {
   await page.evaluate(() => window.__mc.toggleGameMode());
   ok('可切回生存模式', (await page.evaluate(() => window.__mc.survival.mode)) === 'survival');
   ok('生存模式再次显示生命条', await page.$eval('.stats-wrap', (el) => el.style.display !== 'none'));
-
-  // ---- v1.4.0 工程续作：透明通道按几何距离排序 ----
-  await page.evaluate(() => {
-    const mc = window.__mc;
-    const p = mc.player.pos;
-    const glass = mc.registry.byNameGet('glass').id;
-    const fx = Math.floor(p.x), fy = Math.floor(p.y), fz = Math.floor(p.z);
-    // 只在玩家周围环形造玻璃（跳过中心 3×3 列），避免把玩家自己卡进实体
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-      if (dx === 0 && dz === 0) continue;
-      for (let y = fy - 1; y <= fy + 3; y++) mc.world.setBlock(fx + dx, y, fz + dz, glass);
-    }
-  });
-  await sleep(900);
-  const sort = await page.evaluate(() => {
-    const ord = window.__mc.chunks.transparentOrder;
-    if (!ord.length) return { n: 0, monotone: false, ascending: false, minOrder: 0 };
-    let monotone = true, ascending = true, minOrder = Infinity;
-    for (let i = 1; i < ord.length; i++) if (ord[i].dist > ord[i - 1].dist + 1e-6) monotone = false;
-    for (let i = 1; i < ord.length; i++) if (ord[i].order <= ord[i - 1].order) ascending = false;
-    minOrder = Math.min(...ord.map((o) => o.order));
-    return { n: ord.length, monotone, ascending, minOrder };
-  });
-  ok('透明/水通道产生了排序条目', sort.n > 0, `n=${sort.n}`);
-  ok('透明排序按几何中心距离远→近单调', sort.monotone, `n=${sort.n}`);
-  ok('renderOrder 严格递增且 ≥10', sort.ascending && sort.minOrder >= 10, `min=${sort.minOrder}`);
-
-  // ---- v1.4.0 工程续作：AABB 脱困 ----
-  {
-    const before = await page.evaluate(() => {
-      const mc = window.__mc;
-      const p = mc.player.pos;
-      // 在玩家即将落入的格子里塞进一个实心块，再传送进去 → 身体必然与实心块相交
-      const x = Math.floor(p.x), z = Math.floor(p.z), y = Math.floor(p.y) - 2;
-      if (!mc.registry.isSolid(mc.world.getBlock(x, y, z))) {
-        mc.world.setBlock(x, y, z, mc.registry.byNameGet('stone').id);
-      }
-      mc.player.teleport(x + 0.5, y, z + 0.5);
-      return { count: mc.player.unstuckCount, isStuck: mc.player.isStuck, x, y, z, ox: p.x, oy: p.y, oz: p.z };
-    });
-    ok('玩家嵌入实心方块后被判定为卡住', before.isStuck);
-    await page.waitForFunction(
-      (n) => window.__mc.player.unstuckCount > n && !window.__mc.player.isStuck,
-      { timeout: 8000 }, before.count,
-    ).catch(() => {});
-    const after = await page.evaluate(() => ({
-      count: window.__mc.player.unstuckCount,
-      isStuck: window.__mc.player.isStuck,
-    }));
-    ok('AABB 脱困自动完成并计数', after.count > before.count && !after.isStuck,
-      `${before.count}→${after.count}`);
-    // 恢复现场：清除嵌入的石头并回到原位，避免污染后续存档 / 重载断言
-    await page.evaluate((b) => {
-      const mc = window.__mc;
-      mc.world.setBlock(b.x, b.y, b.z, 0);
-      mc.player.teleport(b.ox, b.oy, b.oz);
-    }, before);
-    await sleep(200);
-  }
 
   // ---- 存档 v2 ----
   const save = await page.evaluate(() => window.CraftAPI.save.export());

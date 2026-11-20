@@ -11,7 +11,7 @@
  * - 自然生成选种的确定性与群系 / 临水约束
  * - 未安装插件时内置生态路径不受影响
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { World } = require('./terrain-logic/world/world.js');
 const { Botany } = require('./terrain-logic/world/botany.js');
@@ -46,7 +46,7 @@ function makeWorld(seed = 20261115) {
     seed,
     surfaceHeight: () => 20,
     biomeAt: () => 'plains',
-    generateChunk(_cx, _cz, data) {
+    generateChunk(cx, cz, data) {
       const idx = (x, y, z) => (y * CS + z) * CS + x;
       for (let z = 0; z < CS; z++) {
         for (let x = 0; x < CS; x++) {
@@ -275,9 +275,7 @@ log('\n[5] Botany 集成与注销');
 
 log('\n[6] 自然生成选种');
 {
-  const hashA = spawnHash(3, 4, 2026);
-  const hashB = spawnHash(3, 4, 2026);
-  ok('同一 seed + 坐标哈希稳定', hashA === hashB);
+  ok('同一 seed + 坐标哈希稳定', spawnHash(3, 4, 2026) === spawnHash(3, 4, 2026));
   ok('坐标 / seed 变化会改变哈希',
     spawnHash(3, 4, 2026) !== spawnHash(4, 3, 2026) &&
     spawnHash(3, 4, 2026) !== spawnHash(3, 4, 2027));

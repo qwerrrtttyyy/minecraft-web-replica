@@ -4,7 +4,7 @@
  * 覆盖「构造期部分失败必须整体回滚，不留残缺池」——对应 chunkManager 曾出现的
  * 缺陷：catch 只打印回退日志，实际仍以 worker 模式带部分实例运行。
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { createWorkerPool } = require('./logic/world/workerPool.js');
 
 let passed = 0;

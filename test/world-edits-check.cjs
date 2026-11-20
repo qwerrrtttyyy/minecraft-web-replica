@@ -4,7 +4,7 @@
  * 分桶值从「字符串 key」改为「已解析数值坐标」后，必须保证：
  * 负坐标 / 区块边界 / 同坐标覆盖 / setBlock 记录 / 存档导出的语义完全不变。
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { World } = require('./logic/world/world.js');
 const { BlockRegistry, registerBuiltinBlocks } = require('./logic/world/blocks.js');
 

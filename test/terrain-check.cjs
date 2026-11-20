@@ -2,7 +2,7 @@
  * 地形生成回归（纯逻辑，不需要 WebGL / 浏览器）。
  * 运行：node test/terrain-check.cjs
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { DefaultGenerator, DEFAULT_TERRAIN } = require('./terrain-logic/world/generator.js');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require('./terrain-logic/core/types.js');

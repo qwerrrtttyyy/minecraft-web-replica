@@ -1,7 +1,9 @@
-# Minecraft TS 架构说明（v1.4.9）
+# Minecraft TS 架构说明（v1.6.0）
 
 > 目标：把**插件**与**事件**相关的 API 从 `main.ts` 中彻底独立为服务，形成可替换、
 > 可测试、有生命周期的架构分层；同时修复实测暴露的缺陷并补齐工程化闭环。
+> v1.5.0 在此之上引入 **WASM 运行时服务**与**插件体系 v2**，两者共用同一套
+> 「服务容器注入 + 权限裁剪 + 可回退」的工程约束。
 
 ---
 
@@ -54,13 +56,14 @@
 | `src/core/` | 引擎内核：主循环、类型常量、唯一版本源；`events.ts` 仅兼容再导出 |
 | `src/services/ServiceContainer.ts` | `token<T>()` 类型化令牌、`provide/require/optional/has/keys/dispose` |
 | `src/services/events/` | `GameEvents` 契约、`EventService` 实现、`EventChannel` 命名空间作用域 |
-| `src/services/plugins/` | `PluginContext` 契约、`PluginService` 实现与 `scopeAPI` 权限裁剪 |
-| `src/api/` | `CraftAPI` 门面：旧 22 项 + 新增 `plugins` / `events` 命名空间 |
-| `src/plugins/builtin/` | 默认启用的内置插件；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约 |
-| `src/plugins/example/` | 插件开发示例（不默认启用） |
+| `src/services/plugins/` | `PluginContext` 契约、`PluginService` v2、`scopeAPI` 权限裁剪；`semver` / `storage` / `loader` 为子模块 |
+| `src/wasm/` | WASM 协议、内核加载、等价性自检、`WasmRuntime` 服务（零网络 / 同步实例化 / 自动回退） |
+| `src/world/noiseMath.ts` | 唯一 JS 噪声参考实现：WASM 对拍基准与运行期回退路径 |
+| `native/` | freestanding C 内核源码与 clang 编译产物（`.wasm` 提交进仓库） |
+| `src/api/` | `CraftAPI` 门面：旧 22 项 + `plugins` / `events` / `botany` / `wasm` 命名空间 |
+| `src/plugins/builtin/` | 默认启用的内置插件（含 `core:wasm-monitor`）；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约 |
+| `src/plugins/example/` | 插件开发示例（`welcome` 与 `wasmProbe`，均不默认启用） |
 | `src/diagnostics/` | 运行时诊断组：只读快照检查、F3 / CraftAPI 报告、每 10 秒自动采样 |
-| `src/player/crafting.ts` | 合成规则：配方表与网格匹配（纯逻辑，不依赖 DOM / three） |
-| `src/ui/crafting.ts` | 合成界面：3×3 网格、结果槽、背包区与配方列表（经 `CraftingHost` 回调取放） |
 
 ---
 
@@ -118,15 +121,23 @@ interface PluginDefinition {
     id: string;                    // 建议 作者:名称，正则校验
     version?: string;
     description?: string;
-    dependencies?: string[];       // enable 时递归先启用，循环依赖拦截
+    dependencies?: string[];       // 支持 id@^1.2.0 约束，循环依赖拦截
+    optionalDependencies?: string[];  // v1.5.0：缺失/失败只记 warning
     permissions?: PluginPermission[];
+    apiVersion?: string;           // v1.5.0：兼容的引擎插件 API 范围
+    capabilities?: string[];       // v1.5.0：声明式能力发现
+    priority?: number;             // v1.5.0：enableAll 启用顺序
+    timeoutMs?: number;            // v1.5.0：异步 setup 超时保护
+    config?: Record<string, unknown>; // v1.5.0：默认配置
   };
   setup(ctx: PluginContext): void | (() => void) | Promise<void | (() => void)>;
 }
 ```
 
 `PluginContext` 提供：`id`、`events`（EventChannel）、`services`（容器）、
-`api`（按权限裁剪的 CraftAPI 视图）、`log`、`onDispose(fn)`。
+`api`（按权限裁剪的 CraftAPI 视图）、`log`、`onDispose(fn)`；
+v1.5.0 增加 `manifest`（冻结快照）、`apiVersion`、`config`（只读合并）、
+`storage`（命名空间 KV）、`provide/require/tryRequire`（插件私有服务，卸载自动回收）。
 
 **生命周期**：
 
@@ -143,28 +154,18 @@ register ──► registered ──► enable ──► [递归启用依赖] �
 
 | 权限 | 放行能力 |
 |---|---|
-| `world:write` | `world.setBlock` / `tnt.ignite` / `entities.spawn` |
-| `player:write` | `player.teleport` / `setFly` / `break` / `place` / `setCamera`；`survival.setMode` / `respawn` / `give` / `damage` / `heal` |
+| `world:write` | `world.setBlock` |
+| `player:write` | `player.teleport` / `setFly` / `break` / `place` |
 | `save:write` | `save.import` / `setProvider` |
-| `api:emit` | `CraftAPI.emit`、`ctx.events.emit`、`api.events.scope(...).emit` |
-| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` / `blocks.register` |
-| `time:write` | `time.set` / `time.setDayLength` |
-| `settings:write` | `settings.renderDistance` / `sensitivity` / `fov` / `sound` |
-| `plugins:manage` | `plugins.register` / `enable` / `disable` / `unload`（`list` 只读） |
+| `api:emit` | `CraftAPI.emit` |
+| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` |
+| `botany:register` | `botany.registerPlant` / `registerRule` / `unregister*` |
+| `wasm:use` | `wasm.call` / `callModule` / `registerModule` / `setEnabled`（v1.5.0） |
+| `plugins:manage` | `plugins.register` / `enable` / `disable` / `unload` / `reload` / `install`（v1.5.0） |
 
-未声明的写能力在插件上下文里会抛错（读能力默认全开）。写入口集中登记在
-`PluginService.ts` 的 `WRITE_CAPABILITIES` 表中，新增能力时同步维护该表，避免
-「加了写入口忘了加拦截」。初始化失败被隔离为 `failed` 并发出 `plugin:error`，
-**不会拖垮启动流程**。
-
-**权限边界**：`api:emit` 同时约束 `ctx.events` 与 `api.events.scope()` 派生的子通道；
-`api.on / off`、`api.events.waitFor / onAny` 都归属插件通道，停用时一并清理。
-manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是副本，插件无法
-改写自己的 `permissions`。`ctx.services` 与 `ctx.api.engine` 仍是受信内部对象，
-权限是护栏不是沙箱。
-
-**停用级联**：`disable(A)` 会先递归停用所有依赖 A 的下游插件（依赖方先 teardown），
-避免出现「B 仍 enabled 但它依赖的 A 已停用」的悬浮依赖。
+未声明的写能力在插件上下文里会抛错（读能力默认全开）。初始化失败被隔离为
+`failed` 并发出 `plugin:error`，**不会拖垮启动流程**。v1.5.0 之前任何插件都能
+调用 `CraftAPI.plugins.unload()` 卸载别的插件，`plugins:manage` 权限修复了这个缺口。
 
 ---
 
@@ -274,7 +275,7 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 | 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
 | 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
 | 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
-| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 46 项（含并发启用、初始化中停用、waitFor 清理、emit 门禁、级联停用） |
+| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 43 项（含并发启用、初始化中停用、waitFor 清理） |
 | 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
 | 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组 |
 | 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
@@ -422,10 +423,11 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 | v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置 |
 | v1.4.1 | 植物生态 + 内在能量体系（已完成） | 35 种植物 / 树种 append-only；`botany-check` 28 组 + `plant-energy-check` 29 组断言 |
 | v1.4.2 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
-| v1.5.0 | 合成系统（已完成） | `crafting-check` 43 组断言：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、背包取放闭环 |
 | v1.4.3 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
+| v1.5.0 | WASM 内核 + 插件体系 v2（已完成） | `wasm:check` / `test:wasm` 24 项 / `test:plugin-v2` 21 项；1705 项噪声逐位对拍零差异，自检失败自动回退纯 JS |
+| v1.6.0 | 插件三载体 + 扩展点注册表（已完成） | `test:plugin-carrier` 15 项；`wasm:module` 零 import + `wasm:host` 白名单 host-import（真实 clang fixture）；`ExtensionRegistry` owner 隔离；`worldgen:column` / `gameplay:tick` 扩展点；插件 API 2.1.0 |
 | v1.4.4 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
-| v2.0 | 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
+| v2.0 | 合成 / 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
 **当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
 下一步做透明排序与 AABB 脱困。
@@ -442,3 +444,91 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 `src/plugins/builtin/botanyContent.ts`（纯数据，可编译进测试快照），装配逻辑放在
 `botanyExpansion.ts`。依赖方向仍是 `main.ts → services → api → 业务模块`，
 插件不 import 引擎内部实现。
+
+## WASM 服务与插件体系 v2（v1.5.0）
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │ main.ts（组装根）                            │
+                    │ createServices → WasmRuntime.init() →        │
+                    │ provide(TOKENS.Wasm) → new DefaultGenerator │
+                    └──────────────┬──────────────────────────────┘
+                                   │ 注入 / 事件
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+┌────────────────┐      ┌──────────────────────┐   ┌──────────────────┐
+│ WasmRuntime    │      │ PluginService v2     │   │ CraftAPI 门面    │
+│ 自检 / 回退 /  │◄────►│ semver / 超时 / 重载 │◄─►│ wasm + plugins   │
+│ 模块注册表     │      │ storage / 私有服务   │   │ 权限裁剪         │
+└───────┬────────┘      └──────────────────────┘   └──────────────────┘
+        │ installNoiseBackend(factory)
+        ▼
+┌────────────────────────────────────────────────────────────┐
+│ Noise（后端选择）── WASM 内核（每实例独立 memory）           │
+│                └─ noiseMath.ts（唯一 JS 参考 / 回退基准）     │
+└────────────────────────────────────────────────────────────┘
+```
+
+**关键顺序**：`WasmRuntime.init()` 必须在 `new DefaultGenerator()` 之前完成，
+否则已构造的 `Noise` 实例不会持有 WASM 后端。这也解释了为什么 WASM 不进
+网格化 Worker —— 地形生成在主线程，Worker 只消费区块快照，无需改消息协议。
+
+**分层不变量**：
+
+1. `noiseMath.ts` 是唯一 JS 数值参考；C 内核与它逐位对拍，任何差异都被视为缺陷，
+   而不是「近似相等」。
+2. `WasmRuntime` 是服务容器里的一等公民（`TOKENS.Wasm`），插件只通过
+   `CraftAPI.wasm` 或 `ctx.services.require(TOKENS.Wasm)` 访问，不 import 内核实现。
+3. 插件自定义 WASM 模块必须零 import、体积/内存/导出受限，只开放数值调用，
+   形成「插件 → WASM」的受控扩展点。
+4. 所有新增写能力（`wasm:use` / `plugins:manage`）都落在 `scopeAPI` 裁剪内，
+   读能力默认全开。
+5. 失败一律降级：内核加载失败、自检不过、运行期异常 → 卸载后端、发
+   `wasm:fallback`、状态落 `fallback`，游戏行为与 v1.4.3 完全一致。
+
+完整 ABI、编译流程、性能数据与故障排查见 [WASM.md](WASM.md)；
+插件 v2 的字段与回归清单见 [TESTING.md](TESTING.md)。
+
+## 插件三载体与扩展点注册表（v1.6.0）
+
+v1.5.0 的 WASM 只是「被动数值后端」；v1.6.0 让 WASM 成为**与 JS 对等的一等插件载体**，
+并给所有载体一个统一的扩展落点。分层不变量不变：插件不 import 引擎内部实现，只经
+`PluginContext` / `CraftAPI` / `ExtensionRegistry` 交互。
+
+```
+PluginDefinition = manifest + ( setup(ctx) | carrier )
+                              │              │
+                       js（原样）      wasm:module / wasm:host
+                                             │
+                              CarrierHost 适配成统一 setup/teardown
+                                             │
+                     PluginService（依赖 / 权限 / 代次 / 超时 / 存储，全部复用）
+                                             │
+                              ExtensionRegistry（owner 隔离）
+                            ┌────────────────┴────────────────┐
+                    worldgen:column                     gameplay:event / tick
+                 （World.ensureChunk 后）              （事件桥接 + 主循环 0.5s）
+```
+
+**三种载体**
+
+- `js`：`setup(ctx)` 一等公民，写法零改动。
+- `wasm:module`：零 import 模块，激活时注册为插件私有数值模块，经
+  `ctx.api.wasm.callModule` 被动调用，复用 `compilePluginModule` 安全边界。
+- `wasm:host`：声明白名单 host import 的模块，经 `planGrants` 按权限注入（`env.mc_*`），
+  白名单外 import 在实例化阶段直接被拒；缺权限的能力注入「调用即抛错桩」以便降级加载。
+  导出 `mc_plugin_abi` / `_start` / `_dispose` / `mc_hook`，通过 scratch 内存 + UTF-8
+  编解码交换文本 payload。二者都复用同一套生命周期，只是「激活函数」不同。
+
+**扩展点**：`ExtensionRegistry` 按 point 注册、按 owner 隔离、按 priority 排序，单个
+handler 抛错被隔离（记入 `errors`，不影响其它 handler）。已落地两层：
+
+1. `worldgen:column` —— 在 `World.ensureChunk` 生成后、应用玩家编辑前派发，
+   payload 提供区块坐标与 get/setBlock，WASM 钩子与 JS 回调都能改地形。
+2. `gameplay:event` / `gameplay:tick` —— host 插件经 `mc_ext_register` 订阅 GameEvents，
+   主循环每 0.5 秒派发一次 tick，避免逐帧跨界抖动。
+
+**权限**：新增 `events:subscribe`（host 插件订阅游戏事件）。`mc_world_set` 走
+`ctx.api` 的 `world:write` 裁剪，`mc_storage_*` 走命名空间 KV，无越权路径。
+
+ABI、host import 白名单表、fixture 编译与示例见 [PLUGINS.md](PLUGINS.md)。

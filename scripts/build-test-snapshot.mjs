@@ -17,7 +17,6 @@ const tmp = path.join(root, '.test-build');
 const entries = [
   'src/vite-env.d.ts',
   'src/player/survival.ts',
-  'src/player/unstuck.ts',
   'src/core/events.ts',
   'src/services/ServiceContainer.ts',
   'src/services/plugins/PluginService.ts',
@@ -38,6 +37,21 @@ const entries = [
   'src/world/mesher.ts',
   'src/world/meshSource.ts',
   'src/world/snapshotSource.ts',
+  'src/world/noiseMath.ts',
+  'src/wasm/protocol.ts',
+  'src/wasm/kernelBinary.ts',
+  'src/wasm/kernel.ts',
+  'src/wasm/runtime.ts',
+  'src/services/plugins/semver.ts',
+  'src/services/plugins/storage.ts',
+  'src/services/plugins/loader.ts',
+  'src/services/plugins/extensions.ts',
+  'src/services/plugins/carriers/types.ts',
+  'src/services/plugins/carriers/hostABI.ts',
+  'src/services/plugins/carriers/index.ts',
+  'src/plugins/builtin/wasmMonitor.ts',
+  'src/plugins/example/wasmProbe.ts',
+  'src/plugins/example/hostPluginFixtureBinary.ts',
   'src/core/types.ts',
   'src/core/version.ts',
   'src/diagnostics/RuntimeDiagnostics.ts',
@@ -61,7 +75,7 @@ const args = [
 rmSync(tmp, { recursive: true, force: true });
 try {
   execFileSync(tsc, args, { cwd: root, stdio: 'inherit' });
-} catch {
+} catch (e) {
   console.error('[snapshot] TypeScript 编译失败，快照未更新');
   process.exit(1);
 }

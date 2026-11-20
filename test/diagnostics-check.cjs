@@ -5,7 +5,7 @@
  * Worker 配置、区块网格收敛、暂停态输入残留、插件失败、
  * 死亡状态一致性、玩家/存档异常。
  */
-const assert = require('node:assert');
+const assert = require('assert');
 const { runRuntimeDiagnostics } = require('./logic/diagnostics/RuntimeDiagnostics.js');
 const { VERSION } = require('./logic/core/version.js');
 
@@ -126,22 +126,6 @@ console.log('运行时诊断组回归');
 }
 
 {
-  const r = runRuntimeDiagnostics(clone((s) => {
-    s.plugins.push({ id: 'demo:orphan', state: 'enabled', dependencies: ['demo:missing'] });
-    s.plugins.push({ id: 'demo:stopped', state: 'disabled' });
-    s.plugins.push({ id: 'demo:needs-stopped', state: 'enabled', dependencies: ['demo:stopped'] });
-  }));
-  ok('启用插件缺少已启用依赖被捕获', has(r, 'plugins.dependency'));
-}
-
-{
-  const r = runRuntimeDiagnostics(clone((s) => {
-    s.plugins.push({ id: 'demo:ok', state: 'enabled', dependencies: ['core:autosave'] });
-  }));
-  ok('依赖已满足时不误报', !has(r, 'plugins.dependency'));
-}
-
-{
   const r = runRuntimeDiagnostics(clone((s) => { s.survival.dead = true; }));
   ok('死亡状态与主状态机不一致被捕获', has(r, 'survival.deadState'));
 }
@@ -182,6 +166,49 @@ console.log('运行时诊断组回归');
   ok('标题态不产生输入/区块误报',
     !has(r, 'input.enabled') && !has(r, 'chunks.missingMesh') && !has(r, 'chunks.ghostMesh'),
     ids(r).join(','));
+}
+
+// ---------- v1.5.0 WASM 诊断项 ----------
+{
+  const healthy = clone((s) => {
+    s.wasm = { status: 'ready', abi: 2, fallbackCount: 0, selfCheckMismatches: 0 };
+  });
+  const r = runRuntimeDiagnostics(healthy);
+  ok('WASM 健康快照不产生异常',
+    !has(r, 'wasm.status') && !has(r, 'wasm.abi') &&
+    !has(r, 'wasm.fallback') && !has(r, 'wasm.selfcheck'), ids(r).join(','));
+  ok('WASM 四项检查已纳入', r.checked === runRuntimeDiagnostics(base()).checked + 4,
+    `checked=${r.checked}`);
+}
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.wasm = { status: 'nonsense', abi: 2, fallbackCount: 0 };
+  }));
+  ok('WASM 非法状态被捕获', has(r, 'wasm.status'));
+}
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.wasm = { status: 'ready', abi: 0, fallbackCount: 0 };
+  }));
+  ok('WASM 就绪但 ABI 非法被捕获', has(r, 'wasm.abi'));
+}
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.wasm = { status: 'ready', abi: 2, fallbackCount: 3 };
+  }));
+  ok('ready 却发生回退被捕获', has(r, 'wasm.fallback'));
+}
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.wasm = { status: 'ready', abi: 2, fallbackCount: 0, selfCheckMismatches: 2 };
+  }));
+  ok('ready 但自检不一致被标记为 warn', has(r, 'wasm.selfcheck') && r.warnings >= 1);
+}
+{
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.wasm = { status: 'fallback', abi: 2, fallbackCount: 1 };
+  }));
+  ok('fallback 属正常降级，不误报', !has(r, 'wasm.fallback') && !has(r, 'wasm.status'));
 }
 
 console.log(`\nPASS 运行时诊断组：${passed} 组断言全部通过`);
