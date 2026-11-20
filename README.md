@@ -1,7 +1,7 @@
 # Minecraft TS —— TypeScript 体素引擎复刻
 
 <p align="center">
-  <img src="docs/assets/showcase.gif" width="720" alt="实机演示：清晨森林 → 挖掘 → 黄昏 TNT → 星空">
+  <img src="docs/assets/showcase.webp" width="720" alt="实机演示：清晨森林 → 挖掘 → 黄昏 TNT → 星空">
 </p>
 
 <p align="center">

@@ -116,6 +116,8 @@ src/
     禁止留下"部分实例 + worker 模式"的残池。
 13. **新增高风险不变量**优先加到 `src/diagnostics/RuntimeDiagnostics.ts`，
     并在 `test/diagnostics-check.cjs` 补一条注入式回归，确保检查项不会静默失效。
+14. **大二进制不入库**：>1MB 的媒体 / 产物不提交 git；演示动画用 WebP
+    （`docs/assets/showcase.webp`），否则放 Release / Artifacts。详见 `docs/PROJECT-EXPERIENCE.md`。
 
 ---
 

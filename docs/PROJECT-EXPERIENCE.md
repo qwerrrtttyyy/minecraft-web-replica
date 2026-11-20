@@ -65,6 +65,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   禁止留下「部分实例 + worker 模式」的残池；用 `test:worker-pool` 注入式回归验证。
 - **编辑差分**：分桶值存已解析的数值坐标（`BlockEdit`），字符串 key 只在 `recordEdit` 解析一次；
   `ensureChunk` 不再逐条 `split(',')`。改动用 `test:edits` 覆盖负坐标与跨区块边界。
+- **大二进制不入库**：禁止向 git 提交 >1MB 的二进制（演示动画 / 视频 / 打包产物等）。
+  演示媒体优先转成 animated WebP（README 首屏 `docs/assets/showcase.webp`），否则放 GitHub
+  Release 资产或 Actions Artifacts；录制与压缩流程见 `.github/workflows/showcase.yml`。
 
 ## 常见排查
 
