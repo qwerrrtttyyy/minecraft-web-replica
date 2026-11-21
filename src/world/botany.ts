@@ -8,6 +8,11 @@ import {
 import { buildTree, type TreeSpecies } from './trees';
 import { PlantRuleRegistry, type PlantRule, type PlantRuleContext } from './plantRules';
 import { DEFAULT_PLANT_ENV, modifiers, scaledChance, type PlantEnv } from './ecology';
+import {
+  MAX_SOIL_NUTRIENT, consume as consumeNutrient, enrich as enrichNutrient,
+  evictIfNeeded as evictSoil, nutrientAt as soilNutrientAt, returnToSoil,
+  type SoilMap,
+} from './soil';
 import type { World } from './world';
 
 /** 一次随机刻里最多处理的采样次数（移动端减半，避免持续占用帧预算） */
@@ -39,6 +44,8 @@ export interface BotanyStats {
   tracked: number;
   charged: number;
   avgEnergy: number;
+  /** 附近被跟踪土壤的平均养分（未记录土壤不计入），0 表示无记录 */
+  soilAvg: number;
   solar: number;
   hydro: number;
   fungal: number;
@@ -104,6 +111,8 @@ export class Botany {
   private readonly traits = new Map<BlockId, PlantTrait>();
   /** 内在能量表：坐标 → 状态。只跟踪被随机刻采样过的植物 */
   private readonly energy = new Map<string, PlantEnergyState>();
+  /** 土壤养分表：支撑格坐标 → 0~100，懒初始化为 100 */
+  private readonly soil: SoilMap = new Map();
   private readonly flowers = new Set<BlockId>();
   private readonly spreadable = new Set<BlockId>();
   private readonly mushrooms = new Set<BlockId>();
@@ -260,11 +269,35 @@ export class Botany {
     this.stateAt(x, y, z, id).energy = clamp(energy, 0, MAX_PLANT_ENERGY);
   }
 
+  /** 读取土壤养分（支撑格 y-1）；未跟踪返回 100 */
+  nutrientAt(x: number, y: number, z: number): number {
+    return soilNutrientAt(this.soil, x, y, z);
+  }
+
+  /** 调试 / 测试钩子：直接写入土壤养分 */
+  setNutrient(x: number, y: number, z: number, value: number): void {
+    this.soil.set(blockKey(x, y, z), clamp(value, 0, MAX_SOIL_NUTRIENT));
+  }
+
+  /** 施肥：给支撑格土壤补充养分，并发出 plant:soil 事件 */
+  enrichSoil(x: number, y: number, z: number, delta: number): void {
+    enrichNutrient(this.soil, x, y, z, delta);
+    evictSoil(this.soil);
+    this.events?.emit('plant:soil', { x, y, z, delta });
+  }
+
   /** 生态能量统计（F3 / 调试面板）：只统计当前仍在原位的植物 */
   stats(
     focusX = this.focusX, focusZ = this.focusZ, radius = this.sampleRadius,
   ): BotanyStats {
     let tracked = 0, charged = 0, total = 0, solar = 0, hydro = 0, fungal = 0;
+    let soilTotal = 0, soilCount = 0;
+    for (const [key, value] of this.soil) {
+      const [sx, sy, sz] = key.split(',').map(Number);
+      if (Math.abs(sx - focusX) > radius || Math.abs(sz - focusZ) > radius) continue;
+      soilTotal += value;
+      soilCount++;
+    }
     for (const st of this.energy.values()) {
       if (Math.abs(st.x - focusX) > radius || Math.abs(st.z - focusZ) > radius) continue;
       if (this.world.getBlock(st.x, st.y, st.z) !== st.id) continue;
@@ -280,6 +313,7 @@ export class Botany {
     return {
       tracked, charged,
       avgEnergy: tracked ? Math.round((total / tracked) * 10) / 10 : 0,
+      soilAvg: soilCount ? Math.round((soilTotal / soilCount) * 10) / 10 : 100,
       solar, hydro, fungal,
     };
   }
@@ -299,6 +333,9 @@ export class Botany {
     if (mode === 'use' && id === this.id.berryBushRipe) {
       this.set(x, y, z, this.id.berryBush, 'harvest');
     }
+    // 破坏结算把一半生长养分归还土壤
+    const nutrient = trait.growthNutrient ?? Math.ceil(trait.growthCost / 3);
+    returnToSoil(this.soil, x, y - 1, z, Math.floor(nutrient / 2));
     st.bloomed = false;
     this.events?.emit('plant:bloom', { x, y, z, block: id, energy: Math.round(st.energy) });
     return { ...trait.harvest };
@@ -494,11 +531,18 @@ export class Botany {
     // 必须在写入前取能量状态：生长阶段替换方块后 id 会变化
     const state = trait ? this.stateAt(sx, sy, sz, costId) : null;
     if (trait && (!state || state.energy < trait.growthCost)) return false;
+    const nutrientCost = trait
+      ? (trait.growthNutrient ?? Math.ceil(trait.growthCost / 3)) : 0;
+    if (nutrientCost > 0 && this.nutrientAt(sx, sy - 1, sz) < nutrientCost) return false;
     if (!this.set(tx, ty, tz, id, kind)) return false;
     if (trait && state) {
       state.energy = Math.max(0, state.energy - trait.growthCost);
       // 原地升级（麦苗 → 抽穗 → 小麦、青果 → 成熟）保留剩余能量
       if (costId !== id && sx === tx && sy === ty && sz === tz) state.id = id;
+    }
+    if (nutrientCost > 0) {
+      consumeNutrient(this.soil, sx, sy - 1, sz, nutrientCost);
+      evictSoil(this.soil);
     }
     return true;
   }
@@ -622,6 +666,8 @@ export class Botany {
 
   private decay(x: number, y: number, z: number, id: BlockId): boolean {
     let changed = false;
+    const trait = this.traits.get(id);
+    const nutrient = trait ? (trait.growthNutrient ?? Math.ceil(trait.growthCost / 3)) : 0;
     // 整列枯萎：甘蔗 / 竹子 / 仙人掌 / 海带被拆掉底格后不应留下一段悬空
     for (let yy = y; yy < H; yy++) {
       if (this.world.getBlock(x, yy, z) !== id) break;
@@ -630,6 +676,9 @@ export class Botany {
         this.events?.emit('plant:grow', { x, y: yy, z, block: id, kind: 'decay' });
         changed = true;
       }
+    }
+    if (changed && nutrient > 0) {
+      returnToSoil(this.soil, x, y - 1, z, Math.floor(nutrient / 2));
     }
     return changed;
   }

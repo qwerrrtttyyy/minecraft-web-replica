@@ -27,6 +27,8 @@ export interface PlantTrait {
   shareRadius: number;
   /** 单次共享的能量 */
   sharePower: number;
+  /** 每次生长 / 蔓延消耗的土壤养分；缺省按 ceil(growthCost/3) 推导 */
+  growthNutrient?: number;
   /** 能量枢纽：共享范围更大，是花园的「中心」 */
   hub?: boolean;
   /** 蓄能后右键 / 破坏时额外掉落的物品 */

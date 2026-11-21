@@ -640,6 +640,11 @@ export class Player implements System, PhysicsBody {
     }
     if (stack.kind === 'item') {
       const item = this.selectedItem();
+      // 肥料 / 骨粉：对着目标格补充土壤养分（骨粉还额外给植物能量）
+      if (stack.id === 'fertilizer' || stack.id === 'bone_meal') {
+        if (this.applyFertilizer(stack.id === 'bone_meal')) this.survival.consume(stack, 1);
+        return;
+      }
       if (item?.plant) {
         const def = this.registry.byNameGet(item.plant);
         // 甜浆果既能种植也能进食：对准可种位置时优先种植，否则吃掉
@@ -711,6 +716,29 @@ export class Player implements System, PhysicsBody {
     // 沙类失去支撑立即下落（受更新下落：放置也算一次方块更新）
     this.falling?.triggerColumn(x, y, z);
     this.sound.place(def.sound);
+    this.swing();
+    return true;
+  }
+
+  /**
+   * 手持肥料右键：给准星所指格补养分。
+   * 骨粉额外给该格植物 +15 能量（可直接推过开花阈值）。
+   * 返回是否生效（未对准目标 / 非生存模式时不消耗物品）。
+   */
+  private applyFertilizer(boneMeal: boolean): boolean {
+    const hit = this.target;
+    if (!hit || !this.survival.isSurvival || !this.botany) return false;
+    this.botany.enrichSoil(hit.x, hit.y - 1, hit.z, boneMeal ? 55 : 35);
+    if (boneMeal) {
+      const id = this.world.getBlock(hit.x, hit.y, hit.z);
+      if (id !== AIR && this.world.registry.get(id).shape === 'cross') {
+        // setEnergy 只对已跟踪植物生效；未跟踪植物按起始 32 能量计，+15 后起步
+        this.botany.setEnergy(hit.x, hit.y, hit.z, Math.max(32, this.botany.energyAt(hit.x, hit.y, hit.z)) + 15);
+      }
+    }
+    const color = this.atlas.avgColor(boneMeal ? 'bone_meal' : 'fertilizer');
+    this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 8, 0.25, 1.2);
+    this.sound.click(boneMeal ? 1180 : 980);
     this.swing();
     return true;
   }

@@ -39,6 +39,10 @@ export const ITEMS: Record<string, ItemDefinition> = {
   },
   nectar: { name: 'nectar', label: '花蜜', tile: 'nectar', food: 3 },
   stick: { name: 'stick', label: '木棍', tile: 'stick' },
+  /** 堆肥 / 动物掉落的有机肥：给土壤补 35 养分 */
+  fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
+  /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */
+  bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
 };
 
 export const itemKey = (name: string) => `i:${name}`;

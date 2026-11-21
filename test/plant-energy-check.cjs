@@ -16,6 +16,9 @@ const {
 const {
   DAYS_PER_SEASON, DEFAULT_PLANT_ENV, seasonAt, weatherAt, modifiers,
 } = require('./terrain-logic/world/ecology.js');
+const {
+  nutrientAt, consume, enrich, returnToSoil, SOIL_LIMIT, evictIfNeeded,
+} = require('./terrain-logic/world/soil.js');
 const { CHUNK_SIZE: CS } = require('./terrain-logic/core/types.js');
 
 const log = (...a) => console.log(...a);
@@ -322,6 +325,39 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
   ok('不传 env 与传默认 env 的生态演化逐值一致',
     get(a, 7, 21, 7) === get(b, 7, 21, 7) &&
     a.botany.energyAt(7, 21, 7) === b.botany.energyAt(7, 21, 7));
+}
+
+// 12) 土壤养分：懒初始化中性、消耗 / 归还 / 施肥、耗尽阻断生长
+{
+  const soil = new Map();
+  ok('未跟踪土壤的养分默认 100（天然肥沃）', nutrientAt(soil, 1, 19, 1) === 100);
+  consume(soil, 1, 19, 1, 30);
+  ok('consume 降低养分', nutrientAt(soil, 1, 19, 1) === 70, `n=${nutrientAt(soil, 1, 19, 1)}`);
+  enrich(soil, 1, 19, 1, 60);
+  ok('enrich 封顶 100', nutrientAt(soil, 1, 19, 1) === 100);
+  returnToSoil(soil, 1, 19, 1, 10);
+  ok('returnToSoil 封顶 100', nutrientAt(soil, 1, 19, 1) === 100);
+  for (let i = 0; i < SOIL_LIMIT + 4; i++) enrich(soil, i, 19, 0, 1);
+  evictIfNeeded(soil);
+  ok('土壤表超出上限后淘汰最旧四分之一', soil.size < SOIL_LIMIT, `size=${soil.size}`);
+
+  const t = makeWorld();
+  isolate(t, 7, 3);
+  put(t, 7, 21, 3, 'wheat_seedling');
+  t.botany.setEnergy(7, 21, 3, 100);
+  t.botany.setNutrient(7, 20, 3, 0);
+  let grew = false;
+  for (let i = 0; i < 30 && !grew; i++) {
+    t.botany.tickAt(7, 21, 3, 1);
+    grew = get(t, 7, 21, 3) === t.id('wheat_growing');
+  }
+  ok('土壤养分为 0 时阻断麦苗生长', !grew);
+  t.botany.enrichSoil(7, 20, 3, 35);
+  for (let i = 0; i < 40 && !grew; i++) {
+    t.botany.tickAt(7, 21, 3, 1);
+    grew = get(t, 7, 21, 3) === t.id('wheat_growing');
+  }
+  ok('施肥后恢复生长', grew, `n=${t.botany.nutrientAt(7, 20, 3)}`);
 }
 
 log(`\nPASS 植物能量体系回归：${passed} 组断言全部通过`);

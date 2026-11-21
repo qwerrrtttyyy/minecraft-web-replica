@@ -24,6 +24,10 @@ export interface GameEvents {
   };
   /** 植物蓄能到开花阈值 / 被采集：用于粒子、音效与生态反馈 */
   'plant:bloom': { x: number; y: number; z: number; block: BlockId; energy: number };
+  /** 土壤养分变化（生长消耗 / 枯萎归还 / 施肥），供 F3 与插件观测 */
+  'plant:soil': { x: number; y: number; z: number; delta: number };
+  /** 堆肥桶等级变化：World.setBlock 不发 block:place，需显式标记存档脏 */
+  'compost:change': { x: number; y: number; z: number };
   'explosion': { center: Vec3Like; radius: number };
   'player:spawn': { position: Vec3Like };
   'player:move': { position: Vec3Like };

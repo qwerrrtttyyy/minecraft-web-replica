@@ -1296,7 +1296,8 @@ async function boot() {
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
-      `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy}`,
+      `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy} / 土壤 ${plants.soilAvg}`,
+      `季节: ${seasonAt(sky.dayCount)} / 天气: ${weatherAt(seed, sky.dayCount)} / 第 ${sky.dayCount} 天`,
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival

@@ -1393,6 +1393,30 @@ const stickPainter: Painter = (p, rng) => {
   p.set(14, 2, 0xc79a5e);
 };
 
+/** 有机肥：棕色土块 + 绿色亮点， signifies 可施肥 */
+const fertilizerPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 5; y < 13; y++) {
+    for (let x = 4; x < 12; x++) {
+      if ((x === 4 || x === 11) && (y === 5 || y === 12)) continue;
+      p.set(x, y, jitter(0x6b4a2a, rng, 10));
+    }
+  }
+  for (const [x, y] of [[6, 7], [9, 8], [7, 10], [10, 6]] as const) {
+    p.set(x, y, 0x5fbf52);
+    p.set(x + 1, y, 0x82d862);
+  }
+};
+
+/** 骨粉：白色骨粒，冷色调区分于有机肥 */
+const boneMealPainter: Painter = (p, rng) => {
+  p.clear();
+  p.set(8, 3, 0xf2f2e8); p.set(7, 4, 0xd8d8cc); p.set(9, 4, 0xd8d8cc);
+  p.set(6, 6, 0xeaeae0); p.set(8, 6, 0xffffff); p.set(10, 6, 0xeaeae0);
+  p.set(7, 8, 0xd8d8cc); p.set(9, 8, 0xf2f2e8);
+  for (let i = 0; i < 4; i++) p.set(5 + ((rng() * 6) | 0), 10 + ((rng() * 3) | 0), 0xcfcfc4);
+};
+
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
     fillNoise(p, rng, hex, 5);
@@ -1432,6 +1456,9 @@ export class TextureAtlas {
     this.painters.set('pumpkin_side', pumpkinSidePainter);
     this.painters.set('bookshelf_side', bookshelfSidePainter);
     this.painters.set('stick', stickPainter);
+    // v1.6：肥料 / 骨粉物品纹理，追加在末尾以保持既有 tile 索引不变
+    this.painters.set('fertilizer', fertilizerPainter);
+    this.painters.set('bone_meal', boneMealPainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 
