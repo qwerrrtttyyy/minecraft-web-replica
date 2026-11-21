@@ -1,6 +1,7 @@
 const assert = require('node:assert');
 const { SurvivalState, MAX_HUNGER } = require('./logic/player/survival.js');
 const { EventBus } = require('./logic/core/events.js');
+const { rollDrops } = require('./logic/world/drops.js');
 
 const registry = {
   get: (id) => ({ id, name: id === 5 ? 'dirt' : 'air' }),
@@ -58,4 +59,35 @@ assert.ok(s3.hunger < MAX_HUNGER, 'sprinting should drain hunger');
 for (let i = 0; i < 200; i++) s3.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: true });
 assert.equal(s3.breath, 0, 'breath should deplete underwater');
 
-console.log('PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick 共 8 组断言');
+// 确定性掉落（P02）：同 seed+source 可复现，概率 / 数量区间 / 条件可测
+{
+  const specs = [
+    { name: 'item:apple', chance: 0.5 },
+    { name: 'item:fertilizer', chance: 1, min: 2, max: 4 },
+  ];
+  const ctx = { seed: 20261115, source: 'b:3,20,5' };
+  assert.deepEqual(
+    rollDrops(specs, ctx),
+    rollDrops(specs, ctx),
+    'same seed+source must produce identical drops',
+  );
+  assert.ok(rollDrops([{ name: 'x', chance: 0 }], ctx).length === 0, 'chance 0 drops nothing');
+  assert.ok(rollDrops([{ name: 'x', chance: 1 }], ctx).length === 1, 'chance 1 always drops');
+  const counts = [];
+  for (let i = 0; i < 60; i++) {
+    const got = rollDrops([{ name: 'x', chance: 1, min: 2, max: 4 }], { ...ctx, source: `b:${i},0,0` });
+    counts.push(got[0].count);
+  }
+  assert.ok(counts.every((c) => c >= 2 && c <= 4), 'count range must be respected');
+  assert.ok(new Set(counts).size > 1, 'count range must actually vary');
+  assert.ok(
+    rollDrops([{ name: 'x', chance: 1, nightOnly: true }], { ...ctx, daylight: 1 }).length === 0,
+    'nightOnly must not drop in daylight',
+  );
+  assert.ok(
+    rollDrops([{ name: 'x', chance: 1, biome: 'forest' }], { ...ctx, biome: 'plains' }).length === 0,
+    'biome condition must filter',
+  );
+}
+
+console.log('PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick/确定性掉落 共 9 组断言');

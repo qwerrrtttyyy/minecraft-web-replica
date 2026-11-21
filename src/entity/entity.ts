@@ -4,6 +4,7 @@ import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
 import { buildPig, buildSheep, buildZombie, type MobModel } from './models';
 import type { DropSpec } from '../world/blocks';
+import { rollDrops } from '../world/drops';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -208,8 +209,15 @@ export class EntityManager {
   allowSpawn = true;
   /** 掉落回调，由主装配接到生存背包 */
   onDrop: ((name: string, count: number) => void) | null = null;
+  /** 世界种子：掉落判定必须可复现 */
+  private readonly seed: number;
+  /** 死亡序号：同一实体多次触发也能得到不同来源标识 */
+  private killSerial = 0;
 
-  constructor(private world: World, private scene: THREE.Scene, private events: EventService) {
+  constructor(
+    private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
+  ) {
+    this.seed = seed;
     this.registerType({
       id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
       health: 8, drops: [{ name: 'item:porkchop' }],
@@ -254,10 +262,11 @@ export class EntityManager {
 
   /** 死亡：发事件 + 掉落 */
   private kill(e: Entity) {
-    for (const d of e.type.drops ?? []) {
-      if (d.chance !== undefined && Math.random() > d.chance) continue;
-      this.onDrop?.(d.name, d.count ?? 1);
-    }
+    const dropped = rollDrops(e.type.drops ?? [], {
+      seed: this.seed,
+      source: `e:${e.id}:${this.killSerial++}`,
+    });
+    for (const d of dropped) this.onDrop?.(d.name, d.count);
     this.events.emit('entity:dead', { type: e.type.id, id: e.id });
     this.despawn(e);
   }

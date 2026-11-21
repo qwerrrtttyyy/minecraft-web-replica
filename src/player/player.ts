@@ -14,6 +14,7 @@ import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
+import { rollDrops } from '../world/drops';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -596,7 +597,7 @@ export class Player implements System, PhysicsBody {
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
-    this.collectDrops(def);
+    this.collectDrops(def, hit.x, hit.y, hit.z);
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
     // 未注入重力系统时保留旧的植物连带行为
@@ -608,18 +609,21 @@ export class Player implements System, PhysicsBody {
       if (above.shape === 'cross') {
         this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
         this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
-        this.collectDrops(above);
+        this.collectDrops(above, hit.x, hit.y + 1, hit.z);
       }
     }
   }
 
   /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
-  collectDrops(def: BlockDefinition) {
+  collectDrops(def: BlockDefinition, x = 0, y = 0, z = 0) {
     if (!this.survival.isSurvival) return;
-    for (const d of def.drops) {
-      if (d.chance !== undefined && Math.random() > d.chance) continue;
-      const name = d.name === 'self' ? def.name : d.name;
-      this.survival.addDrop(name, d.count ?? 1);
+    const dropped = rollDrops(def.drops, {
+      seed: this.world.generator.seed,
+      source: `b:${x},${y},${z}`,
+      biome: this.world.generator.biomeAt?.(x, z) as string | undefined,
+    });
+    for (const d of dropped) {
+      this.survival.addDrop(d.name === 'self' ? def.name : d.name, d.count);
     }
   }
 

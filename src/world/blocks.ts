@@ -14,6 +14,14 @@ export interface DropSpec {
   chance?: number;
   /** 数量，默认 1 */
   count?: number;
+  /** 最小数量（与 max 搭配时覆盖 count，闭区间） */
+  min?: number;
+  /** 最大数量（与 min 搭配时覆盖 count，闭区间） */
+  max?: number;
+  /** 只在夜晚（daylight < 0.3）掉落 */
+  nightOnly?: boolean;
+  /** 只在指定群系掉落 */
+  biome?: string;
 }
 
 export interface BlockDefinition {

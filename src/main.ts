@@ -205,7 +205,7 @@ async function boot() {
   if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
-  const entities = new EntityManager(world, engine.scene, events);
+  const entities = new EntityManager(world, engine.scene, events, seed);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry);
