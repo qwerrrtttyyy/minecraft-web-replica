@@ -45,6 +45,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `chunks.configReady` 是运行时诊断的判据。
 - **快照契约**：带光照的网格快照必须同时拷贝 `data / sky / block` 三张 18×80×18 缓冲；
   Greedy mask key 包含 `id | ao<<8 | sky<<10 | block<<14`，光照不同不合并。
+  （v1.5.1 起 `sky / block` 写的是**角点光照等级**而非邻居格光照，位布局不变；
+  平滑光照下四角光照不一致的面必须退回逐面输出，否则合并面只能带一份光、渐变会被抹平。
+  角点光不需要新顶点属性，也不需要新的快照字段 —— 1 格 halo 已足够。）
 - **输入状态机**：暂停 / 死亡 / 返回标题时调用 `input.reset()`；keyup 必须无条件处理，
   否则禁用期间的松键会永久留在 `keys` 里。
 - **插件生命周期**：`PluginService` 用 `pending` Promise 复用并发 enable，用 epoch 识别
@@ -65,6 +68,15 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   禁止留下「部分实例 + worker 模式」的残池；用 `test:worker-pool` 注入式回归验证。
 - **编辑差分**：分桶值存已解析的数值坐标（`BlockEdit`），字符串 key 只在 `recordEdit` 解析一次；
   `ensureChunk` 不再逐条 `split(',')`。改动用 `test:edits` 覆盖负坐标与跨区块边界。
+- **画面类改动必须做成受控实验**：只要是「改完看不出好不好」的渲染改动，先写清楚假设 / 对照 /
+  翻转方式 / 判据，再动手。A/B 必须在**同一页内翻转变量**，因为区块流式加载的最终集合随帧率漂移；
+  对比前要证明场景一致（顶点总数 / 逐通道 mesh 数 / 分辨率 / 摆放数），并单独测一次「噪声底」
+  （什么都不翻的重复测量），噪声底不为零则所有「零差异」结论作废。
+  测量工具不挂进 `verify`（它慢且受机器影响），但必须自带有效性闸门并非零退出。
+  实操见 `test/experiment-3d.mjs` 与 [EXPERIMENTS.md](EXPERIMENTS.md)。
+- **冻结场景不是「把 system 过滤掉」**：`main.ts` 注册的是**闭包** system
+  （内部自己调 `chunks.update` / `sky.update`），按对象引用过滤无效，必须整体替换 `engine.systems`；
+  且 `chunks.waterTime` / `sky.localTime` 是持续动画，冻结时要归零再 `sky.update(0,0)`，否则两次探针不是同一帧。
 
 ## 常见排查
 

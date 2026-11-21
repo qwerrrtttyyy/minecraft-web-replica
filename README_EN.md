@@ -1,161 +1,151 @@
 # Minecraft TS — A TypeScript Voxel Engine Replica
 
-<p align="center">
-  <a href="https://qwerrrtttyyy.github.io/minecraft-web-replica/">Play online</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="docs/TESTING.md">Testing</a> ·
-  <a href="docs/HISTORY.md">History</a> ·
-  简体中文
-</p>
+> 🤖 **Entirely AI-generated** — all source code, tests and docs were produced by AI coding
+> agents; humans only set the direction.
+> ⚠️ **WARNING: aggressive development in progress** — APIs, save formats and gameplay may
+> change at any time. Not production-ready.
+> 📖 Honest disclosure (generation method & quality boundaries) in the Chinese README § 关于本项目.
 
-<p align="center">
-  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml"><img alt="verify CI" src="https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml/badge.svg"></a>
-  <a href="https://github.com/qwerrrtttyyy/minecraft-web-replica/tags"><img alt="version" src="https://img.shields.io/github/v/tag/qwerrrtttyyy/minecraft-web-replica?label=version"></a>
-  <img alt="TypeScript 5.6" src="https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white">
-  <img alt="three.js 0.170" src="https://img.shields.io/badge/three.js-0.170-049ef4?logo=threedotjs&logoColor=white">
-  <img alt="runtime deps: three.js only" src="https://img.shields.io/badge/runtime%20deps-three.js%20only-2ea44f">
-  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-</p>
+**[▶ Play online (GitHub Pages)](https://qwerrrtttyyy.github.io/minecraft-web-replica/)** — no install, open and play
 
-> 🤖 **Entirely AI-generated** (source, tests, docs); humans only set the direction. Not production-ready.
-> [简体中文](README.md) | **English**
+[![verify CI](https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml/badge.svg)](https://github.com/qwerrrtttyyy/minecraft-web-replica/actions/workflows/verify.yml)
+[![latest tag](https://img.shields.io/github/v/tag/qwerrrtttyyy/minecraft-web-replica?label=version)](https://github.com/qwerrrtttyyy/minecraft-web-replica/tags)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![TypeScript 5.6](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![three.js 0.170](https://img.shields.io/badge/three.js-0.170-049ef4?logo=threedotjs&logoColor=white)](https://threejs.org/)
+[![Play Demo](https://img.shields.io/badge/%E2%96%B6%20play-demo%20online-2ea44f)](https://qwerrrtttyyy.github.io/minecraft-web-replica/)
 
-A lightweight Minecraft replica for the web. The only runtime dependency is **three.js** —
-everything else is hand-written: voxel world, chunk streaming, greedy meshing with AO,
-three-channel light BFS, procedural pixel textures, day/night sky, physics, entity AI,
-plant ecology, crafting and saves. The build is a **single self-contained HTML** — offline,
-runs from `file://`; every texture is drawn pixel-by-pixel in code, **no original assets**.
+[简体中文](README.md) | **English**
 
-Current release: milestone `v1` | iteration `1.5.0` (dual-track, single source
-[`src/core/version.ts`](src/core/version.ts)).
+A lightweight, cleanly-architected Minecraft foundation replica for the web. The only runtime
+dependency is **three.js** (rendering) — everything else is hand-written: voxel world, chunk
+streaming, mesh generation with ambient occlusion, procedural pixel textures, day/night sky,
+physics & collision, entity AI, touch support, save system and an extension API.
+
+> Unofficial learning project, not affiliated with Mojang / Microsoft. Every texture is drawn
+> pixel-by-pixel in code — **no original game assets are included**.
+
+**▶ Play online (GitHub Pages)**: <https://qwerrrtttyyy.github.io/minecraft-web-replica/>
+
+**v1.5.1 rendering cleanup (round 2 of the 3D optimisation pass)** — three changes, each run as a
+**controlled experiment** (hypothesis / control / flip / verdict, raw data and reproduction steps in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
+
+- **Packed vertex layout** — 60 B → **44 B** per vertex (`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)). Less VRAM and bandwidth, pixel-identical output.
+- **Anti-aliasing tiers** — `?aa=off|msaa|ssaa`. MSAA is enabled when the GL context is created; SSAA renders at 1.5× pixel ratio. Off by default.
+- **Emissive blocks merged into the opaque channel** — glowstone / jack o'lantern / torches reuse the opaque material with `aTint=2`, and the shader skips lighting and foliage tint for them. Draw calls 64 → 47 and emissive meshes 49 → 0 with **byte-identical geometry buffers and zero pixel difference** across 15,552 samples. `?emerge=0` restores the pre-merge separate emissive channel as a control.
+
+**v1.5.1-alpha.1 integration** — this pre-release also lands the audit fixes and new terrain: four new biomes (badlands / swamp / savanna / cherry grove), 12 new blocks (id 98–109), jump input buffering and hit feedback, plus seven gamerule-style experimental gameplay switches in Settings (random tick speed / daylight cycle / keep inventory / mob spawning / voxel clouds / block gravity / transparent sorting). See the `1.5.1-alpha.1` entry in [CHANGELOG.md](CHANGELOG.md).
 
 ## Highlights
 
-- **Voxel engine** — chunk streaming with back-pressure & self-healing; data / sky-light /
-  block-light three-channel mesh; Greedy Meshing on a Worker pool (~40% fewer quads)
-- **Lighting** — dual-channel BFS (0–15), incremental updates, baked into vertex attributes
-  (zero extra draw calls)
-- **Terrain** — 4-stage pipeline `columns → ores → trees → decorate`; domain warping,
-  `ridged fBm` mountains & rivers, temperature × humidity biomes, fading caves, layered ores,
+- **Voxel engine** — chunk streaming with back-pressure & self-healing, three-channel mesh
+  (data / sky light / block light) with Greedy Meshing on a Web Worker pool (~40% fewer quads)
+- **Lighting** — sky light + block light, dual-channel BFS propagation (0–15 levels),
+  incremental updates, baked into vertex attributes (no extra draw calls).
+  Since v1.5.1 light is **per-vertex**: each corner averages the 4 air-side neighbours
+  (same model as vanilla), so walls and floors shade continuously instead of staying flat
+- **Terrain** — explicit 4-stage pipeline (`columns → ores → trees → decorate`) with
+  biome config tables, domain warping, ridge mountains, fading caves, layered ore veins,
   cross-chunk trees
-- **Survival loop** — health / hunger / breath / mining hardness / drops / hostile mobs /
-  death & respawn / 3×3 crafting
-- **Plant ecology** — random-tick engine + intrinsic energy system (solar / hydro / fungal
-  metabolism, root sharing, bloom feedback)
-- **91+ blocks** — all data-driven via `BlockRegistry`, procedural 16×16 atlas (256 slots)
-- **Plugins** — service container + namespaced events + hot-pluggable plugins
-  (js / wasm:module / wasm:host carriers), `window.CraftAPI` facade
-- **Engineering** — `npm run verify`: version consistency → typecheck → build → full
-  regression → browser smoke, 100% PASS required
+- **Survival & creative modes** — health / hunger / breath / mining hardness / drops /
+  inventory / hostile mobs / death & respawn; TNT with fuse & explosion
+- **Botany ecosystem** — random-tick plant engine with an intrinsic energy system
+  (solar / hydro / fungal metabolism, root sharing, flowering & harvesting)
+- **91+ blocks** — all textures procedurally drawn in code (8×8 pixel-art atlas, 256 slots)
+- **Mobile friendly** — virtual joystick, dynamic resolution scaling, haptic feedback,
+  safe-area adaptation
+- **Plugin & event architecture** — service container, hot-pluggable plugins, event error
+  isolation, `window.CraftAPI` extension facade
+- **Single-file build** — `npm run build` produces one self-contained `dist/index.html`
+  (three.js inlined) that runs offline, even from `file://`
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev      # dev server
-npm run build    # typecheck + single-file dist/index.html
-npm run verify   # full acceptance gate
+npm run dev      # dev server with hot reload
+npm run build    # typecheck + build single-file dist/index.html
 ```
+
+Requires Node.js 20+. The build output is fully self-contained — no network needed at runtime.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| WASD / Space / Shift | Move / jump (double-tap or F to fly, creative) / sneak |
-| LMB / RMB / MMB | Break (hardness-timed) / place, eat, harvest / pick |
-| Scroll / 1-9 / E | Hotbar / block library |
-| F5 / F3 / F1 | Camera / debug panel / hide HUD |
-| Esc | Pause menu → settings, crafting, key rebinding |
+| WASD / Arrow keys | Move |
+| Space | Jump / swim up / fly up |
+| Double-SPACE or F | Toggle flight (Shift to descend, creative only) |
+| Shift | Sneak |
+| Ctrl / double-W | Sprint |
+| Left mouse (hold) | Break block (timed by hardness) |
+| Right mouse | Place block / eat / harvest flowering plant |
+| Middle mouse | Pick block |
+| Scroll / 1-9 | Switch hotbar slot |
+| E | Block library |
+| F5 | Toggle camera view |
+| F3 | Debug panel (version, diagnostics) |
+| Esc | Pause menu |
+| Mobile | Virtual joystick + buttons |
 
-**Settings**: sound & volume, FOV, render distance, sensitivity, quality presets, particles,
-auto-jump, touch sensitivity; a developer group exposes debug overlay, Greedy meshing, mesher
-threads, autosave interval and settings import/export. Options use vanilla-style two-column
-layout (single column on small screens), persisted in `localStorage`. An in-game **About**
-page (title screen / menu / settings entry) shows versions and project info.
+## Testing & Quality
+
+```bash
+npm run verify   # full gate: version + typecheck + build + 16 test suites, 100% PASS required
+```
+
+Test suites cover: logic, terrain, lighting (21), mesher (51), services, runtime diagnostics,
+worker pool, world edits, terrain system, botany, plant energy, survival smoke (100) and
+**pixel-level visual regression** (13 assertions, headless Chromium under Xvfb in CI). Runtime
+invariants are enforced by a diagnostics group (`CraftAPI.diagnostics.run()`), surfaced on the F3
+panel. Rendering changes that are hard to judge by eye are additionally measured as controlled
+experiments — see [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ## Architecture
 
 ```
-src/
-├── core/       engine kernel: engine (renderer/scheduling), types, version (★ single source)
-├── services/   ★ ServiceContainer / EventService (error isolation, waitFor, stats) / PluginService
-├── api/        ★ thin CraftAPI facade (plugins / events / settings / survival namespaces)
-├── plugins/    builtin plugins (autosave, hud-feedback) + example
-├── world/      terrain / lighting / meshing / botany / block registry
-├── gfx/  player/  entity/  input/  ui/  audio/  save/  diagnostics/
-└── main.ts     ★ assembly root: build services → inject → enable plugins → run loop
+main.ts → services (ServiceContainer / EventService / PluginService)
+        → api (CraftAPI thin facade)
+        → world / gfx / player / entity / input / ui / audio / save / diagnostics
 ```
 
-Strict one-way dependencies: `main.ts → services → api (types) → modules`; plugins only touch
-the service container and their `PluginContext`. Key design:
-
-- **Service-based extension points** — events and plugins have identity, lifecycle,
-  dependencies and permissions; disabling a plugin revokes subscriptions and cascades downstream
-- **Permission allowlist** — undeclared write capabilities (`world:write`, `player:write`,
-  `save:write`, `blocks:register`, …) are intercepted in plugin contexts; reads are open
-- **Data-driven blocks** — rendering / collision / sound / drops look up `BlockRegistry`
-- **Baked lighting** — directional shading + per-vertex AO + light channels in vertex
-  attributes, `MeshBasicMaterial`, no real-time shadows
-- **Saves** — edit diffs (player changes only, bucketed by chunkKey) + `validateSave()` full
-  validation; corrupt saves fall back to no-save
-
-## Extension API
-
-All APIs live on `window.CraftAPI` (full contract in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)):
-
-```js
-CraftAPI.on('block:break', e => console.log(e));            // events
-CraftAPI.registerTile('ruby_ore', (set, rng) => {...});      // procedural texture
-CraftAPI.registerBlock({ name: 'ruby_ore', hardness: 3, tiles: {...} }); // data-driven block
-CraftAPI.registerEntity({ id: 'cow', build() {...} });       // custom entity
-CraftAPI.setGenerator({ generateChunk(cx, cz, data) {...} }); // replace terrain
-CraftAPI.save.setProvider({ load, save, clear });             // cloud save backend
-CraftAPI.engine.addSystem({ update(dt) {...} });             // per-frame system
-
-// Plugins: id / version / dependencies / permissions / lifecycle
-CraftAPI.plugins.register({
-  manifest: { id: 'demo:mining-log', version: '1.0.0', permissions: ['api:emit'] },
-  setup(ctx) { ctx.events.on('block:break', e => ctx.log(e.block)); },
-});
-await CraftAPI.plugins.enable('demo:mining-log');
-
-// Botany extension (requires botany:register): plant traits + random-tick rules
-CraftAPI.botany.registerPlant('my_flower', { metabolism: 'solar', bloom: 80, growthCost: 18 });
-CraftAPI.botany.registerRule({ id: 'me:rule', owner: 'me:my-pack', tick: (ctx) => false });
-```
-
-Event contracts live in `src/services/events/GameEvents.ts`, extendable via TypeScript
-declaration merging.
-
-## Testing
-
-```bash
-npm run verify   # single acceptance entry, browser tests must be 100% PASS
-```
-
-Suites cover logic (31), lighting (21), mesher equivalence, services (38), diagnostics (20),
-terrain system / botany / plant energy, crafting (43), WASM fallback, plugin v2 & carriers,
-plus Chromium smoke and pixel-level visual regression (Xvfb software rendering). See
-[docs/TESTING.md](docs/TESTING.md); benchmark numbers are authoritative only in
-`test/artifacts/results.json`.
+Strict one-way dependencies; plugins only touch the service container and their plugin
+context. Worker side is limited to pure data (`MeshSource` / `MeshSnapshot`) — no `three`
+imports across the thread boundary. See `docs/ARCHITECTURE.md` for details.
 
 ## Versioning
 
-Dual-track, single source `src/core/version.ts` (mechanically checked by `check:version`):
+Dual-track versioning, single source of truth in `src/core/version.ts`:
 
-- **Release** `vN` — milestone tags (currently `v1`)
-- **Version** `X.Y.Z` — rolling iteration (currently `1.5.0`); pre-releases follow
-  `alpha.N → beta.N → rc.N`
+- **Release** `vN` — milestone releases (git tag `vN`, F3 panel)
+- **Version** `X.Y.Z` — rolling iteration (`package.json`, CraftAPI)
 
-Change summary in [CHANGELOG.md](CHANGELOG.md); detailed v1.1.1 → v1.5.0 history in
-[docs/HISTORY.md](docs/HISTORY.md).
+Details in the Chinese README § 版本规范. Full history in [CHANGELOG.md](CHANGELOG.md).
 
-## About
+## Known Limitations
 
-- **Generation** — all code, tests and docs produced by AI coding agents under human
-  direction; every change gated by `npm run verify`
-- **Quality boundary** — core logic and visuals are regression-tested; untested edge behavior
-  may still appear. Not production-ready.
-- Unofficial learning project, not affiliated with Mojang / Microsoft. [MIT](LICENSE).
-  Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); security issues go to
-  [SECURITY.md](SECURITY.md), not public issues.
+- Transparent blocks are not distance-sorted yet (fix in review)
+- Lighting is quantised per corner (1/15 steps remain between corners); true per-pixel
+  interpolation would need a lighting texture instead of vertex attributes
+- No AABB unstuck yet (fix in review)
+- ~10 FPS under software rendering (llvmpipe); real GPUs run much faster
+
+## Contributing
+
+Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first — it lists the
+hard rules (block ids are append-only, never bump version numbers in PRs, worker-side data
+purity, …) derived from `docs/PROJECT-EXPERIENCE.md`. AI-assisted contributions are welcome
+with human verification and proper `Co-authored-by` attribution.
+
+- 🐛 [Bug report](../../issues/new?template=bug_report.yml) · [Feature request](../../issues/new?template=feature_request.yml)
+- 🔒 Security issues: see [SECURITY.md](SECURITY.md) — do **not** file public issues
+- 📜 [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+*Content generated with AI assistance.*

@@ -130,8 +130,12 @@ try {
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));
 
   // Esc 关闭（标题屏来源 → 回到标题）
+  // 固定 sleep 在负载高时会偶发失败，按项目硬规则改为条件轮询
   await page.keyboard.press('Escape');
-  await sleep(250);
+  await page.waitForFunction(
+    '!window.__mc.hud.optionsOpen && window.__mc.mode === "title"',
+    { timeout: 10000 },
+  ).catch(() => {});
   ok('Esc 关闭设置页回到标题', await page.evaluate(() =>
     !window.__mc.hud.optionsOpen && window.__mc.mode === 'title'));
 
@@ -140,10 +144,10 @@ try {
   await page.waitForFunction('window.__mc.mode === "playing"', { timeout: 90000 });
   await sleep(1500);
   await page.keyboard.press('Escape');
-  await sleep(400);
+  await page.waitForFunction('window.__mc.hud.menuOpen', { timeout: 10000 }).catch(() => {});
   ok('Esc 打开暂停菜单', await page.evaluate(() => window.__mc.hud.menuOpen));
   await clickText(page, '.menu-panel .mc-btn', '设置');
-  await sleep(300);
+  await page.waitForFunction('window.__mc.hud.optionsOpen', { timeout: 10000 }).catch(() => {});
   ok('菜单打开设置页', await page.evaluate(() => window.__mc.hud.optionsOpen));
 
   // 音效开关
@@ -361,18 +365,22 @@ try {
 
   // Esc 关闭设置 → 回到暂停菜单
   await page.keyboard.press('Escape');
-  await sleep(300);
-  ok('Esc 关闭设置回到菜单', await page.evaluate(() =>
-    !window.__mc.hud.optionsOpen && window.__mc.hud.menuOpen));
+  // 固定 sleep 在负载高时会偶发失败，按项目硬规则改为条件轮询
+  const escToMenu = await page.waitForFunction(
+    () => !window.__mc.hud.optionsOpen && window.__mc.hud.menuOpen,
+    { timeout: 10000 },
+  ).then(() => true).catch(() => false);
+  ok('Esc 关闭设置回到菜单', escToMenu);
 
   // 「显示调试信息」常显：回到游戏后调试面板应在场
   await clickText(page, '.menu-panel .mc-btn', '继续游戏');
   await page.waitForFunction('window.__mc.mode === "playing"', { timeout: 60000 });
-  await sleep(900);
-  ok('显示调试信息常显', await page.evaluate(() => {
+  // 调试面板由渲染循环逐帧刷新，等它真的在场再断言
+  const debugShown = await page.waitForFunction(() => {
     const el = document.querySelector('.debug-panel');
     return !!el && el.style.display !== 'none' && el.textContent.includes('FPS');
-  }));
+  }, { timeout: 10000 }).then(() => true).catch(() => false);
+  ok('显示调试信息常显', debugShown);
 
   // 持久化：刷新后设置仍在
   await page.reload({ waitUntil: 'load', timeout: 60000 });
@@ -430,13 +438,19 @@ try {
     reset.stored?.autoJump === false && reset.stored?.greedy === true && reset.stored?.touchSensitivity === 1,
     JSON.stringify(reset.stored));
   await page.keyboard.press('Escape');
-  await sleep(200);
+  // Esc 边沿由渲染循环消费，比 keydown 晚几帧；这里等的是「设置页真的关了」，
+  // 不是 mode（重置后本来就是 title，等它等于没等，延迟的 Esc 会误关下一次打开的设置页）
+  await page.waitForFunction('!window.__mc.hud.optionsOpen', { timeout: 10000 }).catch(() => {});
 
   // 导出 / 导入设置（开发者工具）
   await clickText(page, '.title-links .link-btn', '设置');
   await sleep(300);
   await clickText(page, '.options-panel .menu-row .mc-btn', '导出设置');
-  await sleep(300);
+  // 等覆盖层真的打开再读 textarea，否则可能读到上一次的残留
+  await page.waitForFunction(() => {
+    const ov = document.querySelector('.options-io-overlay');
+    return !!ov && ov.style.display !== 'none';
+  }, { timeout: 10000 }).catch(() => {});
   const exported = await page.evaluate(() => {
     const ov = document.querySelector('.options-io-overlay');
     if (!ov || ov.style.display === 'none') return null;
@@ -448,13 +462,17 @@ try {
   await page.keyboard.press('Escape');
   // 用等待代替固定 sleep：整套 verify 并行跑浏览器时 Esc 边沿可能晚几帧
   const ioClosed = await page.waitForFunction(() => {
+    if (!window.__mc.hud.optionsOpen) return false;
     const ov = document.querySelector('.options-io-overlay');
-    return ov && ov.style.display === 'none' && window.__mc.hud.optionsOpen;
+    return !ov || ov.style.display === 'none';
   }, { timeout: 8000 }).then(() => true).catch(() => false);
   ok('Esc 关闭导入导出面板（设置仍在）', ioClosed);
 
   await clickText(page, '.options-panel .menu-row .mc-btn', '导入设置');
-  await sleep(250);
+  await page.waitForFunction(() => {
+    const ov = document.querySelector('.options-io-overlay');
+    return !!ov && ov.style.display !== 'none' && !!ov.querySelector('textarea');
+  }, { timeout: 10000 }).catch(() => {});
   const imported = await page.evaluate(() => {
     const ta = document.querySelector('.options-io-overlay textarea');
     ta.value = JSON.stringify({ volume: 42, invertY: true, bogusField: 1 });

@@ -35,6 +35,8 @@ const base = () => ({
     configRevision: 1,
     missingMeshes: 0,
     unlitChunks: 0,
+    meshQuads: 81 * 1420,
+    meshChunks: 81,
   },
   plugins: [
     { id: 'core:autosave', state: 'enabled' },
@@ -123,6 +125,22 @@ console.log('运行时诊断组回归');
     s.plugins.push({ id: 'demo:broken', state: 'failed' });
   }));
   ok('插件失败状态被捕获', has(r, 'plugins.failed'));
+}
+
+{
+  // 平滑光照的回归护栏：若 Greedy 合并失效（退回逐面基线），必须报出来
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.chunks.meshQuads = 81 * 2200;
+  }));
+  ok('Greedy 合并失效被捕获', has(r, 'chunks.mergeBudget'));
+  const healthy = runRuntimeDiagnostics(clone((s) => {
+    s.chunks.meshQuads = 81 * 1420;
+  }));
+  ok('正常合并率不误报', !has(healthy, 'chunks.mergeBudget'));
+  const absent = runRuntimeDiagnostics(clone((s) => {
+    delete s.chunks.meshQuads;
+  }));
+  ok('旧快照缺少统计字段时跳过该检查', !has(absent, 'chunks.mergeBudget'));
 }
 
 {

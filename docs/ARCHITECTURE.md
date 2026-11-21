@@ -334,9 +334,9 @@ ChunkManager.update()
 
 ### 8.3 Greedy Meshing
 
-按 6 个面方向分别建 mask（`layer → dimU×dimV`），key = `方块 id | AO 档位`。
+按 6 个面方向分别建 mask（`layer → dimU×dimV`），key = `方块 id | AO 档位 | 角点天空光 | 角点方块光`。
 
-合并约束是**四角 AO 必须完全相等**：
+合并约束是**四角 AO 与四角角点光照都必须完全相等**：
 
 1. GPU 对大 quad 做双线性插值，四角亮度不同就会被拉长成渐变；
 2. 原逐面路径的 `flip`（对角线方向）由 AO 决定，四角相等时恒为 false，合并后三角化方向一致。
@@ -347,16 +347,75 @@ ChunkManager.update()
 合并面的局部 UV 为 `0..w / 0..h`，由 `tiledAtlas.ts` 的 `onBeforeCompile` 注入
 `fract(vMapUv)` 平铺 —— 图集只有 16×16 格，不做平铺会采样到相邻贴图。
 
+### 8.3.1 平滑光照（v1.5.1）
+
+AO 一直是逐顶点的，光照却一直是「整面一个值」，所以墙面、地面在大片区域里是死平的。
+v1.5.1 把光照也改成逐顶点：**每个角点取「空气侧」相邻 4 格光照的均值**（原版同款模型）。
+
+- 采样范围：面法向固定在邻居格 N，法向之外的两个切向各跨 2 格 → 每个角点由 4 格决定。
+- 实现：4 个角点合起来正好覆盖 N 周围切向的 3×3 补丁，所以先取一次 3×3 补丁（9 格），
+  再让 4 个角点各取补丁里的 2×2 均值，比逐角点各取 4 格省一半采样。
+- 粒度：角点光量化到 0~15（与体素光照同粒度），让「四角是否一致」是精确判定。
+- 一致性：同一张面上相邻方块共享的角点取到的是同一组 4 格 → 角点光在方块边界两侧连续，无接缝。
+- 代价：四角光照不一致的面**一律退回逐面输出**（否则合并面只能带一份光，渐变会被抹平），
+  实测 quad 数 8039 → 8525（+6%），单区块网格化 CPU 34 ms → 35.8 ms（+5%）。
+
+角点光不需要新的顶点属性：`aLight` 本来就是逐顶点的 vec2，只是此前 4 个顶点写的是同一个值。
+快照契约（`data / sky / block` 三张 18×80×18 缓冲）也不变 —— 1 格 halo 已经足够取到角点所需的 4 格。
+
+### 8.3.2 顶点布局与渲染通道（v1.5.1）
+
+第 2 轮 3D 优化的三个改动都以**受控实验**的形式落地（设置 / 原始数据 / 判据见
+[EXPERIMENTS.md](EXPERIMENTS.md)），这里只记结论与实现要点。
+
+**顶点布局打包（E1）**：每顶点 60 B → 44 B。
+
+| 旧 | 新 |
+| --- | --- |
+| `position(3) + uv(2) + color(3) + aLight(2) + aTileRect(4)` = 14 float / 60 B | `position(3) + uv(2) + aShade(1) + aLight(2) + aTileOrigin(2) + aTint(1)` = 11 float / 44 B |
+
+- `color` 三分量同值（面定向 × AO），单分量 `aShade` 即可，shader 侧用 `vec3(vShade)`。
+- 图集 tile 只需存**起点** `aTileOrigin(2)`，尺寸由新 uniform `uTileSize` 提供；
+  片元里 `fract(vLocalUv)` 乘 `uTileSize` 再加起点，与原来的 `aTileRect` 等价。
+- 收益只在显存与带宽，着色不变（`test/mesher` 与 `test:visual` 双重锁定）。
+
+**抗锯齿分档（E2）**：`?aa=off|msaa|ssaa`，默认 `off`。
+
+- `off`：原生分辨率，默认档。
+- `msaa`：在 `WebGLRenderer` 构造时传 `antialias:true` —— 上下文属性只能在创建时决定，
+  所以它在 boot 开头解析，且**不能运行时切换**。
+- `ssaa`：`setPixelRatio(basePixelRatio × SSAA_SCALE)`，`SSAA_SCALE = 1.5`，
+  受 `MAX_PIXEL_RATIO` 封顶；可运行时切换。
+
+**自发光并入不透明通道（E3）**：萤石 / 南瓜灯 / 火把不再开独立 emissive 通道。
+
+- 通道分配在 `mesher.ts` 的 `passFor()`：`lightEmission > 0` 的方块进 `opaque`，
+  顶点开关 `aTint = 2`。
+- shader 里 `unlit = step(1.5, vTint)`：自发光**跳过光照与植被染色**，
+  但保留 `vShade`（面定向 × AO），否则会比旧通道亮一档。
+- `?emerge=0` 保留并入前的独立 emissive 通道作对照，`MeshConfig.mergeEmissive`
+  贯通 `mesher` / `chunkManager` / `main` 三处。
+- 实测：draw call 64 → 47、emissive mesh 49 → 0、program 数不变，
+  顶点缓冲与索引缓冲**逐字节相同**，15552 个归一化像素采样**零差异**。
+
 ### 8.4 性能取舍（实测）
 
 | 指标 | 逐面 | Greedy |
 |---|---|---|
-| quad 数（6 区块，3 种子） | 11,526 | 6,978（-39.5%） |
+| quad 数（6 区块，3 种子，v1.4.9） | 11,526 | 6,978（-39.5%） |
+| quad 数（6 区块，3 种子，v1.5.1 平滑光照） | 12,507 | 8,525（-31.8%） |
 | 单区块网格化 CPU（Node，冷启动） | 25 ms | 35 ms |
 | 浏览器内单区块网格化 | ~7 ms | ~8.7 ms |
 
 CPU 略升来自「按面扫描 + 每个可见面一次 AO」；因为整段已移出主线程，渲染不再被阻塞。
 v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发）把吞吐补回来。
+
+> 注：逐面基线从 11,526 涨到 12,507，是平滑光照把一部分面从「合并面」退回「逐面」所致
+> （面覆盖集合本身不变，只是 quad 组织方式变了）。
+
+顶点布局与渲染通道的收益不在这张表里：v1.5.1 把每顶点从 60 B 压到 **44 B**（-26.7%），
+自发光并入不透明通道把 draw call 从 64 降到 47，两者都不改变着色（见 §8.3.2 与
+[EXPERIMENTS.md](EXPERIMENTS.md)）。
 
 ## 8.5 运行时诊断组（v1.3.2）
 

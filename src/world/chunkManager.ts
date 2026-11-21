@@ -16,6 +16,7 @@ import {
 
 interface ChunkMeshes {
   opaque?: THREE.Mesh;
+  /** 仅对照路径（?emerge=0）下存在 */
   emissive?: THREE.Mesh;
   transparent?: THREE.Mesh;
   water?: THREE.Mesh;
@@ -41,6 +42,8 @@ export interface ChunkManagerOptions {
   forceMainThread?: boolean;
   /** 关闭 Greedy Meshing（对照基准） */
   greedy?: boolean;
+  /** 自发光并入不透明通道（默认 true）；false = 保留独立 emissive 通道，仅作实验对照 */
+  mergeEmissive?: boolean;
   /** 网格化 Worker 池大小覆盖（默认按 navigator.hardwareConcurrency 推断，?workers=N 传入） */
   workers?: number;
   /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
@@ -51,12 +54,13 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(p.uvs, 2));
-  g.setAttribute('color', new THREE.BufferAttribute(p.colors, 3));
+  // 每顶点明暗（面定向 × AO）：RGB 三通道同值，单分量即可
+  g.setAttribute('aShade', new THREE.BufferAttribute(p.shade, 1));
   // 每顶点天空光 / 方块光，shader 与昼夜系数、太阳色一起决定最终亮度
   g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
-  // 每个顶点的图集 tile 区域，shader 用 fract(局部UV) 平铺
-  g.setAttribute('aTileRect', new THREE.BufferAttribute(p.tiles, 4));
-  // 每个顶点的群系染色开关（0/1），shader 据此给草/叶/藤蔓乘群系色
+  // 每个顶点的图集 tile 起点，shader 用 fract(局部UV) × uTileSize 平铺
+  g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
+  // 每个顶点的开关：0 普通 / 1 群系染色 / 2 自发光（不受光照与染色影响）
   g.setAttribute('aTint', new THREE.BufferAttribute(p.tints, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
@@ -77,6 +81,9 @@ interface ChunkShader {
  * 在「冷绿 / 基准绿 / 暖黄绿」之间平滑过渡，模拟群系色带；每株植物之间再叠
  * 一层中频噪声打散边界。aTint 顶点属性做门控（只有 tint 方块参与），
  * 草方块侧面的泥土保留彩色，用饱和度掩膜只染灰度条带。
+ *
+ * aTint 同时兼作「自发光」开关（=2）：萤石 / 南瓜灯 / 火把不再单独开通道，
+ * 而是复用不透明材质，shader 见到 2 就跳过光照与染色。
  */
 const FOLIAGE_GLSL = `
 float foliageHash(vec2 p) {
@@ -106,27 +113,46 @@ vec3 foliageTint(vec2 wxz) {
 }
 `;
 
+/**
+ * 对照路径（?emerge=0）专用的旧 emissive 材质注入：只乘面定向 × AO，不参与光照。
+ * 与 v1.5.1 的独立 emissive 通道行为一致，用于 E3 的 A/B 对照。
+ */
+function injectLegacyEmissive(shader: ChunkShader) {
+  shader.vertexShader = 'attribute float aShade;\nvarying float vShade;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\n\tvShade = aShade;',
+  );
+  shader.fragmentShader = 'varying float vShade;\n' + shader.fragmentShader.replace(
+    '#include <color_fragment>',
+    '#include <color_fragment>\n\tdiffuseColor.rgb *= vShade;',
+  );
+}
+
 function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
   shader.uniforms.uDaylight = daylight;
   shader.uniforms.uSunTint = sunTint;
-  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nvarying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
+  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
     '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
+    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
   );
-  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
+  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
     '#include <color_fragment>',
     `#include <color_fragment>
+    // 顶点开关：1 = 群系染色，2 = 自发光（等价于旧的独立 emissive 材质）
+    float unlit = step(1.5, vTint);
     // 植被掩膜：必须在光照染色之前采样饱和度，否则天空/太阳色会把灰度误判成彩色
     float folMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
     float folMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
-    float folMask = vTint * (1.0 - smoothstep(0.10, 0.22, folMx > 0.0 ? (folMx - folMn) / folMx : 0.0));
+    float folMask = (1.0 - unlit) * step(0.5, vTint)
+      * (1.0 - smoothstep(0.10, 0.22, folMx > 0.0 ? (folMx - folMn) / folMx : 0.0));
     vec3 folTint = foliageTint(vFolPos.xz);
     float skyPart = vLight.x * uDaylight;
     float lit = max(skyPart, vLight.y);
     float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
     vec3 skyTint = mix(vec3(0.56, 0.65, 0.94), vec3(1.0), clamp(uDaylight * 1.35, 0.0, 1.0));
     vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
-    diffuseColor.rgb *= (0.07 + 0.93 * lit) * lightTint;
+    // 自发光不参与光照，但保留面定向 × AO 的明暗（与旧 emissive 通道的观感一致）
+    diffuseColor.rgb *= mix(vShade * (0.07 + 0.93 * lit) * lightTint, vec3(vShade), unlit);
     diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
   );
 }
@@ -147,7 +173,9 @@ export class ChunkManager implements System {
   readonly name = 'chunks';
   renderDistance: number;
   readonly materials: {
-    opaque: THREE.MeshBasicMaterial; emissive: THREE.MeshBasicMaterial;
+    opaque: THREE.MeshBasicMaterial;
+    /** 仅 ?emerge=0 对照路径使用 */
+    emissive: THREE.MeshBasicMaterial;
     transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial;
   };
   /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
@@ -171,6 +199,7 @@ export class ChunkManager implements System {
   private workerConfig: number[] = [];
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
+  private mergeEmissiveOption: boolean;
   private config: MeshConfig | null = null;
   private configRevision = 0;
   private generation = 0;
@@ -201,16 +230,19 @@ export class ChunkManager implements System {
   ) {
     this.renderDistance = renderDistance;
     this.greedyOption = options.greedy ?? true;
+    this.mergeEmissiveOption = options.mergeEmissive ?? true;
     this.camera = options.camera ?? null;
     this.materials = {
-      opaque: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
-      emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, vertexColors: true, alphaTest: 0.5 }),
+      // 明暗走 aShade 单分量，不再需要 vertexColors
+      opaque: new THREE.MeshBasicMaterial({ map: atlas.texture, alphaTest: 0.5 }),
+      // 仅在对照路径（?emerge=0）下被使用；默认路径不自发光几何，不会编译出 program
+      emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, alphaTest: 0.5 }),
       transparent: new THREE.MeshBasicMaterial({
-        map: atlas.texture, vertexColors: true, transparent: true, opacity: 0.8,
+        map: atlas.texture, transparent: true, opacity: 0.8,
         depthWrite: false, side: THREE.DoubleSide,
       }),
       water: new THREE.MeshBasicMaterial({
-        map: atlas.texture, vertexColors: true, transparent: true, opacity: 0.78,
+        map: atlas.texture, transparent: true, opacity: 0.78,
         depthWrite: false, side: THREE.DoubleSide,
       }),
     };
@@ -229,7 +261,11 @@ export class ChunkManager implements System {
         transformed.y += sin(wPos.x * 0.9 + uTime * 1.7) * 0.028 + cos(wPos.z * 1.1 + uTime * 1.3) * 0.028;`,
       );
     };
-    // 四个通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）
+    // 对照路径的旧 emissive 通道：只乘面明暗，不参与光照
+    if (!this.mergeEmissiveOption) {
+      this.materials.emissive.onBeforeCompile = (shader) => injectLegacyEmissive(shader);
+    }
+    // 各通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）
     for (const ch of MESH_CHANNELS) installTiledAtlas(this.materials[ch]);
 
     if (options.forceMainThread) {
@@ -348,7 +384,9 @@ export class ChunkManager implements System {
 
   private getConfig(): MeshConfig {
     if (!this.config) {
-      this.config = buildMeshConfig(this.world.registry, this.atlas, this.greedyOption, this.configRevision);
+      this.config = buildMeshConfig(
+        this.world.registry, this.atlas, this.greedyOption, this.configRevision, this.mergeEmissiveOption,
+      );
       this.postConfig();
     }
     return this.config;
@@ -508,7 +546,10 @@ export class ChunkManager implements System {
     };
     const entry: ChunkMeshes = {
       opaque: make(data.opaque, this.materials.opaque, 0),
-      emissive: make(data.emissive, this.materials.emissive, 0),
+      // 对照路径的独立 emissive 通道；默认路径 data.emissive 恒为 null
+      emissive: this.mergeEmissiveOption
+        ? undefined
+        : make(data.emissive, this.materials.emissive, 1),
       transparent: make(data.transparent, this.materials.transparent, 2),
       water: make(data.water, this.materials.water, 2),
     };

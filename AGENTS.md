@@ -107,6 +107,8 @@ src/
    `postConfig()` 到每个 Worker，同时重排已有网格。判据是 `chunks.configReady`。
 8. **快照契约**：带光照的网格快照必须同时拷贝 `data / sky / block` 三张 `18×80×18` 缓冲；
    Greedy mask key 含 `id | ao<<8 | sky<<10 | block<<14`，光照不同不合并。
+   （v1.5.1 起 `sky / block` 写的是**角点光照等级**而非邻居格光照，位布局不变；
+   四角光照不一致的面必须退回逐面输出，否则合并面只能带一份光、渐变会被抹平。）
 9. **输入状态机**：暂停 / 死亡 / 返回标题时调用 `input.reset()`；`keyup` 必须无条件处理，
    否则禁用期间的松键会永久留在 `keys` 里。
 10. **插件生命周期**：`PluginService` 用 `pending` Promise 复用并发 enable，用 epoch 识别
@@ -116,6 +118,10 @@ src/
     禁止留下"部分实例 + worker 模式"的残池。
 13. **新增高风险不变量**优先加到 `src/diagnostics/RuntimeDiagnostics.ts`，
     并在 `test/diagnostics-check.cjs` 补一条注入式回归，确保检查项不会静默失效。
+14. **画面类改动做成受控实验**：改完「看不出好不好」的渲染改动（通道归属 / 顶点布局 / 抗锯齿），
+    先定假设 / 对照 / 翻转方式 / 判据，再用 `npm run test:experiment` 同页翻转测量。
+    A/B 必须同页（跨页区块集合不可比），对比前证场景一致，并单独测噪声底。
+    设置与数据见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)；测量工具不挂 `verify`。
 
 ---
 
@@ -158,6 +164,7 @@ src/
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 分层设计、三大服务契约、插件生命周期、网格化管线、地形管线、缺陷修复原理 |
 | [docs/PROJECT-EXPERIENCE.md](docs/PROJECT-EXPERIENCE.md) | **改代码前必读**：硬规则全文 + 常见排查 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试体系、快照机制、各测试组职责与断言数 |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | 3D 优化的受控实验：设置 / 原始数据 / 结论与复现 |
 | [docs/agent/RUNBOOK.md](docs/agent/RUNBOOK.md) | 运作手册：开发流程、基线命令、运行时诊断、常见问题 |
 | [docs/agent/tasks/*.yaml](docs/agent/tasks/) | 任务卡（`touch.allow` / `outputs` 契约），用 `python3 docs/agent/validate.py` 校验 |
 | [README.md](README.md) | 对外说明、版本沿革、快速开始 |
