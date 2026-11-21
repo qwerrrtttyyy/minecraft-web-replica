@@ -2,9 +2,13 @@ import * as THREE from 'three';
 import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
-import { buildPig, buildSheep, buildZombie, buildSkeleton, type MobModel } from './models';
+import {
+  buildPig, buildSheep, buildCow, buildChicken, buildRabbit,
+  buildZombie, buildSkeleton, type MobModel,
+} from './models';
 import type { DropSpec } from '../world/blocks';
-import { rollDrops } from '../world/drops';
+import { dropHash, rollDrops } from '../world/drops';
+import { ANIMALS, POPULATION } from '../core/tuning';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -215,6 +219,8 @@ export class EntityManager {
   private daylight = 1;
   /** 死亡序号：同一实体多次触发也能得到不同来源标识 */
   private killSerial = 0;
+  /** 自然生成序号：加权类型抽取的确定性来源标识（typeId 覆盖时不递增） */
+  private spawnSerial = 0;
 
   constructor(
     private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
@@ -233,6 +239,22 @@ export class EntityManager {
         { name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 },
         { name: 'item:leather', chance: 0.3 },
       ],
+    });
+    // 三种新被动动物：数值与掉落取自 tuning.ts 的 ANIMALS，掉落名一律 item: 前缀
+    const cow = ANIMALS.cow;
+    this.registerType({
+      id: 'cow', label: '牛', width: cow.width, height: cow.height, speed: cow.speed,
+      build: buildCow, health: cow.health, weight: cow.weight, drops: cow.drops,
+    });
+    const chicken = ANIMALS.chicken;
+    this.registerType({
+      id: 'chicken', label: '鸡', width: chicken.width, height: chicken.height, speed: chicken.speed,
+      build: buildChicken, health: chicken.health, weight: chicken.weight, drops: chicken.drops,
+    });
+    const rabbit = ANIMALS.rabbit;
+    this.registerType({
+      id: 'rabbit', label: '兔', width: rabbit.width, height: rabbit.height, speed: rabbit.speed,
+      build: buildRabbit, health: rabbit.health, weight: rabbit.weight, drops: rabbit.drops,
     });
     this.registerType({
       id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
@@ -289,9 +311,25 @@ export class EntityManager {
     this.despawn(e);
   }
 
+  /**
+   * 被动动物加权抽取：来源标识来自 spawnSerial，与坐标 / 游荡的 Math.random() 解耦，
+   * 同 seed + 同调用序列必然抽到同一类型。typeId 覆盖时本方法不会被调用，序号也不递增。
+   */
+  private pickPassiveType(): string {
+    const table = Object.entries(ANIMALS) as [string, { weight?: number }][];
+    const total = table.reduce((sum, [, a]) => sum + (a.weight ?? 1), 0);
+    let r = (dropHash(this.seed, 'spawn:' + this.spawnSerial++, 0) / 4294967296) * total;
+    for (const [id, a] of table) {
+      r -= a.weight ?? 1;
+      if (r < 0) return id;
+    }
+    return table[table.length - 1][0];
+  }
+
   /** 在玩家附近的草方块上生成生物 */
   trySpawnNear(playerPos: THREE.Vector3, typeId?: string) {
     if (!this.allowSpawn) return false;
+    if (this.entities.length >= POPULATION.cap) return false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = 16 + Math.random() * 22;
@@ -301,7 +339,7 @@ export class EntityManager {
       const top = this.world.getBlock(x, h, z);
       const above = this.world.getBlock(x, h + 1, z);
       if (this.world.registry.get(top).name === 'grass' && above === 0 && h > 31) {
-        const type = typeId ?? (Math.random() < 0.55 ? 'pig' : 'sheep');
+        const type = typeId ?? this.pickPassiveType();
         this.spawn(type, x + 0.5, h + 1.05, z + 0.5);
         return true;
       }

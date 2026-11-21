@@ -22,6 +22,9 @@ const { FallingSystem } = require('./terrain-logic/entity/falling.js');
 const { CRAFTING_RECIPES, matchRecipe } = require('./terrain-logic/player/crafting.js');
 const THREE = require('three');
 
+// C02：复用堆肥桶段落创建的 EntityManager 实例，供新动物注册断言使用
+let mobs;
+
 const log = (...a) => console.log(...a);
 let passed = 0;
 function ok(name, cond, extra = '') {
@@ -533,7 +536,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   ok('满级可收取肥料', harvestOf(reg.byNameGet('composter_ready').id) === 'item:fertilizer');
   ok('堆肥桶掉落自身', reg.byNameGet('composter').drops.some((d) => d.name === 'self'));
 
-  const mobs = new EntityManager({} , new THREE.Scene(), { on() {} }, 1);
+  mobs = new EntityManager({} , new THREE.Scene(), { on() {} }, 1);
   ok('猪 / 羊掉落肥料、骷髅掉落骨粉',
     mobs.getType('pig').drops.some((d) => d.name === 'item:fertilizer') &&
     mobs.getType('sheep').drops.some((d) => d.name === 'item:fertilizer') &&
@@ -609,5 +612,12 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
 ok('方块总数仍为 141', reg.all().length === 141);
+
+// C02：三种新动物 + 按权重生成
+ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']
+  .every((id) => !!mobs.getType(id)));
+ok('新动物掉落名带 item: 前缀',
+  ['cow', 'chicken', 'rabbit'].every((id) =>
+    mobs.getType(id).drops.every((d) => d.name.startsWith('item:'))));
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

@@ -70,6 +70,21 @@ export const ANIMALS = {
     width: 0.6, height: 0.6, speed: 1.4, health: 3, weight: 2,
     drops: [{ name: 'item:rabbit_meat' }],
   },
+  // 猪 / 羊既有数值与掉落原样补入（C02），用于被动动物加权生成表；实体注册仍沿用 entity.ts 原定义
+  pig: {
+    width: 0.9, height: 0.95, speed: 1.15, health: 8, weight: 3,
+    drops: [
+      { name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 },
+      { name: 'item:leather', chance: 0.5 },
+    ],
+  },
+  sheep: {
+    width: 0.9, height: 1.15, speed: 1.0, health: 8, weight: 3,
+    drops: [
+      { name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 },
+      { name: 'item:leather', chance: 0.3 },
+    ],
+  },
 };
 
 /** 新物品的食物值：beef 7 / rabbit_meat 5 / egg 3；煤炭 / 皮革 / 羽毛不可食 */
