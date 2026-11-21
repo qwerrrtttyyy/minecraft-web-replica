@@ -69,4 +69,8 @@ export class SnapshotMeshSource implements MeshSource {
   get greedy(): boolean {
     return this.config.greedy;
   }
+
+  get mergeEmissive(): boolean {
+    return this.config.mergeEmissive;
+  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -39,6 +39,7 @@
     "verify": "npm run check:version && npm run test:permtable && npm run wasm:check && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:wasm && npm run test:plugin-v2 && npm run test:plugin-carrier && npm run test:review-fixes && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:unstuck && npm run test:edits && npm run test:terrain-system && npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:botany-rules && npm run test:crafting && npm run test:equipment && npm run test:smelting && npm run test:smoke && npm run test:options && npm run test:visual",
     "test:light": "node test/light-check.cjs",
     "test:visual": "node test/visual-check.mjs",
+    "test:experiment": "node test/experiment-3d.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
     "wasm:check": "node scripts/build-wasm.mjs --check",
     "test:wasm": "node test/wasm-check.cjs",

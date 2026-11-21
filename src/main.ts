@@ -65,15 +65,17 @@ async function boot() {
   uiRoot.id = 'ui';
   document.body.appendChild(uiRoot);
 
+  // 调试 / 基准参数必须在创建渲染器之前解析：MSAA 只能在上下文创建时决定
+  const qs = new URLSearchParams(location.search);
+  const aaParam = qs.get('aa');
   let engine: Engine;
   try {
-    engine = new Engine(app);
+    engine = new Engine(app, { aa: aaParam === 'msaa' || aaParam === 'ssaa' ? aaParam : 'off' });
   } catch {
     uiRoot.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#e8e8e8;font-size:15px;background:#1a1a22;padding:24px;text-align:center">当前浏览器不支持 WebGL，无法运行本演示。请更换现代浏览器（Chrome / Edge / Safari / Firefox）。</div>';
     return;
   }
 
-  const qs = new URLSearchParams(location.search);
   const { container, events, plugins, extensions } = createServices();
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
@@ -186,10 +188,13 @@ async function boot() {
   const world = new World(registry, new DefaultGenerator(seed, registry), events, extensions);
   if (saved) world.loadEdits(saved.edits);
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
+  // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
   const workersParam = qs.get('workers');
+  // 实验对照：?emerge=0 保留 v1.5.1 的独立 emissive 通道（默认并入不透明通道）
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
+    mergeEmissive: qs.get('emerge') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
     camera: engine.camera,
   });
@@ -1148,6 +1153,8 @@ async function boot() {
         configRevision: chunks.configRevisionValue,
         missingMeshes,
         unlitChunks,
+        meshQuads: chunks.meshStats.quads,
+        meshChunks: chunks.meshStats.chunks,
       },
       plugins: plugins.list().map((p) => ({
         id: p.manifest.id,

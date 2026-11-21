@@ -36,6 +36,7 @@ export function buildMeshConfig(
   atlas: TextureAtlas,
   greedy: boolean,
   revision: number,
+  mergeEmissive = true,
 ): MeshConfig {
   const defs: (MeshBlockDef | null)[] = [null];
   for (const d of registry.all()) {
@@ -60,6 +61,7 @@ export function buildMeshConfig(
     uv,
     bedrockId: registry.byNameGet('bedrock')?.id ?? 3,
     greedy,
+    mergeEmissive,
     revision,
   };
 }
@@ -177,5 +179,9 @@ export class WorldMeshSource implements MeshSource {
 
   get greedy(): boolean {
     return this.config.greedy;
+  }
+
+  get mergeEmissive(): boolean {
+    return this.config.mergeEmissive;
   }
 }

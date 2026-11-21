@@ -87,6 +87,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   `plugins.dependency`：启用中的插件缺少已启用依赖）。
 - **survival-smoke**：真实浏览器里的完整玩法链路；固定 seed=2026，条件轮询等世界收敛。
 - **visual-check**：固定 seed=2026 / 时段，断言夜间变暗、火光提亮、方块墙颜色丰富。
+- **experiment-3d**（`npm run test:experiment`，**不挂 `verify`**）：3D 优化的受控 A/B 测量。
+  固定种子 / 相机 / 区块集合，换最小系统组并冻结水面与天空相位，同页翻转变量后比对
+  帧率 / draw call / 逐通道 mesh 与顶点字节 / 归一化像素签名；自带 12 项有效性闸门
+  （含「噪声底必须为零」），失败非零退出。设置与数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
 - **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
   FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
   Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出

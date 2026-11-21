@@ -47,6 +47,11 @@ export interface MeshConfig {
   bedrockId: BlockId;
   /** 是否启用 Greedy Meshing（对照基准可关闭） */
   greedy: boolean;
+  /**
+   * 自发光是否并入不透明通道（aTint=2）。
+   * false = 保留独立的 emissive 通道，仅作为实验对照（?emerge=0），默认 true。
+   */
+  mergeEmissive: boolean;
   /** 配置版本，用于诊断与缓存失效 */
   revision: number;
 }
@@ -62,6 +67,8 @@ export interface MeshSource {
   getBlockLight(lx: number, y: number, lz: number): number;
   uv(tile: string): UVRect;
   readonly greedy: boolean;
+  /** 自发光是否并入不透明通道（与 MeshConfig.mergeEmissive 同步） */
+  readonly mergeEmissive: boolean;
 }
 
 /** 单区块方块数据快照：1 格 halo，索引 ((y*W + lz+1)*W + lx+1)，W = CS+2 */
@@ -73,23 +80,30 @@ export interface MeshSnapshot {
   block: Uint8Array;
 }
 
-/** 收集期的动态数组几何 */
+/**
+ * 收集期的动态数组几何（顶点打包后的布局，每顶点 11 个 float）：
+ * position(3) + uv(2) + shade(1) + light(2) + tile(2) + flags(1) = 44 字节。
+ * 旧布局每顶点 15 个 float（60 字节），其中 color 三分量同值、tile 的 du/dv 全图集一致，
+ * 纯冗余 —— 详见 docs/EXPERIMENTS.md 实验 E1。
+ */
 export interface GeoArrays {
   positions: number[];
   /** 局部 UV：普通面 0..1，合并面 0..w / 0..h（shader 内 fract 平铺） */
   uvs: number[];
-  colors: number[];
+  /** 每顶点明暗（面定向 × AO，0~1）：RGB 三通道同值，只需 1 个分量 */
+  shade: number[];
   /** 每顶点天空光 / 方块光（0~1），shader 据此叠加昼夜与方块光源 */
   lights: number[];
-  /** 每顶点 u0,v0,du,dv：shader 据此把局部 UV 映射回图集 tile */
-  tiles: number[];
-  /** 每顶点群系染色开关（0/1）：草 / 叶 / 藤蔓为 1，shader 据此乘群系色 */
+  /** 每顶点图集 tile 起点 u0,v0；tile 尺寸全图集一致，走 shader uniform */
+  tile: number[];
+  /** 每顶点开关：0 普通、1 群系染色、2 自发光（不受光照与染色影响） */
   tints: number[];
   indices: number[];
 }
 
 export interface ChunkMeshData {
   opaque: GeoArrays | null;
+  /** 仅 mergeEmissive=false 时才有内容（实验对照） */
   emissive: GeoArrays | null;
   transparent: GeoArrays | null;
   water: GeoArrays | null;
@@ -99,15 +113,16 @@ export interface ChunkMeshData {
 export interface PackedGeo {
   positions: Float32Array;
   uvs: Float32Array;
-  colors: Float32Array;
+  shade: Float32Array;
   lights: Float32Array;
-  tiles: Float32Array;
+  tile: Float32Array;
   tints: Float32Array;
   indices: Uint32Array;
 }
 
 export interface PackedMesh {
   opaque: PackedGeo | null;
+  /** 仅 mergeEmissive=false 时才有内容（实验对照） */
   emissive: PackedGeo | null;
   transparent: PackedGeo | null;
   water: PackedGeo | null;
@@ -135,13 +150,13 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
     if (!g || g.indices.length === 0) return null;
     const p = new Float32Array(g.positions);
     const u = new Float32Array(g.uvs);
-    const c = new Float32Array(g.colors);
+    const s = new Float32Array(g.shade);
     const l = new Float32Array(g.lights);
-    const t = new Float32Array(g.tiles);
+    const t = new Float32Array(g.tile);
     const tn = new Float32Array(g.tints);
     const i = new Uint32Array(g.indices);
-    transfer.push(p.buffer, u.buffer, c.buffer, l.buffer, t.buffer, tn.buffer, i.buffer);
-    return { positions: p, uvs: u, colors: c, lights: l, tiles: t, tints: tn, indices: i };
+    transfer.push(p.buffer, u.buffer, s.buffer, l.buffer, t.buffer, tn.buffer, i.buffer);
+    return { positions: p, uvs: u, shade: s, lights: l, tile: t, tints: tn, indices: i };
   };
   return {
     mesh: {

@@ -13,6 +13,17 @@ const TILE = 16;
 const GRID = 16;
 const SIZE = TILE * GRID;
 
+/**
+ * tile 边缘内缩（占 tile 比例）：防止图集渗色。
+ * 全部 tile 共用同一个内缩，因此 tile 的 UV 尺寸也是常量。
+ */
+export const TILE_INSET = 0.02 / TILE;
+/** 单个 tile 的 UV 尺寸 [du, dv]，全图集一致 —— 顶点只需存 tile 起点 */
+export const TILE_UV_SIZE: readonly [number, number] = [
+  1 / GRID - TILE_INSET * 2,
+  1 / GRID - TILE_INSET * 2,
+];
+
 /** 像素画布 */
 class Px {
   readonly data = new Uint8ClampedArray(TILE * TILE * 4);
@@ -1716,10 +1727,9 @@ export class TextureAtlas {
   /** 带半像素内缩的 UV，防止图集渗色 */
   uv(name: string): [number, number, number, number] {
     const idx = this.indices.get(name) ?? 0;
-    const inset = 0.02 / TILE;
-    const u0 = (idx % GRID) / GRID + inset;
-    const v0 = 1 - (((idx / GRID) | 0) + 1) / GRID + inset;
-    return [u0, v0, u0 + 1 / GRID - inset * 2, v0 + 1 / GRID - inset * 2];
+    const u0 = (idx % GRID) / GRID + TILE_INSET;
+    const v0 = 1 - (((idx / GRID) | 0) + 1) / GRID + TILE_INSET;
+    return [u0, v0, u0 + TILE_UV_SIZE[0], v0 + TILE_UV_SIZE[1]];
   }
 
   tileCanvas(name: string): HTMLCanvasElement {

@@ -9,7 +9,8 @@ import {
 /**
  * 区块网格生成（主线程 / Worker 共用同一份实现）。
  *
- * - 隐藏面剔除 + 逐顶点 AO + 面定向明暗，四个渲染通道。
+ * - 隐藏面剔除 + 逐顶点 AO + 面定向明暗，三个渲染通道（不透明 / 半透明 / 水）。
+ *   自发光方块复用不透明通道 + aTint=2；?emerge=0 可切回独立 emissive 通道（实验对照）。
  * - greedy=true 时，普通不透明立方体的面走 mask 贪心合并：
  *   **只有四角 AO 完全相等**的面才允许合并，因为合并后 GPU 会在整个大 quad
  *   上做双线性插值；若原四角亮度不同，渐变会被拉长，画面就变了。
@@ -28,7 +29,7 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], colors: [], lights: [], tiles: [], tints: [], indices: [] });
+const newGeo = (): GeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], indices: [] });
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -99,6 +100,36 @@ const CROSS_V = new Float64Array([0, 0, cu(1), cu(1)]);
 const CROSS_B = new Float64Array([0.95, 0.95, 1, 1]);
 
 /**
+ * 顶点开关（aTint）：0 普通；1 群系染色；2 自发光。
+ * 自发光方块（萤石 / 南瓜灯 / 火把）默认复用不透明通道，shader 见到 2 就跳过
+ * 光照与染色（保留面明暗），效果等价于原来的独立 emissive 材质。
+ * 对照路径（mergeEmissive=false）下自发光走独立通道，此开关不再被读到。
+ */
+const FLAG_NONE = 0;
+const FLAG_FOLIAGE = 1;
+const FLAG_UNLIT = 2;
+
+/** 顶点开关：自发光常亮，其次群系染色，其余普通 */
+const flagsFor = (def: MeshBlockDef): number =>
+  def.lightEmission > 0 ? FLAG_UNLIT : def.tint ? FLAG_FOLIAGE : FLAG_NONE;
+
+// ---- 平滑光照 scratch（meshChunk 同步执行，不会重入）----
+/** 空气侧 3×3 补丁的天空光 / 方块光（0~15） */
+const patchSky = new Int32Array(9);
+const patchBlock = new Int32Array(9);
+/** 当前面的 4 个角点光照等级（0~15，与体素光照同粒度） */
+const cornerSky = new Int32Array(4);
+const cornerBlock = new Int32Array(4);
+/** 输出到顶点的每角点光照（0~1）：已归一化 */
+const quadSky = new Float32Array(4);
+const quadBlock = new Float32Array(4);
+
+/** 把同一个光照值填满 4 个顶点（合并面 / 交叉面片用） */
+const fillUniform = (arr: Float32Array, v: number) => {
+  arr[0] = v; arr[1] = v; arr[2] = v; arr[3] = v;
+};
+
+/**
  * 逐顶点 AO，与 v1.2.0 完全一致的采样规则。
  * 结果写入 out（4 个亮度档位），不再返回新数组。
  */
@@ -136,6 +167,61 @@ function computeAOInto(
   return out;
 }
 
+/**
+ * 逐角点光照（平滑光照）：角点亮度取「空气侧」相邻 4 格光照的均值。
+ *
+ * 面法向固定在邻居格 N，法向之外的两个切向各跨 2 格 → 每个角点由 4 格决定：
+ *   角点沿切向的局部坐标 c[t] 为 0 → 取 {N-1, N}，为 1 → 取 {N, N+1}。
+ * 4 个角点合起来正好覆盖 N 周围切向的 3×3 补丁，所以先取一次 3×3 补丁
+ * （9 格），再让 4 个角点各取补丁里的 2×2 均值即可，比逐角点各取 4 格省一半采样。
+ *
+ * 结果写入 outSky / outBlock（4 个角的光照等级 0~15，取 4 格均值后四舍五入）。
+ * 量化成整数而不是保留小数，是为了让「四角是否一致」是精确判定，
+ * 同时让角点光照与体素光照保持同一粒度（0~15）。
+ *
+ * 一致性保证：同一张面上，相邻方块共享的角点取到的是同一组 4 格，
+ * 因此角点光照在方块边界两侧连续，不会出现接缝。
+ */
+function computeCornerLightInto(
+  src: MeshSource,
+  bx: number, by: number, bz: number,
+  face: FaceDef,
+  outSky: Int32Array, outBlock: Int32Array,
+): void {
+  const ax = face.axis;
+  const t1 = ax === 0 ? 1 : 0;
+  const t2 = ax === 2 ? 1 : 2;
+  const [nx, ny, nz] = face.normal;
+  // 空气侧基准格：法向推进一格
+  const gx = bx + nx;
+  const gy = by + ny;
+  const gz = bz + nz;
+  // 切向 3×3 补丁：索引 (p1+1)*3 + (p2+1)，p1/p2 ∈ {-1,0,1} 表示沿 t1/t2 的偏移
+  for (let p1 = -1; p1 <= 1; p1++) {
+    for (let p2 = -1; p2 <= 1; p2++) {
+      let x: number, y: number, z: number;
+      if (ax === 0) { x = gx; y = gy + p1; z = gz + p2; }
+      else if (ax === 1) { x = gx + p1; y = gy; z = gz + p2; }
+      else { x = gx + p1; y = gy + p2; z = gz; }
+      const i = (p1 + 1) * 3 + (p2 + 1);
+      patchSky[i] = src.getSkyLight(x, y, z);
+      patchBlock[i] = src.getBlockLight(x, y, z);
+    }
+  }
+  // 4 个角点各取补丁的 2×2
+  for (let i = 0; i < 4; i++) {
+    const c = face.corners[i];
+    const r0 = c[t1] === 0 ? 0 : 1;
+    const c0 = c[t2] === 0 ? 0 : 1;
+    const a = r0 * 3 + c0;
+    const s = patchSky[a] + patchSky[a + 1] + patchSky[a + 3] + patchSky[a + 4];
+    const b = patchBlock[a] + patchBlock[a + 1] + patchBlock[a + 3] + patchBlock[a + 4];
+    // 四舍五入到整数光照等级：(s + 2) >> 2 等价于 Math.round(s / 4)，比浮点快
+    outSky[i] = (s + 2) >> 2;
+    outBlock[i] = (b + 2) >> 2;
+  }
+}
+
 const tileFor = (def: MeshBlockDef, face: FaceDef) =>
   face.axis === 1 ? (face.sign > 0 ? def.tiles.top : def.tiles.bottom) : def.tiles.side;
 
@@ -146,8 +232,13 @@ export function meshChunk(src: MeshSource): MeshOutput {
     stats: { quads: 0, vertices: 0, merged: 0, ms: 0 },
   };
 
+  /**
+   * 通道分配。默认把自发光并进不透明通道：它不需要光照 / 染色，
+   * 用 aTint=2 告诉 shader 跳过光照，省下一份材质、一次 draw call 与一次几何。
+   * mergeEmissive=false（?emerge=0）保留 v1.5.1 的独立 emissive 通道，仅作实验对照。
+   */
   const passFor = (def: MeshBlockDef): GeoArrays => {
-    if (def.lightEmission > 0) {
+    if (def.lightEmission > 0 && !src.mergeEmissive) {
       out.emissive ??= newGeo();
       return out.emissive;
     }
@@ -163,27 +254,26 @@ export function meshChunk(src: MeshSource): MeshOutput {
     return out.opaque;
   };
 
-  /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；tint 为群系染色开关（0/1） */
-  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, sky: number, block: number, tint: number) => {
+  /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；flags 为顶点开关（0/1/2） */
+  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, lightSky: Float32Array, lightBlock: Float32Array, flags: number) => {
     const base = g.positions.length / 3;
+    // tile 尺寸全图集一致，走 shader uniform；顶点只带 tile 起点
     const u0 = tile[0];
     const v0 = tile[1];
-    const du = tile[2];
-    const dv = tile[3];
     const P = g.positions;
     const U = g.uvs;
-    const T = g.tiles;
-    const C = g.colors;
+    const T = g.tile;
+    const S = g.shade;
     const L = g.lights;
     const N = g.tints;
     for (let i = 0; i < 4; i++) {
       P.push(qx[i], qy[i], qz[i]);
       U.push(qu[i], qv[i]);
-      T.push(u0, v0, du, dv);
-      const b = qb[i];
-      C.push(b, b, b);
-      L.push(sky, block);
-      N.push(tint);
+      T.push(u0, v0);
+      S.push(qb[i]);
+      // 逐顶点光照：平滑光照下 4 个角点亮度各不相同
+      L.push(lightSky[i], lightBlock[i]);
+      N.push(flags);
     }
     const I = g.indices;
     if (flip) I.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
@@ -192,15 +282,26 @@ export function meshChunk(src: MeshSource): MeshOutput {
     out.stats.vertices += 4;
   };
 
-  /** 单个面的原始输出（v1.2.0 行为，UV 改为局部坐标 + tileRect） */
+  /**
+   * 单个面的原始输出。
+   * precomputedAO / precomputedSky / precomputedBlock 非空时直接复用
+   * （Greedy 路径已经算过，避免同一面算两遍）。
+   */
   const emitFace = (
     bx: number, by: number, bz: number,
-    def: MeshBlockDef, face: FaceDef, precomputed?: Int32Array,
+    def: MeshBlockDef, face: FaceDef,
+    precomputedAO?: Int32Array,
+    precomputedSky?: Int32Array,
+    precomputedBlock?: Int32Array,
   ) => {
     const g = passFor(def);
     const tile = src.uv(tileFor(def, face));
     // Greedy 路径已经算过 AO 的不均面直接复用，避免同一面算两遍
-    const ao = precomputed ?? computeAOInto(src, bx, by, bz, face, def, aoFace);
+    const ao = precomputedAO ?? computeAOInto(src, bx, by, bz, face, def, aoFace);
+    // 角点光照：逐角点取空气侧 4 格均值（平滑光照）
+    const lvSky = precomputedSky ?? cornerSky;
+    const lvBlock = precomputedBlock ?? cornerBlock;
+    if (!precomputedSky) computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);
     const lowerWaterTop = def.liquid && !src.def(src.getId(bx, by + 1, bz)).liquid;
     const shade = face.shade;
     for (let i = 0; i < 4; i++) {
@@ -213,21 +314,22 @@ export function meshChunk(src: MeshSource): MeshOutput {
       qu[i] = cu(c[3]);
       qv[i] = cu(c[4]);
       qb[i] = shade * AO_LEVELS[ao[i]];
+      // 角点光照等级（0~15）归一化到 0~1
+      quadSky[i] = lvSky[i] / 15;
+      quadBlock[i] = lvBlock[i] / 15;
     }
     const flip = ao[0] + ao[2] < ao[1] + ao[3];
-    // 采样面外侧空气格的光照（跨区块与未加载边界都能安全取值）
-    const lightSky = src.getSkyLight(bx + face.normal[0], by + face.normal[1], bz + face.normal[2]) / 15;
-    const lightBlock = src.getBlockLight(bx + face.normal[0], by + face.normal[1], bz + face.normal[2]) / 15;
-    pushQuad(g, tile, flip, lightSky, lightBlock, def.tint ? 1 : 0);
+    pushQuad(g, tile, flip, quadSky, quadBlock, flagsFor(def));
   };
 
   /** 交叉面片（草丛 / 花）：两片，每片正反各一次 */
   const emitCross = (bx: number, by: number, bz: number, def: MeshBlockDef) => {
     const g = passFor(def);
     const tile = src.uv(def.tiles.side);
-    const lightSky = src.getSkyLight(bx, by, bz) / 15;
-    const lightBlock = src.getBlockLight(bx, by, bz) / 15;
-    const tint = def.tint ? 1 : 0;
+    // 交叉面片按所在格的整体光照取值（角点平均对斜置面片没有几何意义）
+    fillUniform(quadSky, src.getSkyLight(bx, by, bz) / 15);
+    fillUniform(quadBlock, src.getBlockLight(bx, by, bz) / 15);
+    const flags = flagsFor(def);
     const x0 = bx + 0.15, x1 = bx + 0.85;
     const z0 = bz + 0.15, z1 = bz + 0.85;
     const y0 = by, y1 = by + 1;
@@ -238,7 +340,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x1; qy[2] = y1; qz[2] = z1;
     qx[3] = x0; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 A（反面：顶点反序 + UV 反序，亮度保持原顺序）
     qx[0] = x0; qy[0] = y1; qz[0] = z0;
     qx[1] = x1; qy[1] = y1; qz[1] = z1;
@@ -246,7 +348,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x0; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, quadSky, quadBlock, flags);
 
     // 面 B（正面）
     qx[0] = x1; qy[0] = y0; qz[0] = z0;
@@ -254,7 +356,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x0; qy[2] = y1; qz[2] = z1;
     qx[3] = x1; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 B（反面）
     qx[0] = x1; qy[0] = y1; qz[0] = z0;
     qx[1] = x0; qy[1] = y1; qz[1] = z1;
@@ -262,7 +364,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x1; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    pushQuad(g, tile, false, lightSky, lightBlock, tint);
+    pushQuad(g, tile, false, quadSky, quadBlock, flags);
   };
 
   /** 逐方块逐面输出（greedy 关闭时的完整路径，或特殊方块的兜底路径） */
@@ -334,15 +436,25 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const nid = src.getId(b[0] + nx, b[1] + ny, b[2] + nz);
           if (!faceVisible(def, src.def(nid))) continue;
           const ao = computeAOInto(src, b[0], b[1], b[2], face, def, aoCheck);
+          // 角点光照（平滑光照）：4 个角点各取空气侧 4 格均值
+          computeCornerLightInto(src, b[0], b[1], b[2], face, cornerSky, cornerBlock);
           // AO 四角不全等 → 保持逐面输出，避免合并后亮度渐变被拉伸
-          if (ao[0] !== ao[1] || ao[0] !== ao[2] || ao[0] !== ao[3]) {
-            emitFace(b[0], b[1], b[2], def, face, ao);
+          // 角点光照四角不全等同理：合并面只能带一份光，拉伸会把渐变抹平
+          if (ao[0] !== ao[1] || ao[0] !== ao[2] || ao[0] !== ao[3] ||
+            cornerSky[0] !== cornerSky[1] || cornerSky[0] !== cornerSky[2] || cornerSky[0] !== cornerSky[3] ||
+            cornerBlock[0] !== cornerBlock[1] || cornerBlock[0] !== cornerBlock[2] || cornerBlock[0] !== cornerBlock[3]) {
+            emitFace(b[0], b[1], b[2], def, face, ao, cornerSky, cornerBlock);
             continue;
           }
           // 光照不一致的面不合并：合并后 GPU 会在整个 quad 上插值同一份光，
           // 把「火把照亮的三格」拉成整面亮，必须把 sky/block 一起写进 key。
-          const sky = src.getSkyLight(b[0] + nx, b[1] + ny, b[2] + nz) & 15;
-          const blk = src.getBlockLight(b[0] + nx, b[1] + ny, b[2] + nz) & 15;
+          //
+          // 平滑光照下这里写进 key 的是「四角一致的角点光照等级」。
+          // 相邻方块共享角点时取到的是同一组 4 格 → 等级必然一致，
+          // 因此合并面上的每个角点光都等于 key 里这一个值，
+          // 合并结果与逐面输出严格等价。
+          const sky = cornerSky[0];
+          const blk = cornerBlock[0];
           mask[V * dimU + U] = (id | (ao[0] << 8) | (sky << 10) | (blk << 14)) + 1;
         }
       }
@@ -365,8 +477,9 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const k = key - 1;
           const id = k & 255;
           const ao = (k >> 8) & 3;
-          const lightSky = ((k >> 10) & 15) / 15;
-          const lightBlock = ((k >> 14) & 15) / 15;
+          // 合并面四角光照一致（入 mask 前已校验），所以 4 个顶点共用一份光
+          fillUniform(quadSky, ((k >> 10) & 15) / 15);
+          fillUniform(quadBlock, ((k >> 14) & 15) / 15);
           const def = src.def(id);
           const tile = src.uv(tileFor(def, face));
           const g = passFor(def);
@@ -377,7 +490,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
           duV[0] = duV[1] = duV[2] = 0; duV[uAxis] = uDir;
           dvV[0] = dvV[1] = dvV[2] = 0; dvV[vAxis] = vDir;
           const bright = face.shade * AO_LEVELS[ao];
-          const tint = def.tint ? 1 : 0;
+          const flags = flagsFor(def);
           for (let i = 0; i < 4; i++) {
             const c = face.corners[i];
             const ww = c[3] * w;
@@ -389,7 +502,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
             qv[i] = cu(hh);
             qb[i] = bright;
           }
-          pushQuad(g, tile, false, lightSky, lightBlock, tint);
+          pushQuad(g, tile, false, quadSky, quadBlock, flags);
           out.stats.merged += w * h - 1;
           U += w;
         }
