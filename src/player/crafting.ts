@@ -202,6 +202,19 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { C: 'item:coal', S: 'item:stick' },
     result: { material: 'torch', count: 4 },
   },
+  // v1.7.0：重点株特化闭环——野蒜/玫瑰果的菜式合成（无序，2×2 个人格可做）
+  {
+    id: 'garlic_rice',
+    label: '蒜香米饭',
+    shapeless: ['item:garlic', 'item:rice'],
+    result: { material: 'item:garlic_rice', count: 1 },
+  },
+  {
+    id: 'rose_tea',
+    label: '玫瑰果茶',
+    shapeless: ['item:rose_hips', 'item:nectar'],
+    result: { material: 'item:rose_tea', count: 2 },
+  },
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

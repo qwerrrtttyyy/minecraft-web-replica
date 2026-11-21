@@ -788,4 +788,32 @@ ok('新动物掉落名带 item: 前缀',
   }
 }
 
+// 13) 植物特性逐株差异化：不允许「同参复读机」
+{
+  const sig = (t) => JSON.stringify([t.metabolism, t.bloom, t.growthCost, t.shareRadius,
+    t.sharePower, t.harvest?.item ?? '', t.harvest?.count ?? 0, t.hub ?? false]);
+  const FLOWERS = ['poppy', 'dandelion', 'bluebell', 'allium', 'azure_bluet', 'oxeye_daisy',
+    'cornflower', 'lily_of_the_valley', 'tulip_red', 'tulip_orange', 'tulip_white', 'tulip_pink',
+    'lilac', 'rose_bush', 'peony', 'lavender', 'buttercup', 'forget_me_not', 'marigold',
+    'hyacinth', 'orchid'];
+  const seen = new Map();
+  const dup = [];
+  for (const f of FLOWERS) {
+    const s = sig(PLANT_TRAITS[f]);
+    if (seen.has(s)) dup.push(`${seen.get(s)}=${f}`);
+    seen.set(s, f);
+  }
+  ok('21 株花卉能量特性两两不同（无同参复读机）', dup.length === 0, dup.join(' '));
+  ok('草 / 树苗 / 蘑菇家族内部也逐株不同',
+    ['tall_grass', 'fern', 'tall_fern', 'beach_grass', 'oak_sapling', 'birch_sapling',
+      'spruce_sapling', 'red_mushroom', 'brown_mushroom'].every((n) => !!PLANT_TRAITS[n]) &&
+    new Set(['tall_grass', 'fern', 'tall_fern', 'beach_grass'].map((n) => sig(PLANT_TRAITS[n]))).size === 4 &&
+    new Set(['oak_sapling', 'birch_sapling', 'spruce_sapling'].map((n) => sig(PLANT_TRAITS[n]))).size === 3);
+  ok('重点株特化：薰衣草/山鼠尾草是枢纽，野蒜采收大蒜，玫瑰丛采收玫瑰果',
+    PLANT_TRAITS.lavender.hub === true && PLANT_TRAITS.sage.hub === true &&
+    PLANT_TRAITS.sage.shareRadius === 4 &&
+    PLANT_TRAITS.wild_garlic.harvest?.item === 'item:garlic' &&
+    PLANT_TRAITS.rose_bush.harvest?.item === 'item:rose_hips');
+}
+
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

@@ -65,6 +65,11 @@ export const ITEMS: Record<string, ItemDefinition> = {
   feather: { name: 'feather', label: '羽毛', tile: 'feather', food: NEW_ITEMS.feather.food },
   egg: { name: 'egg', label: '鸡蛋', tile: 'egg', food: NEW_ITEMS.egg.food },
   rabbit_meat: { name: 'rabbit_meat', label: '兔肉', tile: 'rabbit_meat', food: NEW_ITEMS.rabbit_meat.food },
+  // v1.7.0 重点株特化产物：野蒜与玫瑰果及其合成菜式
+  garlic: { name: 'garlic', label: '大蒜', tile: 'garlic', food: 2 },
+  rose_hips: { name: 'rose_hips', label: '玫瑰果', tile: 'rose_hips' },
+  garlic_rice: { name: 'garlic_rice', label: '蒜香米饭', tile: 'garlic_rice', food: 8 },
+  rose_tea: { name: 'rose_tea', label: '玫瑰果茶', tile: 'rose_tea', food: 6 },
   ...EQUIP_ITEMS,
 };
 

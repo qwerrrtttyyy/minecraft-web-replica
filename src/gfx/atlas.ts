@@ -2132,6 +2132,64 @@ export class TextureAtlas {
     this.painters.set('feather', featherPainter);
     this.painters.set('egg', eggPainter);
     this.painters.set('rabbit_meat', rabbitMeatPainter);
+    // v1.7：重点株特化产物纹理，追加在末尾以保持既有 tile 索引不变
+    this.painters.set('garlic', (p, rng) => {
+      p.clear();
+      // 一整头蒜：球形蒜瓣 + 顶部短茎
+      for (let y = 5; y <= 13; y++) {
+        for (let x = 4; x <= 11; x++) {
+          const dx = x - 7.5, dy = y - 9.5;
+          if (dx * dx + dy * dy * 1.3 > 12) continue;
+          p.set(x, y, jitter(dx * dx + dy * dy > 6 ? 0xe8e0c8 : 0xfaf6e8, rng, 5));
+        }
+      }
+      for (const [x, y] of [[6, 3], [7, 2], [8, 3], [7, 4]]) p.set(x, y, jitter(0xb8c48a, rng, 8));
+      // 蒜瓣分界线
+      p.set(7, 8, 0xd8cfb4); p.set(8, 9, 0xd8cfb4); p.set(7, 11, 0xd8cfb4);
+    });
+    this.painters.set('rose_hips', (p, rng) => {
+      p.clear();
+      // 三枚橙红色玫瑰果，各带残留花萼
+      for (const [cx, cy, r] of [[5, 9, 1.8], [10, 7, 2.0], [8, 12, 1.6]] as const) {
+        for (let y = 0; y < 16; y++) {
+          for (let x = 0; x < 16; x++) {
+            const dx = x - cx, dy = y - cy;
+            if (dx * dx + dy * dy > r * r) continue;
+            p.set(x, y, jitter(dx * dx + dy * dy > 1 ? 0xd06828 : 0xf08838, rng, 10));
+          }
+        }
+        p.set(cx, cy - r - 1, 0x4a7a2a);
+      }
+    });
+    this.painters.set('garlic_rice', (p, rng) => {
+      p.clear();
+      // 碗装蒜香米饭：白米饭堆 + 金色蒜粒点缀
+      for (let y = 6; y <= 13; y++) {
+        for (let x = 3; x <= 12; x++) {
+          const dy = y - 10;
+          if ((x - 7.5) * (x - 7.5) / 36 + dy * dy / 16 > 1) continue;
+          p.set(x, y, jitter(0xf4f0e0, rng, 5));
+        }
+      }
+      for (const [x, y] of [[5, 9], [8, 8], [10, 10], [6, 11], [9, 12]]) {
+        p.set(x, y, jitter(0xd8b860, rng, 12));
+      }
+    });
+    this.painters.set('rose_tea', (p, rng) => {
+      p.clear();
+      // 茶杯：杯体 + 玫瑰红色茶水与杯柄
+      for (let y = 6; y <= 13; y++) {
+        for (let x = 4; x <= 10; x++) {
+          p.set(x, y, jitter(y > 6 ? 0xe8e8f0 : 0xd0d0dc, rng, 4));
+        }
+      }
+      for (let x = 5; x <= 9; x++) p.set(x, 7, jitter(0xc04858, rng, 10));
+      p.set(11, 8, 0xe8e8f0); p.set(11, 9, 0xe8e8f0); p.set(10, 9, 0xd0d0dc);
+      // 杯口飘出的热气与一朵小花瓣
+      p.set(7, 3, 0xf0d8dc);
+      p.set(6, 2, 0xc04858);
+      p.set(8, 4, 0xf0f0f8);
+    });
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

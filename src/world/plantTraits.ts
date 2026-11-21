@@ -48,47 +48,55 @@ const flower: PlantTrait = {
   harvest: { item: 'item:nectar', count: 1 },
 };
 
-const grass: PlantTrait = { metabolism: 'solar', bloom: 55, growthCost: 12, shareRadius: 1, sharePower: 8 };
 const crop: PlantTrait = { metabolism: 'solar', bloom: 80, growthCost: 20, shareRadius: 2, sharePower: 10 };
 const sapling: PlantTrait = { metabolism: 'solar', bloom: 90, growthCost: 90, shareRadius: 2, sharePower: 12 };
 
 /** 各植物特性；未列出的方块（空气 / 泥土 / 火把等）不参与能量循环 */
 export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
   // 花卉：蓄能开花后可采集花蜜
-  poppy: flower,
-  dandelion: flower,
-  bluebell: flower,
-  allium: flower,
-  azure_bluet: flower,
-  oxeye_daisy: flower,
-  cornflower: flower,
-  lily_of_the_valley: flower,
-  tulip_red: flower,
-  tulip_orange: flower,
-  tulip_white: flower,
-  tulip_pink: flower,
-  lilac: flower,
-  rose_bush: flower,
-  peony: flower,
+  // 花卉：逐株独立参数——早开 / 蓄能 / 枢纽 / 独特采收物各有分工
+  poppy: { ...flower, bloom: 78, growthCost: 16, shareRadius: 2, sharePower: 11 },
+  dandelion: { ...flower, bloom: 72, growthCost: 14, shareRadius: 2, sharePower: 10 },
+  bluebell: { ...flower, bloom: 83, growthCost: 18, shareRadius: 2, sharePower: 12 },
+  allium: { ...flower, bloom: 84, growthCost: 20, shareRadius: 2, sharePower: 13 },
+  azure_bluet: { ...flower, bloom: 74, growthCost: 14, shareRadius: 1, sharePower: 8 },
+  oxeye_daisy: { ...flower, bloom: 76, growthCost: 16, shareRadius: 2, sharePower: 10 },
+  cornflower: { ...flower, bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12,
+    harvest: { item: 'item:nectar', count: 2 } },
+  lily_of_the_valley: { ...flower, bloom: 86, growthCost: 20, shareRadius: 2, sharePower: 13,
+    harvest: { item: 'item:nectar', count: 2 } },
+  tulip_red: { ...flower, bloom: 80, growthCost: 17, shareRadius: 2, sharePower: 11 },
+  tulip_orange: { ...flower, bloom: 82, growthCost: 18, shareRadius: 2, sharePower: 12 },
+  tulip_white: { ...flower, bloom: 79, growthCost: 17, shareRadius: 2, sharePower: 11 },
+  tulip_pink: { ...flower, bloom: 84, growthCost: 19, shareRadius: 2, sharePower: 12 },
+  lilac: { ...flower, bloom: 88, growthCost: 24, shareRadius: 3, sharePower: 15 },
+  rose_bush: { ...flower, bloom: 86, growthCost: 22, shareRadius: 3, sharePower: 14,
+    // 玫瑰果：玫瑰丛的独特产物，可酿玫瑰果茶
+    harvest: { item: 'item:rose_hips', count: 2 } },
+  peony: { ...flower, bloom: 84, growthCost: 21, shareRadius: 3, sharePower: 13 },
   // 向日葵是能量枢纽：共享半径 4、单次 24，给整片花园供能
   sunflower: {
     ...flower, bloom: 90, shareRadius: 4, sharePower: 24, hub: true,
     harvest: { item: 'item:nectar', count: 2 },
   },
   // v1.6.0 花海扩充：温带 / 林下 / 雪线 / 沙岸花卉统一走太阳能开花体系
-  lavender: flower,
-  buttercup: flower,
-  forget_me_not: flower,
-  marigold: flower,
+  // 薰衣草是温带花园的第二枢纽：半径 3、供能 14，撑起香草园的能量网络
+  lavender: { ...flower, bloom: 84, growthCost: 19, shareRadius: 3, sharePower: 14, hub: true },
+  buttercup: { ...flower, bloom: 70, growthCost: 12, shareRadius: 1, sharePower: 8 },
+  forget_me_not: { ...flower, bloom: 68, growthCost: 12, shareRadius: 1, sharePower: 7 },
+  marigold: { ...flower, bloom: 74, growthCost: 15, shareRadius: 2, sharePower: 9 },
   foxglove: { ...flower, bloom: 85, growthCost: 20, shareRadius: 3, sharePower: 14 },
   hollyhock: {
     ...flower, bloom: 88, growthCost: 24, shareRadius: 4, sharePower: 22, hub: true,
     harvest: { item: 'item:nectar', count: 2 },
   },
   violet: { ...flower, bloom: 70, growthCost: 14, shareRadius: 1, sharePower: 8 },
-  wood_anemone: { ...flower, bloom: 72, growthCost: 14, shareRadius: 2, sharePower: 10 },
-  wild_garlic: { ...flower, bloom: 70, growthCost: 14, shareRadius: 2, sharePower: 9 },
-  hyacinth: flower,
+  wood_anemone: { ...flower, bloom: 71, growthCost: 14, shareRadius: 2, sharePower: 10 },
+  wild_garlic: { ...flower, bloom: 70, growthCost: 14, shareRadius: 2, sharePower: 9,
+    // 野蒜：林下药草，采收整株大蒜（可食 / 可入菜）
+    harvest: { item: 'item:garlic', count: 1 } },
+  hyacinth: { ...flower, bloom: 81, growthCost: 18, shareRadius: 2, sharePower: 12,
+    harvest: { item: 'item:nectar', count: 2 } },
   snowdrop: { ...flower, bloom: 66, growthCost: 12, shareRadius: 1, sharePower: 8 },
   edelweiss: { metabolism: 'solar', bloom: 78, growthCost: 16, shareRadius: 2, sharePower: 10 },
   snow_lily: {
@@ -102,10 +110,10 @@ export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
   // 幽灵花在沙漠夜里发光，但仍靠阳光蓄能（发光只是观赏特性）
   ghost_flower: { ...flower, bloom: 76, growthCost: 18, shareRadius: 3, sharePower: 14 },
   // 草类：低阈值、低消耗，负责把能量网络铺开
-  tall_grass: grass,
-  fern: grass,
-  tall_fern: grass,
-  beach_grass: grass,
+  tall_grass: { metabolism: 'solar', bloom: 55, growthCost: 12, shareRadius: 1, sharePower: 8 },
+  fern: { metabolism: 'solar', bloom: 50, growthCost: 10, shareRadius: 1, sharePower: 6 },
+  tall_fern: { metabolism: 'solar', bloom: 58, growthCost: 13, shareRadius: 1, sharePower: 8 },
+  beach_grass: { metabolism: 'solar', bloom: 52, growthCost: 10, shareRadius: 1, sharePower: 7 },
   // 作物与灌木
   wheat_seedling: crop,
   wheat_growing: crop,
@@ -129,9 +137,11 @@ export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
   cactus: { metabolism: 'solar', bloom: 60, growthCost: 14, shareRadius: 1, sharePower: 8 },
   vine: { metabolism: 'solar', bloom: 60, growthCost: 12, shareRadius: 2, sharePower: 10 },
   ivy: { metabolism: 'solar', bloom: 58, growthCost: 12, shareRadius: 2, sharePower: 10 },
+  // 树苗：树种成长节奏不同——橡木稳、白桦快蓄能、云杉慢热高储能
+  // 注意 growthCost 不得超过能量上限 100，否则 canGrow 永远不满足、树苗无法成树
   oak_sapling: sapling,
-  birch_sapling: sapling,
-  spruce_sapling: sapling,
+  birch_sapling: { ...sapling, bloom: 92, growthCost: 95, sharePower: 13 },
+  spruce_sapling: { ...sapling, bloom: 96, growthCost: 100, sharePower: 15 },
   // 水生植物：靠水而不是阳光，夜间也能蓄能
   lily_pad: { metabolism: 'hydro', bloom: 70, growthCost: 16, shareRadius: 2, sharePower: 12 },
   duckweed: { metabolism: 'hydro', bloom: 54, growthCost: 8, shareRadius: 1, sharePower: 6 },
@@ -140,8 +150,9 @@ export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
   sea_anemone: { metabolism: 'hydro', bloom: 66, growthCost: 14, shareRadius: 2, sharePower: 12 },
   red_algae: { metabolism: 'hydro', bloom: 58, growthCost: 10, shareRadius: 2, sharePower: 10 },
   // 真菌：靠阴暗蓄能，暴露在强光下会枯萎
-  red_mushroom: { metabolism: 'fungal', bloom: 60, growthCost: 14, shareRadius: 2, sharePower: 12 },
-  brown_mushroom: { metabolism: 'fungal', bloom: 60, growthCost: 14, shareRadius: 2, sharePower: 12 },
+  // 真菌：靠阴暗蓄能，暴露在强光下会枯萎；红菌耐蓄能、褐菌周转快
+  red_mushroom: { metabolism: 'fungal', bloom: 64, growthCost: 15, shareRadius: 2, sharePower: 12 },
+  brown_mushroom: { metabolism: 'fungal', bloom: 58, growthCost: 12, shareRadius: 2, sharePower: 10 },
   // 发光地衣是菌类网络枢纽：光照越暗，供能越强
   glow_lichen: {
     metabolism: 'fungal', bloom: 70, growthCost: 16, shareRadius: 3, sharePower: 16, hub: true,
@@ -165,8 +176,11 @@ export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
     metabolism: 'hydro', bloom: 74, growthCost: 14, shareRadius: 2, sharePower: 12,
     harvest: { item: 'item:nectar', count: 1 },
   },
-  orchid: flower,
-  sage: { ...flower, bloom: 72, growthCost: 14, shareRadius: 2, sharePower: 10 },
+  // 兰花：丛林稀有花卉，开花成本高、花蜜收益也高
+  orchid: { ...flower, bloom: 87, growthCost: 20, shareRadius: 2, sharePower: 13,
+    harvest: { item: 'item:nectar', count: 2 } },
+  // 山鼠尾草是高山雪线的能量枢纽：半径 4 的强供能，撑起高山花甸
+  sage: { ...flower, bloom: 78, growthCost: 16, shareRadius: 4, sharePower: 20, hub: true },
   pitcher_plant: { ...flower, bloom: 78, growthCost: 18, shareRadius: 2, sharePower: 12 },
   glow_cordyceps: {
     metabolism: 'fungal', bloom: 68, growthCost: 15, shareRadius: 3, sharePower: 14,
