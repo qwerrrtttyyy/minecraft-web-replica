@@ -65,6 +65,9 @@ const entries = [
   'src/entity/droppedItem.ts',
   'src/entity/falling.ts',
   'src/world/dropLogic.ts',
+  'src/ai/Node.ts',
+  'src/ai/Blackboard.ts',
+  'src/ai/AIContext.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
