@@ -37,6 +37,8 @@ const entries = [
   'src/services/ServiceContainer.ts',
   'src/services/plugins/PluginService.ts',
   'src/save/save.ts',
+  'src/input/keybindings.ts',
+  'src/input/input.ts',
   'src/world/generator.ts',
   'src/world/blocks.ts',
   'src/world/botany.ts',

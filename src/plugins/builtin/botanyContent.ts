@@ -13,7 +13,7 @@ import type { PlantTrait } from '../../world/plantTraits';
 import type { PlantRule } from '../../world/plantRules';
 
 export const EXPANSION_PLUGIN_ID = 'core:botany-expansion';
-/** 扩展方块 id 起点：内置方块已占用 1~91，必须末位追加且不超过 255 */
+/** 扩展方块 id 起点：插件固定占用 92~97，内置方块已追加到 109，不能超过 255 */
 export const EXPANSION_FIRST_ID = 92;
 /** 单列生成权重累加的上界；插件据此先做一次廉价 roll 过滤再查世界 */
 export const SPAWN_ROLL_CEILING = 0.04;

@@ -35,6 +35,10 @@ export class Engine {
   private readonly onWindowResize: () => void;
   private readonly onOrientation: () => void;
   private readonly onVisualResize: () => void;
+  private readonly onContextLost: (e: Event) => void;
+  private readonly onContextRestored: () => void;
+  /** H06：WebGL 上下文丢失期间暂停渲染，恢复后自动继续（否则画面永久冻结、rAF 空转） */
+  private contextLost = false;
   private orientationTimer = 0;
 
   constructor(container: HTMLElement) {
@@ -61,8 +65,19 @@ export class Engine {
       this.orientationTimer = window.setTimeout(() => this.resize(container), 120);
     };
     this.onVisualResize = () => this.resize(container);
+    this.onContextLost = (e) => {
+      // 移动端切后台 / 显存压力会触发上下文丢失：preventDefault 阻止浏览器放弃恢复
+      e.preventDefault();
+      this.contextLost = true;
+    };
+    this.onContextRestored = () => {
+      this.contextLost = false;
+      this.clock.getDelta(); // 丢弃停顿期间积累的 dt，避免恢复瞬间跳帧
+    };
     addEventListener('resize', this.onWindowResize);
     addEventListener('orientationchange', this.onOrientation);
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
     // 移动端地址栏收放会改变可视区域，需要同步画布尺寸
     if (this.isMobile && window.visualViewport) {
       window.visualViewport.addEventListener('resize', this.onVisualResize);
@@ -105,10 +120,11 @@ export class Engine {
         this.fpsAcc = 0;
         this.fpsCount = 0;
       }
-      if (!this.paused) {
+      if (!this.paused && !this.contextLost) {
         this.elapsed += dt;
         for (const s of this.systems) s.update(dt, this.elapsed);
       }
+      if (this.contextLost) return; // 上下文丢失：不渲染，恢复后自动继续
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -121,6 +137,8 @@ export class Engine {
     clearTimeout(this.orientationTimer);
     removeEventListener('resize', this.onWindowResize);
     removeEventListener('orientationchange', this.onOrientation);
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     if (this.isMobile && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.onVisualResize);
     }

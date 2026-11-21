@@ -110,11 +110,35 @@ export function validateSave(data: unknown): data is SaveData {
   return finite(d.savedAt);
 }
 
+export type SaveLoadResult =
+  | { status: 'ok'; data: SaveData }
+  | { status: 'no-save' }
+  | { status: 'corrupt'; reason: string }
+  | { status: 'transient-error'; reason: string };
+
 export interface ISaveProvider {
   load(): Promise<SaveData | null>;
+  /** 三态加载（H01）：区分「无档 / 坏档 / 瞬时故障」，调用方据此决定是否允许覆盖写 */
+  loadResult?(): Promise<SaveLoadResult>;
+  /** 坏档隔离（H01）：把原始存档复制到备份 key 而非丢弃，返回是否隔离成功 */
+  quarantine?(): Promise<boolean>;
   /** 返回写入的字节数（可选），用于 save:done 事件 */
   save(data: SaveData): Promise<number | void>;
   clear(): Promise<void>;
+}
+
+/**
+ * 三态加载的统一入口：老式 provider（load 可能 throw）也包装成结果对象，
+ * 任何加载路径都不会再出现「读不出来 → 当作无档 → 覆盖清档」的静默丢失。
+ */
+export async function loadSaveResult(provider: ISaveProvider): Promise<SaveLoadResult> {
+  try {
+    if (provider.loadResult) return await provider.loadResult();
+    const data = await provider.load();
+    return data ? { status: 'ok', data } : { status: 'no-save' };
+  } catch (e) {
+    return { status: 'transient-error', reason: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /**
@@ -157,12 +181,35 @@ export class LocalStorageProvider implements ISaveProvider {
   constructor(private key = 'minecraft-ts-save-v1') {}
 
   async load(): Promise<SaveData | null> {
+    const res = await this.loadResult();
+    return res.status === 'ok' ? res.data : null;
+  }
+
+  async loadResult(): Promise<SaveLoadResult> {
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(this.key);
+    } catch {
+      return { status: 'transient-error', reason: 'localStorage 不可用' };
+    }
+    if (!raw) return { status: 'no-save' };
+    try {
+      const data = normalizeSave(JSON.parse(raw));
+      if (data) return { status: 'ok', data };
+      return { status: 'corrupt', reason: '存档字段校验失败' };
+    } catch {
+      return { status: 'corrupt', reason: '存档不是有效的 JSON' };
+    }
+  }
+
+  async quarantine(): Promise<boolean> {
     try {
       const raw = localStorage.getItem(this.key);
-      if (!raw) return null;
-      return normalizeSave(JSON.parse(raw));
+      if (!raw) return false;
+      localStorage.setItem(`${this.key}-corrupt-${Date.now()}`, raw);
+      return true;
     } catch {
-      return null;
+      return false;
     }
   }
 
@@ -221,9 +268,14 @@ export class IndexedDBProvider implements ISaveProvider {
     try {
       return await new Promise<T>((resolve, reject) => {
         const t = db.transaction(IDB_STORE, mode);
+        let result: T;
         const req = fn(t.objectStore(IDB_STORE));
-        req.onsuccess = () => resolve(req.result);
+        // H02：等 transaction.oncomplete（事务真正持久化）而不是 req.onsuccess，
+        // 否则页面卸载阶段发起的写入可能未提交就被浏览器丢弃
+        req.onsuccess = () => { result = req.result; };
         req.onerror = () => reject(req.error ?? new Error('IndexedDB 事务失败'));
+        t.oncomplete = () => resolve(result);
+        t.onabort = () => reject(t.error ?? new Error('IndexedDB 事务中止'));
       });
     } finally {
       db.close();
@@ -231,18 +283,39 @@ export class IndexedDBProvider implements ISaveProvider {
   }
 
   async load(): Promise<SaveData | null> {
+    const res = await this.loadResult();
+    return res.status === 'ok' ? res.data : null;
+  }
+
+  async loadResult(): Promise<SaveLoadResult> {
+    let raw: unknown;
+    try {
+      raw = await this.tx<unknown>('readonly', (s) => s.get(this.key) as IDBRequest<unknown>);
+    } catch (e) {
+      return { status: 'transient-error', reason: e instanceof Error ? e.message : 'IndexedDB 读取失败' };
+    }
+    if (raw === null || raw === undefined) return { status: 'no-save' };
+    const data = normalizeSave(raw);
+    if (data) return { status: 'ok', data };
+    return { status: 'corrupt', reason: '存档字段校验失败' };
+  }
+
+  async quarantine(): Promise<boolean> {
     try {
       const raw = await this.tx<unknown>('readonly', (s) => s.get(this.key) as IDBRequest<unknown>);
-      return normalizeSave(raw ?? null);
+      if (raw === null || raw === undefined) return false;
+      await this.tx('readwrite', (s) => s.put(raw, `${this.key}-corrupt-${Date.now()}`) as IDBRequest<IDBValidKey>);
+      return true;
     } catch {
-      return null;
+      return false;
     }
   }
 
   async save(data: SaveData): Promise<number> {
-    const json = JSON.stringify(data);
-    await this.tx('readwrite', (s) => s.put(JSON.parse(json), this.key) as IDBRequest<IDBValidKey>);
-    return json.length;
+    // H04：直接结构化克隆写入——JSON.stringify/parse 往返纯属多余，
+    // 且与 edits 数量成正比、全跑在主线程（每 8 秒一次 autosave）
+    await this.tx('readwrite', (s) => s.put(data, this.key) as IDBRequest<IDBValidKey>);
+    return data.edits.length;
   }
 
   async clear(): Promise<void> {

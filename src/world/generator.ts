@@ -17,7 +17,9 @@ export interface IWorldGenerator {
   columnInfo?(x: number, z: number): ColumnInfo;
 }
 
-export type BiomeId = 'ocean' | 'beach' | 'desert' | 'plains' | 'forest' | 'taiga' | 'alpine';
+export type BiomeId =
+  | 'ocean' | 'beach' | 'desert' | 'plains' | 'forest' | 'taiga' | 'alpine'
+  | 'mesa' | 'swamp' | 'savanna' | 'cherry';
 
 /** 地表一列的自然属性（不依赖区块是否已生成） */
 export interface ColumnInfo {
@@ -63,7 +65,10 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   riverDepth: 7,
   spawnUplift: 3,
   spawnRadius: 82,
-  treeDensity: { plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05 },
+  treeDensity: {
+    plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05,
+    mesa: 0, swamp: 0.1, savanna: 0.06, cherry: 0.3,
+  },
   oreRichness: 1,
 };
 
@@ -101,6 +106,11 @@ export interface BiomeProfile {
   lilyChance?: number;
   /** 地表生成南瓜的概率（0 关闭） */
   pumpkinChance?: number;
+  /**
+   * 层状填充方块（恶地彩色陶瓦）：按深度循环分层，替代 filler / stone；
+   * 缺省走普通「石头 + 3 层 filler」地层。
+   */
+  strata?: readonly string[];
 }
 
 export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
@@ -166,6 +176,37 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     clayChance: 0, cactusChance: 0, caneChance: 0,
     trees: [{ species: 'spruce', weight: 1 }],
   },
+  mesa: {
+    surface: 'red_sand', filler: 'terracotta_orange',
+    strata: ['terracotta_red', 'terracotta_orange', 'terracotta_yellow', 'terracotta_white', 'terracotta_blue'],
+    plants: [{ name: 'dead_bush', weight: 0.01 }],
+    clayChance: 0, cactusChance: 0.015, caneChance: 0,
+  },
+  swamp: {
+    surface: 'mud', filler: 'mud',
+    // 植物只用地形装饰允许出现在沼泽的名单（fern / 蘑菇因乔木与生态指示角色留出）
+    plants: [
+      { name: 'moss_carpet', weight: 0.05 }, { name: 'tall_grass', weight: 0.03 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.06,
+    lilyChance: 0.03,
+    trees: [{ species: 'oak', weight: 1 }],
+  },
+  savanna: {
+    surface: 'dry_grass', filler: 'dirt',
+    plants: [{ name: 'tall_grass', weight: 0.05 }, { name: 'dead_bush', weight: 0.004 }],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'acacia', weight: 1 }],
+  },
+  cherry: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'tall_grass', weight: 0.03 }, { name: 'moss_carpet', weight: 0.03 },
+      { name: 'poppy', weight: 0.006 }, { name: 'dandelion', weight: 0.006 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.02,
+    trees: [{ species: 'cherry', weight: 1 }],
+  },
 };
 
 interface ColumnBase {
@@ -201,6 +242,7 @@ interface ResolvedProfile {
   waterPlantChance: number;
   lilyChance: number;
   pumpkinChance: number;
+  strataIds: number[];
 }
 
 /** 单区块生成的共享上下文：列信息、高度网格与坐标换算只构建一次 */
@@ -306,6 +348,8 @@ export class DefaultGenerator implements IWorldGenerator {
       clay: id('clay'), cactus: id('cactus'), cane: id('sugar_cane'),
       seagrass: id('seagrass'), kelp: id('kelp'), lilyPad: id('lily_pad'),
       pumpkin: id('pumpkin'),
+      acaciaLog: id('acacia_log'), acaciaLeaves: id('acacia_leaves'),
+      cherryLog: id('cherry_log'), cherryLeaves: id('cherry_leaves'),
     };
 
     const resolved = {} as Record<BiomeId, ResolvedProfile>;
@@ -329,6 +373,7 @@ export class DefaultGenerator implements IWorldGenerator {
         waterPlantChance: p.waterPlantChance ?? 0,
         lilyChance: p.lilyChance ?? 0,
         pumpkinChance: p.pumpkinChance ?? 0,
+        strataIds: (p.strata ?? []).map(id),
       };
     }
     this.profiles = resolved;
@@ -424,9 +469,17 @@ export class DefaultGenerator implements IWorldGenerator {
     let biome: BiomeId;
     if (height < SEA_LEVEL) biome = 'ocean';
     else if (height <= SEA_LEVEL + 1) biome = 'beach';
+    // 沼泽：高湿（m>0.62）中温（0.3~0.62）低平（海拔 +8 内）
+    else if (m > 0.62 && t >= 0.30 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp';
     else if (alt > 0.55 || (t < 0.2 && height > 50)) biome = 'alpine';
     else if (t < 0.3) biome = 'taiga';
+    // 恶地：比沙漠更热更干
+    else if (t > 0.68 && m < 0.28) biome = 'mesa';
     else if (t > 0.68 && m < 0.45) biome = 'desert';
+    // 樱花林：温和至暖 + 高湿度区，优先于高湿群系（湿度阈值靠末端增宽，稀有度归因）
+    else if (m >= 0.60 && m < 0.70 && t >= 0.40 && t <= 0.68) biome = 'cherry';
+    // 热带草原：暖且湿度中等（0.45~0.62）
+    else if (t > 0.6 && m >= 0.45 && m < 0.62) biome = 'savanna';
     else if (m > 0.56) biome = 'forest';
     else biome = 'plains';
 
@@ -537,25 +590,31 @@ export class DefaultGenerator implements IWorldGenerator {
           top = I.clay;
         }
 
+        const strata = profile.strataIds;
+        // wobble 只依赖列坐标，是列常量：提到 y 循环外，避免每格重复做整数哈希
+        const strataWobble = strata.length > 0 ? this.hash2i(wx, wz, 0x7c19) * 1.5 : 0;
         for (let y = 0; y <= h; y++) {
           let id: number;
           if (y === 0) {
             id = I.bedrock;
-          } else if (y < h - 3) {
-            id = I.stone;
+          } else if (y < h) {
+            // 层状地貌（恶地）：按深度循环彩色陶瓦；其余群系保持「石头 + 3 层 filler」
+            if (strata.length > 0) {
+              id = strata[Math.floor((h - y) / 1.6 + strataWobble) % strata.length];
+            } else {
+              id = y < h - 3 ? I.stone : filler;
+            }
             const cover = h - y;
             const minCover = 5;
             // 洞穴随「距地表深度」渐隐；水下地层完全不挖，
             // 否则会形成被海水压住的空气袋（玩家游过突然能呼吸、渲染出现水下空洞）
             const fade = h >= SEA_LEVEL ? smoothstep(minCover, minCover + 5, cover) : 0;
-            if (fade > 0 && y > 3) {
+            if (fade > 0 && y > 3 && cover > 3) {
               const n1 = this.cave.noise3(wx / 26, y / 11, wz / 26);
               const n2 = this.cave2.noise3(wx / 16 + 50, y / 13, wz / 16 - 30);
               const tunnel = 1 - Math.abs(n1);
               if (tunnel > lerp(1.1, 0.905, fade) || n2 > lerp(1.1, 0.6, fade)) id = 0;
             }
-          } else if (y < h) {
-            id = filler;
           } else {
             id = top;
           }
@@ -609,7 +668,11 @@ export class DefaultGenerator implements IWorldGenerator {
           // 限定群系的矿脉逐格校验，避免矿脉跨过群系边界（绿宝石不跑到山脚）
           if (!v.biome || this.biomeAt(ctx.x0 + px, ctx.z0 + pz) === v.biome) {
             const j = ctx.idx(px, py, pz);
-            if (data[j] === I.stone) data[j] = v.id;
+            // 恶地用彩色陶瓦代替石头，允许煤 / 铁等替换底部的陶瓦层（废弃矿井效果）
+            const top = data[j];
+            const writable = top === I.stone ||
+              (ctx.at(px, pz).biome === 'mesa' && top !== 0 && top !== I.bedrock);
+            if (writable) data[j] = v.id;
           }
           px += ((rng() * 3) | 0) - 1;
           py += ((rng() * 3) | 0) - 1;
@@ -630,9 +693,11 @@ export class DefaultGenerator implements IWorldGenerator {
     const gz0 = Math.floor((z0 - PAD - TREE_CELL) / TREE_CELL);
     const gz1 = Math.floor((z0 + CS + PAD) / TREE_CELL);
     const logOf = (s: TreeSpecies) =>
-      s === 'birch' ? I.birchLog : s === 'spruce' ? I.spruceLog : I.log;
+      s === 'birch' ? I.birchLog : s === 'spruce' ? I.spruceLog :
+      s === 'acacia' ? I.acaciaLog : s === 'cherry' ? I.cherryLog : I.log;
     const leafOf = (s: TreeSpecies) =>
-      s === 'birch' ? I.birchLeaves : s === 'spruce' ? I.spruceLeaves : I.leaves;
+      s === 'birch' ? I.birchLeaves : s === 'spruce' ? I.spruceLeaves :
+      s === 'acacia' ? I.acaciaLeaves : s === 'cherry' ? I.cherryLeaves : I.leaves;
 
     for (let gz = gz0; gz <= gz1; gz++) {
       for (let gx = gx0; gx <= gx1; gx++) {

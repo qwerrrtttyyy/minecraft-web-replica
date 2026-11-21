@@ -184,6 +184,7 @@ export class ChunkManager implements System {
   private camWorld = new THREE.Vector3();
   private lastSortCam = new THREE.Vector3(Infinity, Infinity, Infinity);
   private sortAcc = 0;
+  private backpressureAcc = 0;
   private sortDirty = true;
   private transparentOrderCache: { key: string; pass: 'transparent' | 'water'; dist: number; order: number }[] = [];
 
@@ -413,7 +414,13 @@ export class ChunkManager implements System {
     this.inFlight.set(key, { generation, promise, resolve });
 
     if (this.mode === 'main') {
-      this.applySync(cx, cz);
+      // H05：主线程路径必须兜住异常——applySync 抛错时若不释放 inFlight，
+      // 该 key 永久卡在途，backlog 涨满后整条生成流停摆（initialLoad 则永挂黑屏）
+      try {
+        this.applySync(cx, cz);
+      } catch (e) {
+        console.error(`[mesher] 主线程网格化失败 (${cx}, ${cz})，跳过该区块：`, e);
+      }
       this.inFlight.delete(key);
       resolve();
     } else {
@@ -456,7 +463,11 @@ export class ChunkManager implements System {
         }
       } else {
         console.error('[mesher] 区块网格化失败，主线程补算：', msg.message);
-        this.applySync(msg.cx, msg.cz);
+        try {
+          this.applySync(msg.cx, msg.cz);
+        } catch (e) {
+          console.error(`[mesher] 主线程补算失败 (${msg.cx}, ${msg.cz})，跳过该区块：`, e);
+        }
       }
       rec.resolve();
     }
@@ -559,7 +570,12 @@ export class ChunkManager implements System {
     // 1) 数据生成（背压：dirty + 在途网格任务积压时停止继续生成）
     const backlog = this.world.dirty.size + this.inFlight.size;
     if (backlog >= BACKLOG_LIMIT) {
-      this.events.emit('stream:backpressure', { dirty: backlog });
+      // M02：背压事件加 0.5s 节流，不再每帧重发
+      this.backpressureAcc += dt;
+      if (this.backpressureAcc >= 0.5) {
+        this.backpressureAcc = 0;
+        this.events.emit('stream:backpressure', { dirty: backlog });
+      }
     } else {
       const genStart = performance.now();
       for (const [dx, dz] of this.spiral(R)) {
@@ -602,8 +618,9 @@ export class ChunkManager implements System {
     }
 
     // 3) 卸载：按 world.chunks 遍历，在途任务一并取消
+    // M02：Map 迭代中删除条目是安全（不会重访已删项），无需每帧全量拷贝 441 项
     const limit = R + 2;
-    for (const [key, chunk] of [...this.world.chunks]) {
+    for (const [key, chunk] of this.world.chunks) {
       if (Math.abs(chunk.cx - cx) <= limit && Math.abs(chunk.cz - cz) <= limit) continue;
       const rec = this.inFlight.get(key);
       if (rec) { this.inFlight.delete(key); rec.resolve(); }
@@ -613,7 +630,7 @@ export class ChunkManager implements System {
         this.meshes.delete(key);
         this.sortDirty = true;
       }
-      this.world.chunks.delete(key);
+      this.world.unloadChunk(key);
       this.world.dirty.delete(key);
       this.events.emit('chunk:unloaded', { cx: chunk.cx, cz: chunk.cz });
     }

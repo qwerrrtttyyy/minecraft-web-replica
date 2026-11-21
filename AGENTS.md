@@ -98,7 +98,7 @@ src/
    不要散进 UI 或 main.ts。材料标识用方块名 / `item:xxx`；背包键与材料标识的转换
    只放在组装根的 `craftingHost`。合成匹配必须严格：多一个不相干材料就不该匹配。
 4. **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗一律写进
-   `BIOME_PROFILES`（7 个群系），不要在阶段里散落 `if (biome === ...)`。
+   `BIOME_PROFILES`（11 个群系），不要在阶段里散落 `if (biome === ...)`。
 5. **生成阶段顺序是契约**：`TERRAIN_STAGES = ['columns', 'ores', 'trees', 'decorate']`，
    插入新阶段要同步更新阶段顺序断言。
 6. **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，

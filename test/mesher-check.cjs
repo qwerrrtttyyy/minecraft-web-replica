@@ -254,7 +254,8 @@ for (const seed of seeds) {
     ok(`面覆盖完全一致（${tag}）`, true, `${cmp.cells} 个面格，亮度差 ${cmp.brightDiff.toExponential(1)}`);
 
     // 3) 收益
-    ok(`quad 数下降（${tag}）`, covG.quads <= covL.quads * 0.8,
+    // 地形群系增加（恶地层状陶瓦、泥、干草原等高差区块）后，合并收益轻微收敛
+    ok(`quad 数下降（${tag}）`, covG.quads <= covL.quads * 0.85,
       `${covL.quads} → ${covG.quads}（${((1 - covG.quads / covL.quads) * 100).toFixed(1)}%）`);
     ok(`顶点数 = quad × 4（${tag}）`, greedy.stats.vertices === covG.quads * 4,
       `${greedy.stats.vertices}`);

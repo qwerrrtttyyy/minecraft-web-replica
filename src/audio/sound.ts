@@ -12,11 +12,14 @@ export class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
+  private eatTimeout: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   /** 必须在用户手势中调用一次以解锁音频 */
-  unlock() {
+  async unlock(): Promise<void> {
+    if (this.disposed) return;
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state === 'suspended') await this.ctx.resume();
       return;
     }
     try {
@@ -30,6 +33,8 @@ export class SoundEngine {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     } catch {
       this.ctx = null;
+      this.master = null;
+      this.noiseBuf = null;
     }
   }
 
@@ -42,6 +47,21 @@ export class SoundEngine {
   setVolume(v: number) {
     this.volume = clamp(v, 0, 100) / 100;
     if (this.master && this.enabled) this.master.gain.value = this.volume;
+  }
+
+  /** 清理音频资源，取消所有挂起的定时器 */
+  dispose(): void {
+    this.disposed = true;
+    if (this.eatTimeout) {
+      clearTimeout(this.eatTimeout);
+      this.eatTimeout = null;
+    }
+    if (this.ctx) {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+    }
+    this.master = null;
+    this.noiseBuf = null;
   }
 
   private burst(freq: number, dur: number, gain: number, type: BiquadFilterType = 'bandpass', q = 1.2) {
@@ -76,6 +96,11 @@ export class SoundEngine {
     osc.stop(t + dur + 0.02);
   }
 
+  /** 音高微随机：同一动作连续触发时不腻，幅度按音色需求调整 */
+  private vary(freq: number, amount = 0.1): number {
+    return freq * (1 + (Math.random() * 2 - 1) * amount);
+  }
+
   private matFreq(mat: SoundMaterial): number {
     switch (mat) {
       case 'stone': return 720;
@@ -90,21 +115,21 @@ export class SoundEngine {
   }
 
   dig(mat: SoundMaterial, hardness = 1) {
-    const f = this.matFreq(mat) * (0.9 + Math.random() * 0.2);
+    const f = this.vary(this.matFreq(mat), 0.1);
     this.burst(f, 0.14, 0.5, 'bandpass', 1.4);
-    if (mat === 'glass') this.tone(2200, 0.1, 0.12, 'triangle', 1400);
+    if (mat === 'glass') this.tone(this.vary(2200), 0.1, 0.12, 'triangle', 1400);
     if (mat === 'stone') this.burst(f * 0.5, 0.1, 0.25, 'lowpass');
     void hardness;
   }
 
   place(mat: SoundMaterial) {
-    const f = this.matFreq(mat) * 0.8;
+    const f = this.vary(this.matFreq(mat) * 0.8);
     this.burst(f, 0.1, 0.42, 'bandpass', 1.6);
-    this.tone(f * 0.5, 0.06, 0.1, 'triangle');
+    this.tone(this.vary(f * 0.5, 0.08), 0.06, 0.1, 'triangle');
   }
 
   step(mat: SoundMaterial, gain = 0.16) {
-    this.burst(this.matFreq(mat) * (0.8 + Math.random() * 0.4), 0.07, gain, 'lowpass', 0.8);
+    this.burst(this.vary(this.matFreq(mat), 0.2), 0.07, gain, 'lowpass', 0.8);
   }
 
   splash() {
@@ -113,32 +138,33 @@ export class SoundEngine {
 
   /** 受伤：短促下滑的低音 */
   hurt() {
-    this.burst(180, 0.22, 0.34, 'lowpass', 0.7);
+    this.burst(this.vary(180, 0.08), 0.22, 0.34, 'lowpass', 0.7);
   }
 
-  /** 近战命中：干脆的打击感 */
+  /** 近战命中：干脆的打击感，加一记高频「咔」让命中确认更明确 */
   hit() {
-    this.burst(420, 0.1, 0.3, 'bandpass', 2.2);
+    this.burst(this.vary(420, 0.12), 0.1, 0.34, 'bandpass', 2.2);
+    this.tone(this.vary(1200, 0.1), 0.045, 0.1, 'square', 600);
   }
 
   /** 进食：两段咀嚼 */
   eat() {
-    this.burst(260, 0.08, 0.22, 'lowpass', 1.2);
-    setTimeout(() => this.burst(210, 0.08, 0.18, 'lowpass', 1.2), 160);
+    this.burst(this.vary(260, 0.1), 0.08, 0.22, 'lowpass', 1.2);
+    setTimeout(() => this.burst(this.vary(210, 0.1), 0.08, 0.18, 'lowpass', 1.2), 160);
   }
 
   fuse() {
-    this.burst(3200, 1.5, 0.16, 'highpass', 0.6);
+    this.burst(this.vary(3200, 0.06), 1.5, 0.16, 'highpass', 0.6);
   }
 
   explosion() {
     if (!this.ctx || !this.master || !this.enabled) return;
-    this.burst(180, 0.7, 0.9, 'lowpass', 0.5);
-    this.burst(60, 0.9, 0.8, 'lowpass', 0.4);
-    this.tone(110, 0.6, 0.5, 'sine', 30);
+    this.burst(this.vary(180, 0.12), 0.7, 0.9, 'lowpass', 0.5);
+    this.burst(this.vary(60, 0.1), 0.9, 0.8, 'lowpass', 0.4);
+    this.tone(this.vary(110, 0.08), 0.6, 0.5, 'sine', 30);
   }
 
   click(freq = 660) {
-    this.tone(freq, 0.06, 0.12, 'square');
+    this.tone(this.vary(freq, 0.05), 0.06, 0.12, 'square');
   }
 }

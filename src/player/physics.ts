@@ -30,20 +30,18 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
   body.onGround = false;
   const half = body.width / 2;
 
-  const collide = (axis: 'x' | 'y' | 'z', delta: number) => {
-    if (delta === 0) return;
-    body.pos[axis] += delta;
-    const minX = Math.floor(body.pos.x - half);
-    const maxX = Math.floor(body.pos.x + half);
-    const minY = Math.floor(body.pos.y);
-    const maxY = Math.floor(body.pos.y + body.height);
-    const minZ = Math.floor(body.pos.z - half);
-    const maxZ = Math.floor(body.pos.z + half);
-    const forward = delta > 0;
-    // 收集同轴所有重叠方块，取移动方向上最近的阻挡面后再钳制。
-    // 旧实现「第一个命中即 return」在高速斜向移动、AABB 同轴覆盖多个方块时可能钳制到
-    // 较远的那个（遍历顺序而非最近距离），造成穿透或抖动；dt 已钳制到 0.05 故实际罕见，
-    // 这里按最近距离选择以彻底消除该隐患。
+  const aabbCells = () => ({
+    minX: Math.floor(body.pos.x - half),
+    maxX: Math.floor(body.pos.x + half),
+    minY: Math.floor(body.pos.y),
+    maxY: Math.floor(body.pos.y + body.height),
+    minZ: Math.floor(body.pos.z - half),
+    maxZ: Math.floor(body.pos.z + half),
+  });
+
+  /** 沿某轴取移动方向上最近的阻挡面坐标；无重叠返回 null */
+  const nearestBlocking = (axis: 'x' | 'y' | 'z', forward: boolean): number | null => {
+    const { minX, maxX, minY, maxY, minZ, maxZ } = aabbCells();
     let nearest: number | null = null;
     for (let y = minY; y <= maxY; y++) {
       for (let z = minZ; z <= maxZ; z++) {
@@ -54,7 +52,10 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
         }
       }
     }
-    if (nearest === null) return;
+    return nearest;
+  };
+
+  const clampAxis = (axis: 'x' | 'y' | 'z', forward: boolean, nearest: number) => {
     if (axis === 'x') {
       body.pos.x = forward ? nearest - half - EPS : nearest + 1 + half + EPS;
       body.vel.x = 0;
@@ -73,6 +74,56 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
         if (!wasGround && body.vel.y < -8) res.landed = true;
       }
       body.vel.y = 0;
+    }
+  };
+
+  const collide = (axis: 'x' | 'y' | 'z', delta: number) => {
+    if (delta !== 0) {
+      // H08：子步扫掠——单步位移不超过半格，高速不再穿透 1 格薄地板 / 薄墙，
+      // 也不再「一步跨进方块内部后钳到错误的面」
+      const steps = Math.max(1, Math.ceil(Math.abs(delta) / 0.5));
+      const step = delta / steps;
+      for (let i = 0; i < steps; i++) {
+        body.pos[axis] += step;
+        const nearest = nearestBlocking(axis, step > 0);
+        if (nearest !== null) {
+          clampAxis(axis, step > 0, nearest);
+          break; // 已贴合，本轴不再前进
+        }
+      }
+      return;
+    }
+    // H08：去嵌入——delta===0（被嵌住的轴）也要解算：沿该轴取位移更小的
+    // 退出面把身体推出去，不再因早退「永不解算」（表现为贴墙上爬 / 卡死）
+    const { minX, maxX, minY, maxY, minZ, maxZ } = aabbCells();
+    let best: { pos: number; dist: number } | null = null;
+    const consider = (candidate: number) => {
+      const dist = Math.abs(candidate - body.pos[axis]);
+      if (best === null || dist < best.dist) best = { pos: candidate, dist };
+    };
+    let overlapping = false;
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          if (!world.isSolidAt(x, y, z)) continue;
+          const c = axis === 'x' ? x : axis === 'z' ? z : y;
+          if (axis === 'y') {
+            consider(c - body.height - EPS); // 从方块顶面上方退出
+            consider(c + 1 + EPS);            // 从方块底面下方退出
+          } else {
+            consider(c - half - EPS);         // 从方块 -面退出
+            consider(c + 1 + half + EPS);     // 从方块 +面退出
+          }
+          overlapping = true;
+        }
+      }
+    }
+    if (overlapping && best) {
+      const target = (best as { pos: number }).pos;
+      const forward = target < body.pos[axis];
+      const nearest = nearestBlocking(axis, forward);
+      if (nearest !== null) clampAxis(axis, forward, nearest);
+      else body.pos[axis] = target;
     }
   };
 

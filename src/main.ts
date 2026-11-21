@@ -33,9 +33,10 @@ import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
 import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
 import {
-  createDefaultSaveProvider, downloadSave, pickSaveFile,
+  createDefaultSaveProvider, downloadSave, loadSaveResult, normalizeSave, pickSaveFile,
   validateSave, type ISaveProvider, type SaveData,
 } from './save/save';
+import { boxIntersectsBlock } from './player/physics';
 import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
 import { WasmRuntime } from './wasm/runtime';
@@ -88,9 +89,39 @@ async function boot() {
   // 默认 IndexedDB（localStorage 5MB 上限是丢档隐患），不可用时自动降级；
   // localStorage 里的历史存档会一次性迁移（createDefaultSaveProvider）
   let provider: ISaveProvider = await createDefaultSaveProvider();
-  let saved = await provider.load();
+  let saved: SaveData | null = null;
+  /** H01：加载阶段瞬时故障时旧档状态未知，禁止一切写入以免覆盖清档 */
+  let saveBlocked = false;
+  /** H01：加载告警延迟到 HUD 建好后展示（toast） */
+  let loadWarning: string | null = null;
+  const loadRes = await loadSaveResult(provider);
+  if (loadRes.status === 'ok') {
+    saved = loadRes.data;
+  } else if (loadRes.status === 'corrupt') {
+    // 坏档先隔离保留，再当新世界开局；绝不静默丢弃旧档
+    const kept = (await provider.quarantine?.()) ?? false;
+    loadWarning = kept
+      ? '检测到损坏的存档，已隔离保留为备份，本次将生成新世界'
+      : '检测到损坏的存档且隔离失败，本次将生成新世界（旧档未被删除）';
+  } else if (loadRes.status === 'transient-error') {
+    saveBlocked = true;
+    loadWarning = '存档读取失败，自动保存已暂停以保护旧档（可稍后刷新重试）';
+  }
   const pendingSeed = sessionStorage.getItem('mc-ts-new-seed');
   const pendingModeRaw = sessionStorage.getItem('mc-ts-new-mode');
+  // H02：卸载镜像（同步写 localStorage）可能比主后端最后一次自动保存更新
+  if (saved && pendingSeed === null) {
+    try {
+      const mirrorRaw = localStorage.getItem('minecraft-ts-save-v1-unload');
+      if (mirrorRaw) {
+        const mirror = normalizeSave(JSON.parse(mirrorRaw));
+        if (mirror && (!saved || mirror.savedAt > saved.savedAt)) {
+          saved = mirror;
+          void provider.save(mirror);
+        }
+      }
+    } catch { /* 镜像损坏则忽略 */ }
+  }
   let seed: number;
   let gameMode: GameMode = saved?.mode ?? 'survival';
   if (pendingSeed !== null) {
@@ -196,6 +227,11 @@ async function boot() {
   const falling = new FallingSystem(world, registry, atlas, engine.scene, events);
   falling.onPlantDrop = (def) => player.collectDrops(def);
   player.setFalling(falling);
+  // H09：落点在玩家/生物 AABB 内的沙块悬停等待，不实体化进实体
+  falling.isBlocked = (x, y, z) => {
+    if (boxIntersectsBlock(player.pos, player.width, player.height, x, y, z)) return true;
+    return entities.entities.some((e) => boxIntersectsBlock(e.pos, e.width, e.height, x, y, z));
+  };
   // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
     const def = registry.get(block);
@@ -242,6 +278,7 @@ async function boot() {
   /** 保存序号：只允许最新一次保存清脏标记 */
   let saveSeq = 0;
   let lastSaveOkAt = 0;
+  let lastSaveFailToastAt = 0;
   const markDirty = () => {
     dirtySave = true;
     dirtyVersion++;
@@ -279,6 +316,7 @@ async function boot() {
     savedAt: Date.now(),
   });
   const saveNow = () => {
+    if (saveBlocked) return; // H01：旧档状态未知，写入即覆盖清档
     const data = collectSave();
     const seq = ++saveSeq;
     const version = dirtyVersion;
@@ -290,12 +328,18 @@ async function boot() {
         if (seq !== saveSeq) return;
         if (version === dirtyVersion) dirtySave = false;
         lastSaveOkAt = Date.now();
-        events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : JSON.stringify(data).length });
+        // H04：bytes 现在是 provider 返回的轻量度量（edits 条数），不再 stringify 全档
+        events.emit('save:done', { bytes: typeof bytes === 'number' ? bytes : 0 });
       })
       .catch((e) => {
         // 保存失败时保留 dirty 标记，8 秒后重试；旧保存的失败不覆盖新保存结果
         if (seq === saveSeq) dirtySave = true;
         console.warn('存档失败', e);
+        // H03：失败不能只打 console——玩家要有感知（30 秒节流，避免每个 autosave 周期刷屏）
+        if (Date.now() - lastSaveFailToastAt > 30000) {
+          lastSaveFailToastAt = Date.now();
+          hud.toast('存档保存失败：可能是存储空间不足，建议先导出存档备份');
+        }
       });
     saveAcc = 0;
   };
@@ -337,8 +381,10 @@ async function boot() {
         }
       }
     }
+    // M04：批量写入爆炸破坏的方块，光照在末尾统一排空（deferred flush），
+    // 避免球形区域内相邻格的光照回收重复触发完整 BFS。
+    world.setBlocks(destroyed.map(([x, y, z]) => [x, y, z, AIR] as [number, number, number, BlockId]));
     for (const [x, y, z, id] of destroyed) {
-      world.setBlock(x, y, z, AIR);
       if (registry.get(id).name === 'tnt') {
         events.emit('block:ignite', { x, y, z });
       } else {
@@ -352,14 +398,25 @@ async function boot() {
     sound.explosion();
     hud.flash();
     const blastCenter = new THREE.Vector3(cx, cy, cz);
+
+    // M13: 视线检查辅助函数——从爆炸中心向目标发射射线，若被实体方块阻挡则返回 false
+    const hasLineOfSight = (target: THREE.Vector3): boolean => {
+      const dir = new THREE.Vector3().subVectors(target, blastCenter);
+      const dist = dir.length();
+      if (dist === 0) return true;
+      dir.normalize();
+      const hit = world.raycast(blastCenter.clone(), dir, dist - 0.01);
+      return hit === null;
+    };
+
     const dist = player.pos.distanceTo(blastCenter);
     player.shake(clamp(0.75 * (1 - dist / 12), 0, 0.75));
-    if (survival.isSurvival && dist < r * 1.6) {
+    if (survival.isSurvival && dist < r * 1.6 && hasLineOfSight(player.pos)) {
       survival.damage(Math.round(9 * (1 - dist / (r * 1.6))), '爆炸');
     }
     for (const e of entities.entities) {
       const d = e.pos.distanceTo(blastCenter);
-      if (d < r * 2.5 && d > 0.01) {
+      if (d < r * 2.5 && d > 0.01 && hasLineOfSight(e.pos)) {
         const k = 9 / Math.max(1, d);
         e.vel.x += (e.pos.x - cx) * k;
         e.vel.y += 4 * k;
@@ -1083,8 +1140,10 @@ async function boot() {
       }
       switch (e.type) {
         case 'pause':
-          // 导入/导出面板盖在最上层，Esc 先关它，再轮到设置页
-          if (hud.optionsIOOpen) {
+          // 导入/导出面板与关于页盖在最上层，Esc 先关它们，再轮到设置页
+          if (hud.aboutOpen) {
+            hud.showAbout(false);
+          } else if (hud.optionsIOOpen) {
             hud.showOptionsIO(false);
           } else if (hud.optionsOpen) {
             // 设置页盖在最上层，Esc 先关它（标题屏打开时也适用）
@@ -1312,15 +1371,27 @@ async function boot() {
   for (let i = 0; i < 5; i++) entities.trySpawnNear(player.pos);
   hud.setLoading(null);
   hud.showTitle(true);
+  if (loadWarning) hud.toast(loadWarning);
   engine.start();
   // 运行时诊断组：每 10 秒采样一次，异常集合变化时才输出（避免刷屏）
   diagnostics.start();
 
-  addEventListener('beforeunload', () => {
-    if (!suppressUnloadSave && (mode === 'playing' || mode === 'paused')) saveNow();
-  });
+  // H02：beforeunload 阶段浏览器不等待异步 IndexedDB 事务提交，大概率丢档。
+  // 改为 pagehide（关页/刷新/杀进程都会触发）+ visibilitychange（切后台）双触发，
+  // 并同步双写 localStorage 镜像兜底（下次启动取 savedAt 较新的一份）
+  const unloadSave = () => {
+    if (suppressUnloadSave || saveBlocked) return;
+    if (mode !== 'playing' && mode !== 'paused') return;
+    try {
+      localStorage.setItem('minecraft-ts-save-v1-unload', JSON.stringify(collectSave()));
+    } catch { /* 配额超限：IndexedDB 路径仍在尝试 */ }
+    saveNow();
+  };
+  addEventListener('pagehide', unloadSave);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && mode === 'playing') openMenu();
+    if (!document.hidden) return;
+    if (mode === 'playing' || mode === 'paused') unloadSave();
+    if (mode === 'playing') openMenu();
   });
 
   // ---- 内部调试钩子（自动化测试 / 控制台把玩用）----

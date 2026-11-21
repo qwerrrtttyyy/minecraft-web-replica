@@ -61,7 +61,10 @@ export class EventService implements Disposable {
     set.add(entry);
     return () => {
       set!.delete(entry);
-      if (set!.size === 0) this.map.delete(key);
+      // M11：过期 off() 守护。若 between on 与本次调用，同 type 已被 off 删除并重新
+      // 注册了新 set（map[key] 已换身份），不能把当前 map[key] 误删，否则会连带
+      // 抹掉后续订阅者；只在捕获的 set 仍是当前 map 中该 key 的 set 时才删除 key。
+      if (set!.size === 0 && this.map.get(key) === set) this.map.delete(key);
     };
   }
 

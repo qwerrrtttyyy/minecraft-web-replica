@@ -400,25 +400,37 @@ img { image-rendering: pixelated; }
 
 /* ============ 设置页 ============ */
 .options-panel {
-  width: min(440px, 94vw);
+  width: min(560px, 94vw);
   max-height: 88vh;
   overflow-y: auto;
   display: flex; flex-direction: column; gap: 10px;
 }
-.opt-group { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.opt-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
 .opt-group h3 {
+  grid-column: 1 / -1;
   margin: 0; font-size: 13px; color: #ffffa0; letter-spacing: 2px;
   text-shadow: 1px 1px 0 #222;
   border-bottom: 1px solid rgba(255, 255, 255, .16);
   padding-bottom: 4px;
 }
-.opt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+/* 滑杆行占满整列，避免压缩轨道；其余选项行两列并排（原版风格） */
+.slider-row { grid-column: 1 / -1; }
+.opt-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left;
+  padding: 9px 12px; font-size: 14px;
+}
 .opt-label { flex: 1; }
 .opt-val { color: #ffffa0; font-weight: 700; min-width: 52px; text-align: right; }
 .opt-row.off .opt-val { color: #e08a8a; }
 /* 开发者分组：标题用冷色区分，避免被误当成普通项 */
 .opt-group.dev h3 { color: #a8d8ff; }
 .opt-group.dev { border-left: 3px solid rgba(168, 216, 255, .35); padding-left: 8px; }
+.options-footer { margin-top: 4px; }
 .title-links { display: flex; gap: 20px; justify-content: center; }
 
 /* 设置导入 / 导出 */
@@ -430,6 +442,32 @@ img { image-rendering: pixelated; }
   white-space: pre; overflow: auto;
 }
 .mc-textarea[readonly] { opacity: .85; }
+
+/* ============ 关于本项目 ============ */
+.about-panel {
+  width: min(520px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.about-meta {
+  display: flex; flex-direction: column; gap: 4px;
+  background: rgba(0, 0, 0, .28);
+  border: 1px solid #4a4a4a;
+  padding: 10px 12px;
+}
+.about-meta-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.about-meta-label { color: #a8a8a8; }
+.about-meta-val { color: #ffffa0; font-weight: 700; text-align: right; }
+.about-text p {
+  margin: 0 0 8px;
+  color: #d8d8d8; font-size: 12.5px; line-height: 1.75;
+}
+.about-text p:last-child { margin-bottom: 0; }
+@media (max-width: 560px) {
+  .about-meta-row { font-size: 12px; }
+  .about-text p { font-size: 12px; }
+}
 
 /* ============ 方块库 ============ */
 .palette-panel { width: min(560px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
@@ -538,6 +576,8 @@ img { image-rendering: pixelated; }
   .mc-splash { right: -14px; font-size: 12px; }
   .title-inner { padding-top: 7vh; }
   .help-row kbd { min-width: 70px; }
+  /* 小屏：设置页双列收成单列，选项行不挤压 */
+  .opt-group { grid-template-columns: 1fr; }
 }
 @media (max-height: 480px) {
   .title-inner { padding-top: 3vh; }

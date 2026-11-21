@@ -205,7 +205,6 @@ export class SurvivalState {
     if (this.hunger >= MAX_HUNGER) return false;
     this.hunger = clamp(this.hunger + item.food, 0, MAX_HUNGER);
     this.events.emit('survival:eat', { item: name, hunger: this.hunger });
-    this.heal(1);
     return true;
   }
 
@@ -245,10 +244,12 @@ export class SurvivalState {
     }
 
     // 饱食回血 / 饥饿掉血
+    // H10：每次回血额外产生消耗（等效 0.75 饥饿点）——满饥饿不再免费永动回血
     if (this.hunger >= 18 && this.health < MAX_HEALTH) {
       this.regenAcc += dt;
       if (this.regenAcc >= 4) {
         this.regenAcc = 0;
+        this.exhaustion += 3;
         this.heal(1);
       }
     } else {

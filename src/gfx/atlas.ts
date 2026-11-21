@@ -312,6 +312,15 @@ function builtinPainters(): Record<string, Painter> {
     fillNoise(p, rng, 0xd5451b, 8);
     blob(p, rng, 0xb83a14, 4, 4);
   };
+  /** 恶地陶瓦：底色 + 暗斑 + 水平层理细纹 */
+  const terracotta = (hex: number, dark: number): Painter => (p, rng) => {
+    fillNoise(p, rng, hex, 7);
+    blob(p, rng, dark, 8, 4);
+    for (let i = 0; i < 4; i++) {
+      const y = 2 + ((rng() * 12) | 0);
+      for (let x = 0; x < TILE; x++) if (rng() < 0.55) p.set(x, y, jitter(dark, rng, 6));
+    }
+  };
   return {
     grass_top: (p, rng) => {
       // 灰度画：群系色由 shader 按世界坐标噪声调制（chunkManager.injectLight）
@@ -1244,6 +1253,63 @@ function builtinPainters(): Record<string, Painter> {
       // 顶部小高光
       p.set(8, 5, 0xfff8d8);
       p.set(9, 6, 0xffe58a);
+    },
+    // ---- 群系扩充纹理（追加在末尾，既有 tile 索引不变） ----
+    terracotta_red: terracotta(0xb5533c, 0x8a3a28),
+    terracotta_orange: terracotta(0xc46a2a, 0x9a4d1c),
+    terracotta_yellow: terracotta(0xd8b24a, 0xa8862e),
+    terracotta_white: terracotta(0xd8d2c4, 0xb0a898),
+    terracotta_blue: terracotta(0x5a6a9e, 0x3f4a78),
+    red_sand: (p, rng) => {
+      fillNoise(p, rng, 0xc46a42, 9);
+      blob(p, rng, 0xa85430, 10, 2);
+      blob(p, rng, 0xd88058, 6, 2);
+    },
+    mud: (p, rng) => {
+      fillNoise(p, rng, 0x4a3a2c, 10);
+      blob(p, rng, 0x3a2c20, 8, 5);
+      blob(p, rng, 0x5a4836, 5, 4);
+    },
+    dry_grass_top: (p, rng) => {
+      // 灰度画：群系色由 shader 调制（tint 方块），干草偏暖黄
+      fillNoise(p, rng, gray(0xb0a44e), 10);
+      blob(p, rng, gray(0x9c9040), 10, 3);
+      blob(p, rng, gray(0xc4b85e), 8, 3);
+      for (let i = 0; i < 18; i++) {
+        const x = (rng() * TILE) | 0;
+        const y = (rng() * TILE) | 0;
+        p.set(x, y, jitter(gray(0xd0c470), rng, 8));
+      }
+    },
+    dry_grass_side: (p, rng) => {
+      dirt(p, rng);
+      for (let x = 0; x < TILE; x++) {
+        const depth = 2 + ((rng() * 3) | 0);
+        for (let y = 0; y < depth; y++) p.set(x, y, jitter(gray(0xb0a44e), rng, 10));
+        if (rng() < 0.4) p.set(x, depth, jitter(gray(0x9c9040), rng, 8));
+      }
+    },
+    acacia_log_side: logSidePainter(0x6e6e6a, 0x4a4a46, 0x8a8a82, true),
+    acacia_log_top: logTopPainter(0x9a9a90, 0x7a7a70, 0x5a5a52),
+    acacia_leaves: leavesPainter([0x5f7a34, 0x6d8a3c, 0x7a9746, 0x88a552]),
+    cherry_log_side: logSidePainter(0x5a3f34, 0x3a271f, 0x7a5a4a, true),
+    cherry_log_top: logTopPainter(0x8a6a58, 0x6a4c3e, 0x4a3228),
+    cherry_leaves: (p, rng) => {
+      p.clear();
+      const tones = [0xe8a0b8, 0xf0b4c8, 0xf6c8d8, 0xdd8aa6];
+      for (let cy = 0; cy < 4; cy++) {
+        for (let cx = 0; cx < 4; cx++) {
+          const base = tones[(rng() * tones.length) | 0];
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              const edge = x === 0 || y === 0 || x === 3 || y === 3;
+              if (edge && rng() < 0.2) continue;
+              p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
+            }
+          }
+        }
+      }
+      for (let i = 0; i < 5; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0, 0);
     },
   };
 }
