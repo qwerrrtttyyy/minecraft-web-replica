@@ -58,4 +58,13 @@ assert.ok(s3.hunger < MAX_HUNGER, 'sprinting should drain hunger');
 for (let i = 0; i < 200; i++) s3.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: true });
 assert.equal(s3.breath, 0, 'breath should deplete underwater');
 
-console.log('PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick 共 8 组断言');
+// E02：护甲减伤（每点 4%，钻石胸甲 8 点 → 10 点伤害实扣 7）
+const armored = new SurvivalState(new EventBus(), registry);
+armored.addItem('diamond_chestplate');
+assert.equal(armored.equipFromInventory('diamond_chestplate'), true, 'diamond chestplate should equip');
+assert.equal(armored.equipment.armorPoints, 8);
+armored.health = 20;
+armored.damage(10, 'test');
+assert.equal(armored.health, 13, 'armor should reduce 10 damage to 7');
+
+console.log('PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick/护甲减伤 共 9 组断言');

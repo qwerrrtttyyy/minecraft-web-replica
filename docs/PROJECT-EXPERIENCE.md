@@ -65,6 +65,13 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   禁止留下「部分实例 + worker 模式」的残池；用 `test:worker-pool` 注入式回归验证。
 - **编辑差分**：分桶值存已解析的数值坐标（`BlockEdit`），字符串 key 只在 `recordEdit` 解析一次；
   `ensureChunk` 不再逐条 `split(',')`。改动用 `test:edits` 覆盖负坐标与跨区块边界。
+- **装备不可堆叠**：装备物品每种最多 1 件，耐久单独存在 `EquipmentState` 的 Map 中（背包
+  `Map<key,count>` 不存个体耐久）；存档 `survival.equipment` 是可选字段，旧档无字段按空装备
+  处理。方块工具类别统一写在 `blocks.ts` 的 `TOOL_BY_BLOCK` 配置表，护甲减伤固定为每点 4%、
+  上限 80%，不要散进 UI 或组装根。
+- **熔炉与烧炼**：熔炉方块 id 110 末位追加；烧炼配方与燃料热值集中在 `smelting.ts`；
+  推进放在组装根的 `ui` 系统 tick（暂停时继续、死亡/加载不推进），关闭面板不中断；
+  产出自动入包、燃料耗尽即停、燃料充足时自动续同种材料；存档 `smelting` 为可选字段。
 
 ## 常见排查
 

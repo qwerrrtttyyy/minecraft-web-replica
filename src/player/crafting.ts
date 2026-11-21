@@ -102,6 +102,13 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { P: '#planks' },
     result: { material: 'item:stick', count: 4 },
   },
+  {
+    id: 'furnace',
+    label: '熔炉',
+    pattern: ['CCC', 'C C', 'CCC'],
+    key: { C: 'cobblestone' },
+    result: { material: 'furnace', count: 1 },
+  },
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

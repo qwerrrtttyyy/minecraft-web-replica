@@ -38,6 +38,8 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 |
 | `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 |
 | `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 43 组 |
+| `test:equipment` | 装备定义表：36 件装备的数值档位 / 盔甲槽位 / 命名约定 / ITEMS 一致性 |
+| `test:smelting` | 熔炉烧炼：配方 / 燃料热值 / 耗尽停止 / 自动续料 / 存档 / 熔炉方块 id |
 | `test:smoke` | Chromium 实景（桌面 + 移动端），产物写 `test/artifacts/` |
 | `test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块墙 / 天穹 |
 
@@ -141,6 +143,7 @@ src/
 | 加植物与生态规则 | `src/world/plantTraits.ts`（能量特性）+ `src/world/botany.ts`（随机刻规则） |
 | 加实体 | `src/entity/` |
 | 加玩法 | `src/player/survival.ts` |
+| 加装备 | 定义 `src/player/equipment.ts` · 状态 `src/player/equipmentState.ts` · 战斗/挖掘 `src/player/player.ts` · 工具类别表 `src/world/blocks.ts` 的 `TOOL_BY_BLOCK` |
 | 写插件 | `src/plugins/example/welcome.ts` 是完整契约示例 |
 | 加运行时检查 | `src/diagnostics/RuntimeDiagnostics.ts` |
 

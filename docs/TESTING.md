@@ -33,9 +33,11 @@ npm run verify
 | 16 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
 | 17 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 | ✓ |
 | 18 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 19 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 20 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 21 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 19 | `npm run test:equipment` | 装备定义 / 槽位状态 / 耐久 / 护甲减伤 / 工具倍率 / ITEMS 一致性 | ✓ |
+| 20 | `npm run test:smelting` | 烧炼配方 / 燃料热值 / 耗尽停止 / 自动续料 / 存档 / 熔炉方块 | ✓ |
+| 21 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 22 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
+| 23 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -50,6 +52,11 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 ## 各测试组的职责
 
 - **logic-check**：生存状态机（掉落 / 消耗 / 进食 / 伤害无敌帧 / 序列化）。
+- **equipment-check**：装备定义表规模（36 件）、剑/工具数值档位、盔甲槽位与护甲、
+  命名约定（atlas 纹理注册依赖）、ITEMS 一致性、材料物品齐备；E02 追加
+  EquipmentState 穿脱/耐久/存档往返、护甲减伤、工具类别与方块配置、背包不可堆叠。
+- **smelting-check**：烧炼配方表与燃料热值、燃料耗尽停止、自动续料、产出入包、
+  存档往返、熔炉方块 id 110 与 3×3 合成配方。
 - **terrain-check**：确定性、生成顺序无关、高度范围、水面与洞穴顶连续、
   矿脉分层、跨区块树冠双向连续、参数开关、性能基准。
 - **terrain-system**：方块是否末位追加（id 45~91，v1.5.0+ 群系扩充追加 98~109，
