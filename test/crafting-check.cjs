@@ -328,4 +328,17 @@ ok('材料组非空且成员合法',
   ok('木剑可用白桦木板', matchRecipe(grid(['P  ', 'P  ', 'S  '], wood), 3)?.recipe.id === 'wooden_sword');
 }
 
+// v1.7.0 内容植物闭环：棉花块与荧光火把
+const patternGrid = (rows, symbols) => rows.join('').split('').map((c) => symbols[c] ?? null);
+ok('棉花×4 可合成棉花块',
+  matchRecipe(patternGrid(['CC', 'CC'], { C: 'item:cotton' }), 2)?.recipe.id === 'cotton_block');
+ok('荧光孢子+木棍可合成 2 荧光火炬',
+  (() => {
+    const m = matchRecipe(['item:glow_spore', null, 'item:stick', null], 2);
+    return m?.recipe.id === 'glow_torch' && m.recipe.result.count === 2;
+  })());
+// 多一个不相干材料就不该匹配（合成必须严格）
+ok('棉花块混入多余材料不匹配',
+  matchRecipe(['item:cotton', 'item:cotton', 'item:cotton', 'dirt'], 2)?.recipe.id !== 'cotton_block');
+
 log(`\n合成回归全部通过（${passed} 项）`);

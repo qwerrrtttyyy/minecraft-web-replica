@@ -176,6 +176,8 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       { name: 'forget_me_not', weight: 0.012 }, { name: 'marigold', weight: 0.008 },
       { name: 'violet', weight: 0.01 }, { name: 'foxglove', weight: 0.003 },
       { name: 'hollyhock', weight: 0.003 },
+      // v1.7.0：经济作物零星野化在平原
+      { name: 'cotton_bush', weight: 0.0035 }, { name: 'grape_vine', weight: 0.0025 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.025,
     trees: [{ species: 'oak', weight: 1 }], pumpkinChance: 0.0015,
@@ -202,6 +204,8 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       { name: 'red_mushroom', weight: 0.004 }, { name: 'brown_mushroom', weight: 0.004 },
       { name: 'wood_anemone', weight: 0.008 }, { name: 'wild_garlic', weight: 0.007 },
       { name: 'hyacinth', weight: 0.005 }, { name: 'ivy', weight: 0.0015 },
+      // v1.7.0：葡萄藤与兰花长在林下
+      { name: 'grape_vine', weight: 0.0035 }, { name: 'orchid', weight: 0.003 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.03,
     trees: [{ species: 'oak', weight: 0.65 }, { species: 'birch', weight: 0.35 }],
@@ -216,8 +220,11 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       ],
     },
     cavePlants: [
-      { name: 'glow_moss', weight: 0.5 }, { name: 'glow_fern', weight: 0.3 },
-      { name: 'moonflower', weight: 0.2 },
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      // v1.7.0：发光虫菌是荧光火把的野外来源
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.06,
   },
@@ -241,8 +248,11 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       ],
     },
     cavePlants: [
-      { name: 'glow_moss', weight: 0.5 }, { name: 'glow_fern', weight: 0.3 },
-      { name: 'moonflower', weight: 0.2 },
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      // v1.7.0：发光虫菌是荧光火把的野外来源
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.055,
   },
@@ -252,6 +262,8 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       { name: 'edelweiss', weight: 0.012 }, { name: 'crocus', weight: 0.014 },
       { name: 'gentian', weight: 0.008 }, { name: 'snow_lily', weight: 0.007 },
       { name: 'snowdrop', weight: 0.006 },
+      // v1.7.0：山鼠尾草点缀高山草甸
+      { name: 'sage', weight: 0.005 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0,
     trees: [{ species: 'spruce', weight: 1 }],
@@ -263,8 +275,11 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
       ],
     },
     cavePlants: [
-      { name: 'glow_moss', weight: 0.5 }, { name: 'glow_fern', weight: 0.3 },
-      { name: 'moonflower', weight: 0.2 },
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      // v1.7.0：发光虫菌是荧光火把的野外来源
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.055,
   },
@@ -279,14 +294,22 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     // 植物只用地形装饰允许出现在沼泽的名单（fern / 蘑菇因乔木与生态指示角色留出）
     plants: [
       { name: 'moss_carpet', weight: 0.05 }, { name: 'tall_grass', weight: 0.03 },
+      // v1.7.0：沼泽是稻与猪笼草的原生地
+      { name: 'rice_plant', weight: 0.006 }, { name: 'pitcher_plant', weight: 0.004 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.06,
     lilyChance: 0.03,
+    floaters: [{ name: 'lily_pad', weight: 0.7 }, { name: 'duckweed', weight: 0.18 },
+      { name: 'lotus', weight: 0.12 }],
     trees: [{ species: 'oak', weight: 1 }],
   },
   savanna: {
     surface: 'dry_grass', filler: 'dirt',
-    plants: [{ name: 'tall_grass', weight: 0.05 }, { name: 'dead_bush', weight: 0.004 }],
+    plants: [
+      { name: 'tall_grass', weight: 0.05 }, { name: 'dead_bush', weight: 0.004 },
+      // v1.7.0：辣椒丛适应干热气候
+      { name: 'chili_bush', weight: 0.0045 },
+    ],
     clayChance: 0, cactusChance: 0, caneChance: 0,
     trees: [{ species: 'acacia', weight: 1 }],
   },
@@ -295,6 +318,8 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     plants: [
       { name: 'tall_grass', weight: 0.03 }, { name: 'moss_carpet', weight: 0.03 },
       { name: 'poppy', weight: 0.006 }, { name: 'dandelion', weight: 0.006 },
+      // v1.7.0：兰花开在樱花林下
+      { name: 'orchid', weight: 0.004 },
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.02,
     trees: [{ species: 'cherry', weight: 1 }],

@@ -20,6 +20,7 @@ const { levelOf, nextId: composterNext, harvestOf } = require('./terrain-logic/w
 const { EntityManager } = require('./terrain-logic/entity/entity.js');
 const { FallingSystem } = require('./terrain-logic/entity/falling.js');
 const { CRAFTING_RECIPES, matchRecipe } = require('./terrain-logic/player/crafting.js');
+const { PLANT_TRAITS } = require('./terrain-logic/world/plantTraits.js');
 const THREE = require('three');
 
 const log = (...a) => console.log(...a);
@@ -93,8 +94,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 141 种（堆肥桶 9 + 群系扩充 12 + 熔炉 1 + 移植植物 28）',
-    all.length === 141, `${all.length}`);
+  ok('内置方块总数 152 种（141 + 内容植物扩充 11）',
+    all.length === 152, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -519,7 +520,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 141（堆肥桶 9 + 移植植物 28 + 熔炉 1）', all.length === 141, `${all.length}`);
+  ok('方块总数增至 152（141 + 内容植物扩充 11）', all.length === 152, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -599,6 +600,25 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   falling.triggerColumn(7, 21, 9);
   ok('失支撑植物掉落携带真实坐标', !!seen && seen[0] === 7 && seen[1] === 21 && seen[2] === 9,
     JSON.stringify(seen));
+}
+
+// 12) v1.7.0 内容植物扩充：末位追加、特性入表、群系有分布
+{
+  const { reg } = make(1);
+  const NEW_PLANTS = ['cotton_bush', 'rice_plant', 'grape_vine', 'chili_bush', 'lotus',
+    'orchid', 'sage', 'pitcher_plant', 'glow_cordyceps', 'cotton_block', 'glow_torch'];
+  ok('11 个内容植物方块 id 148~158 连续末位追加',
+    NEW_PLANTS.every((n, i) => reg.byNameGet(n)?.id === 148 + i),
+    `${NEW_PLANTS[0]}=${reg.byNameGet(NEW_PLANTS[0])?.id}..${NEW_PLANTS.at(-1)}=${reg.byNameGet(NEW_PLANTS.at(-1))?.id}`);
+  ok('作物与花卉植物全部进入能量特性表',
+    ['cotton_bush', 'rice_plant', 'grape_vine', 'chili_bush', 'lotus', 'orchid', 'sage',
+      'pitcher_plant', 'glow_cordyceps'].every((n) => !!PLANT_TRAITS[n]));
+  ok('发光虫菌自发光且掉落荧光孢子',
+    reg.byNameGet('glow_cordyceps').lightEmission === 6 &&
+    reg.byNameGet('glow_cordyceps').drops.some((d) => d.name === 'item:glow_spore'));
+  ok('荧光火把亮度 12 且棉花块是实心建材',
+    reg.byNameGet('glow_torch').lightEmission === 12 &&
+    reg.byNameGet('cotton_block').solid === true && reg.byNameGet('cotton_block').opaque === true);
 }
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);
