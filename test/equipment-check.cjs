@@ -157,6 +157,8 @@ registerBuiltinBlocks(reg);
 const sv = new SurvivalState(new EventBus(), reg);
 sv.addItem('iron_sword', 5);
 ok('装备不可堆叠（addItem 5 件仍为 1）', sv.countKey('i:iron_sword') === 1);
+ok('重复拾取装备返回 false（防静默丢弃）', sv.addItem('iron_sword') === false && sv.countKey('i:iron_sword') === 1);
+ok('普通物品加入返回 true', sv.addItem('apple') === true);
 ok('获得装备即初始化耐久', sv.equipment.durabilityOf('i:iron_sword') === 250);
 ok('剑不能穿到甲槽', sv.equipFromInventory('iron_sword') === false);
 sv.addItem('iron_helmet');

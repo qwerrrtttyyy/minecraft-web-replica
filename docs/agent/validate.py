@@ -147,6 +147,46 @@ CHECKS = [
         "CI 工作流使用 validate.py --strict",
         lambda: "--strict" in read(".github/workflows/verify.yml"),
     ),
+    # ---- E04 装备配方与怪物掉落 ----
+    (
+        "36 条装备配方全部可匹配",
+        "crafting.ts 配置表生成 36 条装备配方，id 与 EQUIPMENT 对齐",
+        lambda: "equipmentRecipes()" in read("src/player/crafting.ts")
+        and "equipRecipes" in read("test/crafting-check.cjs"),
+    ),
+    (
+        "猪羊掉皮革",
+        "实体掉落表含皮革 / 铁锭 / 铁剑",
+        lambda: all(s in read("src/entity/entity.ts")
+                    for s in ("item:leather", "item:iron_ingot", "item:iron_sword")),
+    ),
+    (
+        "test:crafting 覆盖装备配方",
+        "合成回归覆盖装备配方的有序匹配",
+        lambda: "iron_sword" in read("test/crafting-check.cjs")
+        and "matchRecipe" in read("test/crafting-check.cjs"),
+    ),
+    # ---- E05 审查修复 ----
+    (
+        "燃料投入从背包扣除",
+        "putFuelFrom 统一校验 / 扣背包 / 加时间，并有回归",
+        lambda: "putFuelFrom" in read("src/player/smelting.ts")
+        and "smelting.putFuelFrom" in read("src/main.ts")
+        and "putFuelFrom" in read("test/smelting-check.cjs"),
+    ),
+    (
+        "装备重复拾取返回 false",
+        "addItem 返回布尔值且合成面板有 canProduce 拦截",
+        lambda: "重复拾取返回 false" in read("src/player/survival.ts")
+        and "canProduce?" in read("src/ui/crafting.ts")
+        and "canProduce" in read("src/main.ts"),
+    ),
+    (
+        "validate 全绿",
+        "package.json 的 verify 链包含装备与烧炼回归",
+        lambda: "test:equipment" in pkg_scripts().get("verify", "")
+        and "test:smelting" in pkg_scripts().get("verify", ""),
+    ),
 ]
 
 

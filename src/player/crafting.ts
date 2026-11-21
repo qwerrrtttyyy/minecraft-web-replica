@@ -1,3 +1,5 @@
+import type { EquipMaterial } from './equipment';
+
 /**
  * 合成系统核心（纯逻辑层，不依赖 DOM / three.js）。
  *
@@ -48,12 +50,78 @@ export interface Recipe {
   result: RecipeResult;
 }
 
+/** 装备材质 → 合成材料标识（与 EQUIPMENT 的 material 字段一一对应） */
+const EQUIP_MATERIAL: Record<EquipMaterial, string> = {
+  wood: '#planks',
+  stone: 'cobblestone',
+  iron: 'item:iron_ingot',
+  gold: 'item:gold_ingot',
+  diamond: 'item:diamond',
+  leather: 'item:leather',
+};
+
+interface EquipTier {
+  material: EquipMaterial;
+  prefix: string;
+  label: string;
+}
+
+const TOOL_TIERS: EquipTier[] = [
+  { material: 'wood', prefix: 'wooden', label: '木' },
+  { material: 'stone', prefix: 'stone', label: '石' },
+  { material: 'iron', prefix: 'iron', label: '铁' },
+  { material: 'gold', prefix: 'golden', label: '金' },
+  { material: 'diamond', prefix: 'diamond', label: '钻石' },
+];
+
+const ARMOR_TIERS: EquipTier[] = [
+  { material: 'leather', prefix: 'leather', label: '皮' },
+  { material: 'iron', prefix: 'iron', label: '铁' },
+  { material: 'gold', prefix: 'golden', label: '金' },
+  { material: 'diamond', prefix: 'diamond', label: '钻石' },
+];
+
+/** 由材质档位生成 36 条装备配方（id / 产物与 EQUIPMENT 保持一致） */
+function equipmentRecipes(): Recipe[] {
+  const out: Recipe[] = [];
+  for (const tier of TOOL_TIERS) {
+    const m = EQUIP_MATERIAL[tier.material];
+    const add = (kind: string, label: string, pattern: string[]) => out.push({
+      id: `${tier.prefix}_${kind}`,
+      label: `${tier.label}${label}`,
+      pattern,
+      key: { M: m, S: 'item:stick' },
+      result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
+    });
+    add('sword', '剑', ['M', 'M', 'S']);
+    add('pickaxe', '镐', ['MMM', ' S ', ' S ']);
+    add('axe', '斧', ['MM ', 'MS ', ' S ']);
+    add('shovel', '锹', ['M', 'S', 'S']);
+  }
+  for (const tier of ARMOR_TIERS) {
+    const m = EQUIP_MATERIAL[tier.material];
+    const add = (kind: string, label: string, pattern: string[]) => out.push({
+      id: `${tier.prefix}_${kind}`,
+      label: `${tier.label}${label}`,
+      pattern,
+      key: { M: m },
+      result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
+    });
+    add('helmet', '头盔', ['MMM', 'M M']);
+    add('chestplate', '胸甲', ['M M', 'MMM', 'MMM']);
+    add('leggings', '护腿', ['MMM', 'M M', 'M M']);
+    add('boots', '靴子', ['M M', 'M M']);
+  }
+  return out;
+}
+
 /**
  * 内置配方表。
  *
  * 最小闭环：原木→木板→工作台，外加砂岩 / 石砖 / 木棍三条实用线。
  * 每条配方都刻意做成 2×2 以内的小配方，这样玩家的 2×2 个人合成格
  * 在拿到工作台之前就能先攒出工作台本身（详见 README 的玩法说明）。
+ * E04 起追加 36 条装备配方（需要 3×3 工作台，2×2 个人格放不下）。
  */
 export const CRAFTING_RECIPES: Recipe[] = [
   {
@@ -109,6 +177,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { C: 'cobblestone' },
     result: { material: 'furnace', count: 1 },
   },
+  ...equipmentRecipes(),
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

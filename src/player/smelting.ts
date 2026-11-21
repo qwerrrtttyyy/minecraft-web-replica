@@ -76,6 +76,17 @@ export class SmeltingState {
     return value;
   }
 
+  /**
+   * 从背包扣除燃料并投入燃烧（组装根调用）。
+   * 校验、扣背包、加时间三步合一，避免调用方只加时间不扣背包。
+   * 返回实际增加的燃烧秒数；非燃料或背包不足返回 0。
+   */
+  putFuelFrom(material: MaterialId, take: (material: MaterialId) => boolean): number {
+    if (!FUEL_VALUES[material]) return 0;
+    if (!take(material)) return 0;
+    return this.putFuel(material);
+  }
+
   /** 放入待烧材料；已有输入或无配方时返回 false */
   putInput(material: MaterialId): boolean {
     if (this.input !== null || !smeltingRecipeOf(material)) return false;

@@ -36,6 +36,17 @@ ok('原木燃料 15 秒', FUEL_VALUES.oak_log === 15);
 ok('铁矿石可烧炼', smeltingRecipeOf('iron_ore')?.output === 'item:iron_ingot');
 ok('石头不可烧炼', smeltingRecipeOf('stone') === undefined);
 
+// ---- 燃料必须从背包扣除（审查修复） ----
+{
+  const st = new SmeltingState({ takeInput: () => false, produce: () => {}, onSmelted: () => {} });
+  const taken = [];
+  const take = (m) => { taken.push(m); return true; };
+  ok('putFuelFrom 非燃料不扣背包', st.putFuelFrom('stone', take) === 0 && taken.length === 0);
+  ok('putFuelFrom 背包不足不加时间', st.putFuelFrom('item:coal', () => false) === 0 && st.fuelTime === 0);
+  ok('putFuelFrom 成功：扣背包并加 80 秒',
+    st.putFuelFrom('item:coal', take) === 80 && st.fuelTime === 80 && taken.length === 1);
+}
+
 // ---- 状态机 ----
 function makeHost(stock = 1) {
   const produced = [];

@@ -491,6 +491,12 @@ async function boot() {
       if (stack.kind === 'block') survival.addBlock(stack.id, count);
       else survival.addItem(stack.id, count);
     },
+    canProduce(material: MaterialId): boolean {
+      if (!material.startsWith('item:')) return true;
+      const id = material.slice(5);
+      if (!ITEMS[id]?.equip) return true;
+      return survival.countKey(`i:${id}`) <= 0;
+    },
     onCrafted(recipe, result) {
       events.emit('crafting:crafted', { recipe: recipe.id, result: result.material, count: result.count });
       sound.click(880);
@@ -532,7 +538,7 @@ async function boot() {
       const material = smelting.takeInput();
       if (material) craftingHost.giveBack(material);
     },
-    putFuel: (material) => smelting.putFuel(material),
+    putFuel: (material) => smelting.putFuelFrom(material, craftingHost.take),
     getState: () => ({ input: smelting.input, fuelTime: smelting.fuelTime, progress: smelting.progress }),
     onClose: () => closeFurnace(),
   };

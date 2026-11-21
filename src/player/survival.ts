@@ -132,28 +132,31 @@ export class SurvivalState {
     this.addKey(blockKeyOf(id), count);
   }
 
-  addItem(name: string, count = 1) {
-    if (!this.isSurvival) return;
+  /** 加入物品；返回是否真的加入（装备不可堆叠，重复拾取返回 false） */
+  addItem(name: string, count = 1): boolean {
+    if (!this.isSurvival) return false;
     const item = ITEMS[name];
-    if (!item || count <= 0) return;
+    if (!item || count <= 0) return false;
     if (item.equip) {
       // 装备不可堆叠：每种最多 1 件，耐久单独记在 EquipmentState
       const key = itemKey(name);
+      if (this.countKey(key) > 0) return false;
       this.equipment.initDurability(key, name);
-      if (this.countKey(key) <= 0) this.addKey(key, 1);
-      return;
+      this.addKey(key, 1);
+      return true;
     }
     this.addKey(itemKey(name), count);
+    return true;
   }
 
-  /** 按掉落表名加入背包：'self' 需调用方换成方块名 */
-  addDrop(name: string, count = 1) {
-    if (name.startsWith('item:')) this.addItem(name.slice(5), count);
-    else if (ITEMS[name]) this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
-    else {
-      const def = this.registry.byNameGet(name);
-      if (def) this.addBlock(def.id, count);
-    }
+  /** 按掉落表名加入背包：'self' 需调用方换成方块名；返回是否真的加入 */
+  addDrop(name: string, count = 1): boolean {
+    if (name.startsWith('item:')) return this.addItem(name.slice(5), count);
+    if (ITEMS[name]) return this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
+    const def = this.registry.byNameGet(name);
+    if (!def) return false;
+    this.addBlock(def.id, count);
+    return true;
   }
 
   private addKey(key: string, count: number) {
