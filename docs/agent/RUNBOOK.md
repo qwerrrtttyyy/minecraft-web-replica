@@ -28,6 +28,22 @@
    自上一个 tag 起的 changelog（新增 / 修复 / 流程）与验证情况，pre-release 标记
    与版本轨道一致（迭代版 = prerelease，正式版 = release）。禁止裸 tag（v1.4.2
    曾裸奔，2026-11-15 已补 Release）。
+4. **WIP 永不上 main**：任何未完成、未跑绿 `verify` 的工作只能保存在任务分支
+   （`feat/*`）或 `git stash`，禁止以「先存个快照」为理由直接提交到 main。
+   2026-11-21 的教训：`wip` 提交上 main 后又叠了一个 merge，导致主干红、
+   Pages 线上红、后续 PR 全部被冲突阻塞，最终只能整体 revert 回绿版。
+   **现场保存 = 切分支提交或 stash，绝不是 main 上的一个 WIP commit。**
+5. **Pages 只在 verify 绿后部署**：`.github/workflows/pages.yml` 必须通过
+   `workflow_run` 监听 `verify` 成功事件才部署（跨 workflow 不能用 `needs`）。
+   分支保护的 required check 可被维护者绕过，单靠它不足以保证线上绿——
+   2026-11-21 已经发生过一次绕过。
+
+## 已知技术债
+
+- **Node 版本**：CI 与工作流固定 `node-version: '20'`。本地使用 Node 22/24 时，
+  新版 `@types/node` 会把 `Uint8Array<ArrayBufferLike>` 判为不兼容 `BufferSource`
+  （`src/wasm/kernel.ts`、`src/services/plugins/carriers/index.ts` 报 TS2345），
+  这是本地环境噪声、不是源码问题。下次依赖冲突时一并评估升级 Node 20 → 22。
 
 ## 基线命令
 

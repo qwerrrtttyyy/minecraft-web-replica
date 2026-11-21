@@ -1,7 +1,12 @@
 name: pages
 
+# P2：线上世界只允许在 verify 全绿后部署。
+# verify 与 pages 是两个独立 workflow，跨 workflow 不能用 needs，
+# 因此用 workflow_run 监听 verify 的完成事件，并在 conclusion=success 时才部署。
 on:
-  push:
+  workflow_run:
+    workflows: ["verify"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -16,9 +21,14 @@ concurrency:
 
 jobs:
   build:
+    # 手动触发始终允许；自动触发仅在 verify 成功时放行
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      # 部署 verify 验证过的那个提交，而不是触发时的分支最新提交
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
