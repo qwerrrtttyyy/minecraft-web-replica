@@ -232,15 +232,15 @@ ok('FleeFrom 距离 ≥ minDist → Success；< minDist → Running',
     return new FleeFrom('player', 1.0, 50).tick(c) === NodeStatus.Running;
   })());
 
-ok('AttackPlayer 冷却结束且在攻击距离 → Success 并发事件；冷却中 → Running',
+ok('AttackPlayer 冷却结束且在攻击距离 → Success 并设置 wantAttack；冷却中 → Running',
   (() => {
-    const { c, events } = actionCtx();
+    const { c } = actionCtx();
     c.playerPos = { x: 1, y: 1, z: 0 }; // 距离 1 ≤ 1.8
     const attack = new AttackPlayer(3, 1.05);
     const r1 = attack.tick(c);
-    const emitted = events.emitted.filter((e) => e.type === 'survival:damage').length;
+    const want = c.blackboard.get('wantAttack');
     const r2 = attack.tick(c); // 冷却中
-    return r1 === NodeStatus.Success && emitted === 1 && r2 === NodeStatus.Running;
+    return r1 === NodeStatus.Success && want === true && r2 === NodeStatus.Running;
   })());
 
 ok('Wait(0.1) 累计 dt 达阈值 → Success',
@@ -373,6 +373,51 @@ ok('AIService dispose 清空组件不抛错',
     const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, { emit() {} }, {}, 1);
     ai.dispose();
     return true;
+  })());
+
+// ---- 10. A08: 4 种生物行为树 JSON 编译与行为冒烟 ----
+const pigJson = { root: { type: 'action', name: 'wander', nodeType: 'Wander', speed: 1.15, idleMin: 1.5, idleMax: 3.5, walkMin: 2, walkMax: 4 } };
+const sheepJson = { root: { type: 'action', name: 'wander', nodeType: 'Wander', speed: 1.0, idleMin: 1.5, idleMax: 3.5, walkMin: 2, walkMax: 4 } };
+const zombieJson = { root: { type: 'selector', name: 'zombie_root', children: [
+  { type: 'sequence', name: 'combat', children: [
+    { type: 'condition', name: 'see', nodeType: 'DistanceLt', target: 'player', dist: 26, horizontal: true },
+    { type: 'parallel', name: 'chase_attack', children: [
+      { type: 'action', name: 'chase', nodeType: 'ChasePlayer', speed: 1.5225, stopDist: 0, speedFar: 1.5225, speedClose: 1.155, closeDist: 2.2 },
+      { type: 'action', name: 'atk', nodeType: 'AttackPlayer', damage: 3, cooldown: 1.05, attackRange: 1.7 },
+    ]},
+  ]},
+  { type: 'action', name: 'wander', nodeType: 'Wander', speed: 1.05, idleMin: 1.5, idleMax: 3.5, walkMin: 2, walkMax: 4 },
+]}};
+const skeletonJson = { root: { type: 'selector', name: 'skel_root', children: [
+  { type: 'sequence', name: 'combat', children: [
+    { type: 'condition', name: 'see', nodeType: 'DistanceLt', target: 'player', dist: 26, horizontal: true },
+    { type: 'parallel', name: 'chase_attack', children: [
+      { type: 'action', name: 'chase', nodeType: 'ChasePlayer', speed: 1.45, stopDist: 0, speedFar: 1.45, speedClose: 1.1, closeDist: 2.2 },
+      { type: 'action', name: 'atk', nodeType: 'AttackPlayer', damage: 2, cooldown: 1.05, attackRange: 1.7 },
+    ]},
+  ]},
+  { type: 'action', name: 'wander', nodeType: 'Wander', speed: 1.0, idleMin: 1.5, idleMax: 3.5, walkMin: 2, walkMax: 4 },
+]}};
+
+for (const [name, json] of [['pig', pigJson], ['sheep', sheepJson], ['zombie', zombieJson], ['skeleton', skeletonJson]]) {
+  const t = BehaviorTree.fromJSON(json);
+  const c = ctxWith(airWorld, { playerPos: { x: 100, y: 1, z: 0 } });
+  const s = t.tick(c);
+  ok(`${name} 行为树编译并 tick 返回合法状态`, s === NodeStatus.Running || s === NodeStatus.Success || s === NodeStatus.Failure);
+}
+ok('zombie 近距离攻击：player 在 1 格内 → wantAttack 或 Success',
+  (() => {
+    const t = BehaviorTree.fromJSON(zombieJson);
+    const c = ctxWith(airWorld, { playerPos: { x: 1, y: 1, z: 0 } });
+    const s = t.tick(c);
+    return s === NodeStatus.Success || c.blackboard.get('wantAttack') === true;
+  })());
+ok('zombie 远距离追击：player 在 10 格内 → moving=true',
+  (() => {
+    const t = BehaviorTree.fromJSON(zombieJson);
+    const c = ctxWith(airWorld, { playerPos: { x: 10, y: 1, z: 0 } });
+    t.tick(c);
+    return c.blackboard.get('moving') === true;
   })());
 
 console.log(`\n全部 ${passed} 条断言通过`);

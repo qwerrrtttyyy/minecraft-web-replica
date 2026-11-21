@@ -30,6 +30,7 @@ import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
 import { AIService } from './ai/AIService';
+import { pigBehavior, sheepBehavior, zombieBehavior, skeletonBehavior } from './ai/behaviors';
 import { DropManager } from './entity/droppedItem';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
@@ -218,6 +219,11 @@ async function boot() {
   const entities = new EntityManager(world, engine.scene, events, seed, particles);
   const aiService = new AIService(world, events, undefined, seed);
   entities.setAIService(aiService);
+  // 注册 4 种内置生物行为树（A08：行为与 v1.4.9 等价）
+  aiService.registerType('pig', pigBehavior as any);
+  aiService.registerType('sheep', sheepBehavior as any);
+  aiService.registerType('zombie', zombieBehavior as any);
+  aiService.registerType('skeleton', skeletonBehavior as any);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -658,13 +664,20 @@ async function boot() {
       hud.toast(v ? '我的世界 UI 还原：已切换为原版 Java 版风格' : '我的世界 UI 还原：已关闭，恢复默认界面');
       markDirty();
     },
+    onLandscapeMode: (v) => {
+      settings.landscapeMode = v;
+      applyLandscapeMode(v, true);
+      persistOptions(settings);
+      hud.toast(v ? '横屏模式：已开启（将尝试锁定横向）' : '横屏模式：已关闭');
+      markDirty();
+    },
     onExportOptions: () => JSON.stringify(settings, null, 2),
     onCopyOptions: (json) => {
       void copyText(json);
     },
     onImportOptions: (json) => importOptions(json),
     onResetOptions: () => {
-      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5 }));
+      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5, autoJump: isMobile }));
       applyAllSettings();
       persistOptions(settings);
       hud.syncOptions(settings);
@@ -719,6 +732,57 @@ async function boot() {
     else if (v === 'main') chunks.setWorkerPoolSize(0);
     else chunks.setWorkerPoolSize(v);
   };
+
+  // ---- 实验性内容：横屏模式 ----
+  let landscapeActive = false;
+  /** 尝试锁定横屏；成功返回 true。桌面浏览器 / iOS 常拒绝，返回 false 走「旋转设备」提示兜底 */
+  const lockLandscape = async (): Promise<boolean> => {
+    try {
+      const so = screen.orientation as (ScreenOrientation & { lock?: (o: 'landscape') => Promise<void> }) | undefined;
+      if (so && typeof so.lock === 'function') {
+        await so.lock('landscape');
+        return true;
+      }
+      // 退路：先请求全屏再锁定（iOS PWA / 部分 Android 浏览器需要）
+      const root = document.documentElement;
+      if (root.requestFullscreen && !document.fullscreenElement) {
+        await root.requestFullscreen();
+        if (so && typeof so.lock === 'function') {
+          await so.lock('landscape');
+          return true;
+        }
+      }
+    } catch {
+      /* 不支持或被用户拒绝：交给旋转提示兜底 */
+    }
+    return false;
+  };
+  /** 是否需要提示旋转：只由开关与设备类型决定；portrait 判定交给 HUD 统一处理，
+   *  以免锁定成功后陈旧的 lockOk 使转回竖屏时提示不再出现。 */
+  const needRotateHint = () => landscapeActive && isMobile;
+  const applyLandscapeMode = (v: boolean, fromGesture = false) => {
+    landscapeActive = v;
+    // body 供全局，hud-root 驱动 HUD 内部宽屏布局重排
+    document.body.classList.toggle('landscape-mode', v);
+    hud.setLandscape(v, needRotateHint());
+    if (v) {
+      if (fromGesture) {
+        void lockLandscape().then(() => hud.refreshRotateHint(landscapeActive, needRotateHint()));
+      } else {
+        // 启动 / 导入 / 重置：非用户手势，锁定几乎必失败，直接进入提示兜底
+        hud.refreshRotateHint(landscapeActive, needRotateHint());
+      }
+    } else {
+      try {
+        (screen.orientation as { unlock?: () => void } | undefined)?.unlock?.();
+      } catch { /* 忽略 */ }
+    }
+  };
+  // 方向 / 尺寸变化时重算提示（引擎已各自监听 resize 处理画布，这里只管 UI 提示）
+  addEventListener('orientationchange', () =>
+    window.setTimeout(() => hud.refreshRotateHint(landscapeActive, needRotateHint()), 160));
+  addEventListener('resize', () => hud.refreshRotateHint(landscapeActive, needRotateHint()));
+  applyLandscapeMode(settings.landscapeMode, false);
 
   /** 导出面板用：写进剪贴板，失败时提示手动复制 */
   const copyText = async (text: string) => {
@@ -782,6 +846,10 @@ async function boot() {
     if (!debugOn) hud.setDebug(null);
     chunks.greedy = settings.greedy;
     applyMesherThreads(settings.mesherThreads);
+    // 实验性内容：导入 / 重置也必须推到 WASM 内核与插件载体
+    wasm.setEnabled(settings.experimental && qs.get('wasm') !== '0');
+    plugins.setExperimental(settings.experimental);
+    applyLandscapeMode(settings.landscapeMode, false);
     // 实验性玩法：启动 / 重置 / 导入时统一推送到各子系统
     botany.setTickSpeed(settings.randomTickSpeed);
     sky.advanceTime = settings.doDaylightCycle;

@@ -22,17 +22,18 @@ npm run verify
 | 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
 | 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
 | 7 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
-| 8 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 9 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 10 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
-| 11 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
-| 12 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 13 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 14 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 15 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 152（141 基线 + 内容植物扩充 11） | ✓ |
-| 16 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
-| 17 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 18 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
+| 8 | `npm run test:ai` | 实体 AI：NodeStatus/Blackboard/TickContext 确定性 RNG、复合节点与装饰器、条件/动作节点、BehaviorTree JSON 编译、AIService 生命周期、4 种生物行为树冒烟回归 | ✓ |
+| 9 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 10 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 11 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
+| 12 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 13 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 14 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 15 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 16 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 152（141 基线 + 内容植物扩充 11） | ✓ |
+| 17 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
+| 18 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
+| 19 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
 | 19 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
 | 20 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
 | 21 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |

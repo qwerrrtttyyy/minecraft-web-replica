@@ -1,0 +1,12 @@
+{
+  "root": {
+    "type": "action",
+    "name": "wander",
+    "nodeType": "Wander",
+    "speed": 1.15,
+    "idleMin": 1.5,
+    "idleMax": 3.5,
+    "walkMin": 2,
+    "walkMax": 4
+  }
+}

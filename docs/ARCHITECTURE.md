@@ -501,6 +501,12 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 | `src/world/dropLogic.ts` | `scatterOffset` / `canPickup` / `mergeKey` / `dropsMerge` / `shouldDespawn` / `advanceWater` | 可见掉落物的纯判定（无 three / DOM）：确定性散开、拾取半径与延迟、同类合并、超时 / 掉出世界、入水终端下沉与水平衰减 |
 | `src/entity/droppedItem.ts` | `DropManager.spawn / update / clear` 与 `DroppedItem` | 渲染与生命周期：复用 `moveBody` 做碰撞、按材料键缓存几何 / 共享材质、浮动自转、入水水花与拾取反馈；拾取 / 消失只 `scene.remove`，不 dispose 共享资源 |
 | `src/entity/breeding.ts` | `isBreedFood` / `pickMate` / `canBreed` | 纯规则判定：食物白名单、按实体 id 升序稳定择偶、同类成体求爱且冷却结束才可繁殖；状态字段（age / loveTimer / cooldown）挂在 `Entity` 上 |
+| `src/ai/Node.ts` / `Blackboard.ts` / `AIContext.ts` | `NodeStatus` / `Node.tick` / `Blackboard` / `makeTickContext` | 行为树基础：节点基类、黑板、确定性 RNG（`mulberry32(hash(worldSeed, entityId, label))`） |
+| `src/ai/composites.ts` / `decorators.ts` | `Selector` / `Sequence` / `Parallel` / `RandomSelector` / `Inverter` / `Repeater` / `UntilFail` / `UntilSuccess` | 复合节点与装饰器，控制流组合 |
+| `src/ai/conditions.ts` / `actions.ts` / `Perception.ts` | 条件 / 动作节点库 + 只读感知视图 | 节点只依赖 `TickContext` 接口，不 import three / World / DOM；副作用经 `ctx.events` / `ctx.api` 发送 |
+| `src/ai/BehaviorTree.ts` / `registry.ts` | `BehaviorTree.fromJSON` / `NodeRegistry` | JSON 编译器与节点注册表，支持热重载 |
+| `src/ai/AIService.ts` / `AIComponent.ts` | `registerType` / `attach` / `update` / `enable` / `disable` / `reloadConfig` | 每帧批量更新、分帧预算，实体 spawn/despawn 时 attach/detach |
+| `src/ai/behaviors.ts` + `behaviors/*.json` | 4 种内置生物行为树配置 | 猪/羊 wander、僵尸/骷髅 chase+attack+wander，与 v1.4.9 行为等价 |
 
 新增动物（牛 / 鸡 / 兔）与猪 / 羊一起进入 `ANIMALS` 加权生成表，权重与掉落走
 `dropHash(seed, 'spawn:'+serial, 0)` 抽取；五种被动动物均可喂食繁殖。`ITEMS` 追加

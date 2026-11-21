@@ -44,8 +44,10 @@ export interface Options {
   mesherThreads: MesherThreads;
   /** 开发者：自动保存间隔（秒），0 = 关闭自动保存 */
   autosaveInterval: number;
-  /** 实验性内容：WASM 内核 / 插件三载体（默认关闭，开启后重启生效） */
+  /** 实验性内容：WASM 内核 / 插件三载体（默认关闭，即时生效） */
   experimental: boolean;
+  /** 实验性内容：横屏模式（锁定设备横屏并启用宽屏 HUD 布局，即时生效） */
+  landscapeMode: boolean;
   /** 实验性玩法：随机刻速度档位 0~3（0=暂停生长，1=慢，2=标准，3=快） */
   randomTickSpeed: RandomTickSpeed;
   /** 实验性玩法：推进昼夜循环（关闭后时间/太阳定格） */
@@ -87,6 +89,7 @@ export const DEFAULT_OPTIONS: Options = {
   mesherThreads: 'auto',
   autosaveInterval: 8,
   experimental: false,
+  landscapeMode: false,
   randomTickSpeed: 2,
   doDaylightCycle: true,
   keepInventory: true,
@@ -149,6 +152,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       mesherThreads: pick(o.mesherThreads, MESHER_THREAD_OPTIONS, base.mesherThreads),
       autosaveInterval: Math.round(num(o.autosaveInterval, base.autosaveInterval, 0, 120)),
       experimental: bool(o.experimental, base.experimental),
+      landscapeMode: bool(o.landscapeMode, base.landscapeMode),
       randomTickSpeed: pick(o.randomTickSpeed, RANDOM_TICK_SPEEDS, base.randomTickSpeed),
       doDaylightCycle: bool(o.doDaylightCycle, base.doDaylightCycle),
       keepInventory: bool(o.keepInventory, base.keepInventory),
@@ -192,6 +196,7 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     mesherThreads: pick(base.mesherThreads, MESHER_THREAD_OPTIONS, DEFAULT_OPTIONS.mesherThreads),
     autosaveInterval: Math.round(num(base.autosaveInterval, DEFAULT_OPTIONS.autosaveInterval, 0, 120)),
     experimental: bool(base.experimental, DEFAULT_OPTIONS.experimental),
+    landscapeMode: bool(base.landscapeMode, DEFAULT_OPTIONS.landscapeMode),
     randomTickSpeed: pick(base.randomTickSpeed, RANDOM_TICK_SPEEDS, DEFAULT_OPTIONS.randomTickSpeed),
     doDaylightCycle: bool(base.doDaylightCycle, DEFAULT_OPTIONS.doDaylightCycle),
     keepInventory: bool(base.keepInventory, DEFAULT_OPTIONS.keepInventory),

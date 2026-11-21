@@ -147,6 +147,19 @@ try {
     `before=${uiBefore} after=${uiOn.cls}`);
   ok('UI 还原开关显示「开」并写入 localStorage', uiOn.val === '开' && uiOn.saved === true,
     `val=${uiOn.val} saved=${uiOn.saved}`);
+
+  // 必须用普通 mc-btn：opt-row 的伪元素被刻意 display:none，读不到真实宽度
+  const btnSel = '.options-panel .options-footer .mc-btn';
+  const readMarker = (sel) => page.evaluate((s) => {
+    const cs = getComputedStyle(document.querySelector(s), '::before');
+    return { width: parseFloat(cs.width), display: cs.display };
+  }, sel);
+  const markerBefore = await readMarker(btnSel);
+  await page.hover(btnSel);
+  const markerHover = await readMarker(btnSel);
+  ok('Java 1.20 按钮 » 记号在悬停时可见',
+    markerBefore.width === 0 && markerHover.width > 0 && markerHover.display !== 'none',
+    `before=${JSON.stringify(markerBefore)} hover=${JSON.stringify(markerHover)}`);
   const pixelFont = await page.evaluate(() => {
     const el = document.querySelector('.options-panel .opt-label');
     return el ? getComputedStyle(el).fontFamily : '';
@@ -504,7 +517,7 @@ try {
   }, { timeout: 10000 }).catch(() => {});
   const imported = await page.evaluate(() => {
     const ta = document.querySelector('.options-io-overlay textarea');
-    ta.value = JSON.stringify({ volume: 42, invertY: true, bogusField: 1 });
+    ta.value = JSON.stringify({ volume: 42, invertY: true, experimental: true, bogusField: 1 });
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     [...document.querySelectorAll('.options-io-overlay .mc-btn')].find((b) => b.textContent.includes('应用'))?.click();
     return {
@@ -519,6 +532,22 @@ try {
     imported.stored.volume === 42 && imported.stored.invertY === true &&
     imported.stored.bogusField === undefined, JSON.stringify(imported));
   ok('导入后关闭导入导出面板', imported.ioOpen === false);
+
+  // 导入 experimental:true 后必须推到 WASM 与插件载体
+  ok('导入设置后 experimental 推到 WASM/插件载体', await page.evaluate(() => {
+    const wasm = window.__mc.services.optional({ key: 'wasm' });
+    return wasm?.getState() !== 'disabled' && window.__mc.plugins.getExperimental() === true;
+  }));
+  // 恢复，避免 experimental 开启影响后续用例
+  await clickText(page, '.options-panel .menu-row .mc-btn', '导入设置');
+  await page.waitForFunction(() => document.querySelector('.options-io-overlay')?.style.display !== 'none');
+  await page.evaluate(() => {
+    const ta = document.querySelector('.options-io-overlay textarea');
+    ta.value = JSON.stringify({ experimental: false });
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    [...document.querySelectorAll('.options-io-overlay .mc-btn')].find((b) => b.textContent.includes('应用'))?.click();
+  });
+  await sleep(200);
   await page.keyboard.press('Escape');
   await sleep(250);
 
@@ -574,6 +603,56 @@ try {
   await sleep(300);
   ok('移动端菜单可进设置页', await mob.evaluate(() => window.__mc.hud.optionsOpen));
   await mob.screenshot({ path: path.join(OUT, 'options-mobile-menu.png') });
+
+  // 横屏模式：开关可见、即时生效、持久化
+  ok('设置页含「横屏模式」选项行', await mob.evaluate(() =>
+    [...document.querySelectorAll('.options-panel .opt-row .opt-label')]
+      .some((e) => e.textContent === '横屏模式')));
+  await clickRow(mob, '横屏模式');
+  await sleep(200);
+  const landOn = await mob.evaluate(() => ({
+    body: document.body.classList.contains('landscape-mode'),
+    hud: document.querySelector('.hud-root')?.classList.contains('landscape-mode'),
+    saved: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').landscapeMode,
+    hint: getComputedStyle(document.querySelector('.rotate-hint')).display !== 'none',
+  }));
+  ok('横屏模式即时挂 class 并写入 localStorage',
+    landOn.body && landOn.hud && landOn.saved === true, JSON.stringify(landOn));
+  ok('竖屏且锁定失败时显示旋转提示', landOn.hint, JSON.stringify(landOn));
+
+  // 遮罩阻断时必须能主动退出
+  await clickText(mob, '.rotate-hint button', '关闭横屏模式');
+  await sleep(200);
+  ok('「关闭横屏模式」按钮可退出遮罩', await mob.evaluate(() =>
+    !document.body.classList.contains('landscape-mode') &&
+    getComputedStyle(document.querySelector('.rotate-hint')).display === 'none' &&
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').landscapeMode === false));
+
+  // 跨会话恢复：重新加载后设置应保留
+  await mob.evaluate(() => localStorage.setItem('minecraft-ts-options-v1',
+    JSON.stringify({ ...JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}'), landscapeMode: true })));
+  await mob.reload({ waitUntil: 'load' });
+  // boot 是 void 且首个 await 在 IndexedDB，load 事件会先到；必须等 __mc 就绪再读
+  const restored = await mob.waitForFunction(
+    () => !!window.__mc && document.body.classList.contains('landscape-mode'),
+    { timeout: 20000 },
+  ).then(() => true).catch(() => false);
+  ok('横屏模式跨会话恢复', restored);
+
+  // 重置回退到默认关闭（reload 后设置页已关闭，先重新打开）
+  await clickText(mob, '.title-links .link-btn', '设置');
+  await sleep(300);
+  await clickText(mob, '.options-panel .options-footer .mc-btn', '重置全部设置');
+  ok('重置后横屏模式回退为关闭', await mob.evaluate(() =>
+    !document.body.classList.contains('landscape-mode') &&
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').landscapeMode === false));
+
+  // 重置全部设置后，移动端 autoJump 应保持开启
+  await clickRow(mob, '自动跳跃');            // 先关掉
+  await clickText(mob, '.options-panel .options-footer .mc-btn', '重置全部设置');
+  const resetAuto = await mob.evaluate(() =>
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').autoJump);
+  ok('重置全部设置后移动端 autoJump 仍开启', resetAuto === true, `autoJump=${resetAuto}`);
 
   ok('设置页测试无运行时错误', errors.length === 0, errors.slice(0, 5).join(' | '));
   await page.close();

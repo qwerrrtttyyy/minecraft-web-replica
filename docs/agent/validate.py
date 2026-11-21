@@ -56,6 +56,71 @@ CHECKS = [
         lambda: "sessionStorage" in read("test/visual-check.mjs")
         and "2026" in read("test/visual-check.mjs"),
     ),
+    # ---- AI 系统任务卡（A00 起）----
+    (
+        "ai core",
+        "src/ai/Node.ts 导出 NodeStatus 与 TickContext 接口",
+        lambda: "NodeStatus" in read("src/ai/Node.ts") and "TickContext" in read("src/ai/Node.ts"),
+    ),
+    (
+        "ai composites",
+        "Selector / Sequence / Parallel / RandomSelector 存在",
+        lambda: all(s in read("src/ai/composites.ts")
+                    for s in ("Selector", "Sequence", "Parallel", "RandomSelector")),
+    ),
+    (
+        "ai decorators",
+        "Inverter / Repeater / UntilFail / UntilSuccess 存在",
+        lambda: all(s in read("src/ai/decorators.ts")
+                    for s in ("Inverter", "Repeater", "UntilFail", "UntilSuccess")),
+    ),
+    (
+        "ai conditions",
+        "条件节点库九个类存在",
+        lambda: all(s in read("src/ai/conditions.ts") for s in (
+            "CanSeePlayer", "DistanceLt", "HealthPctLt", "IsDay", "IsInWater",
+            "HasTarget", "TargetInRange", "BlackboardEq", "CanReach",
+        )),
+    ),
+    (
+        "ai actions",
+        "动作节点库七个类存在",
+        lambda: all(s in read("src/ai/actions.ts") for s in (
+            "ChasePlayer", "FleeFrom", "AttackPlayer", "Wander", "Wait",
+            "EmitEvent", "SetBlackboard",
+        )),
+    ),
+    (
+        "ai tree",
+        "BehaviorTree.fromJSON 与四种生物 JSON 配置存在",
+        lambda: "fromJSON" in read("src/ai/BehaviorTree.ts")
+        and all((ROOT / f"src/ai/behaviors/{n}.json").exists()
+                for n in ("pig", "sheep", "zombie", "skeleton")),
+    ),
+    (
+        "ai service",
+        "AIService 生命周期 API 存在",
+        lambda: all(s in read("src/ai/AIService.ts") for s in (
+            "registerType", "attach", "update", "enable", "disable", "reloadConfig",
+        )),
+    ),
+    (
+        "ai perception",
+        "Perception 只读感知视图存在",
+        lambda: "Perception" in read("src/ai/Perception.ts"),
+    ),
+    (
+        "entity integration",
+        "Entity.aiComponent 可选字段与 update 委托存在",
+        lambda: "aiComponent?:" in read("src/entity/entity.ts")
+        and "this.aiComponent" in read("src/entity/entity.ts"),
+    ),
+    (
+        "test:ai",
+        "package.json 声明 test:ai 且 verify 链包含它",
+        lambda: "test:ai" in pkg_scripts()
+        and "test:ai" in pkg_scripts().get("verify", ""),
+    ),
     # ---- 植物系统深化任务卡（P00~P06）----
     (
         "plant env",

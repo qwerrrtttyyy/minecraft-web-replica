@@ -261,15 +261,15 @@ describe('动作节点', () => {
     expect(new FleeFrom('player', 1.0, 5).tick(far.c)).toBe(NodeStatus.Success);
     expect(new FleeFrom('player', 1.0, 50).tick(actionCtx().c)).toBe(NodeStatus.Running);
   });
-  it('AttackPlayer 冷却结束且在攻击距离 → Success 并发事件；冷却中 → Running', () => {
-    const { c, events } = actionCtx();
+  it('AttackPlayer 冷却结束且在攻击距离 → Success 并设置 wantAttack；冷却中 → Running', () => {
+    const { c } = actionCtx();
     c.playerPos = { x: 1, y: 1, z: 0 }; // 距离 1 ≤ 1.8
     const attack = new AttackPlayer(3, 1.05);
     const r1 = attack.tick(c);
-    const emitted = events.emitted.filter((e) => e.type === 'survival:damage').length;
+    const want = c.blackboard.get('wantAttack');
     const r2 = attack.tick(c); // 冷却中
     expect(r1).toBe(NodeStatus.Success);
-    expect(emitted).toBe(1);
+    expect(want).toBe(true);
     expect(r2).toBe(NodeStatus.Running);
   });
   it('Wait(0.1) 累计 dt 达阈值 → Success', () => {

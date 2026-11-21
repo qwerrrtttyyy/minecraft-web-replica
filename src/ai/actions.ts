@@ -11,10 +11,15 @@ function cfg<T>(config: any, key: string, fallback: T): T {
 export class ChasePlayer extends Node {
   readonly speed: number;
   readonly stopDist: number;
+  readonly speedFar?: number;
+  readonly speedClose?: number;
+  readonly closeDist: number;
   constructor(config: any = {}, stopDist?: number) {
     super();
-    if (typeof config === 'object' && config !== null) { this.speed = cfg(config, 'speed', 1); this.stopDist = cfg(config, 'stopDist', 2); }
-    else { this.speed = config; this.stopDist = stopDist ?? 2; }
+    if (typeof config === 'object' && config !== null) {
+      this.speed = cfg(config, 'speed', 1); this.stopDist = cfg(config, 'stopDist', 2);
+      this.speedFar = config.speedFar; this.speedClose = config.speedClose; this.closeDist = cfg(config, 'closeDist', 2.2);
+    } else { this.speed = config; this.stopDist = stopDist ?? 2; this.closeDist = 2.2; }
   }
   tick(ctx: TickContext): NodeStatus {
     const dx = ctx.playerPos.x - ctx.entity.pos.x;
@@ -26,8 +31,10 @@ export class ChasePlayer extends Node {
       ctx.blackboard.set('moveSpeed', 0);
       return NodeStatus.Success;
     }
+    let spd = this.speed;
+    if (this.speedFar !== undefined && this.speedClose !== undefined) spd = d > this.closeDist ? this.speedFar : this.speedClose;
     ctx.blackboard.set('moving', true);
-    ctx.blackboard.set('moveSpeed', this.speed);
+    ctx.blackboard.set('moveSpeed', spd);
     return NodeStatus.Running;
   }
 }
@@ -63,16 +70,20 @@ export class AttackPlayer extends Node {
     this.attackTimer = Math.max(0, this.attackTimer - ctx.dt);
     const dx = ctx.playerPos.x - ctx.entity.pos.x;
     const dz = ctx.playerPos.z - ctx.entity.pos.z;
+    const dy = Math.abs(ctx.playerPos.y - ctx.entity.pos.y);
     const d = Math.hypot(dx, dz);
     ctx.blackboard.set('moveYaw', Math.atan2(-dx, -dz));
-    if (d <= this.attackRange && this.attackTimer <= 0) {
+    if (d > this.attackRange || dy >= 1.9) {
+      ctx.blackboard.set('wantAttack', false);
+      return NodeStatus.Failure; // 不在攻击范围，让 chase 接管
+    }
+    if (this.attackTimer <= 0) {
       this.attackTimer = this.cooldown;
       ctx.blackboard.set('wantAttack', true);
-      ctx.events.emit('survival:damage', { amount: this.damage, cause: 'AI AttackPlayer' });
       return NodeStatus.Success;
     }
     ctx.blackboard.set('wantAttack', false);
-    return NodeStatus.Running;
+    return NodeStatus.Running; // 冷却中，保持在攻击位置
   }
   reset(): void { this.attackTimer = 0; }
 }

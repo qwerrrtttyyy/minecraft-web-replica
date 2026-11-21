@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+### 新增（移植 PR #23 优良部分）
+- **Java 1.20 HUD/UI**：深灰石板面板、立体按钮与悬停 `» «` 记号（修复了原 PR 中伪元素宽度恒为 0 导致记号不可见的缺陷）；新增标志性经验条（`HUD.setExperience(level, progress)` 为视觉占位，当前无调用点）。
+- **横屏模式（实验性内容）**：锁定横屏 + 宽屏 HUD 重排 + 竖屏「请旋转设备」提示；提示卡片提供「关闭横屏模式」按钮（修复遮罩盖住设置页无法退出的缺陷）；提示显隐只由当前方向与开关决定，锁定成功后转回竖屏可重现（修复原 PR 的陈旧锁状态缺陷）。
+- **设置修复**：重置全部设置时移动端 `autoJump` 不再被关；导入 / 重置会把 experimental 推送到 WASM 内核与插件载体；死亡界面文案随「死亡保留物品」开关动态显示；experimental 注释改为「即时生效」。
+
+### 说明
+- 未移植 PR #23 的 >1MB 截图与其自带变更文档（截图违反「大二进制不入库」硬规则；文档中的临时验证声称无法复现）。
+- 浏览器回归断言已补进 `test/options-check.mjs`；本机无可运行 Chromium，`test:options` / `test:visual` / `test:smoke` 留待 CI 执行。
+
+## [1.5.3] - 2026-11-21 · 实体 AI 系统（行为树）
+
+### 新增
+- **AI 系统（方案 A：数据驱动行为树）**：新增 `src/ai/` 模块（Node/Blackboard/AIContext/composites/decorators/conditions/actions/Perception/BehaviorTree/registry/AIComponent/AIService），节点只依赖 `TickContext` 接口，不 import three / World / DOM；副作用经 `ctx.events` / `ctx.api` 发送。
+- **行为树 JSON 配置**：`src/ai/behaviors.ts` + `behaviors/*.json` 为猪/羊/僵尸/骷髅提供行为树配置；猪/羊 wander，僵尸/骷髅 chase+attack+wander，与 v1.4.9 行为等价。
+- **AIService 集成**：主循环每帧调 `aiService.update(dt, frameCtx)`，分帧预算 2ms；`EntityManager` spawn/despawn 时 attach/detach AIComponent；`Entity.update` 委托 AI 黑板决策（移动/攻击）。
+- **测试**：新增 `test:ai`（53 项断言，覆盖节点状态/复合/装饰器/条件/动作/BehaviorTree JSON 编译/AIService 生命周期/4 种生物行为树冒烟）并挂进 `verify` 链；`validate.py` 新增 AI 系统 11 个契约关键词。
+
+### 说明
+- 确定性：AI 随机性走 `mulberry32(hash(worldSeed, entityId, label))`，无新增 `Math.random`；既有实体游荡/生成坐标的 `Math.random()` 技术债不动。
+- 方块 id / 纹理不变；运行时唯一依赖仍为 three。
+
 ## [1.5.2] - 2026-11-21 · 内容体系完善（正式版）
 
 ### 新增

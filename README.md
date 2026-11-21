@@ -32,7 +32,9 @@
 物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
 离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.5.2（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.5.3（双轨版本号，规则见下方「版本规范」）
+
+**v1.5.3 实体 AI 系统（行为树）**：新增数据驱动行为树 AI 系统（`src/ai/`），节点只依赖 `TickContext` 接口，不 import three / World / DOM；支持 Selector/Sequence/Parallel/RandomSelector 复合节点、Inverter/Repeater/UntilFail/UntilSuccess 装饰器、条件与动作节点库、BehaviorTree JSON 编译与 NodeRegistry。`AIService` 每帧批量更新（2ms 分帧预算），实体 spawn/despawn 时 attach/detach AIComponent。内置猪/羊/僵尸/骷髅迁移到行为树 JSON，行为与 v1.4.9 等价。新增 `test:ai`（53 项断言）并挂进 `verify` 链；确定性 RNG 走 `mulberry32(hash(worldSeed, entityId, label))`。
 
 **v1.5.2 内容体系完善（正式版）**：在既有生存 / 生态体系之上补齐四类内容——**新动物与繁殖**：新增牛 / 鸡 / 兔三种被动动物，连同猪 / 羊共五种被动动物均可喂食进入求爱、双亲冷却后产幼崽，幼崽 120 秒长成（按实体 id 升序稳定择偶）；**可见悬浮掉落物**：新增 `DropManager` + `dropLogic`，方块 / 生物掉落以小方块实体弹出、浮动自转、0.8 格内同类合并（上限 999）、限时 / 掉出世界消失、入水终端下沉，拾取回背包且不进存档，散开与加权抽取全走 `dropHash`；**物品与配方闭环**：煤矿石改掉 `item:coal`，新增皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉 / 煤炭六种物品与图集纹理，补充「煤炭 + 木棍 → 4 火把」配方；数值集中在 `tuning.ts`。新增 `test:drop`（9 项）纯逻辑回归，方块总数 152（原 141 基线 + v1.7.0 内容植物扩充 11 种）、图集既有 tile 索引不变。
 
