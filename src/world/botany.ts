@@ -56,6 +56,18 @@ export interface PlantBonus {
   count: number;
 }
 
+/** 生态状态存档（v1）：紧凑元组，避免对象开销撑大存档 */
+export interface PlantSaveV1 {
+  v: 1;
+  /** [锚点x, 锚点y, 锚点z, blockId, energy 0~100, bloomed 0|1] */
+  plants: [number, number, number, number, number, 0 | 1][];
+  /** [土壤x, 土壤y, 土壤z, nutrient 0~100] */
+  soil: [number, number, number, number][];
+}
+
+/** 单类状态存档上限，防止存档体积失控 */
+export const ECOLOGY_SAVE_LIMIT = 1024;
+
 /** 生态规则的方块 id 表：显式接口保证漏键在编译期暴露，而不是静默变成 0 */
 interface BotanyIds {
   grass: BlockId; dirt: BlockId; podzol: BlockId; water: BlockId;
@@ -191,8 +203,8 @@ export class Botany {
       if (trait) this.traits.set(def.id, trait);
     }
     // 玩家拆掉 / 放回方块时清掉旧能量，避免新植物继承前一位住客的储能
-    this.events?.on('block:break', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
-    this.events?.on('block:place', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
+    this.events?.on('block:break', ({ x, y, z, block }) => this.forgetAnchor(x, y, z, block));
+    this.events?.on('block:place', ({ x, y, z, block }) => this.forgetAnchor(x, y, z, block));
   }
 
   /**
@@ -286,6 +298,79 @@ export class Botany {
     this.events?.emit('plant:soil', { x, y, z, delta });
   }
 
+  // ---------- 生态状态存档 ----------
+
+  /** 序列化当前仍在原位的植物能量与土壤养分 */
+  serializeEcology(): PlantSaveV1 {
+    const plants: PlantSaveV1['plants'] = [];
+    for (const st of this.energy.values()) {
+      if (plants.length >= ECOLOGY_SAVE_LIMIT) break;
+      if (this.world.getBlock(st.x, st.y, st.z) !== st.id) continue;
+      if (!this.traits.has(st.id)) continue;
+      plants.push([
+        st.x, st.y, st.z, st.id, Math.round(st.energy), st.bloomed ? 1 : 0,
+      ]);
+    }
+    const soil: PlantSaveV1['soil'] = [];
+    for (const [key, value] of this.soil) {
+      if (soil.length >= ECOLOGY_SAVE_LIMIT) break;
+      const parts = key.split(',');
+      if (parts.length !== 3) continue;
+      const [x, y, z] = parts.map(Number);
+      if (![x, y, z].every(Number.isInteger)) continue;
+      soil.push([x, y, z, Math.round(value)]);
+    }
+    return { v: 1, plants, soil };
+  }
+
+  /**
+   * 恢复生态状态；返回成功恢复的植物条数。
+   * 任何损坏条目一律丢弃不抛错，坏档不会阻断启动。
+   */
+  restoreEcology(data: unknown): number {
+    if (!data || typeof data !== 'object') return 0;
+    const d = data as Partial<PlantSaveV1>;
+    if (d.v !== 1 || !Array.isArray(d.plants) || !Array.isArray(d.soil)) return 0;
+
+    // 同锚点去重：保留最后一条；按输入顺序逐个校验
+    const seenPlants = new Map<string, PlantSaveV1['plants'][number]>();
+    for (const entry of d.plants) {
+      if (!Array.isArray(entry) || entry.length !== 6) continue;
+      const [x, y, z, id, energy, bloomed] = entry;
+      if (![x, y, z, id].every(Number.isInteger)) continue;
+      if (y < 1 || y >= H || id <= 0 || id > 255) continue;
+      if (!Number.isFinite(energy) || energy < 0 || energy > MAX_PLANT_ENERGY) continue;
+      if (bloomed !== 0 && bloomed !== 1) continue;
+      if (this.world.getBlock(x, y, z) !== id) continue;
+      if (!this.traits.has(id)) continue;
+      seenPlants.set(blockKey(x, y, z), [x, y, z, id, energy, bloomed]);
+    }
+    let restored = 0;
+    for (const [key, entry] of seenPlants) {
+      if (restored >= ECOLOGY_SAVE_LIMIT) break;
+      const [x, y, z, id, energy, bloomed] = entry;
+      this.energy.set(key, { x, y, z, id, energy, bloomed: bloomed === 1 });
+      restored++;
+    }
+
+    const seenSoil = new Map<string, number>();
+    for (const entry of d.soil) {
+      if (!Array.isArray(entry) || entry.length !== 4) continue;
+      const [x, y, z, value] = entry;
+      if (![x, y, z].every(Number.isInteger)) continue;
+      if (!Number.isFinite(value) || value < 0 || value > MAX_SOIL_NUTRIENT) continue;
+      seenSoil.set(blockKey(x, y, z), value);
+    }
+    let soilRestored = 0;
+    for (const [key, value] of seenSoil) {
+      if (soilRestored >= ECOLOGY_SAVE_LIMIT) break;
+      this.soil.set(key, value);
+      soilRestored++;
+    }
+    void soilRestored;
+    return restored;
+  }
+
   /** 生态能量统计（F3 / 调试面板）：只统计当前仍在原位的植物 */
   stats(
     focusX = this.focusX, focusZ = this.focusZ, radius = this.sampleRadius,
@@ -293,7 +378,7 @@ export class Botany {
     let tracked = 0, charged = 0, total = 0, solar = 0, hydro = 0, fungal = 0;
     let soilTotal = 0, soilCount = 0;
     for (const [key, value] of this.soil) {
-      const [sx, sy, sz] = key.split(',').map(Number);
+      const [sx, , sz] = key.split(',').map(Number);
       if (Math.abs(sx - focusX) > radius || Math.abs(sz - focusZ) > radius) continue;
       soilTotal += value;
       soilCount++;
@@ -367,6 +452,18 @@ export class Botany {
       this.remember(key, state);
     }
     return state;
+  }
+
+  /**
+   * 清除某次方块改动对应的储能。
+   * 柱状 / 藤蔓植物的能量锚点不在被拆格本身（在底格 / 顶格），
+   * 因此除精确 key 外还要清掉同 x,z 且同 id 的所有锚点记录。
+   */
+  private forgetAnchor(x: number, y: number, z: number, id: BlockId): void {
+    this.energy.delete(blockKey(x, y, z));
+    for (const [key, state] of this.energy) {
+      if (state.x === x && state.z === z && state.id === id) this.energy.delete(key);
+    }
   }
 
   private remember(key: string, state: PlantEnergyState): void {

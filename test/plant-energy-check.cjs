@@ -302,8 +302,9 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
     DAYS_PER_SEASON === 6 && seasonAt(0) === 'spring' && seasonAt(5) === 'spring' &&
     seasonAt(6) === 'summer' && seasonAt(12) === 'autumn' &&
     seasonAt(23) === 'winter' && seasonAt(24) === 'spring');
-  ok('天气由 seed+day 确定性推导',
-    weatherAt(20261115, 3) === weatherAt(20261115, 3));
+  const w1 = weatherAt(20261115, 3);
+  const w2 = weatherAt(20261115, 3);
+  ok('天气由 seed+day 确定性推导', w1 === w2, `${w1}`);
   const neutral = modifiers(DEFAULT_PLANT_ENV);
   ok('默认环境倍率全为 1',
     neutral.growth === 1 && neutral.solar === 1 && neutral.hydro === 1 && neutral.fungal === 1);
@@ -358,6 +359,71 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
     grew = get(t, 7, 21, 3) === t.id('wheat_growing');
   }
   ok('施肥后恢复生长', grew, `n=${t.botany.nutrientAt(7, 20, 3)}`);
+}
+
+// 13) 生态状态存档：round-trip / 坏档隔离 / 截断 / 柱状锚点清理
+{
+  const { Botany } = require('./terrain-logic/world/botany.js');
+  const t = makeWorld();
+  isolate(t, 11, 11);
+  put(t, 11, 21, 11, 'poppy');
+  t.botany.setEnergy(11, 21, 11, 88);
+  t.botany.enrichSoil(11, 20, 11, 30);
+  t.botany.setNutrient(11, 20, 11, 64);
+  const snap = t.botany.serializeEcology();
+  ok('序列化含植物 / 土壤两条状态',
+    snap.v === 1 && snap.plants.length === 1 && snap.soil.length === 1,
+    JSON.stringify(snap));
+
+  const fresh = new Botany(t.world, t.reg, 20261115, t.events, { radius: 8 });
+  const restored = fresh.restoreEcology(snap);
+  ok('恢复后能量 / 养分 / bloom 数值一致',
+    restored === 1 && fresh.energyAt(11, 21, 11) === 88 && fresh.nutrientAt(11, 20, 11) === 64);
+
+  const bad = {
+    v: 1,
+    plants: [
+      [11, 21, 11, 999, 50, 0],      // 未知 id
+      [11, 21, 11, t.id('poppy'), 500, 0], // 能量越界
+      [11.5, 21, 11, t.id('poppy'), 50, 0], // 非整数坐标
+      [11, 21, 11, t.id('poppy'), 50, 0],  // 合法
+    ],
+    soil: [[11, 20, 11, 9000], [11, 20, 11, 40]], // 越界 + 合法（同格去重保留最后）
+  };
+  const fresh2 = new Botany(t.world, t.reg, 20261115, t.events, { radius: 8 });
+  const restored2 = fresh2.restoreEcology(bad);
+  ok('损坏条目被丢弃、仅保留合法条目', restored2 === 1 && fresh2.energyAt(11, 21, 11) === 50);
+  ok('restoreEcology 对任意垃圾输入不抛错',
+    fresh2.restoreEcology(null) === 0 && fresh2.restoreEcology({ plants: 'x' }) === 0);
+
+  // 柱状锚点：中间段被拆后锚点能量应清理
+  const t3 = makeWorld();
+  for (let y = 21; y <= 23; y++) t3.world.setBlock(4, y, 14, t3.id('sugar_cane'));
+  t3.botany.setEnergy(4, 21, 14, 90);
+  ok('柱状植物以底格为锚点', t3.botany.energyAt(4, 23, 14) === 90);
+  t3.world.setBlock(4, 22, 14, 0);
+  t3.events.emit('block:break', { x: 4, y: 22, z: 14, block: t3.id('sugar_cane') });
+  // energyAt 会为新锚点惰性建状态（初始 32），因此断言旧储能 90 已清除
+  ok('中间段被拆后底格锚点能量被清理',
+    t3.botany.energyAt(4, 21, 14) < 90 && t3.botany.energyAt(4, 23, 14) < 90,
+    `bottom=${t3.botany.energyAt(4, 21, 14)} top=${t3.botany.energyAt(4, 23, 14)}`);
+
+  // 截断：序列化超过 1024 株时按上限保留
+  const t4 = makeWorld();
+  const poppy = t4.id('poppy');
+  for (let z = 0; z < 40; z++) {
+    for (let x = 0; x < 30; x++) {
+      const wx = x - 1;
+      if (wx < 1) continue;
+      t4.world.setBlock(wx, 21, z, poppy);
+      t4.botany.setEnergy(wx, 21, z, 50);
+    }
+  }
+  const big = t4.botany.serializeEcology();
+  ok('序列化条数受上限 1024 约束', big.plants.length <= 1024, `count=${big.plants.length}`);
+  const fresh3 = new Botany(t4.world, t4.reg, 20261115, t4.events, { radius: 8 });
+  const restored3 = fresh3.restoreEcology(big);
+  ok('恢复条数与序列化一致', restored3 === big.plants.length, `restored=${restored3}`);
 }
 
 log(`\nPASS 植物能量体系回归：${passed} 组断言全部通过`);

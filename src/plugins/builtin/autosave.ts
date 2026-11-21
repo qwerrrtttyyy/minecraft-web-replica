@@ -23,6 +23,7 @@ export const autosavePlugin: PluginDefinition = {
       'block:ignite',
       'compost:change',
       'plant:grow',
+      'plant:soil',
       'player:move',
       'inventory:change',
       'hotbar:select',

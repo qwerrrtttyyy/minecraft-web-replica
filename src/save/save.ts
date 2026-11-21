@@ -27,6 +27,14 @@ export interface SaveData {
     /** 设置页：反转 Y 轴（旧档缺省 false） */
     invertY?: boolean;
   };
+  /** v1.6：累计游戏日（旧档缺省 0） */
+  dayCount?: number;
+  /** v1.6：植物能量 / 土壤养分快照（旧档缺省，植物从初始能量起步） */
+  botany?: {
+    v: 1;
+    plants: [number, number, number, number, number, 0 | 1][];
+    soil: [number, number, number, number][];
+  };
   savedAt: number;
 }
 
@@ -68,6 +76,29 @@ const isStack = (v: unknown): boolean => {
   return false;
 };
 
+/** v1.6 生态存档校验：结构严格但字段可选，旧档缺省即跳过 */
+const isBotanySave = (v: unknown): boolean => {
+  if (!v || typeof v !== 'object') return false;
+  const b = v as Record<string, unknown>;
+  if (b.v !== 1 || !Array.isArray(b.plants) || !Array.isArray(b.soil)) return false;
+  for (const p of b.plants) {
+    if (!Array.isArray(p) || p.length !== 6) return false;
+    // x / z 支持负数（世界允许负坐标），y 限定在有效高度内，id 1..255
+    if (!p.slice(0, 4).every((n) => Number.isInteger(n))) return false;
+    if ((p[1] as number) < 1 || (p[1] as number) > 79) return false;
+    if ((p[3] as number) <= 0 || (p[3] as number) > 255) return false;
+    if (!finite(p[4]) || (p[4] as number) < 0 || (p[4] as number) > 100) return false;
+    if (p[5] !== 0 && p[5] !== 1) return false;
+  }
+  for (const s of b.soil) {
+    if (!Array.isArray(s) || s.length !== 4) return false;
+    if (!s.slice(0, 3).every((n) => Number.isInteger(n))) return false;
+    if ((s[1] as number) < 0 || (s[1] as number) > 79) return false;
+    if (!finite(s[3]) || (s[3] as number) < 0 || (s[3] as number) > 100) return false;
+  }
+  return true;
+};
+
 /**
  * 全量存档 schema 校验（v1.2.0）。
  *
@@ -107,6 +138,9 @@ export function validateSave(data: unknown): data is SaveData {
   // 设置页新增字段为可选：旧档没有时按默认值处理，不影响校验通过
   if (st.volume !== undefined && !finite(st.volume)) return false;
   if (st.invertY !== undefined && typeof st.invertY !== 'boolean') return false;
+  // v1.6 生态字段为可选，旧档缺省仍通过
+  if (d.dayCount !== undefined && (!intIn(d.dayCount, 0, Number.MAX_SAFE_INTEGER))) return false;
+  if (d.botany !== undefined && !isBotanySave(d.botany)) return false;
   return finite(d.savedAt);
 }
 
@@ -174,7 +208,10 @@ export function normalizeSave(raw: unknown): SaveData | null {
   }
   if (parsed.version !== 2) return null;
   // 全量 schema 校验：坏档一律当作无存档，避免启动中途抛错卡死
-  return validateSave(parsed) ? parsed : null;
+  if (!validateSave(parsed)) return null;
+  // v1.6：旧档缺生态字段时补默认值，不影响既有存档
+  if (parsed.dayCount === undefined) parsed.dayCount = 0;
+  return parsed;
 }
 
 export class LocalStorageProvider implements ISaveProvider {

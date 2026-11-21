@@ -472,6 +472,24 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 | 事件 | 写入发出 `plant:grow`（grow / spread / decay / ripen / harvest）；开花 / 采集发出 `plant:bloom` 驱动粒子 |
 | 性能 | 单帧代价只与采样次数相关；能量表上限 4096 条按最旧淘汰，不做全图植物表。`test:botany` / `test:plant-energy` 覆盖全部规则 |
 
+### 8.7.1 v1.6 植物系统深化
+
+四个纯数据模块承担规则复杂度，`Botany` 作为唯一状态协调者：
+
+| 模块 | 接口 | 职责 |
+|---|---|---|
+| `src/world/ecology.ts` | `seasonAt(day)` / `weatherAt(seed,day)` / `modifiers(env)` | 6 日一季的历法（一年 24 日）、seed 派生天气、三代谢倍率表；默认 spring/clear 全为 1，`Botany.update/tickAt` 的可选 `env` 不传时保持旧行为逐值中性 |
+| `src/world/drops.ts` | `rollDrops(specs, ctx)` | 稳定哈希判定掉落，替代玩家 / 实体两处 `Math.random`；支持 chance / 数量区间 / 昼夜 / 群系条件 |
+| `src/world/soil.ts` | `nutrientAt/consume/enrich/returnToSoil` | 与能量并行的土壤养分场；未跟踪格返回 100（天然肥沃），懒初始化保证旧测试中性；上限 1024 |
+| `src/world/compost.ts` | `levelOf/nextId/harvestOf` | 堆肥桶等级编码进 block id 110~118，借 `world.edits` 免费持久化；无需独立状态表 / 存档字段 |
+
+新增状态与约束：
+- `Botany` 持有 `energy` / `soil` / `env` 三份状态；`grow()` 成功写入后才扣能量与养分，失败都不扣；`decay()` / 破坏采集归还半份养分。
+- 玩家空手右键采集蓄能植物；手持 `item:fertilizer`（+35 养分）/ `item:bone_meal`（+55 养分且 +15 能量）右键目标格施肥。
+- 猪 / 羊 12% 掉有机肥，新增骷髅怪（夜间 hostile，75% 掉骨粉）；掉落判定全部走 `rollDrops`。
+- `Botany.serializeEcology()/restoreEcology()`：紧凑元组存档，逐条校验坐标 / id / trait / 数值范围，同锚点去重、植物与土壤分别截断 1024；坏档丢弃不抛错。`SaveData` 加可选 `botany/dayCount`，`Sky.setTime()` 回填天数。
+- `block:break/place` 订阅额外清掉同 x,z 且同 id 的锚点能量，修复柱状 / 藤蔓中间段被拆后残留储能。
+
 ## 9. 后续路线（带验收标准）
 
 | 版本 | 目标 | 可机械检查的验收标准 |
@@ -501,3 +519,11 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 `src/plugins/builtin/botanyContent.ts`（纯数据，可编译进测试快照），装配逻辑放在
 `botanyExpansion.ts`。依赖方向仍是 `main.ts → services → api → 业务模块`，
 插件不 import 引擎内部实现。
+
+**v1.6 增强**：`PlantRuleContext` 新增 `day()/season()/weather()/soil(x,y,z)/enrichSoil(x,y,z,delta)`；
+`PlantRule.priority?: number` 让 `ruleFor()` 按 `(priority, id)` 双键稳定排序（同优先级按
+id 字典序），`list()` 暴露 priority。内置扩展包现含 4 条规则（含雨天水生补能演示）。
+
+**确定性掉落接缝**：`rollDrops(specs, ctx)` 是掉落判定的唯一接缝——测试直接对纯函数
+断言概率 / 区间 / 条件，玩家与实体只是两个 adapter（分别以 `b:x,y,z` 与 `e:id:serial`
+为来源标识），新增掉落来源不必改判定逻辑。

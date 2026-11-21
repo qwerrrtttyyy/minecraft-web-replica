@@ -20,11 +20,11 @@ npm run verify
 | 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
 | 4 | `npm run build` | 单文件 `dist/index.html` | — |
 | 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 6 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
+| 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
 | 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
 | 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
-| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
+| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
+| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
 | 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
@@ -63,12 +63,15 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
 - **botany-rules**：扩展植物 id 92~97 末位追加、`PlantRuleRegistry` 动态解析 /
-  多规则命中 / 按 owner 注销、`botany:register` 权限裁剪、3 条规则的确定性行为
-  （异花传粉 / 夜间蔓延 / 高山霜线）、Botany 兜底分派与注销后失效、
+  多规则命中 / 按 owner 注销、`botany:register` 权限裁剪、4 条规则的确定性行为
+  （异花传粉 / 夜间蔓延 / 高山霜线 / 雨天补能）、规则按 (priority,id) 排序、
+  扩展上下文 day/season/weather/soil/enrichSoil、Botany 兜底分派与注销后失效、
   自然生成选种的确定性与群系 / 临水约束。
 - **plant-energy**：植物特性表（solar / hydro / fungal 分类与花蜜掉落）、白天蓄能、
   夜间呼吸下限、完全黑暗 / 离水 / 火光旁的枯死、`plant:bloom` 开花事件、采集与浆果回退、
-  能量不足时禁止树苗生长、向日葵根系共享、`stats()` 统计。
+  能量不足时禁止树苗生长、向日葵根系共享、`stats()` 统计；v1.6 追加季节历法 /
+  天气确定性 / 中性 env 等价、土壤养分懒初始化 / 消耗 / 施肥 / 截断、
+  生态状态存档 round-trip / 坏档隔离 / 柱状锚点清理。
 - **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量）、有序配方的
   3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
   2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环。

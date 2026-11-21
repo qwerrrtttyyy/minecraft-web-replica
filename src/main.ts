@@ -327,6 +327,8 @@ async function boot() {
     hotbar: [...hotbar.slots],
     slot: hotbar.index,
     settings: { ...settings },
+    dayCount: sky.dayCount,
+    botany: botany.serializeEcology(),
     savedAt: Date.now(),
   });
   const saveNow = () => {
@@ -790,13 +792,15 @@ async function boot() {
       player.yaw = saved.player.yaw;
       player.pitch = saved.player.pitch;
       player.fly = saved.player.fly && survival.mode === 'creative';
-      sky.dayTime = saved.dayTime;
+      sky.setTime(saved.dayTime, saved.dayCount ?? 0);
     } else {
       player.spawn();
       survival.spawn = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
     }
     await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3),
       (p) => hud.setLoading(p));
+    // 生态状态在区块就绪后恢复：恢复函数会逐条校验当前方块是否仍是该植物
+    if (cont && saved?.botany) botany.restoreEcology(saved.botany);
     // 死亡存档继续游戏时必须复活，否则 player.update 会永久冻结
     ensureAlive();
     // 防止卡在方块里（换地形算法后的旧存档尤其需要）
@@ -1113,6 +1117,14 @@ async function boot() {
         breath: survival.breath, dead: survival.dead,
       },
       entities: entities.entities.length,
+      plant: (() => {
+        const stats = botany.stats(player.pos.x, player.pos.z);
+        let invalidEnergy = 0;
+        for (const entry of botany.serializeEcology().plants) {
+          if (!Number.isFinite(entry[4]) || entry[4] < 0 || entry[4] > 100) invalidEnergy++;
+        }
+        return { tracked: stats.tracked, avgEnergy: stats.avgEnergy, invalidEnergy };
+      })(),
       save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
     };
   };

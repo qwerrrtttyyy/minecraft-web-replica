@@ -45,6 +45,7 @@ const base = () => ({
   events: { subscribers: 6, channels: 2, emitted: 120 },
   survival: { health: 20, hunger: 20, breath: 15, dead: false },
   entities: 5,
+  plant: { tracked: 12, avgEnergy: 64, invalidEnergy: 0 },
   save: { dirty: false, lastOkAt: 1_700_000_000_000 },
 });
 
@@ -64,6 +65,22 @@ console.log('运行时诊断组回归');
     `checked=${r.checked} issues=${r.issues.length}`);
   ok('检查项数量达标', r.checked >= 14, `checked=${r.checked}`);
   ok('耗时字段为有限数', Number.isFinite(r.durationMs));
+
+  // v1.6：植物生态快照注入回归
+  ok('健康植物快照无异常', !has(r, 'plant.energy') && !has(r, 'plant.tracked'));
+  {
+    const bad = runRuntimeDiagnostics(clone((s) => {
+      s.plant.invalidEnergy = 2;
+      s.plant.avgEnergy = 500;
+    }));
+    ok('植物能量越界被捕获', has(bad, 'plant.energy') && bad.errors >= 1, ids(bad).join(','));
+  }
+  {
+    const bad = runRuntimeDiagnostics(clone((s) => {
+      s.plant.tracked = -1;
+    }));
+    ok('跟踪植物数异常被捕获', has(bad, 'plant.tracked'), ids(bad).join(','));
+  }
 }
 
 {
