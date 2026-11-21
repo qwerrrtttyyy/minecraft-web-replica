@@ -157,21 +157,21 @@ log('\n[2] 规则注册表契约');
   assert.throws(() => r.register(a), /重复注册/);
   assert.throws(() => r.register({ id: '', owner: 'o', plants: ['x'], tick: () => false }), /字段不完整/);
   ok('重复 id 与字段缺失都会被拒绝', r.size === 2, `${r.size}`);
-  ok('同一方块命中多条规则', r.ruleFor(148).length === 2, `${r.ruleFor(148).length}`);
+  ok('同一方块命中多条规则', r.ruleFor(159).length === 2, `${r.ruleFor(159).length}`);
 
   // 优先级：按 (priority, id) 双键稳定排序
   const pr = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
   pr.register({ id: 'zeta', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
   pr.register({ id: 'alpha', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
   pr.register({ id: 'first', owner: 'o', plants: ['thistle'], priority: -1, tick: () => false });
-  const ordered = pr.ruleFor(148).map((rule) => rule.id);
+  const ordered = pr.ruleFor(159).map((rule) => rule.id);
   ok('规则按 (priority, id) 双键稳定排序',
     ordered[0] === 'first' && ordered[1] === 'alpha' && ordered[2] === 'zeta',
     ordered.join(','));
   ok('list() 暴露 priority',
     pr.list().some((info) => info.priority === -1 && info.id === 'first'));
 
-  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(148).length === 0);
+  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(159).length === 0);
 
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);

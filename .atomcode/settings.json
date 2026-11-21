@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "filePattern": "src/**/*.ts",
+        "command": "npx tsc --noEmit -p tsconfig.json",
+        "description": "编辑 TS 源码后自动类型检查（strict 0 error 硬门槛）"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "block": true,
+        "description": "禁止修改脚本现场生成的快照与构建产物（AGENTS.md 硬规则）",
+        "filePattern": "test/logic/**|test/terrain-logic/**|dist/**|test/artifacts/**"
+      }
+    ]
+  }
+}

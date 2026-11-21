@@ -1,0 +1,16 @@
+id: A00
+title: AI 系统契约校验器与设计文档落地
+description: docs/agent/validate.py 为 AI 系统 outputs 补机械检查；写入设计文档；修复 validate.py 预存在的 git 合并冲突，使校验器可运行。
+touch: { allow: [docs/agent/validate.py, docs/agent/tasks/A0*.yaml, docs/superpowers/specs/2026-11-21-ai-system-design.md], deny: [src/**, test/**] }
+outputs:
+  - ai core: src/ai/Node.ts 导出 NodeStatus 与 TickContext 接口
+  - ai composites: Selector / Sequence / Parallel / RandomSelector 存在
+  - ai decorators: Inverter / Repeater / UntilFail / UntilSuccess 存在
+  - ai conditions: CanSeePlayer / DistanceLt / HealthPctLt / IsDay / IsInWater / HasTarget / TargetInRange / BlackboardEq / CanReach 存在
+  - ai actions: ChasePlayer / FleeFrom / AttackPlayer / Wander / Wait / EmitEvent / SetBlackboard 存在
+  - ai tree: BehaviorTree.fromJSON 与 JSON 配置格式存在
+  - ai service: AIService.registerType / attach / update / enable / disable / reloadConfig 存在
+  - ai perception: Perception 只读视图存在
+  - entity integration: Entity.aiComponent 可选字段，update 委托 AIComponent
+  - test:ai: package.json 声明 test:ai 且 verify 链包含它
+  - 任务卡校验器: CHECKS 覆盖上述关键词
