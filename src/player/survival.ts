@@ -2,6 +2,7 @@ import type { EventService } from '../services/events';
 import { EXTENSION_POINTS } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
+import { EQUIPMENT } from './equipment';
 
 /**
  * 生存模式状态机：生命 / 饥饿 / 氧气 / 背包 / 进食 / 死亡与重生。
@@ -31,6 +32,12 @@ export interface ItemDefinition {
   plant?: string;
 }
 
+/** 由装备定义表生成物品条目，保证 id / label / tile 与 EQUIPMENT 单一来源一致 */
+const EQUIP_ITEMS: Record<string, ItemDefinition> = {};
+for (const def of Object.values(EQUIPMENT)) {
+  EQUIP_ITEMS[def.id] = { name: def.id, label: def.label, tile: def.tile };
+}
+
 export const ITEMS: Record<string, ItemDefinition> = {
   apple: { name: 'apple', label: '苹果', tile: 'apple', food: 4 },
   porkchop: { name: 'porkchop', label: '生猪排', tile: 'porkchop', food: 6 },
@@ -44,6 +51,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
   /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */
   bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
+  ...EQUIP_ITEMS,
 };
 
 export const itemKey = (name: string) => `i:${name}`;
