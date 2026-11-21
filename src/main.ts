@@ -33,7 +33,7 @@ import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
 import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
 import {
-  createDefaultSaveProvider, downloadSave, pickSaveFile,
+  createDefaultSaveProvider, downloadSave, pickSaveFile, LocalStorageProvider,
   validateSave, type ISaveProvider, type SaveData,
 } from './save/save';
 import { createCraftAPI } from './api';
@@ -90,7 +90,16 @@ async function boot() {
   // 默认 IndexedDB（localStorage 5MB 上限是丢档隐患），不可用时自动降级；
   // localStorage 里的历史存档会一次性迁移（createDefaultSaveProvider）
   let provider: ISaveProvider = await createDefaultSaveProvider();
-  let saved = await provider.load();
+  let saved: SaveData | null = null;
+  try {
+    saved = await provider.load();
+  } catch (e) {
+    // IndexedDB 读取失败（被占用 / 隐私模式 / 损坏）：回退 localStorage，
+    // 而不是当作无存档新建世界、再自动保存覆盖掉原档。
+    console.warn('[save] 读取存档失败，回退 localStorage', e);
+    provider = new LocalStorageProvider();
+    saved = await provider.load().catch(() => null);
+  }
   const pendingSeed = sessionStorage.getItem('mc-ts-new-seed');
   const pendingModeRaw = sessionStorage.getItem('mc-ts-new-mode');
   let seed: number;

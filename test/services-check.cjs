@@ -582,6 +582,12 @@ ok('validateSave 拒绝各类坏档', () => {
     (d) => { d.settings.fov = 'wide'; },
     (d) => { delete d.savedAt; },
     (d) => { d.dayTime = NaN; },
+    // 坐标 / 生存数值必须有范围：1e308 这类值会撑爆区块生成或 UI
+    (d) => { d.player.x = 1e308; },
+    (d) => { d.player.z = -1e308; },
+    (d) => { d.survival.spawn.y = 1e308; },
+    (d) => { d.survival.health = 1e6; },
+    (d) => { d.survival.breath = -1; },
   ];
   for (const mutate of bad) {
     const d = validSave();

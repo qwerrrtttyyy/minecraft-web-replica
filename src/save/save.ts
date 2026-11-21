@@ -1,5 +1,8 @@
-import type { BlockId, GameMode } from '../core/types';
-import type { Stack, SurvivalSave } from '../player/survival';
+import { WORLD_HEIGHT, type BlockId, type GameMode } from '../core/types';
+import {
+  MAX_BREATH, MAX_HEALTH, MAX_HUNGER,
+  type Stack, type SurvivalSave,
+} from '../player/survival';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -46,6 +49,13 @@ interface LegacySave {
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const intIn = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+/** 有限数值 + 范围：挡住 1e308 这类能通过 finite 但会撑爆区块生成的值 */
+const inRange = (v: unknown, min: number, max: number): v is number =>
+  finite(v) && v >= min && v <= max;
+/** 玩家坐标允许的横向范围（远超正常探索距离，但远小于浮点极端值） */
+const MAX_COORD = 1e7;
+/** 纵向留一点余量，避免边界存档被误判 */
+const inWorldY = (v: unknown): v is number => inRange(v, -64, WORLD_HEIGHT + 64);
 
 /** 编辑差分 key 必须是整数坐标；方块 id 0~255（0 表示挖掉） */
 const EDIT_KEY_RE = /^-?\d+,-?\d+,-?\d+$/;
@@ -56,7 +66,7 @@ const BLOCK_KEY_RE = /^b:\d+$/;
 const isVec3 = (v: unknown): boolean => {
   if (!v || typeof v !== 'object') return false;
   const o = v as Record<string, unknown>;
-  return finite(o.x) && finite(o.y) && finite(o.z);
+  return inRange(o.x, -MAX_COORD, MAX_COORD) && inWorldY(o.y) && inRange(o.z, -MAX_COORD, MAX_COORD);
 };
 
 const isStack = (v: unknown): boolean => {
@@ -87,10 +97,12 @@ export function validateSave(data: unknown): data is SaveData {
     if (!intIn(e[1], 0, 255)) return false;
   }
   const p = d.player;
-  if (!p || !finite(p.x) || !finite(p.y) || !finite(p.z) ||
+  if (!p || !inRange(p.x, -MAX_COORD, MAX_COORD) || !inWorldY(p.y) ||
+      !inRange(p.z, -MAX_COORD, MAX_COORD) ||
       !finite(p.yaw) || !finite(p.pitch) || typeof p.fly !== 'boolean') return false;
   const s = d.survival;
-  if (!s || !finite(s.health) || !finite(s.hunger) || !finite(s.breath) ||
+  if (!s || !inRange(s.health, 0, MAX_HEALTH) || !inRange(s.hunger, 0, MAX_HUNGER) ||
+      !inRange(s.breath, 0, MAX_BREATH) ||
       !Array.isArray(s.inventory) || !isVec3(s.spawn)) return false;
   for (const e of s.inventory) {
     if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string') return false;
@@ -231,12 +243,10 @@ export class IndexedDBProvider implements ISaveProvider {
   }
 
   async load(): Promise<SaveData | null> {
-    try {
-      const raw = await this.tx<unknown>('readonly', (s) => s.get(this.key) as IDBRequest<unknown>);
-      return normalizeSave(raw ?? null);
-    } catch {
-      return null;
-    }
+    // 读取失败不能当作「无存档」：否则启动流程会新建世界并覆盖掉原存档。
+    // 让错误抛给 createDefaultSaveProvider / 组装根，由它们回退 localStorage。
+    const raw = await this.tx<unknown>('readonly', (s) => s.get(this.key) as IDBRequest<unknown>);
+    return normalizeSave(raw ?? null);
   }
 
   async save(data: SaveData): Promise<number> {
