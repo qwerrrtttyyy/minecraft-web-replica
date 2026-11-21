@@ -97,9 +97,9 @@ vec3 foliageTint(vec2 wxz) {
   float band = foliageNoise(wxz * 0.012);
   // 注意：patch 是 GLSL ES 保留字（细分着色器），不可作变量名
   float patchN = foliageNoise(wxz * 0.055 + 17.3);
-  vec3 cool = vec3(0.62, 0.98, 0.62);
-  vec3 base = vec3(0.82, 1.12, 0.50);
-  vec3 warm = vec3(1.06, 1.10, 0.42);
+  vec3 cool = vec3(0.72, 1.06, 0.70);
+  vec3 base = vec3(0.92, 1.18, 0.58);
+  vec3 warm = vec3(1.12, 1.14, 0.50);
   vec3 t = mix(cool, base, smoothstep(0.25, 0.62, band));
   t = mix(t, warm, smoothstep(0.58, 0.88, band));
   return t * (1.0 - 0.10 * patchN);
