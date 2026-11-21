@@ -954,6 +954,13 @@ async function boot() {
     saveNow();
     saved = collectSave();
     mode = 'title';
+    // 退出标题：清理现存实体（生物/动物）与移除 PrimedTnt / 下落沙的网格——标题界面不残留游走的实体
+    for (const e of [...entities.entities]) entities.despawn(e);
+    for (const t of [...tntList]) {
+      tntList.splice(tntList.indexOf(t), 1);
+      t.remove();
+    }
+    falling.clear();
     input.enabled = false;
     input.reset();
     input.exitLock();

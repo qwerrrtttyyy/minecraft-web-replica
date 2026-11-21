@@ -62,6 +62,8 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
   // 每个顶点的开关：0 普通 / 1 群系染色 / 2 自发光（不受光照与染色影响）
   g.setAttribute('aTint', new THREE.BufferAttribute(p.tints, 1));
+  // 每个顶点的风摆权重（0~1）：底部 0 / 顶部随植物高度，只对十字面植物生效
+  g.setAttribute('aSway', new THREE.BufferAttribute(p.sways, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
   return g;
@@ -154,6 +156,25 @@ function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: 
     // 自发光不参与光照，但保留面定向 × AO 的明暗（与旧 emissive 通道的观感一致）
     diffuseColor.rgb *= mix(vShade * (0.07 + 0.93 * lit) * lightTint, vec3(vShade), unlit);
     diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
+  );
+}
+
+/**
+ * 植物风摆：aSway 为每顶点权重（底部 0 → 顶部 = 植物高度）。
+ * 位移完全由世界坐标 + 时间驱动，因此相邻区块的接缝处相位连续；
+ * 普通方块 aSway=0，水面与地形不受影响。
+ */
+function injectSway(shader: ChunkShader, time: { value: number }) {
+  shader.uniforms.uSwayTime = time;
+  shader.vertexShader = 'attribute float aSway;\nuniform float uSwayTime;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+    if (aSway > 0.0) {
+      vec3 swayPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      float phase = swayPos.x * 0.63 + swayPos.z * 0.71;
+      transformed.x += sin(uSwayTime * 1.35 + phase) * aSway * 0.055;
+      transformed.z += cos(uSwayTime * 1.12 + phase * 1.27) * aSway * 0.038;
+    }`,
   );
 }
 
@@ -264,6 +285,15 @@ export class ChunkManager implements System {
     // 对照路径的旧 emissive 通道：只乘面明暗，不参与光照
     if (!this.mergeEmissiveOption) {
       this.materials.emissive.onBeforeCompile = (shader) => injectLegacyEmissive(shader);
+    }
+    // 植物风摆：不透明 / 半透明通道（v1.5.1 起自发光已并入不透明，无需单独注入）；
+    // 水面另有波动，不叠加
+    for (const ch of ['opaque', 'transparent'] as const) {
+      const prev = this.materials[ch].onBeforeCompile;
+      this.materials[ch].onBeforeCompile = (shader, renderer) => {
+        prev?.call(this.materials[ch], shader, renderer);
+        injectSway(shader, this.waterTime);
+      };
     }
     // 各通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）
     for (const ch of MESH_CHANNELS) installTiledAtlas(this.materials[ch]);

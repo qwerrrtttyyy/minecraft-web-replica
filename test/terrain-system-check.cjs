@@ -1,12 +1,12 @@
 /**
- * 地形体系回归（v1.4.0）：方块扩充 + 统一阶段管线 + 群系配置表。
+ * 地形体系回归（v1.4.0 起）：方块扩充 + 统一阶段管线 + 群系配置表。
  * 运行：node test/terrain-system-check.cjs（需先 npm run test:snapshot）
  *
  * 与 terrain-check.cjs 的分工：
  * - terrain-check：确定性、洞穴、水面、跨区块树冠、矿脉分层等基础不变量；
- * - terrain-system：新增 10 种方块是否末位追加、生成阶段顺序、群系配置表
- *   是否真正驱动自然生成，以及黏土 / 灰化土 / 仙人掌 / 甘蔗 / 蕨 / 绿宝石
- *   的生成位置约束。
+ * - terrain-system：方块是否末位追加、生成阶段顺序、群系配置表是否真正驱动
+ *   自然生成，以及黏土 / 灰化土 / 仙人掌 / 甘蔗 / 蕨 / 绿宝石 / 花圃 / 洞穴
+ *   发光植物的生成位置约束。
  */
 const assert = require('node:assert');
 const {
@@ -65,14 +65,36 @@ const NATURAL_PLANTS = [
   'acacia_log', 'acacia_leaves', 'cherry_log', 'cherry_leaves',
 ];
 
+// v1.6.0 花海扩充：id 92 起末位追加（28 种植物）
+const FLOWER_BLOCKS = [
+  'lavender', 'buttercup', 'forget_me_not', 'marigold', 'foxglove', 'hollyhock', 'violet',
+  'wood_anemone', 'wild_garlic', 'hyacinth', 'ivy', 'glow_moss',
+  'lingonberry_bush', 'snowdrop', 'edelweiss', 'snow_lily', 'crocus', 'gentian',
+  'yucca', 'desert_marigold', 'ghost_flower', 'beach_grass', 'sea_thrift',
+  'duckweed', 'sea_anemone', 'red_algae', 'moonflower', 'glow_fern',
+];
+// 新植物的自然生成约束：地表 = 群系 + h+1；cave = 深层洞穴；floating / underwater = 水面 / 水下
+const FLORA_RULES = {
+  lavender: 'plains', buttercup: 'plains', forget_me_not: 'plains|forest',
+  marigold: 'plains', foxglove: 'plains', hollyhock: 'plains', violet: 'plains',
+  wood_anemone: 'forest', wild_garlic: 'forest|taiga', hyacinth: 'forest', ivy: 'forest',
+  lingonberry_bush: 'taiga', snowdrop: 'taiga|alpine',
+  edelweiss: 'alpine', snow_lily: 'alpine', crocus: 'alpine', gentian: 'alpine',
+  yucca: 'desert', desert_marigold: 'desert', ghost_flower: 'desert',
+  beach_grass: 'beach', sea_thrift: 'beach',
+  duckweed: 'floating', sea_anemone: 'underwater', red_algae: 'underwater',
+  glow_moss: 'cave', moonflower: 'cave', glow_fern: 'cave',
+};
+const NEW_NATURAL_PLANTS = Object.keys(FLORA_RULES);
+
 log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 
 // 1) 10 种新方块：末位追加、旧 id 稳定、属性可玩
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 112 种（v1.6 追加 9 个堆肥桶方块）',
-    all.length === 112, `${all.length}`);
+  ok('内置方块总数 141 种（堆肥桶 9 + 群系扩充 12 + 熔炉 1 + 移植植物 28）',
+    all.length === 141, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -118,12 +140,33 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     reg.byNameGet('oak_leaves').drops.some((d) => d.name === 'oak_sapling') &&
     reg.byNameGet('birch_leaves').drops.some((d) => d.name === 'birch_sapling') &&
     reg.byNameGet('spruce_leaves').drops.some((d) => d.name === 'spruce_sapling'));
-  ok('发光地衣是唯一会发光的植物（7 级）',
+  ok('发光植物覆盖洞穴与夜晚（地衣 / 荧光苔 / 月光花 / 荧光蕨 / 幽灵花）',
     reg.byNameGet('glow_lichen').lightEmission === 7 &&
+    reg.byNameGet('glow_moss').lightEmission === 4 &&
+    reg.byNameGet('moonflower').lightEmission === 7 &&
+    reg.byNameGet('glow_fern').lightEmission === 5 &&
+    reg.byNameGet('ghost_flower').lightEmission === 6 &&
     reg.byNameGet('bluebell').lightEmission === 0);
-  ok('海草 / 海带标记为水生植物（穿过时仍按入水处理）',
-    reg.byNameGet('seagrass').waterPlant === true && reg.byNameGet('kelp').waterPlant === true &&
-    reg.byNameGet('vine').waterPlant !== true);
+  ok('海草 / 海带 / 海葵 / 红藻标记为水生植物，藤蔓 / 浮萍不是',
+    ['seagrass', 'kelp', 'sea_anemone', 'red_algae']
+      .every((n) => reg.byNameGet(n).waterPlant === true) &&
+    reg.byNameGet('vine').waterPlant !== true && reg.byNameGet('duckweed').waterPlant !== true);
+  ok('28 种新植物 id 120~147 连续末位追加（堆肥桶 110~118 + 熔炉 119 之后）',
+    FLOWER_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 120 + i),
+    `${FLOWER_BLOCKS[0]}=${reg.byNameGet(FLOWER_BLOCKS[0])?.id}..${FLOWER_BLOCKS.at(-1)}=${reg.byNameGet(FLOWER_BLOCKS.at(-1))?.id}`);
+  ok('28 种新植物全部是十字面且纹理 / 高度完整',
+    FLOWER_BLOCKS.every((n) => {
+      const d = reg.byNameGet(n);
+      return d && d.shape === 'cross' && !d.solid &&
+        d.tiles.top && d.tiles.bottom && d.tiles.side &&
+        d.crossHeight > 0 && d.crossHeight <= 1;
+    }));
+  ok('植物高度形成地被 / 矮花 / 高穗层次',
+    reg.byNameGet('moss_carpet').crossHeight < reg.byNameGet('crocus').crossHeight &&
+    reg.byNameGet('crocus').crossHeight < reg.byNameGet('poppy').crossHeight &&
+    reg.byNameGet('poppy').crossHeight < reg.byNameGet('hollyhock').crossHeight &&
+    reg.byNameGet('hollyhock').crossHeight === 1);
+  ok('越橘丛可掉甜浆果', reg.byNameGet('lingonberry_bush').drops.some((d) => d.name === 'item:sweet_berries'));
 
   const { ITEMS } = require('./terrain-logic/player/survival.js');
   ok('种子 / 浆果 / 花蜜物品注册完整',
@@ -160,11 +203,20 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     BIOME_PROFILES.forest.trees.some((t) => t.species === 'oak') &&
     BIOME_PROFILES.taiga.trees.every((t) => t.species === 'spruce') &&
     BIOME_PROFILES.alpine.trees.every((t) => t.species === 'spruce'));
-  ok('海洋配置海草 / 海带与睡莲',
-    BIOME_PROFILES.ocean.waterPlants.length === 2 &&
-    BIOME_PROFILES.ocean.waterPlantChance > 0 && BIOME_PROFILES.ocean.lilyChance > 0);
+  ok('海洋配置 4 种水生植物与 2 种漂浮植物',
+    BIOME_PROFILES.ocean.waterPlants.length === 4 &&
+    BIOME_PROFILES.ocean.waterPlantChance > 0 && BIOME_PROFILES.ocean.lilyChance > 0 &&
+    BIOME_PROFILES.ocean.floaters.length === 2);
   ok('草甸 / 森林配置野生南瓜', BIOME_PROFILES.plains.pumpkinChance > 0 && BIOME_PROFILES.forest.pumpkinChance > 0);
-  ok('配置表所有地表 / 填充 / 装饰 / 树种 / 水生方块都在注册表',
+  ok('草甸 / 森林 / 针叶林 / 高山配置成片花圃',
+    ['plains', 'forest', 'taiga', 'alpine'].every((b) =>
+      BIOME_PROFILES[b].flowerBeds && BIOME_PROFILES[b].flowerBeds.chance > 0 &&
+      BIOME_PROFILES[b].flowerBeds.plants.length > 0));
+  ok('森林 / 针叶林 / 高山配置洞穴发光植物',
+    ['forest', 'taiga', 'alpine'].every((b) =>
+      BIOME_PROFILES[b].caveChance > 0 &&
+      BIOME_PROFILES[b].cavePlants.some((pl) => pl.name === 'moonflower')));
+  ok('配置表所有地表 / 填充 / 装饰 / 树种 / 水生 / 花圃 / 洞穴方块都在注册表',
     biomes.every((b) => {
       const p = BIOME_PROFILES[b];
       return !!reg.byNameGet(p.surface) && !!reg.byNameGet(p.filler) &&
@@ -173,7 +225,10 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
           t.species === 'birch' ? 'birch_log' : t.species === 'spruce' ? 'spruce_log'
             : t.species === 'acacia' ? 'acacia_log' : t.species === 'cherry' ? 'cherry_log' : 'oak_log',
         )) &&
-        (p.waterPlants ?? []).every((pl) => !!reg.byNameGet(pl.name));
+        (p.waterPlants ?? []).every((pl) => !!reg.byNameGet(pl.name)) &&
+        (p.floaters ?? []).every((pl) => !!reg.byNameGet(pl.name)) &&
+        (p.flowerBeds?.plants ?? []).every((pl) => !!reg.byNameGet(pl.name)) &&
+        (p.cavePlants ?? []).every((pl) => !!reg.byNameGet(pl.name));
     }));
   ok('恶地 / 沼泥 / 干草原 / 樱花林 4 个新群系地貌规则',
     BIOME_PROFILES.mesa.surface === 'red_sand' &&
@@ -386,6 +441,55 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     JSON.stringify(counts));
 }
 
+// 3c-2) v1.6.0 新植物：±8 区块内全部出现，位置符合花圃 / 洞穴 / 水面规则
+{
+  const { reg, gen } = make(777);
+  const ids = Object.fromEntries(NEW_NATURAL_PLANTS.map((n) => [n, reg.byNameGet(n).id]));
+  const byName = Object.fromEntries(NEW_NATURAL_PLANTS.map((n) => [ids[n], n]));
+  const counts = Object.fromEntries(NEW_NATURAL_PLANTS.map((n) => [n, 0]));
+  const bad = [];
+  const fail = (msg) => { if (bad.length < 12) bad.push(msg); };
+  const R = 8;
+
+  for (let cx = -R; cx <= R; cx++) {
+    for (let cz = -R; cz <= R; cz++) {
+      const data = chunk(gen, cx, cz);
+      for (let y = 0; y < H; y++) {
+        for (let lz = 0; lz < CS; lz++) {
+          for (let lx = 0; lx < CS; lx++) {
+            const name = byName[data[idx(lx, y, lz)]];
+            if (!name) continue;
+            counts[name]++;
+            const wx = cx * CS + lx;
+            const wz = cz * CS + lz;
+            const h = gen.surfaceHeight(wx, wz);
+            const biome = gen.biomeAt(wx, wz);
+            const rule = FLORA_RULES[name];
+            if (rule === 'cave') {
+              if (!(y < h - 2)) fail(`${name} 不在深层洞穴 ${wx},${y},${wz} h=${h} ${biome}`);
+            } else if (rule === 'floating') {
+              if (biome !== 'ocean' || y !== SEA_LEVEL + 1) {
+                fail(`${name} 不在海面 ${wx},${y},${wz} ${biome}`);
+              }
+            } else if (rule === 'underwater') {
+              if (biome !== 'ocean' || y <= h || y > SEA_LEVEL) {
+                fail(`${name} 不在浅海床 ${wx},${y},${wz} h=${h} ${biome}`);
+              }
+            } else if (!rule.split('|').includes(biome) || y !== h + 1) {
+              fail(`${name} 不在目标群系地表 ${wx},${y},${wz} h=${h} ${biome}`);
+            }
+          }
+        }
+      }
+    }
+  }
+  ok('28 种新植物全部自然生成（含花圃 / 浮萍 / 洞穴）',
+    NEW_NATURAL_PLANTS.every((n) => counts[n] > 0),
+    NEW_NATURAL_PLANTS.map((n) => `${n}×${counts[n]}`).join(' '));
+  ok('新植物位置全部符合群系 / 花圃 / 洞穴 / 水面规则', bad.length === 0,
+    bad.length ? `${bad.length} 处，例如 ${bad[0]}` : '');
+}
+
 // 4) 新矿脉同样受 oreRichness 统一控制
 {
   const { reg, gen } = make(777, { oreRichness: 0 });
@@ -415,7 +519,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 112（新增 9 个堆肥桶方块）', all.length === 112, `${all.length}`);
+  ok('方块总数增至 141（堆肥桶 9 + 移植植物 28 + 熔炉 1）', all.length === 141, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&

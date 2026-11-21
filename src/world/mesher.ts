@@ -29,7 +29,7 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], indices: [] });
+const newGeo = (): GeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], sways: [], indices: [] });
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -92,6 +92,8 @@ const qz = new Float64Array(4);
 const qu = new Float64Array(4);
 const qv = new Float64Array(4);
 const qb = new Float64Array(4);
+/** 每顶点风摆权重：底部 0 → 顶部 1，只对十字面植物生效 */
+const qs = new Float64Array(4);
 const aoFace = new Int32Array(4);
 const aoCheck = new Int32Array(4);
 /** 交叉面片的 UV 与亮度（常量，避免每株植物重建数组） */
@@ -266,6 +268,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const S = g.shade;
     const L = g.lights;
     const N = g.tints;
+    const SW = g.sways;
     for (let i = 0; i < 4; i++) {
       P.push(qx[i], qy[i], qz[i]);
       U.push(qu[i], qv[i]);
@@ -274,6 +277,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
       // 逐顶点光照：平滑光照下 4 个角点亮度各不相同
       L.push(lightSky[i], lightBlock[i]);
       N.push(flags);
+      SW.push(qs[i]);
     }
     const I = g.indices;
     if (flip) I.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
@@ -317,6 +321,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
       // 角点光照等级（0~15）归一化到 0~1
       quadSky[i] = lvSky[i] / 15;
       quadBlock[i] = lvBlock[i] / 15;
+      qs[i] = 0;
     }
     const flip = ao[0] + ao[2] < ao[1] + ao[3];
     pushQuad(g, tile, flip, quadSky, quadBlock, flagsFor(def));
@@ -330,9 +335,11 @@ export function meshChunk(src: MeshSource): MeshOutput {
     fillUniform(quadSky, src.getSkyLight(bx, by, bz) / 15);
     fillUniform(quadBlock, src.getBlockLight(bx, by, bz) / 15);
     const flags = flagsFor(def);
+    // 植物高度：贴图仍是 16px，几何按群系高度压缩/拉伸，矮花不再顶满整格
+    const height = Math.max(0.1, Math.min(1, def.crossHeight ?? 1));
     const x0 = bx + 0.15, x1 = bx + 0.85;
     const z0 = bz + 0.15, z1 = bz + 0.85;
-    const y0 = by, y1 = by + 1;
+    const y0 = by, y1 = by + height;
 
     // 面 A（正面）
     qx[0] = x0; qy[0] = y0; qz[0] = z0;
@@ -340,6 +347,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x1; qy[2] = y1; qz[2] = z1;
     qx[3] = x0; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
+    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 A（反面：顶点反序 + UV 反序，亮度保持原顺序）
     qx[0] = x0; qy[0] = y1; qz[0] = z0;
@@ -348,6 +356,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x0; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
+    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
 
     // 面 B（正面）
@@ -356,6 +365,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[2] = x0; qy[2] = y1; qz[2] = z1;
     qx[3] = x1; qy[3] = y1; qz[3] = z0;
     qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
+    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 B（反面）
     qx[0] = x1; qy[0] = y1; qz[0] = z0;
@@ -364,6 +374,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     qx[3] = x1; qy[3] = y0; qz[3] = z0;
     qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
     qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
+    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
   };
 
@@ -501,6 +512,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
             qu[i] = cu(ww);
             qv[i] = cu(hh);
             qb[i] = bright;
+            qs[i] = 0;
           }
           pushQuad(g, tile, false, quadSky, quadBlock, flags);
           out.stats.merged += w * h - 1;

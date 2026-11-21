@@ -117,20 +117,21 @@ export class SurvivalState {
     this.addKey(blockKeyOf(id), count);
   }
 
-  addItem(name: string, count = 1) {
-    if (!this.isSurvival) return;
-    if (!ITEMS[name] || count <= 0) return;
+  addItem(name: string, count = 1): boolean {
+    if (!this.isSurvival) return false;
+    if (!ITEMS[name] || count <= 0) return false;
     this.addKey(itemKey(name), count);
+    return true;
   }
 
-  /** 按掉落表名加入背包：'self' 需调用方换成方块名 */
-  addDrop(name: string, count = 1) {
-    if (name.startsWith('item:')) this.addItem(name.slice(5), count);
-    else if (ITEMS[name]) this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
-    else {
-      const def = this.registry.byNameGet(name);
-      if (def) this.addBlock(def.id, count);
-    }
+  /** 按掉落表名加入背包：'self' 需调用方换成方块名；返回是否真的加入 */
+  addDrop(name: string, count = 1): boolean {
+    if (name.startsWith('item:')) return this.addItem(name.slice(5), count);
+    if (ITEMS[name]) return this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
+    const def = this.registry.byNameGet(name);
+    if (!def) return false;
+    this.addBlock(def.id, count);
+    return true;
   }
 
   private addKey(key: string, count: number) {

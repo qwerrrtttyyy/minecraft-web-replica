@@ -1,0 +1,25 @@
+id: E05
+title: 审查修复：燃料扣除与装备重复拾取
+description: |
+  装备系统代码审查发现的两个玩家可感知 bug：
+  1) 熔炉面板投入燃料未从背包扣除，导致无限燃烧；把扣料规则收进
+     SmeltingState.putFuelFrom，由组装根注入背包扣除回调。
+  2) 装备不可堆叠导致重复拾取 / 合成时静默丢弃（材料浪费）；
+     addItem 返回布尔值，合成面板在消耗材料前通过 canProduce 拦截。
+touch:
+  allow:
+    - src/player/smelting.ts
+    - src/player/survival.ts
+    - src/main.ts
+    - src/ui/crafting.ts
+    - test/smelting-check.cjs
+    - test/equipment-check.cjs
+    - docs/agent/tasks/E05-review-fixes.yaml
+    - docs/agent/validate.py
+  deny:
+    - src/world/blocks.ts
+    - src/gfx/atlas.ts
+outputs:
+  - 燃料投入从背包扣除，非燃料 / 背包不足均不加时间，已有回归
+  - 装备重复拾取返回 false，合成前拦截已有的同类装备
+  - typecheck / lint / build / validate 全绿

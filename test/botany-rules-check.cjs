@@ -3,7 +3,7 @@
  * 运行：node test/botany-rules-check.cjs（需先 npm run test:snapshot）
  *
  * 覆盖：
- * - 6 种扩展植物的 id 契约（92~97 末位追加、旧 id 不动、三类代谢）
+ * - 6 种扩展植物的 id 契约（120~125 末位追加、旧 id 不动、三类代谢）
  * - PlantRuleRegistry 的注册 / 动态解析 / 多规则命中 / 按 owner 注销
  * - botany:register 权限裁剪（写拦截、读保留）
  * - 4 条规则的纯函数行为（确定性 fake ctx，不依赖概率收敛）
@@ -83,7 +83,7 @@ function install(t) {
 function fakeCtx(overrides = {}) {
   const calls = { boost: [], grow: [], write: [] };
   const ctx = {
-    x: 5, y: 21, z: 5, id: 92, daylight: 1,
+    x: 5, y: 21, z: 5, id: 139, daylight: 1,
     rng: () => 0,
     energy: () => 100,
     boost: (...a) => calls.boost.push(a),
@@ -124,15 +124,16 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块为 112 种（群系扩充 12 + 堆肥桶 9），插件未挤占内置表',
-    t.reg.all().length === 112, `${t.reg.all().length}`);
-  ok('内置最大 id 为 118（composter_ready）', Math.max(...t.reg.all().map((d) => d.id)) === 118);
+  ok('内置方块为 141 种（群系扩充 12 + 堆肥桶 9 + 熔炉 1 + 移植植物 28），插件未挤占内置表',
+    t.reg.all().length === 141, `${t.reg.all().length}`);
+  ok('内置最大 id 为 147（glow_fern）', Math.max(...t.reg.all().map((d) => d.id)) === 147);
   install(t);
-  ok('6 种植物 id 92~97 连续末位追加',
-    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 92 + i),
+  ok('6 种插件植物 id 148~153 连续末位追加',
+    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 148 + i),
     EXPANSION_PLANTS.map((p) => `${p.name}=${t.reg.byNameGet(p.name).id}`).join(' '));
-  ok('旧 id 未重排（black_wool=44 / spruce_leaves=91）',
-    t.reg.byNameGet('black_wool').id === 44 && t.reg.byNameGet('spruce_leaves').id === 91);
+  ok('旧 id 未重排（black_wool=44 / spruce_leaves=91 / glow_fern=147）',
+    t.reg.byNameGet('black_wool').id === 44 && t.reg.byNameGet('spruce_leaves').id === 91 &&
+    t.reg.byNameGet('glow_fern').id === 147);
   ok('全部 id ≤ 255（Uint8Array 存储安全）',
     EXPANSION_PLANTS.every((p) => t.reg.byNameGet(p.name).id <= 255));
   ok('覆盖 solar / hydro / fungal 三类代谢',
@@ -150,27 +151,27 @@ log('\n[2] 规则注册表契约');
   const t = makeWorld();
   install(t);
   const r = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
-  const a = { id: 'a', owner: 'o', plants: ['lavender'], tick: () => false };
-  const b = { id: 'b', owner: 'o', plants: ['lavender'], tick: () => false };
+  const a = { id: 'a', owner: 'o', plants: ['thistle'], tick: () => false };
+  const b = { id: 'b', owner: 'o', plants: ['thistle'], tick: () => false };
   r.register(a); r.register(b);
   assert.throws(() => r.register(a), /重复注册/);
   assert.throws(() => r.register({ id: '', owner: 'o', plants: ['x'], tick: () => false }), /字段不完整/);
   ok('重复 id 与字段缺失都会被拒绝', r.size === 2, `${r.size}`);
-  ok('同一方块命中多条规则', r.ruleFor(92).length === 2, `${r.ruleFor(92).length}`);
+  ok('同一方块命中多条规则', r.ruleFor(148).length === 2, `${r.ruleFor(148).length}`);
 
   // 优先级：按 (priority, id) 双键稳定排序
   const pr = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
-  pr.register({ id: 'zeta', owner: 'o', plants: ['lavender'], priority: 1, tick: () => false });
-  pr.register({ id: 'alpha', owner: 'o', plants: ['lavender'], priority: 1, tick: () => false });
-  pr.register({ id: 'first', owner: 'o', plants: ['lavender'], priority: -1, tick: () => false });
-  const ordered = pr.ruleFor(92).map((rule) => rule.id);
+  pr.register({ id: 'zeta', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
+  pr.register({ id: 'alpha', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
+  pr.register({ id: 'first', owner: 'o', plants: ['thistle'], priority: -1, tick: () => false });
+  const ordered = pr.ruleFor(148).map((rule) => rule.id);
   ok('规则按 (priority, id) 双键稳定排序',
     ordered[0] === 'first' && ordered[1] === 'alpha' && ordered[2] === 'zeta',
     ordered.join(','));
   ok('list() 暴露 priority',
     pr.list().some((info) => info.priority === -1 && info.id === 'first'));
 
-  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(92).length === 0);
+  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(148).length === 0);
 
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
@@ -188,7 +189,7 @@ log('\n[2] 规则注册表契约');
 log('\n[3] botany:register 权限裁剪');
 {
   const denied = scopeAPI(fakeApi(), []);
-  assert.throws(() => denied.botany.registerPlant('lavender', {}), /botany:register/);
+  assert.throws(() => denied.botany.registerPlant('thistle', {}), /botany:register/);
   assert.throws(() => denied.botany.registerRule({}), /botany:register/);
   assert.throws(() => denied.botany.unregisterRules('x'), /botany:register/);
   assert.throws(() => denied.world.decorate(1, 2, 3, 4), /world:write/);
@@ -268,7 +269,7 @@ log('\n[5] Botany 集成与注销');
   ok('4 条规则已注册', t.botany.listRules().length === 4,
     t.botany.listRules().map((r) => r.id).join(', '));
 
-  t.world.setBlock(5, 21, 5, t.id('lavender'));
+  t.world.setBlock(5, 21, 5, t.id('thistle'));
   t.botany.setEnergy(5, 21, 5, 40);
   ok('registerTrait 让扩展植物进入能量体系', t.botany.energyAt(5, 21, 5) === 40);
   for (let i = 0; i < 5; i++) t.botany.tickAt(5, 21, 5, 1);
@@ -293,7 +294,7 @@ log('\n[6] 扩展上下文（day / season / weather / soil）与 enrichSoil');
   install(t);
   const seen = {};
   t.botany.registerRule({
-    id: 'test:env-probe', owner: 'test', plants: ['lavender'],
+    id: 'test:env-probe', owner: 'test', plants: ['thistle'],
     tick(ctx) {
       seen.day = ctx.day();
       seen.season = ctx.season();
@@ -303,7 +304,7 @@ log('\n[6] 扩展上下文（day / season / weather / soil）与 enrichSoil');
       return false;
     },
   });
-  t.world.setBlock(9, 21, 9, t.id('lavender'));
+  t.world.setBlock(9, 21, 9, t.id('thistle'));
   t.botany.setNutrient(9, 20, 9, 30);
   t.botany.tickAt(9, 21, 9, 1);
   ok('扩展上下文可读 day / season / weather',
@@ -324,7 +325,7 @@ log('\n[6] 自然生成选种');
     spawnHash(3, 4, 2026) !== spawnHash(4, 3, 2026) &&
     spawnHash(3, 4, 2026) !== spawnHash(3, 4, 2027));
   ok('alpine 命中霜花', planSpawn('alpine', 0.001, false) === 'frost_bloom');
-  ok('plains 命中薰衣草', planSpawn('plains', 0.001, false) === 'lavender');
+  ok('plains 命中蓟', planSpawn('plains', 0.001, false) === 'thistle');
   ok('未知群系不生成', planSpawn('unknown', 0.001, false) === null);
   ok('临水约束：无水时跳过香蒲', planSpawn('plains', 0.009, false) === null);
   ok('临水约束：有水时命中香蒲', planSpawn('plains', 0.009, true) === 'cattail');
@@ -339,7 +340,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 112);
+  ok('内置方块总数未变', t.reg.all().length === 141);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

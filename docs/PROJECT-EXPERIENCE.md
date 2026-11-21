@@ -33,9 +33,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **tag 与 Release 成对**：打 tag 的同时创建对应 GitHub Release（标题
   `vX.Y.Z 预发布  <主题>` / `vN 正式版  <主题>`，正文含自上一 tag 的 changelog 与验证情况），
   禁止裸 tag。
-- **方块 id 只追加**：内置方块 id 1..109 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+- **方块 id 只追加**：内置方块 id 1..147 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
-  插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），v1.6 堆肥桶占 110~118，不要占用内置区间。
+  插件扩展植物从 id 148 起显式固定（见 `botanyContent.ts`）；堆肥桶 110~118、熔炉 119、移植植物 120~147 均为内置末位追加，后续新方块只能从 154 起。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
   `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止

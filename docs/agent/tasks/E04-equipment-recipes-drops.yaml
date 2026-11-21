@@ -1,0 +1,24 @@
+id: E04
+title: 装备合成配方与怪物掉落
+description: |
+  装备系统第四张卡：在 CRAFTING_RECIPES 中追加全部 36 件装备的合成配方
+  （5 材质剑/镐/斧/锹 + 4 材质盔甲），并给猪/羊/僵尸掉落表加上
+  皮革、铁锭、铁剑，形成「打怪取材料 → 烧炼 → 合成装备」闭环。
+  不含装备面板 / 按键 / 浏览器实景回归。
+touch:
+  allow:
+    - src/player/crafting.ts
+    - src/entity/entity.ts
+    - test/crafting-check.cjs
+    - docs/agent/tasks/E04-equipment-recipes-drops.yaml
+    - docs/agent/validate.py
+    - docs/TESTING.md
+    - AGENTS.md
+  deny:
+    - src/main.ts
+    - src/ui/**
+outputs:
+  - 36 条装备配方全部可匹配，id 与 EQUIPMENT 一一对应
+  - 猪羊掉皮革、僵尸掉铁锭/铁剑
+  - test:crafting 覆盖装备配方的有序匹配与产物
+  - typecheck / lint / build / validate --strict 通过
