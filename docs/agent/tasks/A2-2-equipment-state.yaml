@@ -1,0 +1,29 @@
+id: A2-2
+title: 装备状态 + 插件存储持久化
+description: |
+  护甲插件化第二张卡（重构自 WIP 快照 8281895 的 E02 存储路径）：
+  EquipmentState 管理 4 甲槽 / 耐久 / 属性汇总，
+  与 WIP 的唯一差别是持久化路径：不走核心 src/save/save.ts，
+  改走 PluginService 存储（src/services/plugins/storage.ts），owner 隔离，
+  插件卸载后状态随 owner 撤销，旧档打开不受影响。
+touch:
+  allow:
+    - src/player/equipment.ts
+    - src/player/equipmentState.ts
+    - src/plugins/builtin/armor.ts
+    - src/plugins/builtin/index.ts
+    - src/services/events/GameEvents.ts
+    - test/equipment-check.cjs
+    - package.json
+    - docs/agent/tasks/A2-2-equipment-state.yaml
+    - docs/TESTING.md
+  deny:
+    - src/main.ts
+    - src/ui/**
+    - src/save/**
+    - src/player/player.ts
+outputs:
+  - EquipmentState 管理 4 甲槽 / 耐久 / serialize/restore 对称，存档走插件存储
+  - 旧档无装备字段时清空不残留（沿用 WIP 行为）；EquipmentState 的 equipment:change / equipment:broken 事件语义与 WIP 一致
+  - test:armor 覆盖存档往返与卸载零残留
+  - typecheck / lint / build 通过（test:armor 同链验证）

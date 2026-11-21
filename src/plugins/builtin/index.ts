@@ -1,6 +1,7 @@
 import type { PluginDefinition } from '../../services/plugins';
 import { autosavePlugin } from './autosave';
 import { hudFeedbackPlugin } from './hudFeedback';
+import { armorPlugin } from './armor';
 import { botanyExpansionPlugin } from './botanyExpansion';
 import { wasmMonitorPlugin } from './wasmMonitor';
 
@@ -8,6 +9,7 @@ import { wasmMonitorPlugin } from './wasmMonitor';
 export const builtinPlugins: PluginDefinition[] = [
   autosavePlugin,
   hudFeedbackPlugin,
+  armorPlugin,
   botanyExpansionPlugin,
   wasmMonitorPlugin,
 ];

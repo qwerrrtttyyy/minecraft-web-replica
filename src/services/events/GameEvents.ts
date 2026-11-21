@@ -56,6 +56,10 @@ export interface GameEvents {
   'survival:eat': { item: string; hunger: number };
   /** 生存模式：背包变化（kind: block/item） */
   'inventory:change': { key: string; count: number };
+  /** 装备穿戴 / 耐久变化（slot 为 null 表示背包装备） */
+  'equipment:change': { slot: string | null; id: string | null; durability: number };
+  /** 装备耐久耗尽损坏 */
+  'equipment:broken': { id: string; source: 'held' | 'armor' };
   /** 生存模式：空手右键工作台，请求打开合成界面 */
   'crafting:open': { x: number; y: number; z: number };
   /** 合成完成（配方 id / 产物材料 / 数量） */

@@ -58,7 +58,17 @@ export const EXTENSION_POINTS = {
   WORLDGEN_COLUMN: 'worldgen:column',
   /** 游戏逻辑节拍（由组装根按固定间隔派发），供插件做周期性计算 */
   GAMEPLAY_TICK: 'gameplay:tick',
+  /** 管道语义：伤害落账前依次改写（返回 { amount } 覆写）；核心自身不注册处理器 */
+  COMBAT_DAMAGE_INCOMING: 'combat:damage-incoming',
+  /** 通知语义：装备耐久变化（slot 为 null 表示背包装备） */
+  EQUIPMENT_DURABILITY: 'equipment:durability',
 } as const;
+
+/** combat:damage-incoming 的载荷：处理器返回 { amount } 覆写本次伤害 */
+export interface DamageIncomingPayload {
+  amount: number;
+  source: string;
+}
 
 /** worldgen:column 的载荷：直接暴露区块数据，生成期写入不记存档差分 */
 export interface WorldgenColumnPayload {
@@ -131,6 +141,29 @@ export class ExtensionRegistry implements Disposable {
       else this.points.set(point, kept);
     }
     return removed;
+  }
+
+  /**
+   * 管道语义派发：按 priority 降序、注册顺序升序依次执行，
+   * 处理器可通过返回 { amount } 覆写 payload（写回下一级的入参）。
+   * 与 emit 不同：这是「数据流」而非「通知」；错误隔离规则相同，
+   * 抛错的处理器被跳过（不参与改写），其余处理器照常生效。
+   */
+  reduce<P extends object>(point: string, payload: P): { payload: P; errors: { owner: string; message: string }[] } {
+    const errors: { owner: string; message: string }[] = [];
+    if (this.disposed) return { payload, errors };
+    const list = this.points.get(point);
+    if (!list || list.length === 0) return { payload, errors };
+    const ordered = [...list].sort((a, b) => b.priority - a.priority || a.id - b.id);
+    for (const rec of ordered) {
+      try {
+        const out = (rec.handler as (p: P) => unknown)(payload);
+        if (out && typeof out === 'object') Object.assign(payload, out);
+      } catch (e) {
+        errors.push({ owner: rec.owner, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    return { payload, errors };
   }
 
   /** 同步派发：按 priority 降序、注册顺序升序；返回调用数与错误清单 */

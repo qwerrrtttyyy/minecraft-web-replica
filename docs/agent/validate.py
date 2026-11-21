@@ -102,14 +102,50 @@ CHECKS = [
             "plant drops", "compost bin", "plant rule context",
         )),
     ),
+    # ---- 护甲插件化（A2 / v1.5.2-alpha.1）----
+    (
+        "test:armor",
+        "package.json 声明 test:armor 且脚本文件存在",
+        lambda: "test:armor" in pkg_scripts()
+        and (ROOT / "test/armor-check.cjs").exists(),
+    ),
+    (
+        "combat:damage-incoming",
+        "管道扩展点落地：extensions 常量 + survival 伤害接线",
+        lambda: "COMBAT_DAMAGE_INCOMING" in read("src/services/plugins/extensions.ts")
+        and "COMBAT_DAMAGE_INCOMING" in read("src/player/survival.ts"),
+    ),
+    (
+        "core:armor",
+        "armor 内置插件存在并注册进 builtinPlugins",
+        lambda: "core:armor" in read("src/plugins/builtin/armor.ts")
+        and "armorPlugin" in read("src/plugins/builtin/index.ts"),
+    ),
+    (
+        "EQUIPMENT 定义表",
+        "装备定义表存在且快照构建覆盖装备源文件",
+        lambda: "equipmentDef" in read("src/player/equipment.ts")
+        and "src/player/equipment.ts" in read("scripts/build-test-snapshot.mjs"),
+    ),
+    (
+        "EquipmentState",
+        "装备状态层存在（甲槽/耐久/序列化对称）",
+        lambda: "serialize" in read("src/player/equipmentState.ts")
+        and "restore" in read("src/player/equipmentState.ts"),
+    ),
+    (
+        "DESIGN-V2-ARMOR",
+        "护甲插件设计文档存在",
+        lambda: (ROOT / "docs/DESIGN-V2-ARMOR.md").exists(),
+    ),
     (
         "verify",
-        "package.json 声明完整回归脚本族",
+        "package.json 声明完整回归脚本族（含 test:armor）",
         lambda: all(s in pkg_scripts() for s in (
             "verify", "typecheck", "test:snapshot", "test:logic",
             "test:terrain-system", "test:services", "test:diagnostics",
             "test:botany", "test:botany-rules", "test:plant-energy",
-            "test:visual", "test:smoke",
+            "test:armor", "test:visual", "test:smoke",
         )),
     ),
 ]

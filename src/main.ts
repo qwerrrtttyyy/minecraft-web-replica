@@ -208,7 +208,7 @@ async function boot() {
   const entities = new EntityManager(world, engine.scene, events, seed);
 
   // ---- 生存状态 ----
-  const survival = new SurvivalState(events, registry);
+  const survival = new SurvivalState(events, registry, extensions);
   survival.mode = gameMode;
   if (saved?.survival) survival.restore(saved.survival);
   if (!saved) {

@@ -1,0 +1,29 @@
+id: A2-1
+title: 装备定义表 + 纹理 + 物品条目（纯数据层）
+description: |
+  护甲插件化第一张卡（承接 WIP 快照 8281895 的 E01，基本复用）：
+  建立装备定义表 EQUIPMENT（5 材质剑/镐/斧/锹 + 4 材质盔甲）与 ITEMS 装备/材料条目，
+  绘制全部装备与材料纹理（图集末位追加），煤矿石掉落改为煤。
+  本卡不引入插件接线——定义表为纯数据，供后续卡与插件共同读取。
+touch:
+  allow:
+    - src/player/equipment.ts
+    - src/player/survival.ts
+    - src/world/blocks.ts
+    - src/gfx/atlas.ts
+    - test/equipment-check.cjs
+    - scripts/build-test-snapshot.mjs
+    - package.json
+    - docs/agent/tasks/A2-1-equipment-data.yaml
+    - docs/TESTING.md
+  deny:
+    - src/main.ts
+    - src/ui/**
+    - src/plugins/**
+    - src/services/**
+    - src/save/**
+outputs:
+  - EQUIPMENT 定义表覆盖 5 材质剑/镐/斧/锹与 4 材质盔甲，ITEMS 条目与 tile 一致
+  - 新纹理注册在图集末尾，既有 tile 索引不变；快照构建覆盖装备源文件（EQUIPMENT 定义表同链）
+  - test:armor 纯逻辑回归通过
+  - typecheck / build 通过（test:armor 同链验证）
