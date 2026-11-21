@@ -328,4 +328,11 @@ ok('材料组非空且成员合法',
   ok('木剑可用白桦木板', matchRecipe(grid(['P  ', 'P  ', 'S  '], wood), 3)?.recipe.id === 'wooden_sword');
 }
 
+// C01：煤炭 + 木棍 → 4 火把
+ok('煤炭+木棍可合成 4 火把', (() => {
+  const r = CRAFTING_RECIPES.find((x) => x.id === 'torch_fuel');
+  return !!r && r.result.material === 'torch' && r.result.count === 4 &&
+    r.pattern.join('') === 'CS' && r.key.C === 'item:coal' && r.key.S === 'item:stick';
+})());
+
 log(`\n合成回归全部通过（${passed} 项）`);

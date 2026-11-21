@@ -190,12 +190,13 @@ CHECKS = [
     ),
     # ---- 内容体系完善任务卡（C00~C05）----
     # 阶段 A：谓词只检查关键词是否出现在声明它的任务卡文本中；
-    # Tasks 2~5 会各自把对应谓词收紧为真实符号检查。
+    # 各实现卡会逐项收紧为真实符号检查（C01 已收紧 tuning center / coal torch）。
     (
         "tuning center",
-        "内容体系：tuning center 关键词落地（阶段 A：卡片文本包含）",
-        lambda: all("tuning center" in read(f"docs/agent/tasks/{n}.yaml")
-                    for n in ("C00", "C01")),
+        "内容体系：tuning.ts 导出 BREED_FOODS / DROPS / POPULATION（阶段 B：真实符号）",
+        lambda: all(s in read("src/core/tuning.ts") for s in (
+            "export const BREED_FOODS", "export const DROPS", "export const POPULATION",
+        )),
     ),
     (
         "drop system",
@@ -211,9 +212,9 @@ CHECKS = [
     ),
     (
         "coal torch",
-        "内容体系：coal torch 关键词落地（阶段 A：卡片文本包含）",
-        lambda: all("coal torch" in read(f"docs/agent/tasks/{n}.yaml")
-                    for n in ("C00", "C01")),
+        "内容体系：blocks.ts 掉落 item:coal 且 crafting.ts 产出 torch（阶段 B：真实符号）",
+        lambda: "item:coal" in read("src/world/blocks.ts")
+        and "material: 'torch'" in read("src/player/crafting.ts"),
     ),
     (
         "test:drop",

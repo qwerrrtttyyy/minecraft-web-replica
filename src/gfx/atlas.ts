@@ -1864,6 +1864,95 @@ const boneMealPainter: Painter = (p, rng) => {
   for (let i = 0; i < 4; i++) p.set(5 + ((rng() * 6) | 0), 10 + ((rng() * 3) | 0), 0xcfcfc4);
 };
 
+/** 煤炭：深色矿块 + 冷灰高光 */
+const coalPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      if ((x === 3 || x === 12) && (y === 3 || y === 12)) continue;
+      p.set(x, y, jitter(0x24262c, rng, 12));
+    }
+  }
+  for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10]] as const) {
+    p.set(x, y, 0x4d5058);
+    p.set(x + 1, y, 0x363941);
+  }
+};
+
+/** 皮革：棕色兽皮 + 深色包边 */
+const leatherPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    for (let x = 2; x < 14; x++) {
+      const edge = x === 2 || x === 13 || y === 2 || y === 13;
+      p.set(x, y, jitter(edge ? 0x5d3c21 : 0x9b6839, rng, 9));
+    }
+  }
+  for (let x = 4; x <= 11; x += 3) {
+    p.set(x, 5, 0xbd8a56);
+    p.set(x + 1, 10, 0x754c2c);
+  }
+};
+
+/** 生牛肉：红色肉块 + 白色脂肪纹 */
+const beefPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 3 || y === 12;
+      p.set(x, y, jitter(edge ? 0x8e2d33 : 0xc34a4d, rng, 10));
+    }
+  }
+  for (const [x, y] of [[5, 5], [6, 5], [7, 6], [9, 8], [10, 9]] as const) {
+    p.set(x, y, 0xf0d8cc);
+  }
+};
+
+/** 羽毛：透明底 + 浅灰羽片与羽轴 */
+const featherPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    const cx = 8 + Math.round(Math.sin(y * 0.45) * 1.5);
+    p.set(cx, y, 0xbfc4c9);
+    const w = y < 4 || y > 11 ? 1 : y < 8 ? 2 : 3;
+    for (let d = 1; d <= w; d++) {
+      p.set(cx - d, y - (d >> 1), jitter(0xe0e5e7, rng, 8));
+      p.set(cx + d, y - (d >> 1), jitter(0xe0e5e7, rng, 8));
+    }
+  }
+  p.set(8, 14, 0x9aa0a6);
+};
+
+/** 鸡蛋：米白椭圆 + 高光与底部阴影 */
+const eggPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    for (let x = 4; x < 12; x++) {
+      const nx = (x - 8) / 4;
+      const ny = (y - 8) / 6;
+      if (nx * nx + ny * ny <= 1) p.set(x, y, jitter(0xf2e9d5, rng, 5));
+    }
+  }
+  p.set(6, 5, 0xffffff);
+  p.set(7, 4, 0xffffff);
+  p.set(9, 11, 0xd8c7aa);
+  p.set(10, 10, 0xd8c7aa);
+};
+
+/** 兔肉：粉色肉块 + 浅色脂肪纹 */
+const rabbitMeatPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 4; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 4 || y === 12;
+      p.set(x, y, jitter(edge ? 0xb66771 : 0xe08f92, rng, 9));
+    }
+  }
+  for (const [x, y] of [[5, 6], [6, 6], [8, 8], [9, 9], [10, 7]] as const) {
+    p.set(x, y, 0xf6dbd6);
+  }
+};
+
 /** 堆肥桶侧面：木条 + 横向铁皮箍 */
 const composterSidePainter: Painter = (p, rng) => {
   p.clear();
@@ -1931,6 +2020,13 @@ export class TextureAtlas {
     this.painters.set('composter_top', composterTopPainter(false));
     this.painters.set('composter_ready_top', composterTopPainter(true));
     this.painters.set('composter_bottom', composterSidePainter);
+    // C01：新物品纹理，全部追加在既有 painter 之后，既有 tile 索引保持不变
+    this.painters.set('coal', coalPainter);
+    this.painters.set('leather', leatherPainter);
+    this.painters.set('beef', beefPainter);
+    this.painters.set('feather', featherPainter);
+    this.painters.set('egg', eggPainter);
+    this.painters.set('rabbit_meat', rabbitMeatPainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

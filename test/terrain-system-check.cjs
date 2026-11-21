@@ -601,4 +601,13 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     JSON.stringify(seen));
 }
 
+// C01：煤矿石 → 煤炭闭环（方块总数不变）
+const { reg } = make(1);
+ok('煤矿石掉落煤炭（item:coal，1~2）',
+  reg.byNameGet('coal_ore').drops.length === 1 &&
+  reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
+  reg.byNameGet('coal_ore').drops[0].min === 1 &&
+  reg.byNameGet('coal_ore').drops[0].max === 2);
+ok('方块总数仍为 141', reg.all().length === 141);
+
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

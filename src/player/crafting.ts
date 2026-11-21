@@ -179,6 +179,14 @@ export const CRAFTING_RECIPES: Recipe[] = [
     result: { material: 'composter', count: 1 },
   },
   ...equipmentRecipes(),
+  {
+    // C01：煤炭 + 木棍 → 4 火把（1×2 竖排，2×2 个人合成格也放得下）
+    id: 'torch_fuel',
+    label: '火把',
+    pattern: ['C', 'S'],
+    key: { C: 'item:coal', S: 'item:stick' },
+    result: { material: 'torch', count: 4 },
+  },
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

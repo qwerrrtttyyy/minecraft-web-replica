@@ -1,3 +1,4 @@
+import { NEW_ITEMS } from '../core/tuning';
 import type { EventService } from '../services/events';
 import { EXTENSION_POINTS } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
@@ -51,6 +52,13 @@ export const ITEMS: Record<string, ItemDefinition> = {
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
   /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */
   bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
+  /** 内容体系新增物品：食物值统一取自 tuning.ts 的 NEW_ITEMS */
+  coal: { name: 'coal', label: '煤炭', tile: 'coal', food: NEW_ITEMS.coal.food },
+  leather: { name: 'leather', label: '皮革', tile: 'leather', food: NEW_ITEMS.leather.food },
+  beef: { name: 'beef', label: '生牛肉', tile: 'beef', food: NEW_ITEMS.beef.food },
+  feather: { name: 'feather', label: '羽毛', tile: 'feather', food: NEW_ITEMS.feather.food },
+  egg: { name: 'egg', label: '鸡蛋', tile: 'egg', food: NEW_ITEMS.egg.food },
+  rabbit_meat: { name: 'rabbit_meat', label: '兔肉', tile: 'rabbit_meat', food: NEW_ITEMS.rabbit_meat.food },
   ...EQUIP_ITEMS,
 };
 

@@ -246,7 +246,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('dandelion', '蒲公英');
 
   // 矿石追加在末尾：不改动已有方块 id，保证旧存档 edits 差分仍指向同一方块
-  cube('coal_ore', '煤矿石', {}, { hardness: 2.5 });
+  cube('coal_ore', '煤矿石', {}, { hardness: 2.5, drops: [{ name: 'item:coal', min: 1, max: 2 }] });
   cube('iron_ore', '铁矿石', {}, { hardness: 3 });
   cube('gold_ore', '金矿石', {}, { hardness: 3 });
   cube('diamond_ore', '钻石矿石', {}, { hardness: 4 });
