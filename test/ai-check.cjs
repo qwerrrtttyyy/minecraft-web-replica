@@ -291,4 +291,47 @@ ok('Wander 持续返回 Running 且不抛错',
     return true;
   })());
 
+// ---- 8. 行为树编译器与节点注册表：BehaviorTree.fromJSON / NodeRegistry ----
+const { BehaviorTree } = require('./logic/ai/BehaviorTree.js');
+const { NodeRegistry } = require('./logic/ai/registry.js');
+
+ok('BehaviorTree.fromJSON 合法 JSON 构建成功',
+  (() => {
+    const t = BehaviorTree.fromJSON({
+      root: { type: 'selector', name: 'root', children: [{ type: 'condition', name: 'is_day', nodeType: 'IsDay' }] },
+    });
+    return t instanceof BehaviorTree;
+  })());
+ok('BehaviorTree tick IsDay daylight=0.8 → Success；0.2 → Failure',
+  (() => {
+    const t = BehaviorTree.fromJSON({
+      root: { type: 'condition', name: 'is_day', nodeType: 'IsDay' },
+    });
+    return t.tick(ctxWith(airWorld, { daylight: 0.8 })) === NodeStatus.Success
+      && t.tick(ctxWith(airWorld, { daylight: 0.2 })) === NodeStatus.Failure;
+  })());
+ok('BehaviorTree.reset 不抛错',
+  (() => {
+    const t = BehaviorTree.fromJSON({ root: { type: 'condition', name: 'x', nodeType: 'IsDay' } });
+    t.reset();
+    return true;
+  })());
+ok('BehaviorTree.fromJSON 缺 root 抛错',
+  (() => { try { BehaviorTree.fromJSON({}); return false; } catch { return true; } })());
+ok('BehaviorTree.fromJSON 子节点缺 type 抛错',
+  (() => { try { BehaviorTree.fromJSON({ root: { name: 'x' } }); return false; } catch { return true; } })());
+ok('BehaviorTree.fromJSON 未知 condition nodeType 抛错',
+  (() => { try { BehaviorTree.fromJSON({ root: { type: 'condition', name: 'x', nodeType: 'NoSuchNode' } }); return false; } catch { return true; } })());
+
+ok('NodeRegistry register/create 自定义节点',
+  (() => {
+    const reg = new NodeRegistry();
+    class DummyNode extends Node {
+      tick() { return NodeStatus.Success; }
+    }
+    reg.register('Dummy', DummyNode);
+    const inst = reg.create('Dummy', {});
+    return inst instanceof DummyNode && inst.tick(makeCtx()) === NodeStatus.Success;
+  })());
+
 console.log(`\n全部 ${passed} 条断言通过`);

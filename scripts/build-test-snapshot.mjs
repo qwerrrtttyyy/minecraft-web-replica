@@ -73,6 +73,8 @@ const entries = [
   'src/ai/Perception.ts',
   'src/ai/conditions.ts',
   'src/ai/actions.ts',
+  'src/ai/BehaviorTree.ts',
+  'src/ai/registry.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
