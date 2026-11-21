@@ -33,12 +33,14 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
   const collide = (axis: 'x' | 'y' | 'z', delta: number) => {
     if (delta === 0) return;
     body.pos[axis] += delta;
+    // 上界用 ceil-1：AABB 的最大边恰好落在整数格边界时，该格只是相切、并不重叠，
+    // 不能算进碰撞（否则向下运动会把身体抬到上方方块的顶面）。
     const minX = Math.floor(body.pos.x - half);
-    const maxX = Math.floor(body.pos.x + half);
+    const maxX = Math.ceil(body.pos.x + half) - 1;
     const minY = Math.floor(body.pos.y);
-    const maxY = Math.floor(body.pos.y + body.height);
+    const maxY = Math.ceil(body.pos.y + body.height) - 1;
     const minZ = Math.floor(body.pos.z - half);
-    const maxZ = Math.floor(body.pos.z + half);
+    const maxZ = Math.ceil(body.pos.z + half) - 1;
     const forward = delta > 0;
     // 收集同轴所有重叠方块，取移动方向上最近的阻挡面后再钳制。
     // 旧实现「第一个命中即 return」在高速斜向移动、AABB 同轴覆盖多个方块时可能钳制到

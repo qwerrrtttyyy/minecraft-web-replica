@@ -306,6 +306,8 @@ export class Player implements System, PhysicsBody {
     if (this.survival.dead) return;
     // AABB 脱困优先于常规物理：被方块挤住时先平滑推出，避免 moveBody 反复钳制卡死
     if (this.stepUnstuck(dt)) {
+      // 脱困缓动期间丢弃视角增量，否则 0.4s 内累积的鼠标 / 手柄位移会在结束帧一次性生效。
+      this.input.consumeLook();
       this.updateCamera(dt, 0);
       return;
     }
@@ -378,8 +380,8 @@ export class Player implements System, PhysicsBody {
       this.fallVy = Math.max(this.fallVy, -this.vel.y);
     }
 
-    // 移动端自动跳台阶
-    if (this.autoJump && this.onGround && (res.hitX || res.hitZ) && wl > 0.1) {
+    // 移动端自动跳台阶（水下不触发：否则会绕过上面的上升限速把玩家弹出水面）
+    if (this.autoJump && !this.inWater && this.onGround && (res.hitX || res.hitZ) && wl > 0.1) {
       const px = Math.floor(this.pos.x + wx * 0.7);
       const pz = Math.floor(this.pos.z + wz * 0.7);
       const py = Math.floor(this.pos.y);

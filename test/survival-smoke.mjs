@@ -352,24 +352,27 @@ try {
     return { x, y, z };
   });
   await sleep(150);
-  await page.evaluate((c) => {
-    const mc = window.__mc;
-    const p = mc.player.pos;
-    const ex = p.x, ey = p.y + 1.62, ez = p.z;
-    const dx = c.x + 0.5 - ex, dy = c.y + 0.5 - ey, dz = c.z + 0.5 - ez;
-    mc.player.yaw = Math.atan2(-dx, -dz);
-    mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
-    // 立即重算准星，避免「准星命中」断言读到设置视角之前的旧值
-    mc.player.update(0.016);
-  }, mineCell);
   // 轮询等待而不是固定 sleep：整套 verify 高负载下渲染帧可能延迟，
-  // 单帧读取容易拿到设置视角之前的旧 target（历史 flake）
-  const aim = await page.waitForFunction((c) => {
-    const t = window.__mc.player.target;
-    return t && t.x === c.x && t.y === c.y && t.z === c.z
-      ? { x: t.x, y: t.y, z: t.z, name: window.__mc.registry.get(t.block).name }
-      : null;
-  }, { timeout: 8000 }, mineCell).then((h) => h.jsonValue()).catch(() => null);
+  // 单帧读取容易拿到设置视角之前的旧 target（历史 flake）。
+  // 每次轮询都重新对准：物理帧仍在推进、玩家位置会漂，只瞄一次的话
+  // 下一帧就会算出别的 target，断言永远等不到（在高负载下必现）。
+  let aim = null;
+  const aimDeadline = Date.now() + 15000;
+  while (Date.now() < aimDeadline && !aim) {
+    aim = await page.evaluate((c) => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      const dx = c.x + 0.5 - p.x, dy = c.y + 0.5 - (p.y + 1.62), dz = c.z + 0.5 - p.z;
+      mc.player.yaw = Math.atan2(-dx, -dz);
+      mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      mc.player.update(0.016);          // 立即重算准星，不等下一帧
+      const t = mc.player.target;
+      return t && t.x === c.x && t.y === c.y && t.z === c.z
+        ? { x: t.x, y: t.y, z: t.z, name: mc.registry.get(t.block).name }
+        : null;
+    }, mineCell);
+    if (!aim) await sleep(200);
+  }
   ok('准星命中测试方块', !!aim && aim.x === mineCell.x && aim.y === mineCell.y && aim.z === mineCell.z,
     aim ? `${aim.name}@${aim.x},${aim.y},${aim.z}` : 'null');
 
@@ -574,8 +577,11 @@ try {
   });
   await sleep(200);
   const appleBefore = await page.evaluate(() => window.__mc.survival.countKey('i:apple'));
+  // 把指针移到画布中央再右键：高负载下指针可能停在上一个测试留下的 UI 上，
+  // mousedown 落到 HUD 而非 canvas，placeHeld 不会置位（历史 flake）。
+  await page.mouse.move(640, 300);
   await page.mouse.down({ button: 'right' });
-  await sleep(250);
+  await sleep(400);
   await page.mouse.up({ button: 'right' });
   await sleep(350);
   const hungerNow = await page.evaluate(() => window.__mc.survival.hunger);

@@ -24,7 +24,9 @@ export class SoundEngine {
       this.master = this.ctx.createGain();
       this.master.gain.value = this.enabled ? this.volume : 0;
       this.master.connect(this.ctx.destination);
-      const len = this.ctx.sampleRate * 0.5;
+      // 3s：最长音效是 TNT 引信 1.5s，慢速 playbackRate（0.7）下需要约 2.2s 素材，
+      // 再加随机 offset 0.2s 也留有余量；0.5s 会让引信 / 爆炸被截断。
+      const len = this.ctx.sampleRate * 3;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noiseBuf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;

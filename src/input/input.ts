@@ -80,6 +80,9 @@ export class Input {
       this.keys.clear();
       this.breakHeld = false;
       this.placeHeld = false;
+      // 指针锁定不可用时拖拽降级路径：失焦必须结束拖拽，否则回到窗口后
+      // 不按键移动鼠标也会持续转视角。
+      this.dragging = false;
     });
     // 手柄热插拔：记录索引以便 rAF 轮询；首次连接给出提示
     addEventListener('gamepadconnected', (e) => {
@@ -170,14 +173,20 @@ export class Input {
       if (down) this.edges.push({ type: 'pause' });
       return;
     }
-    const gameKeys = [
-      // 可绑定动作 + 固定方向键 / 数字键
-      ...ACTION_KEYS.map((a) => this.bindings[a]),
+    const boundKeys = ACTION_KEYS.map((a) => this.bindings[a]);
+    const extraKeys = [
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab',
       'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
       'Digit6', 'Digit7', 'Digit8', 'Digit9',
     ];
-    if (this.enabled && gameKeys.includes(e.code)) e.preventDefault();
+    // 绑定动作键无条件拦截：否则暂停 / 标题界面按 F5（默认相机键）会刷新页面。
+    // 但输入框里不能拦截，否则 E / WASD 这些绑定的字母键会打不出字。
+    // 方向键 / Tab / 数字键只在游戏内拦截，避免影响菜单里的键盘导航与滚动。
+    const el = e.target as HTMLElement | null;
+    const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    if (!typing && (boundKeys.includes(e.code) || (this.enabled && extraKeys.includes(e.code)))) {
+      e.preventDefault();
+    }
     // v1.3.2 修复：keyup 必须无条件处理。
     // 旧实现先判断 enabled —— 暂停 / 死亡期间松开的 W、Shift 等键会永远留在
     // keys 集合里，恢复游戏后角色会自己持续移动，直到重新按一次再松开。
@@ -352,8 +361,8 @@ export class Input {
    * 标准映射：
    *   左摇杆 → 移动；右摇杆 → 视角
    *   A(0) 跳 / B(1) 蹲 / RB(5) 冲刺 / RT(7) 破坏 / LT(6) 放置
-   *   X(2) 放置备用 / LB(4) 切上一槽 / RB+方向键切槽
-   *   Y(3) 方块库 / Start(9) 菜单 / Back(8) 调试 / 十字键上(12) 切换视角
+   *   X(2) 取样 / LB(4) 与十字键左右切槽 / Y(3) 方块库
+   *   Start(9) 菜单 / Back(8) 调试 / 十字键上(12) 切换视角 / 下(13) 飞行
    * 按钮边沿用 padPrevButtons 检测，切槽/菜单/调试只在按下瞬间触发一次。
    */
   pollGamepad(dt: number) {
@@ -376,24 +385,24 @@ export class Input {
     this.padSneak = b(1) || b(11);            // B 或右摇杆按下
     this.padSprint = b(5) || analog(10) > 0.5; // RB 或左摇杆按下
     this.padBreak = b(7) || analog(7) > 0.5;   // RT
-    this.padPlace = b(6) || analog(6) > 0.5 || b(2); // LT 或 X
+    this.padPlace = b(6) || analog(6) > 0.5;    // LT（X 改为取样，避免放置/取样同键）
 
     // 边沿事件无条件 push（与键盘 Escape 一致）：暂停时 Start 也要能恢复，
     // 具体是否响应由 processEdges 按 mode 判断；否则 enabled=false 会卡死在菜单。
     const prev = this.padPrevButtons;
     const pressed = (i: number) => b(i) && !prev[i];
     if (pressed(4)) this.edges.push({ type: 'slot', value: -1 });       // LB 上一槽
-    if (pressed(5)) this.edges.push({ type: 'slot', value: 1 });        // RB 下一槽
     if (pressed(9)) this.edges.push({ type: 'pause' });                 // Start 菜单
     if (pressed(8)) this.edges.push({ type: 'debug' });                 // Back 调试
     if (pressed(3)) this.edges.push({ type: 'palette' });               // Y 方块库
     if (pressed(12)) this.edges.push({ type: 'camera' });               // 十字键上 视角
     if (pressed(13)) this.edges.push({ type: 'fly' });                  // 十字键下 飞行
-    if (pressed(14)) this.edges.push({ type: 'slot', value: 0, absolute: true }); // 十字键左 → 槽0
-    if (pressed(15)) this.edges.push({ type: 'hud' });                  // 十字键右 HUD
+    if (pressed(14)) this.edges.push({ type: 'slot', value: -1 });      // 十字键左 上一槽
+    if (pressed(15)) this.edges.push({ type: 'slot', value: 1 });       // 十字键右 下一槽
     if (pressed(2)) this.edges.push({ type: 'pick' });                  // X 取方块
-    // 记录当前按钮状态供下一帧边沿检测
-    this.padPrevButtons = pad.buttons.map((x) => x.pressed);
+    // 记录当前按钮状态供下一帧边沿检测（复用数组，避免每帧 map 分配）
+    if (prev.length !== pad.buttons.length) prev.length = pad.buttons.length;
+    for (let i = 0; i < pad.buttons.length; i++) prev[i] = !!pad.buttons[i]?.pressed;
   }
 
   // ---- 可重绑定 API（HUD 设置面板 / CraftAPI 调用）----
