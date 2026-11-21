@@ -7,6 +7,7 @@ import {
 } from './plantTraits';
 import { buildTree, type TreeSpecies } from './trees';
 import { PlantRuleRegistry, type PlantRule, type PlantRuleContext } from './plantRules';
+import { DEFAULT_PLANT_ENV, modifiers, scaledChance, type PlantEnv } from './ecology';
 import type { World } from './world';
 
 /** 一次随机刻里最多处理的采样次数（移动端减半，避免持续占用帧预算） */
@@ -92,6 +93,8 @@ export class Botany {
   private acc = 0;
   private focusX = 0;
   private focusZ = 0;
+  /** 最近一次随机刻的环境（季节 / 天气 / 天数），默认中性 */
+  private env: PlantEnv = DEFAULT_PLANT_ENV;
   /** 能量日志上限：超出后淘汰最旧的四分之一，避免长距离探索无限增长 */
   private static readonly ENERGY_LIMIT = 4096;
 
@@ -193,9 +196,13 @@ export class Botany {
   }
 
   /** 主循环入口：只在玩家附近推进随机刻 */
-  update(dt: number, focusX: number, focusZ: number, daylight: number): void {
+  update(
+    dt: number, focusX: number, focusZ: number, daylight: number,
+    env: PlantEnv = DEFAULT_PLANT_ENV,
+  ): void {
     this.focusX = focusX;
     this.focusZ = focusZ;
+    this.env = env;
     // 暂停档：清空累加器，恢复时不会因积压的时间瞬间爆发一批随机刻
     if (this.attempts <= 0) { this.acc = 0; return; }
     this.acc += Math.min(dt, 0.25);
@@ -208,7 +215,8 @@ export class Botany {
    * 在确切坐标执行一次随机刻（调试 / 回归测试用）。
    * 返回是否改变了世界。
    */
-  tickAt(x: number, y: number, z: number, daylight = 1): boolean {
+  tickAt(x: number, y: number, z: number, daylight = 1, env: PlantEnv = DEFAULT_PLANT_ENV): boolean {
+    this.env = env;
     const id = this.world.getBlock(x, y, z);
     if (id === AIR) return false;
     return this.applyAt(x, y, z, id, daylight);
@@ -392,6 +400,10 @@ export class Botany {
       this.world.getBlockLight(st.x, lightY + 1, st.z),
     );
     const day = clamp(0.3 + 0.7 * clamp(daylight, 0, 1), 0, 1);
+    const mod = modifiers(this.env);
+    // 季节 / 天气只放大正向蓄能；hostile 枯死与夜间呼吸不被削弱
+    const boosted = (delta: number, kind: 'solar' | 'hydro' | 'fungal') =>
+      delta > 0 ? Math.round(delta * mod[kind]) : delta;
 
     if (trait.metabolism === 'hydro') {
       const self = this.registry.get(this.world.getBlock(st.x, st.y, st.z));
@@ -403,14 +415,16 @@ export class Botany {
         at(0, 0, 1).liquid || at(0, 0, -1).liquid ||
         (self.waterPlant === true &&
           (at(0, -1, 0).waterPlant === true || at(0, 1, 0).waterPlant === true));
-      return wet ? { delta: 11, hostile: false } : { delta: -14, hostile: true };
+      return wet
+        ? { delta: boosted(11, 'hydro'), hostile: false }
+        : { delta: -14, hostile: true };
     }
 
     if (trait.metabolism === 'fungal') {
       // 火光会灼伤菌类（这是玩家可以主动利用 / 需要规避的特性）
       if (block >= 13) return { delta: -14, hostile: true };
       const light = Math.max(sky * day, block);
-      if (light < 8) return { delta: 10, hostile: false };
+      if (light < 8) return { delta: boosted(10, 'fungal'), hostile: false };
       return { delta: -4, hostile: false };
     }
 
@@ -419,7 +433,10 @@ export class Botany {
     if (sky < 4 && block < 4) return { delta: -14, hostile: true };
     if (light < 6) return { delta: -2, hostile: false };
     const soil = this.isSoil(this.world.getBlock(st.x, st.y - 1, st.z)) ? 2 : 0;
-    return { delta: 5 + Math.min(9, Math.round(light * 0.6)) + soil, hostile: false };
+    return {
+      delta: boosted(5 + Math.min(9, Math.round(light * 0.6)) + soil, 'solar'),
+      hostile: false,
+    };
   }
 
   private emitBloom(st: PlantEnergyState): void {
@@ -627,7 +644,7 @@ export class Botany {
     if (daylight < 0.12 || sky < 6) return false;
 
     // 向邻近裸露泥土蔓延
-    if (above === AIR && this.rng() < 0.14) {
+    if (above === AIR && this.rng() < scaledChance(0.14, this.env)) {
       const [nx, nz] = this.pickNeighbor(x, z);
       if (this.world.getBlock(nx, y, nz) === this.id.dirt &&
         this.world.getBlock(nx, y + 1, nz) === AIR &&
@@ -637,7 +654,7 @@ export class Botany {
     }
 
     // 草方块上自然长出花草
-    if (above === AIR && sky >= 9 && this.rng() < 0.1 && this.meadowTotal > 0) {
+    if (above === AIR && sky >= 9 && this.rng() < scaledChance(0.1, this.env) && this.meadowTotal > 0) {
       let r = this.rng() * this.meadowTotal;
       for (const m of this.meadow) {
         r -= m.weight;
@@ -651,7 +668,7 @@ export class Botany {
   private tickDirt(x: number, y: number, z: number): boolean {
     if (this.world.getBlock(x, y + 1, z) !== AIR) return false;
     if (this.world.getSkyLight(x, y + 1, z) < 6) return false;
-    if (this.rng() > 0.2) return false;
+    if (this.rng() > scaledChance(0.2, this.env)) return false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       if (this.world.getBlock(x + dx, y, z + dz) === this.id.grass) {
         return this.set(x, y, z, this.id.grass, 'spread');
@@ -664,7 +681,7 @@ export class Botany {
 
   private tickSpread(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.09) return false;
+    if (this.rng() > scaledChance(0.09, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
     return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
@@ -675,7 +692,7 @@ export class Botany {
     const block = this.world.getBlockLight(x, y, z);
     const light = Math.max(sky * (0.3 + 0.7 * clamp(daylight, 0, 1)), block);
     if (light >= 8 || block >= 13) return false;
-    if (this.rng() > 0.12) return false;
+    if (this.rng() > scaledChance(0.12, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
     return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
@@ -690,12 +707,12 @@ export class Botany {
     while (base - 1 >= 1 && this.world.getBlock(x, base - 1, z) === id) base--;
     if (top - base + 1 >= max) {
       // 竹子长满后横向扩繁
-      if (id !== this.id.bamboo || this.rng() > 0.06) return false;
+      if (id !== this.id.bamboo || this.rng() > scaledChance(0.06, this.env)) return false;
       const spot = this.findGroundSpot(base, top, z, 2, true);
       return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, base, z) : false;
     }
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
-    if (this.rng() > (id === this.id.bamboo ? 0.42 : 0.3)) return false;
+    if (this.rng() > scaledChance(id === this.id.bamboo ? 0.42 : 0.3, this.env)) return false;
     return this.grow(x, top + 1, z, id, 'grow', x, base, z);
   }
 
@@ -706,7 +723,7 @@ export class Botany {
     while (base - 1 >= 1 && this.world.getBlock(x, base - 1, z) === this.id.cactus) base--;
     if (top - base + 1 >= 3) return false;
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
-    if (this.rng() > 0.22) return false;
+    if (this.rng() > scaledChance(0.22, this.env)) return false;
     return this.grow(x, top + 1, z, this.id.cactus, 'grow', x, base, z);
   }
 
@@ -719,11 +736,11 @@ export class Botany {
       if (top - base + 1 >= 10) return false;
       const above = this.world.getBlock(x, top + 1, z);
       if (above !== this.id.water) return false;
-      if (this.rng() > 0.3) return false;
+      if (this.rng() > scaledChance(0.3, this.env)) return false;
       return this.grow(x, top + 1, z, id, 'grow', x, base, z);
     }
     // 海草在海床上成片蔓延
-    if (this.rng() > 0.14) return false;
+    if (this.rng() > scaledChance(0.14, this.env)) return false;
     const [dx, dz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(dx, y, dz) !== this.id.water) return false;
     if (!this.registry.isSolid(this.world.getBlock(dx, y - 1, dz))) return false;
@@ -731,7 +748,7 @@ export class Botany {
   }
 
   private tickLily(x: number, y: number, z: number): boolean {
-    if (this.rng() > 0.1) return false;
+    if (this.rng() > scaledChance(0.1, this.env)) return false;
     const [nx, nz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
     const below = this.world.getBlock(nx, y - 1, nz);
@@ -740,7 +757,7 @@ export class Botany {
   }
 
   private tickVine(x: number, y: number, z: number): boolean {
-    if (this.rng() > 0.3) return false;
+    if (this.rng() > scaledChance(0.3, this.env)) return false;
     // 优先向下垂挂（y 减小），其次沿墙面横爬
     if (this.rng() < 0.6) {
       if (y - 1 >= 1 && this.world.getBlock(x, y - 1, z) === AIR) {
@@ -759,7 +776,7 @@ export class Botany {
       this.world.getBlockLight(x, y, z),
     );
     if (light >= 8 || this.world.getBlockLight(x, y, z) >= 13) return false;
-    if (this.rng() > 0.18) return false;
+    if (this.rng() > scaledChance(0.18, this.env)) return false;
     for (let i = 0; i < 6; i++) {
       const nx = x + ((this.rng() * 5) | 0) - 2;
       const ny = y + ((this.rng() * 3) | 0) - 1;
@@ -778,7 +795,7 @@ export class Botany {
       this.world.getBlockLight(x, y, z),
     );
     if (light >= 9 || this.world.getBlockLight(x, y, z) >= 13) return false;
-    if (this.rng() > 0.14) return false;
+    if (this.rng() > scaledChance(0.14, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
     return spot ? this.grow(spot[0], spot[1], spot[2], this.id.mossCarpet, 'spread', x, y, z) : false;
   }
@@ -787,23 +804,23 @@ export class Botany {
 
   private tickWheat(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.22) return false;
+    if (this.rng() > scaledChance(0.22, this.env)) return false;
     const next = id === this.id.wheatSeedling ? this.id.wheatGrowing : this.id.wheat;
     return next ? this.grow(x, y, z, next, 'grow', x, y, z, id) : false;
   }
 
   private tickBerry(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (id === this.id.berryBush) {
-      if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.18) return false;
+      if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > scaledChance(0.18, this.env)) return false;
       return this.grow(x, y, z, this.id.berryBushRipe, 'ripen', x, y, z, id);
     }
-    if (this.rng() > 0.06) return false;
+    if (this.rng() > scaledChance(0.06, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
     return spot ? this.grow(spot[0], spot[1], spot[2], this.id.berryBush, 'spread', x, y, z, id) : false;
   }
 
   private tickPumpkinStem(x: number, y: number, z: number, daylight: number): boolean {
-    if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.12) return false;
+    if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > scaledChance(0.12, this.env)) return false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = x + dx;
       const nz = z + dz;
@@ -820,7 +837,7 @@ export class Botany {
     x: number, y: number, z: number, id: BlockId, species: TreeSpecies, daylight: number,
   ): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.08) return false;
+    if (this.rng() > scaledChance(0.08, this.env)) return false;
     if (!this.canGrow(x, y, z, id)) return false;
     const below = this.world.getBlock(x, y - 1, z);
     if (!this.isSoil(below)) return false;

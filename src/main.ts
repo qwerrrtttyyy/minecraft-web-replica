@@ -12,6 +12,7 @@ import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
 import { World } from './world/world';
 import { Botany } from './world/botany';
+import { seasonAt, weatherAt } from './world/ecology';
 import { ChunkManager } from './world/chunkManager';
 import { Sky } from './gfx/sky';
 import { Particles } from './gfx/particles';
@@ -1357,7 +1358,11 @@ async function boot() {
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进生态，避免回到游戏时世界突然变化
       if (mode !== 'playing') return;
-      botany.update(dt, player.pos.x, player.pos.z, sky.daylight);
+      botany.update(dt, player.pos.x, player.pos.z, sky.daylight, {
+        day: sky.dayCount,
+        season: seasonAt(sky.dayCount),
+        weather: weatherAt(seed, sky.dayCount),
+      });
     },
   });
   engine.addSystem(particles);

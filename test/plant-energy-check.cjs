@@ -13,6 +13,9 @@ const { EventService } = require('./terrain-logic/services/events/EventService.j
 const {
   PLANT_TRAITS, MAX_PLANT_ENERGY, NIGHT_ENERGY_FLOOR,
 } = require('./terrain-logic/world/plantTraits.js');
+const {
+  DAYS_PER_SEASON, DEFAULT_PLANT_ENV, seasonAt, weatherAt, modifiers,
+} = require('./terrain-logic/world/ecology.js');
 const { CHUNK_SIZE: CS } = require('./terrain-logic/core/types.js');
 
 const log = (...a) => console.log(...a);
@@ -288,6 +291,37 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
   ok('stats 统计株数 / 开花 / 代谢分类',
     s.tracked >= 2 && s.charged >= 1 && s.solar >= 1 && s.fungal >= 1,
     JSON.stringify(s));
+}
+
+// 11) 季节 / 天气：纯函数历法、天气确定性与中性 env 等价
+{
+  ok('一季为 6 游戏日，四季循环',
+    DAYS_PER_SEASON === 6 && seasonAt(0) === 'spring' && seasonAt(5) === 'spring' &&
+    seasonAt(6) === 'summer' && seasonAt(12) === 'autumn' &&
+    seasonAt(23) === 'winter' && seasonAt(24) === 'spring');
+  ok('天气由 seed+day 确定性推导',
+    weatherAt(20261115, 3) === weatherAt(20261115, 3));
+  const neutral = modifiers(DEFAULT_PLANT_ENV);
+  ok('默认环境倍率全为 1',
+    neutral.growth === 1 && neutral.solar === 1 && neutral.hydro === 1 && neutral.fungal === 1);
+  ok('冬季抑制光合 / 雨天增强水生',
+    modifiers({ ...DEFAULT_PLANT_ENV, season: 'winter' }).solar < 1 &&
+    modifiers({ ...DEFAULT_PLANT_ENV, weather: 'rain' }).hydro > 1);
+
+  const a = makeWorld();
+  const b = makeWorld();
+  for (const t of [a, b]) {
+    isolate(t, 7, 7);
+    put(t, 7, 21, 7, 'poppy');
+    t.botany.setEnergy(7, 21, 7, 50);
+  }
+  for (let i = 0; i < 40; i++) {
+    a.botany.tickAt(7, 21, 7, 1);
+    b.botany.tickAt(7, 21, 7, 1, DEFAULT_PLANT_ENV);
+  }
+  ok('不传 env 与传默认 env 的生态演化逐值一致',
+    get(a, 7, 21, 7) === get(b, 7, 21, 7) &&
+    a.botany.energyAt(7, 21, 7) === b.botany.energyAt(7, 21, 7));
 }
 
 log(`\nPASS 植物能量体系回归：${passed} 组断言全部通过`);
