@@ -1,7 +1,7 @@
 id: C03
 title: 喂食 / 求爱 / 幼崽 / 上限
 description: breeding.ts 规则 + Entity 三状态字段 + 幼崽缩放修正 + useSelected 喂食分支 + 心形粒子 + 全局上限 24。喂错静默。
-touch: { allow: [src/entity/breeding.ts, src/entity/entity.ts, src/player/player.ts, src/core/tuning.ts, src/main.ts, test/logic-check.cjs, docs/TESTING.md], deny: [src/save/save.ts] }
+touch: { allow: [src/entity/breeding.ts, src/entity/entity.ts, src/player/player.ts, src/core/tuning.ts, src/main.ts, test/terrain-system-check.cjs, docs/TESTING.md], deny: [src/save/save.ts] }
 outputs:
   - animal breeding: 两只喂食后可繁殖、幼崽成长、冷却与上限可测
   - verify: npm run typecheck && npm run test:snapshot && npm run test:logic 全绿
