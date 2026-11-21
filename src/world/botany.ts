@@ -676,7 +676,8 @@ export class Botany {
     if (top - base + 1 >= max) {
       // 竹子长满后横向扩繁
       if (id !== this.id.bamboo || this.rng() > 0.06) return false;
-      const spot = this.findGroundSpot(base, top, z, 2, true);
+      // 以竹柱底部为基准向四周找地面；base/top 都是 Y 坐标，不能当 x/y 传入。
+      const spot = this.findGroundSpot(x, base, z, 2, true);
       return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, base, z) : false;
     }
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;

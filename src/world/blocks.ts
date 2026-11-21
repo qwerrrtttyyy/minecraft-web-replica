@@ -225,7 +225,8 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6, falling: true });
   cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
   cube('ice', '冰', {}, {
-    opaque: false, transparentPass: true, sound: 'glass', hardness: 0.5, drops: [],
+    // cullSame：相邻冰方块之间的内部面与玻璃一样剔除，避免透明通道多出无用面片。
+    opaque: false, cullSame: true, transparentPass: true, sound: 'glass', hardness: 0.5, drops: [],
   });
   cube('spruce_planks', '云杉木板', {}, { sound: 'wood', hardness: 2 });
   cube('birch_planks', '白桦木板', {}, { sound: 'wood', hardness: 2 });
