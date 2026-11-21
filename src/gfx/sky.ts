@@ -23,6 +23,17 @@ export class Sky implements System {
   /** 实验性玩法「体素云层」：false 时隐藏云并跳过云几何重建（省电） */
   showClouds = true;
 
+  /** 累计游戏日（从 0 开始）；季节 / 天气历法由此推导 */
+  get dayCount(): number {
+    return Math.floor(this.localTime / this.dayLength);
+  }
+
+  /** 读档回填时刻与累计天数，保证季节 / 月相与存档一致 */
+  setTime(dayTime: number, dayCount: number): void {
+    this.dayTime = clamp(dayTime, 0, 1);
+    this.localTime = Math.max(0, dayCount) * this.dayLength + this.dayTime * this.dayLength;
+  }
+
   /** 即时切换云层显示（不必等下一帧 update） */
   setCloudsEnabled(v: boolean): void {
     this.showClouds = v;

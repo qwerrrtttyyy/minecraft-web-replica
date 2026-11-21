@@ -1,0 +1,34 @@
+id: P04
+title: 堆肥桶与肥料掉落来源
+description: |
+  blocks.ts 追加 composter 110~118；atlas.ts 末尾追加 painter；
+  compost.ts 提供 levelOf/nextId/harvestOf 与 COMPOST_VALUES；
+  player 右键填桶 / 空手取肥；compost:change 加入 autosave dirtyEvents；
+  猪/羊加 item:fertilizer 稀有掉落；models.ts 加 buildSkeleton；
+  实体表加 skeleton 并接入夜间 hostile 生成。
+  同步 terrain-system-check.cjs 的 all.length 103→112 与 README 方块数。
+  测试：等级编码、满级拒绝、物品消耗、取肥、骷髅掉落、脏标记事件。
+
+touch:
+  allow:
+    - src/world/compost.ts
+    - src/world/blocks.ts
+    - src/gfx/atlas.ts
+    - src/player/player.ts
+    - src/plugins/builtin/autosave.ts
+    - src/entity/entity.ts
+    - src/entity/models.ts
+    - src/main.ts
+    - test/terrain-system-check.cjs
+    - test/services-check.cjs
+    - test/visual-check.mjs
+    - README.md
+    - docs/TESTING.md
+  deny:
+    - src/world/mesher.ts
+    - src/save/save.ts
+
+outputs:
+  - compost bin: composter 占用 110~118 且等级走 world.edits 持久化
+  - plant drops: 猪/羊掉肥料、骷髅掉骨粉且夜间可生成
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:terrain-system && npm run test:services && npm run test:visual 全绿

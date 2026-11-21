@@ -12,6 +12,7 @@ import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
 import { World } from './world/world';
 import { Botany } from './world/botany';
+import { seasonAt, weatherAt } from './world/ecology';
 import { ChunkManager } from './world/chunkManager';
 import { Sky } from './gfx/sky';
 import { Particles } from './gfx/particles';
@@ -204,7 +205,7 @@ async function boot() {
   if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
-  const entities = new EntityManager(world, engine.scene, events);
+  const entities = new EntityManager(world, engine.scene, events, seed);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -230,7 +231,7 @@ async function boot() {
   player.setBotany(botany);
   // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
   const falling = new FallingSystem(world, registry, atlas, engine.scene, events);
-  falling.onPlantDrop = (def) => player.collectDrops(def);
+  falling.onPlantDrop = (def, x, y, z) => player.collectDrops(def, x, y, z);
   player.setFalling(falling);
   // H09：落点在玩家/生物 AABB 内的沙块悬停等待，不实体化进实体
   falling.isBlocked = (x, y, z) => {
@@ -326,6 +327,8 @@ async function boot() {
     hotbar: [...hotbar.slots],
     slot: hotbar.index,
     settings: { ...settings },
+    dayCount: sky.dayCount,
+    botany: botany.serializeEcology(),
     savedAt: Date.now(),
   });
   const saveNow = () => {
@@ -789,13 +792,15 @@ async function boot() {
       player.yaw = saved.player.yaw;
       player.pitch = saved.player.pitch;
       player.fly = saved.player.fly && survival.mode === 'creative';
-      sky.dayTime = saved.dayTime;
+      sky.setTime(saved.dayTime, saved.dayCount ?? 0);
     } else {
       player.spawn();
       survival.spawn = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
     }
     await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3),
       (p) => hud.setLoading(p));
+    // 生态状态在区块就绪后恢复：恢复函数会逐条校验当前方块是否仍是该植物
+    if (cont && saved?.botany) botany.restoreEcology(saved.botany);
     // 死亡存档继续游戏时必须复活，否则 player.update 会永久冻结
     ensureAlive();
     // 防止卡在方块里（换地形算法后的旧存档尤其需要）
@@ -1112,6 +1117,14 @@ async function boot() {
         breath: survival.breath, dead: survival.dead,
       },
       entities: entities.entities.length,
+      plant: (() => {
+        const stats = botany.stats(player.pos.x, player.pos.z);
+        let invalidEnergy = 0;
+        for (const entry of botany.serializeEcology().plants) {
+          if (!Number.isFinite(entry[4]) || entry[4] < 0 || entry[4] > 100) invalidEnergy++;
+        }
+        return { tracked: stats.tracked, avgEnergy: stats.avgEnergy, invalidEnergy };
+      })(),
       save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
     };
   };
@@ -1295,7 +1308,8 @@ async function boot() {
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
-      `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy}`,
+      `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy} / 土壤 ${plants.soilAvg}`,
+      `季节: ${seasonAt(sky.dayCount)} / 天气: ${weatherAt(seed, sky.dayCount)} / 第 ${sky.dayCount} 天`,
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
@@ -1357,7 +1371,12 @@ async function boot() {
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进生态，避免回到游戏时世界突然变化
       if (mode !== 'playing') return;
-      botany.update(dt, player.pos.x, player.pos.z, sky.daylight);
+      player.daylight = sky.daylight;
+      botany.update(dt, player.pos.x, player.pos.z, sky.daylight, {
+        day: sky.dayCount,
+        season: seasonAt(sky.dayCount),
+        weather: weatherAt(seed, sky.dayCount),
+      });
     },
   });
   engine.addSystem(particles);

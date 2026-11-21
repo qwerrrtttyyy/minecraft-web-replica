@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+## [1.5.2-beta.1] - 2026-11-21
+
+### 新增
+- **季节与天气**：`src/world/ecology.ts` 提供 6 日一季的纯函数历法与 seed 派生的天气；季节 / 天气倍率按 solar / hydro / fungal 三代谢调制正向蓄能与生长概率，默认 spring/clear 对旧行为逐值中性。`Sky` 新增 `dayCount` 与 `setTime`。
+- **确定性掉落**：`src/world/drops.ts` 的 `rollDrops()` 替代玩家 / 实体掉落里的 `Math.random`，支持 chance / 数量区间 / 昼夜 / 群系条件；`DropSpec` 增 `min/max/nightOnly/biome`。
+- **土壤养分 + 肥料**：`src/world/soil.ts` 懒初始化 100 的第二资源；`grow()` 成功才扣、枯萎 / 破坏归还；新增 `item:fertilizer`（+35 养分）与 `item:bone_meal`（+55 养分且 +15 能量），`plant:soil` 事件与 F3 `soilAvg` 观测。
+- **堆肥桶**：9 个方块（id 110~118，末位追加），等级编码进 block id 借 `world.edits` 持久化；`src/world/compost.ts` 提供 `levelOf/nextId/harvestOf`；满级收肥、手持可堆肥物投放；`compost:change` 接入存档脏标记。
+- **肥料来源**：猪 / 羊 12% 掉有机肥；新增骷髅怪（夜间生成，75% 掉骨粉）。
+- **插件扩展点**：`PlantRuleContext` 增 `day/season/weather/soil/enrichSoil`；`PlantRule.priority` 按 `(priority, id)` 双键排序；内置 `core:botany-expansion` 加雨天补能演示规则。
+- **生态状态存档**：`Botany.serializeEcology()/restoreEcology()`，紧凑元组、逐条校验、去重、分别截断 1024；`SaveData` 加可选 `botany/dayCount`，旧档兼容；修复柱状植物中间段被拆后锚点储能残留。
+
+### 验证
+- `typecheck` 0 error；`test:botany` 28/28、`test:plant-energy` 51/51、`test:botany-rules` 51/51、`test:logic` 9/9、`test:terrain-system` 49/49、`test:services` 55/55、`test:diagnostics` 28/28、`test:armor` 全绿（合并后）。
+
+## [1.5.2-alpha.1] - 2026-11-21
+
 ### V2 预备工作
 
 - **1.5.1 正式迭代版**：由预发布 `1.5.1-alpha.1` 转正，内容不变（PR #17 审查修复 / #18 实验性玩法 / #19 3D 优化）。

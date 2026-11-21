@@ -1,0 +1,26 @@
+id: P02
+title: 基础掉落系统（确定性 roll）
+description: |
+  新增 drops.ts：rollDrops(specs, ctx) 纯函数 + hash32；
+  DropSpec 增 min/max/nightOnly/biome 可选字段；
+  player.collectDrops(def,x,y,z) 与 EntityManager.kill 迁入 rollDrops，
+  消除掉落路径的 Math.random；EntityManager 接 seed 与 killSerial。
+  测试：复现性、chance 边界、count 区间、条件过滤、旧双字段等价。
+
+touch:
+  allow:
+    - src/world/drops.ts
+    - src/world/blocks.ts
+    - src/player/player.ts
+    - src/entity/entity.ts
+    - src/main.ts
+    - test/logic-check.cjs
+    - test/terrain-system-check.cjs
+    - docs/TESTING.md
+  deny:
+    - src/save/save.ts
+    - src/world/mesher.ts
+
+outputs:
+  - plant drops: 掉落 roll 为纯哈希且玩家/实体两条路径均已迁移
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:logic && npm run test:terrain-system 全绿

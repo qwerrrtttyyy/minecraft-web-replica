@@ -6,7 +6,7 @@
  * - 6 种扩展植物的 id 契约（92~97 末位追加、旧 id 不动、三类代谢）
  * - PlantRuleRegistry 的注册 / 动态解析 / 多规则命中 / 按 owner 注销
  * - botany:register 权限裁剪（写拦截、读保留）
- * - 3 条规则的纯函数行为（确定性 fake ctx，不依赖概率收敛）
+ * - 4 条规则的纯函数行为（确定性 fake ctx，不依赖概率收敛）
  * - Botany 集成：插件规则确实被兜底分派，注销后立即失效
  * - 自然生成选种的确定性与群系 / 临水约束
  * - 未安装插件时内置生态路径不受影响
@@ -124,9 +124,9 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块仍为 103 种，插件未挤占内置表（群系扩充追加 12 种）',
-    t.reg.all().length === 103, `${t.reg.all().length}`);
-  ok('内置最大 id 为 109（cherry_leaves）', Math.max(...t.reg.all().map((d) => d.id)) === 109);
+  ok('内置方块为 112 种（群系扩充 12 + 堆肥桶 9），插件未挤占内置表',
+    t.reg.all().length === 112, `${t.reg.all().length}`);
+  ok('内置最大 id 为 118（composter_ready）', Math.max(...t.reg.all().map((d) => d.id)) === 118);
   install(t);
   ok('6 种植物 id 92~97 连续末位追加',
     EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 92 + i),
@@ -157,19 +157,32 @@ log('\n[2] 规则注册表契约');
   assert.throws(() => r.register({ id: '', owner: 'o', plants: ['x'], tick: () => false }), /字段不完整/);
   ok('重复 id 与字段缺失都会被拒绝', r.size === 2, `${r.size}`);
   ok('同一方块命中多条规则', r.ruleFor(92).length === 2, `${r.ruleFor(92).length}`);
+
+  // 优先级：按 (priority, id) 双键稳定排序
+  const pr = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
+  pr.register({ id: 'zeta', owner: 'o', plants: ['lavender'], priority: 1, tick: () => false });
+  pr.register({ id: 'alpha', owner: 'o', plants: ['lavender'], priority: 1, tick: () => false });
+  pr.register({ id: 'first', owner: 'o', plants: ['lavender'], priority: -1, tick: () => false });
+  const ordered = pr.ruleFor(92).map((rule) => rule.id);
+  ok('规则按 (priority, id) 双键稳定排序',
+    ordered[0] === 'first' && ordered[1] === 'alpha' && ordered[2] === 'zeta',
+    ordered.join(','));
+  ok('list() 暴露 priority',
+    pr.list().some((info) => info.priority === -1 && info.id === 'first'));
+
   ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(92).length === 0);
 
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
   late.register({ id: 'late', owner: 'late', plants: ['future_plant'], tick: () => false });
-  ok('注册时方块尚未存在 → 不命中', late.ruleFor(110).length === 0);
+  ok('注册时方块尚未存在 → 不命中', late.ruleFor(200).length === 0);
   t.reg.register({
-    id: 110, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
+    id: 200, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
     opaque: false, liquid: false, transparentPass: false, lightEmission: 0,
     hardness: 0, sound: 'plant',
     tiles: { top: 'x', bottom: 'x', side: 'x' },
   });
-  ok('方块补齐后按名称重新解析即命中', late.ruleFor(110).length === 1);
+  ok('方块补齐后按名称重新解析即命中', late.ruleFor(200).length === 1);
 }
 
 log('\n[3] botany:register 权限裁剪');
@@ -192,7 +205,7 @@ log('\n[4] 三条规则的确定性行为');
 {
   const [pollination, nocturnal, frostline] = EXPANSION_RULES;
   ok('规则数量与 owner 正确',
-    EXPANSION_RULES.length === 3 && EXPANSION_RULES.every((r) => r.owner === EXPANSION_PLUGIN_ID));
+    EXPANSION_RULES.length === 4 && EXPANSION_RULES.every((r) => r.owner === EXPANSION_PLUGIN_ID));
 
   {
     const { ctx, calls } = fakeCtx({ get: () => 93 });
@@ -252,7 +265,7 @@ log('\n[5] Botany 集成与注销');
 {
   const t = makeWorld();
   install(t);
-  ok('3 条规则已注册', t.botany.listRules().length === 3,
+  ok('4 条规则已注册', t.botany.listRules().length === 4,
     t.botany.listRules().map((r) => r.id).join(', '));
 
   t.world.setBlock(5, 21, 5, t.id('lavender'));
@@ -266,12 +279,40 @@ log('\n[5] Botany 集成与注销');
   ok('霜线规则经 Botany 兜底分派生效（ plains 枯萎）',
     t.botany.tickAt(6, 21, 6, 1) === true && t.world.getBlock(6, 21, 6) === 0);
 
-  ok('按 owner 注销 3 条规则', t.botany.unregisterRules(EXPANSION_PLUGIN_ID) === 3);
+  ok('按 owner 注销 4 条规则', t.botany.unregisterRules(EXPANSION_PLUGIN_ID) === 4);
   ok('注销后规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(7, 21, 7, t.id('frost_bloom'));
   t.botany.setEnergy(7, 21, 7, 100);
   ok('注销后植物不再被改动（退回静态装饰）',
     t.botany.tickAt(7, 21, 7, 1) === false && t.world.getBlock(7, 21, 7) === t.id('frost_bloom'));
+}
+
+log('\n[6] 扩展上下文（day / season / weather / soil）与 enrichSoil');
+{
+  const t = makeWorld();
+  install(t);
+  const seen = {};
+  t.botany.registerRule({
+    id: 'test:env-probe', owner: 'test', plants: ['lavender'],
+    tick(ctx) {
+      seen.day = ctx.day();
+      seen.season = ctx.season();
+      seen.weather = ctx.weather();
+      seen.soil = ctx.soil(ctx.x, ctx.y - 1, ctx.z);
+      ctx.enrichSoil(ctx.x, ctx.y - 1, ctx.z, 20);
+      return false;
+    },
+  });
+  t.world.setBlock(9, 21, 9, t.id('lavender'));
+  t.botany.setNutrient(9, 20, 9, 30);
+  t.botany.tickAt(9, 21, 9, 1);
+  ok('扩展上下文可读 day / season / weather',
+    seen.day === 0 && seen.season === 'spring' && seen.weather === 'clear',
+    JSON.stringify(seen));
+  ok('扩展上下文可读 soil 且 enrichSoil 生效',
+    seen.soil === 30 && t.botany.nutrientAt(9, 20, 9) === 50,
+    `soil=${seen.soil} now=${t.botany.nutrientAt(9, 20, 9)}`);
+  ok('扩展规则按 owner 注销', t.botany.unregisterRules('test') === 1);
 }
 
 log('\n[6] 自然生成选种');
@@ -298,7 +339,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 103);
+  ok('内置方块总数未变', t.reg.all().length === 112);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

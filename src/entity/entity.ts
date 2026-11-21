@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
-import { buildPig, buildSheep, buildZombie, type MobModel } from './models';
+import { buildPig, buildSheep, buildZombie, buildSkeleton, type MobModel } from './models';
 import type { DropSpec } from '../world/blocks';
+import { rollDrops } from '../world/drops';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -208,20 +209,34 @@ export class EntityManager {
   allowSpawn = true;
   /** 掉落回调，由主装配接到生存背包 */
   onDrop: ((name: string, count: number) => void) | null = null;
+  /** 世界种子：掉落判定必须可复现 */
+  private readonly seed: number;
+  /** 最近一次 update / maintainPopulation 的日照，供 nightOnly 掉落使用 */
+  private daylight = 1;
+  /** 死亡序号：同一实体多次触发也能得到不同来源标识 */
+  private killSerial = 0;
 
-  constructor(private world: World, private scene: THREE.Scene, private events: EventService) {
+  constructor(
+    private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
+  ) {
+    this.seed = seed;
     this.registerType({
       id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
-      health: 8, drops: [{ name: 'item:porkchop' }],
+      health: 8, drops: [{ name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 }],
     });
     this.registerType({
       id: 'sheep', label: '羊', width: 0.9, height: 1.15, speed: 1.0, build: buildSheep,
-      health: 8, drops: [{ name: 'white_wool' }],
+      health: 8, drops: [{ name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 }],
     });
     this.registerType({
       id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
       hostile: true, health: 14, damage: 3, attackRange: 1.7, burnInDay: true,
       drops: [{ name: 'item:apple', chance: 0.35 }],
+    });
+    this.registerType({
+      id: 'skeleton', label: '骷髅', width: 0.6, height: 1.9, speed: 1.0, build: buildSkeleton,
+      hostile: true, health: 12, damage: 2, attackRange: 1.7, burnInDay: true,
+      drops: [{ name: 'item:bone_meal', chance: 0.75 }],
     });
   }
 
@@ -254,10 +269,12 @@ export class EntityManager {
 
   /** 死亡：发事件 + 掉落 */
   private kill(e: Entity) {
-    for (const d of e.type.drops ?? []) {
-      if (d.chance !== undefined && Math.random() > d.chance) continue;
-      this.onDrop?.(d.name, d.count ?? 1);
-    }
+    const dropped = rollDrops(e.type.drops ?? [], {
+      seed: this.seed,
+      source: `e:${e.id}:${this.killSerial++}`,
+      daylight: this.daylight,
+    });
+    for (const d of dropped) this.onDrop?.(d.name, d.count);
     this.events.emit('entity:dead', { type: e.type.id, id: e.id });
     this.despawn(e);
   }
@@ -283,6 +300,7 @@ export class EntityManager {
   }
 
   update(dt: number, ctx: EntityContext) {
+    this.daylight = ctx.daylight;
     for (const e of [...this.entities]) {
       e.update(dt, this.world, ctx);
       if (e.dead) this.kill(e);
@@ -291,6 +309,7 @@ export class EntityManager {
 
   /** 维持种群：夜晚在生存模式额外生成僵尸，白天清退 */
   maintainPopulation(dt: number, playerPos: THREE.Vector3, opts: { survival: boolean; daylight: number }) {
+    this.daylight = opts.daylight;
     this.popTimer -= dt;
     if (this.popTimer > 0) return;
     this.popTimer = 2.5;
@@ -305,8 +324,9 @@ export class EntityManager {
 
     const target = opts.survival && night ? 9 : 6;
     if (this.entities.length < target) {
-      const wantZombie = opts.survival && night && zombies < 4 && Math.random() < 0.6;
-      this.trySpawnNear(playerPos, wantZombie ? 'zombie' : undefined);
+      const wantHostile = opts.survival && night && zombies < 4 && Math.random() < 0.6;
+      const hostileType = wantHostile ? (Math.random() < 0.5 ? 'skeleton' : 'zombie') : undefined;
+      this.trySpawnNear(playerPos, hostileType);
     }
   }
 

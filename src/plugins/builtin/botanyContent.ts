@@ -221,4 +221,19 @@ export const EXPANSION_RULES: readonly PlantRule[] = [
       return ctx.write(ctx.x, ctx.y, ctx.z, 0, 'decay');
     },
   },
+  {
+    id: 'core:botany-expansion:rain-boost',
+    owner: EXPANSION_PLUGIN_ID,
+    plants: ['cattail', 'moonlotus'],
+    priority: 5,
+    /** 雨天给水生植物额外蓄能；深夜 + 蓄能充足 + 低概率三重门槛避免脏标记刷屏 */
+    tick(ctx) {
+      if (ctx.weather() !== 'rain') return false;
+      if (ctx.daylight >= 0.25) return false;
+      if (ctx.energy(ctx.x, ctx.y, ctx.z) < 85) return false;
+      if (ctx.rng() > 0.05) return false;
+      ctx.boost(ctx.x, ctx.y, ctx.z, 6);
+      return false;
+    },
+  },
 ];

@@ -1,0 +1,24 @@
+id: P01
+title: 季节 / 天气影响植物代谢（6 日一季）
+description: |
+  新增 ecology.ts（历法 + 天气哈希 + 倍率表）；Botany.update/tickAt 加可选 env；
+  energyDelta 倍率只作用正向蓄能；tick* 概率乘 growth 并封顶 0.95；
+  Sky 加 dayCount getter 与 setTime；main 组 env 传入。
+  测试：历法边界、天气确定性、中性 env 逐值等价、倍率生效。
+
+touch:
+  allow:
+    - src/world/ecology.ts
+    - src/world/botany.ts
+    - src/gfx/sky.ts
+    - src/main.ts
+    - test/plant-energy-check.cjs
+    - test/visual-check.mjs
+    - docs/TESTING.md
+  deny:
+    - src/save/save.ts
+    - src/world/mesher.ts
+
+outputs:
+  - plant env: DAYS_PER_SEASON=6 且默认 env 与旧行为逐值相等
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:plant-energy 全绿

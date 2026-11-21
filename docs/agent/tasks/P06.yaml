@@ -1,0 +1,33 @@
+id: P06
+title: 植物生态状态存档持久化
+description: |
+  Botany 新增 serializeEcology/restoreEcology（校验/去重/截断）；
+  修复 block:break/place 只删精确 key 导致柱状锚点残留；
+  SaveData 加可选 botany/dayCount，validateSave/normalizeSave/collectSave 同步；
+  启动路径恢复后 sky.setTime 回填；
+  RuntimeDiagnostics 加恢复状态检查 + 注入回归；
+  VERSION bump（唯一一次）同 commit 同步 README/CHANGELOG。
+
+touch:
+  allow:
+    - src/world/botany.ts
+    - src/save/save.ts
+    - src/main.ts
+    - src/core/version.ts
+    - src/diagnostics/RuntimeDiagnostics.ts
+    - test/plant-energy-check.cjs
+    - test/services-check.cjs
+    - test/diagnostics-check.cjs
+    - package.json
+    - README.md
+    - CHANGELOG.md
+    - docs/ARCHITECTURE.md
+    - docs/PROJECT-EXPERIENCE.md
+    - docs/TESTING.md
+  deny:
+    - src/world/mesher.ts
+    - src/gfx/**
+
+outputs:
+  - plant save schema: 可选字段严格校验、旧档兼容、round-trip 与坏档隔离可测
+  - verify: npm run verify 100% PASS

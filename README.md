@@ -32,9 +32,11 @@
 物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
 离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.5.2-alpha.1（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.5.2-beta.1（双轨版本号，规则见下方「版本规范」）
 
-**V2 预备（进行中）**：v2.0 路线图两大支柱已启动——护甲以插件形式落地（`core:armor` 内置插件 +
+**v1.5.2-beta.1 植物系统深化**：在 v1.4 生态 / 能量体系之上补齐四个方向——**6 日一季的季节与天气**按物种调制代谢（冬季抑制光合、雨天增强水生）；**确定性掉落系统**把玩家 / 实体掉落改为纯哈希判定，新增**土壤养分**与两种肥料（有机肥 / 骨粉）；**9 个堆肥桶方块**（id 110~118）把等级编码进 block id，借 `world.edits` 免费持久化，猪 / 羊掉肥料、骷髅掉骨粉；**插件扩展点**新增 `day/season/weather/soil` 上下文与规则优先级；**生态状态存档**让能量 / 养分 / 天数跨重载保持。新增 `src/world/ecology.ts` / `drops.ts` / `soil.ts` / `compost.ts` 四个纯数据模块。
+
+**V2 预备（进行中，自 1.5.2-alpha.1 起）**：v2.0 路线图两大支柱已启动——护甲以插件形式落地（`core:armor` 内置插件 +
 `combat:damage-incoming` 管道扩展点，见 [docs/DESIGN-V2-ARMOR.md](docs/DESIGN-V2-ARMOR.md)）；
 联机按「基础协作」里程碑出架构与协议草案（见 [docs/DESIGN-V2-MULTIPLAYER.md](docs/DESIGN-V2-MULTIPLAYER.md)）。
 
@@ -459,14 +461,19 @@ CraftAPI.botany.registerPlant('my_flower', {
 });
 CraftAPI.botany.registerRule({
   id: 'me:my-pack:rule', owner: 'me:my-pack', plants: ['my_flower'],
-  tick: (ctx) => { /* 用 ctx.grow / boost / write，不直接碰 World */ return false; },
+  priority: 0, // 可选：按 (priority, id) 双键稳定排序，越小越先执行
+  tick: (ctx) => {
+    // 读环境：ctx.day() / season() / weather() / soil(x,y,z)
+    // 写土壤：ctx.enrichSoil(x,y,z,delta)；生长仍走 ctx.grow / boost / write
+    return false;
+  },
 });
 CraftAPI.botany.unregisterRules('me:my-pack'); // 停用插件时整体注销
 ```
 
 `Botany` 只在内置规则全部未命中时按方块 id 兜底分派插件规则，因此扩展不会
 改变任何既有生态行为。内置插件 `core:botany-expansion` 就是用这套接口注册了
-6 种植物（id 92~97）与 3 条规则，并订阅 `chunk:generated` 按群系补种。
+6 种植物（id 92~97）与 4 条规则（含雨天补能演示），并订阅 `chunk:generated` 按群系补种。
 控制台可用 `CraftAPI.plugins.disable('core:botany-expansion')` 验证停用后规则立即失效。
 
 ## 扩展 API（为未来预留的接口）

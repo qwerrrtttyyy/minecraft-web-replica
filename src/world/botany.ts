@@ -7,6 +7,12 @@ import {
 } from './plantTraits';
 import { buildTree, type TreeSpecies } from './trees';
 import { PlantRuleRegistry, type PlantRule, type PlantRuleContext } from './plantRules';
+import { DEFAULT_PLANT_ENV, modifiers, scaledChance, type PlantEnv } from './ecology';
+import {
+  MAX_SOIL_NUTRIENT, consume as consumeNutrient, enrich as enrichNutrient,
+  evictIfNeeded as evictSoil, nutrientAt as soilNutrientAt, returnToSoil,
+  type SoilMap,
+} from './soil';
 import type { World } from './world';
 
 /** 一次随机刻里最多处理的采样次数（移动端减半，避免持续占用帧预算） */
@@ -38,6 +44,8 @@ export interface BotanyStats {
   tracked: number;
   charged: number;
   avgEnergy: number;
+  /** 附近被跟踪土壤的平均养分（未记录土壤不计入），无记录时为 100 */
+  soilAvg: number;
   solar: number;
   hydro: number;
   fungal: number;
@@ -47,6 +55,18 @@ export interface PlantBonus {
   item: string;
   count: number;
 }
+
+/** 生态状态存档（v1）：紧凑元组，避免对象开销撑大存档 */
+export interface PlantSaveV1 {
+  v: 1;
+  /** [锚点x, 锚点y, 锚点z, blockId, energy 0~100, bloomed 0|1] */
+  plants: [number, number, number, number, number, 0 | 1][];
+  /** [土壤x, 土壤y, 土壤z, nutrient 0~100] */
+  soil: [number, number, number, number][];
+}
+
+/** 单类状态存档上限，防止存档体积失控 */
+export const ECOLOGY_SAVE_LIMIT = 1024;
 
 /** 生态规则的方块 id 表：显式接口保证漏键在编译期暴露，而不是静默变成 0 */
 interface BotanyIds {
@@ -92,6 +112,8 @@ export class Botany {
   private acc = 0;
   private focusX = 0;
   private focusZ = 0;
+  /** 最近一次随机刻的环境（季节 / 天气 / 天数），默认中性 */
+  private env: PlantEnv = DEFAULT_PLANT_ENV;
   /** 能量日志上限：超出后淘汰最旧的四分之一，避免长距离探索无限增长 */
   private static readonly ENERGY_LIMIT = 4096;
 
@@ -101,6 +123,8 @@ export class Botany {
   private readonly traits = new Map<BlockId, PlantTrait>();
   /** 内在能量表：坐标 → 状态。只跟踪被随机刻采样过的植物 */
   private readonly energy = new Map<string, PlantEnergyState>();
+  /** 土壤养分表：支撑格坐标 → 0~100，懒初始化为 100 */
+  private readonly soil: SoilMap = new Map();
   private readonly flowers = new Set<BlockId>();
   private readonly spreadable = new Set<BlockId>();
   private readonly mushrooms = new Set<BlockId>();
@@ -179,8 +203,8 @@ export class Botany {
       if (trait) this.traits.set(def.id, trait);
     }
     // 玩家拆掉 / 放回方块时清掉旧能量，避免新植物继承前一位住客的储能
-    this.events?.on('block:break', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
-    this.events?.on('block:place', ({ x, y, z }) => this.energy.delete(blockKey(x, y, z)));
+    this.events?.on('block:break', ({ x, y, z, block }) => this.forgetAnchor(x, y, z, block));
+    this.events?.on('block:place', ({ x, y, z, block }) => this.forgetAnchor(x, y, z, block));
   }
 
   /**
@@ -193,9 +217,13 @@ export class Botany {
   }
 
   /** 主循环入口：只在玩家附近推进随机刻 */
-  update(dt: number, focusX: number, focusZ: number, daylight: number): void {
+  update(
+    dt: number, focusX: number, focusZ: number, daylight: number,
+    env: PlantEnv = DEFAULT_PLANT_ENV,
+  ): void {
     this.focusX = focusX;
     this.focusZ = focusZ;
+    this.env = env;
     // 暂停档：清空累加器，恢复时不会因积压的时间瞬间爆发一批随机刻
     if (this.attempts <= 0) { this.acc = 0; return; }
     this.acc += Math.min(dt, 0.25);
@@ -208,7 +236,8 @@ export class Botany {
    * 在确切坐标执行一次随机刻（调试 / 回归测试用）。
    * 返回是否改变了世界。
    */
-  tickAt(x: number, y: number, z: number, daylight = 1): boolean {
+  tickAt(x: number, y: number, z: number, daylight = 1, env: PlantEnv = DEFAULT_PLANT_ENV): boolean {
+    this.env = env;
     const id = this.world.getBlock(x, y, z);
     if (id === AIR) return false;
     return this.applyAt(x, y, z, id, daylight);
@@ -252,11 +281,116 @@ export class Botany {
     this.stateAt(x, y, z, id).energy = clamp(energy, 0, MAX_PLANT_ENERGY);
   }
 
+  /** 读取土壤养分（支撑格 y-1）；未跟踪返回 100 */
+  nutrientAt(x: number, y: number, z: number): number {
+    return soilNutrientAt(this.soil, x, y, z);
+  }
+
+  /** 调试 / 测试钩子：直接写入土壤养分 */
+  setNutrient(x: number, y: number, z: number, value: number): void {
+    this.soil.set(blockKey(x, y, z), clamp(value, 0, MAX_SOIL_NUTRIENT));
+  }
+
+  /** 自然归还养分：季节 / 天气的 soil 倍率在此生效（雨天回肥更快、冬季更慢） */
+  private returnNutrient(x: number, y: number, z: number, amount: number): void {
+    const scaled = Math.max(1, Math.round(amount * modifiers(this.env).soil));
+    returnToSoil(this.soil, x, y - 1, z, scaled);
+  }
+
+  /** 施肥：给支撑格土壤补充养分，并发出 plant:soil 事件 */
+  enrichSoil(x: number, y: number, z: number, delta: number): void {
+    enrichNutrient(this.soil, x, y, z, delta);
+    evictSoil(this.soil);
+    this.events?.emit('plant:soil', { x, y, z, delta });
+  }
+
+  // ---------- 生态状态存档 ----------
+
+  /** 序列化当前仍在原位的植物能量与土壤养分 */
+  serializeEcology(): PlantSaveV1 {
+    const plants: PlantSaveV1['plants'] = [];
+    for (const st of this.energy.values()) {
+      if (plants.length >= ECOLOGY_SAVE_LIMIT) break;
+      if (this.world.getBlock(st.x, st.y, st.z) !== st.id) continue;
+      if (!this.traits.has(st.id)) continue;
+      plants.push([
+        st.x, st.y, st.z, st.id, Math.round(st.energy), st.bloomed ? 1 : 0,
+      ]);
+    }
+    const soil: PlantSaveV1['soil'] = [];
+    for (const [key, value] of this.soil) {
+      if (soil.length >= ECOLOGY_SAVE_LIMIT) break;
+      const parts = key.split(',');
+      if (parts.length !== 3) continue;
+      const [x, y, z] = parts.map(Number);
+      if (![x, y, z].every(Number.isInteger)) continue;
+      // 只输出 validateSave 认可的坐标：对着 y=0 施肥会产生 y=-1 的土壤 key，
+      // 不在这里过滤就会让自产存档被自己的校验器判为坏档。
+      if (y < 0 || y >= H) continue;
+      soil.push([x, y, z, Math.round(value)]);
+    }
+    return { v: 1, plants, soil };
+  }
+
+  /**
+   * 恢复生态状态；返回成功恢复的植物条数。
+   * 任何损坏条目一律丢弃不抛错，坏档不会阻断启动。
+   */
+  restoreEcology(data: unknown): number {
+    if (!data || typeof data !== 'object') return 0;
+    const d = data as Partial<PlantSaveV1>;
+    if (d.v !== 1 || !Array.isArray(d.plants) || !Array.isArray(d.soil)) return 0;
+
+    // 同锚点去重：保留最后一条；按输入顺序逐个校验
+    const seenPlants = new Map<string, PlantSaveV1['plants'][number]>();
+    for (const entry of d.plants) {
+      if (!Array.isArray(entry) || entry.length !== 6) continue;
+      const [x, y, z, id, energy, bloomed] = entry;
+      if (![x, y, z, id].every(Number.isInteger)) continue;
+      if (y < 1 || y >= H || id <= 0 || id > 255) continue;
+      if (!Number.isFinite(energy) || energy < 0 || energy > MAX_PLANT_ENERGY) continue;
+      if (bloomed !== 0 && bloomed !== 1) continue;
+      if (this.world.getBlock(x, y, z) !== id) continue;
+      if (!this.traits.has(id)) continue;
+      seenPlants.set(blockKey(x, y, z), [x, y, z, id, energy, bloomed]);
+    }
+    let restored = 0;
+    for (const [key, entry] of seenPlants) {
+      if (restored >= ECOLOGY_SAVE_LIMIT) break;
+      const [x, y, z, id, energy, bloomed] = entry;
+      this.energy.set(key, { x, y, z, id, energy, bloomed: bloomed === 1 });
+      restored++;
+    }
+
+    const seenSoil = new Map<string, number>();
+    for (const entry of d.soil) {
+      if (!Array.isArray(entry) || entry.length !== 4) continue;
+      const [x, y, z, value] = entry;
+      if (![x, y, z].every(Number.isInteger)) continue;
+      if (!Number.isFinite(value) || value < 0 || value > MAX_SOIL_NUTRIENT) continue;
+      seenSoil.set(blockKey(x, y, z), value);
+    }
+    let soilRestored = 0;
+    for (const [key, value] of seenSoil) {
+      if (soilRestored >= ECOLOGY_SAVE_LIMIT) break;
+      this.soil.set(key, value);
+      soilRestored++;
+    }
+    return restored;
+  }
+
   /** 生态能量统计（F3 / 调试面板）：只统计当前仍在原位的植物 */
   stats(
     focusX = this.focusX, focusZ = this.focusZ, radius = this.sampleRadius,
   ): BotanyStats {
     let tracked = 0, charged = 0, total = 0, solar = 0, hydro = 0, fungal = 0;
+    let soilTotal = 0, soilCount = 0;
+    for (const [key, value] of this.soil) {
+      const [sx, , sz] = key.split(',').map(Number);
+      if (Math.abs(sx - focusX) > radius || Math.abs(sz - focusZ) > radius) continue;
+      soilTotal += value;
+      soilCount++;
+    }
     for (const st of this.energy.values()) {
       if (Math.abs(st.x - focusX) > radius || Math.abs(st.z - focusZ) > radius) continue;
       if (this.world.getBlock(st.x, st.y, st.z) !== st.id) continue;
@@ -272,6 +406,7 @@ export class Botany {
     return {
       tracked, charged,
       avgEnergy: tracked ? Math.round((total / tracked) * 10) / 10 : 0,
+      soilAvg: soilCount ? Math.round((soilTotal / soilCount) * 10) / 10 : 100,
       solar, hydro, fungal,
     };
   }
@@ -291,6 +426,9 @@ export class Botany {
     if (mode === 'use' && id === this.id.berryBushRipe) {
       this.set(x, y, z, this.id.berryBush, 'harvest');
     }
+    // 破坏结算把一半生长养分归还土壤（季节 / 雨天 modifier 生效）
+    const nutrient = trait.growthNutrient ?? Math.ceil(trait.growthCost / 3);
+    this.returnNutrient(x, y, z, Math.floor(nutrient / 2));
     st.bloomed = false;
     this.events?.emit('plant:bloom', { x, y, z, block: id, energy: Math.round(st.energy) });
     return { ...trait.harvest };
@@ -322,6 +460,18 @@ export class Botany {
       this.remember(key, state);
     }
     return state;
+  }
+
+  /**
+   * 清除某次方块改动对应的储能。
+   * 柱状 / 藤蔓植物的能量锚点不在被拆格本身（在底格 / 顶格），
+   * 因此除精确 key 外还要清掉同 x,z 且同 id 的所有锚点记录。
+   */
+  private forgetAnchor(x: number, y: number, z: number, id: BlockId): void {
+    this.energy.delete(blockKey(x, y, z));
+    for (const [key, state] of this.energy) {
+      if (state.x === x && state.z === z && state.id === id) this.energy.delete(key);
+    }
   }
 
   private remember(key: string, state: PlantEnergyState): void {
@@ -392,6 +542,10 @@ export class Botany {
       this.world.getBlockLight(st.x, lightY + 1, st.z),
     );
     const day = clamp(0.3 + 0.7 * clamp(daylight, 0, 1), 0, 1);
+    const mod = modifiers(this.env);
+    // 季节 / 天气只放大正向蓄能；hostile 枯死与夜间呼吸不被削弱
+    const boosted = (delta: number, kind: 'solar' | 'hydro' | 'fungal') =>
+      delta > 0 ? Math.round(delta * mod[kind]) : delta;
 
     if (trait.metabolism === 'hydro') {
       const self = this.registry.get(this.world.getBlock(st.x, st.y, st.z));
@@ -403,14 +557,16 @@ export class Botany {
         at(0, 0, 1).liquid || at(0, 0, -1).liquid ||
         (self.waterPlant === true &&
           (at(0, -1, 0).waterPlant === true || at(0, 1, 0).waterPlant === true));
-      return wet ? { delta: 11, hostile: false } : { delta: -14, hostile: true };
+      return wet
+        ? { delta: boosted(11, 'hydro'), hostile: false }
+        : { delta: -14, hostile: true };
     }
 
     if (trait.metabolism === 'fungal') {
       // 火光会灼伤菌类（这是玩家可以主动利用 / 需要规避的特性）
       if (block >= 13) return { delta: -14, hostile: true };
       const light = Math.max(sky * day, block);
-      if (light < 8) return { delta: 10, hostile: false };
+      if (light < 8) return { delta: boosted(10, 'fungal'), hostile: false };
       return { delta: -4, hostile: false };
     }
 
@@ -419,7 +575,10 @@ export class Botany {
     if (sky < 4 && block < 4) return { delta: -14, hostile: true };
     if (light < 6) return { delta: -2, hostile: false };
     const soil = this.isSoil(this.world.getBlock(st.x, st.y - 1, st.z)) ? 2 : 0;
-    return { delta: 5 + Math.min(9, Math.round(light * 0.6)) + soil, hostile: false };
+    return {
+      delta: boosted(5 + Math.min(9, Math.round(light * 0.6)) + soil, 'solar'),
+      hostile: false,
+    };
   }
 
   private emitBloom(st: PlantEnergyState): void {
@@ -477,11 +636,18 @@ export class Botany {
     // 必须在写入前取能量状态：生长阶段替换方块后 id 会变化
     const state = trait ? this.stateAt(sx, sy, sz, costId) : null;
     if (trait && (!state || state.energy < trait.growthCost)) return false;
+    const nutrientCost = trait
+      ? (trait.growthNutrient ?? Math.ceil(trait.growthCost / 3)) : 0;
+    if (nutrientCost > 0 && this.nutrientAt(sx, sy - 1, sz) < nutrientCost) return false;
     if (!this.set(tx, ty, tz, id, kind)) return false;
     if (trait && state) {
       state.energy = Math.max(0, state.energy - trait.growthCost);
       // 原地升级（麦苗 → 抽穗 → 小麦、青果 → 成熟）保留剩余能量
       if (costId !== id && sx === tx && sy === ty && sz === tz) state.id = id;
+    }
+    if (nutrientCost > 0) {
+      consumeNutrient(this.soil, sx, sy - 1, sz, nutrientCost);
+      evictSoil(this.soil);
     }
     return true;
   }
@@ -605,6 +771,8 @@ export class Botany {
 
   private decay(x: number, y: number, z: number, id: BlockId): boolean {
     let changed = false;
+    const trait = this.traits.get(id);
+    const nutrient = trait ? (trait.growthNutrient ?? Math.ceil(trait.growthCost / 3)) : 0;
     // 整列枯萎：甘蔗 / 竹子 / 仙人掌 / 海带被拆掉底格后不应留下一段悬空
     for (let yy = y; yy < H; yy++) {
       if (this.world.getBlock(x, yy, z) !== id) break;
@@ -613,6 +781,9 @@ export class Botany {
         this.events?.emit('plant:grow', { x, y: yy, z, block: id, kind: 'decay' });
         changed = true;
       }
+    }
+    if (changed && nutrient > 0) {
+      this.returnNutrient(x, y, z, Math.floor(nutrient / 2));
     }
     return changed;
   }
@@ -627,7 +798,7 @@ export class Botany {
     if (daylight < 0.12 || sky < 6) return false;
 
     // 向邻近裸露泥土蔓延
-    if (above === AIR && this.rng() < 0.14) {
+    if (above === AIR && this.rng() < scaledChance(0.14, this.env)) {
       const [nx, nz] = this.pickNeighbor(x, z);
       if (this.world.getBlock(nx, y, nz) === this.id.dirt &&
         this.world.getBlock(nx, y + 1, nz) === AIR &&
@@ -637,7 +808,7 @@ export class Botany {
     }
 
     // 草方块上自然长出花草
-    if (above === AIR && sky >= 9 && this.rng() < 0.1 && this.meadowTotal > 0) {
+    if (above === AIR && sky >= 9 && this.rng() < scaledChance(0.1, this.env) && this.meadowTotal > 0) {
       let r = this.rng() * this.meadowTotal;
       for (const m of this.meadow) {
         r -= m.weight;
@@ -651,7 +822,7 @@ export class Botany {
   private tickDirt(x: number, y: number, z: number): boolean {
     if (this.world.getBlock(x, y + 1, z) !== AIR) return false;
     if (this.world.getSkyLight(x, y + 1, z) < 6) return false;
-    if (this.rng() > 0.2) return false;
+    if (this.rng() > scaledChance(0.2, this.env)) return false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       if (this.world.getBlock(x + dx, y, z + dz) === this.id.grass) {
         return this.set(x, y, z, this.id.grass, 'spread');
@@ -664,7 +835,7 @@ export class Botany {
 
   private tickSpread(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.09) return false;
+    if (this.rng() > scaledChance(0.09, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
     return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
@@ -675,7 +846,7 @@ export class Botany {
     const block = this.world.getBlockLight(x, y, z);
     const light = Math.max(sky * (0.3 + 0.7 * clamp(daylight, 0, 1)), block);
     if (light >= 8 || block >= 13) return false;
-    if (this.rng() > 0.12) return false;
+    if (this.rng() > scaledChance(0.12, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
     return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
@@ -690,12 +861,12 @@ export class Botany {
     while (base - 1 >= 1 && this.world.getBlock(x, base - 1, z) === id) base--;
     if (top - base + 1 >= max) {
       // 竹子长满后横向扩繁
-      if (id !== this.id.bamboo || this.rng() > 0.06) return false;
+      if (id !== this.id.bamboo || this.rng() > scaledChance(0.06, this.env)) return false;
       const spot = this.findGroundSpot(base, top, z, 2, true);
       return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, base, z) : false;
     }
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
-    if (this.rng() > (id === this.id.bamboo ? 0.42 : 0.3)) return false;
+    if (this.rng() > scaledChance(id === this.id.bamboo ? 0.42 : 0.3, this.env)) return false;
     return this.grow(x, top + 1, z, id, 'grow', x, base, z);
   }
 
@@ -706,7 +877,7 @@ export class Botany {
     while (base - 1 >= 1 && this.world.getBlock(x, base - 1, z) === this.id.cactus) base--;
     if (top - base + 1 >= 3) return false;
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
-    if (this.rng() > 0.22) return false;
+    if (this.rng() > scaledChance(0.22, this.env)) return false;
     return this.grow(x, top + 1, z, this.id.cactus, 'grow', x, base, z);
   }
 
@@ -719,11 +890,11 @@ export class Botany {
       if (top - base + 1 >= 10) return false;
       const above = this.world.getBlock(x, top + 1, z);
       if (above !== this.id.water) return false;
-      if (this.rng() > 0.3) return false;
+      if (this.rng() > scaledChance(0.3, this.env)) return false;
       return this.grow(x, top + 1, z, id, 'grow', x, base, z);
     }
     // 海草在海床上成片蔓延
-    if (this.rng() > 0.14) return false;
+    if (this.rng() > scaledChance(0.14, this.env)) return false;
     const [dx, dz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(dx, y, dz) !== this.id.water) return false;
     if (!this.registry.isSolid(this.world.getBlock(dx, y - 1, dz))) return false;
@@ -731,7 +902,7 @@ export class Botany {
   }
 
   private tickLily(x: number, y: number, z: number): boolean {
-    if (this.rng() > 0.1) return false;
+    if (this.rng() > scaledChance(0.1, this.env)) return false;
     const [nx, nz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
     const below = this.world.getBlock(nx, y - 1, nz);
@@ -740,7 +911,7 @@ export class Botany {
   }
 
   private tickVine(x: number, y: number, z: number): boolean {
-    if (this.rng() > 0.3) return false;
+    if (this.rng() > scaledChance(0.3, this.env)) return false;
     // 优先向下垂挂（y 减小），其次沿墙面横爬
     if (this.rng() < 0.6) {
       if (y - 1 >= 1 && this.world.getBlock(x, y - 1, z) === AIR) {
@@ -759,7 +930,7 @@ export class Botany {
       this.world.getBlockLight(x, y, z),
     );
     if (light >= 8 || this.world.getBlockLight(x, y, z) >= 13) return false;
-    if (this.rng() > 0.18) return false;
+    if (this.rng() > scaledChance(0.18, this.env)) return false;
     for (let i = 0; i < 6; i++) {
       const nx = x + ((this.rng() * 5) | 0) - 2;
       const ny = y + ((this.rng() * 3) | 0) - 1;
@@ -778,7 +949,7 @@ export class Botany {
       this.world.getBlockLight(x, y, z),
     );
     if (light >= 9 || this.world.getBlockLight(x, y, z) >= 13) return false;
-    if (this.rng() > 0.14) return false;
+    if (this.rng() > scaledChance(0.14, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, false);
     return spot ? this.grow(spot[0], spot[1], spot[2], this.id.mossCarpet, 'spread', x, y, z) : false;
   }
@@ -787,23 +958,23 @@ export class Botany {
 
   private tickWheat(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.22) return false;
+    if (this.rng() > scaledChance(0.22, this.env)) return false;
     const next = id === this.id.wheatSeedling ? this.id.wheatGrowing : this.id.wheat;
     return next ? this.grow(x, y, z, next, 'grow', x, y, z, id) : false;
   }
 
   private tickBerry(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (id === this.id.berryBush) {
-      if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.18) return false;
+      if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > scaledChance(0.18, this.env)) return false;
       return this.grow(x, y, z, this.id.berryBushRipe, 'ripen', x, y, z, id);
     }
-    if (this.rng() > 0.06) return false;
+    if (this.rng() > scaledChance(0.06, this.env)) return false;
     const spot = this.findGroundSpot(x, y, z, 2, true);
     return spot ? this.grow(spot[0], spot[1], spot[2], this.id.berryBush, 'spread', x, y, z, id) : false;
   }
 
   private tickPumpkinStem(x: number, y: number, z: number, daylight: number): boolean {
-    if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > 0.12) return false;
+    if (this.lightAt(x, y, z, daylight) < 8 || this.rng() > scaledChance(0.12, this.env)) return false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = x + dx;
       const nz = z + dz;
@@ -820,7 +991,7 @@ export class Botany {
     x: number, y: number, z: number, id: BlockId, species: TreeSpecies, daylight: number,
   ): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
-    if (this.rng() > 0.08) return false;
+    if (this.rng() > scaledChance(0.08, this.env)) return false;
     if (!this.canGrow(x, y, z, id)) return false;
     const below = this.world.getBlock(x, y - 1, z);
     if (!this.isSoil(below)) return false;
@@ -941,6 +1112,11 @@ export class Botany {
       neighbors: (nx, ny, nz) => DIRS.map(
         ([dx, dy, dz]) => [nx + dx, ny + dy, nz + dz] as [number, number, number],
       ),
+      day: () => this.env.day,
+      season: () => this.env.season,
+      weather: () => this.env.weather,
+      soil: (qx, qy, qz) => this.nutrientAt(qx, qy, qz),
+      enrichSoil: (qx, qy, qz, delta) => this.enrichSoil(qx, qy, qz, delta),
     };
   }
 

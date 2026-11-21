@@ -50,6 +50,15 @@ export interface DiagnosticSnapshot {
   survival: { health: number; hunger: number; breath: number; dead: boolean } | null;
   entities: number;
   save: { dirty: boolean; lastOkAt: number };
+  /** v1.6：植物生态快照（可选，旧快照不含此字段时跳过相关检查） */
+  plant?: {
+    /** 当前跟踪的植物数量 */
+    tracked: number;
+    /** 平均能量 0~100 */
+    avgEnergy: number;
+    /** 恢复后发现的能量越界条目数，正常应为 0 */
+    invalidEnergy: number;
+  };
   /** v1.5.0：WASM 运行时快照（可选，旧快照不含此字段时跳过相关检查） */
   wasm?: {
     status: string;
@@ -173,6 +182,18 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
     check('survival.deadOverlay',
       !(s.mode === 'dead' && !v.dead),
       '主状态机为 dead，但生存状态未标记死亡', 'warn');
+  }
+
+  // ---- 植物生态（v1.6）----
+  const pl = s.plant;
+  if (pl) {
+    check('plant.tracked',
+      Number.isInteger(pl.tracked) && pl.tracked >= 0,
+      `跟踪植物数异常：${pl.tracked}`);
+    check('plant.energy',
+      finite(pl.avgEnergy) && pl.avgEnergy >= 0 && pl.avgEnergy <= 100 &&
+      Number.isInteger(pl.invalidEnergy) && pl.invalidEnergy === 0,
+      `植物能量快照异常：avg=${pl.avgEnergy} invalid=${pl.invalidEnergy}`);
   }
 
   // ---- WASM（v1.5.0）----

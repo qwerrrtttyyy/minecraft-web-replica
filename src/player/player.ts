@@ -14,6 +14,10 @@ import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
+import { rollDrops } from '../world/drops';
+import {
+  COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
+} from '../world/compost';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -91,6 +95,8 @@ export class Player implements System, PhysicsBody {
   private lastEmitZ = 0;
   private eatTimer = 0;
   private botany: Botany | null = null;
+  /** 当前日照强度（组装根每帧回填），供 nightOnly 掉落判定使用 */
+  daylight = 1;
   /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
   private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
@@ -596,7 +602,7 @@ export class Player implements System, PhysicsBody {
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
-    this.collectDrops(def);
+    this.collectDrops(def, hit.x, hit.y, hit.z);
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
     // 未注入重力系统时保留旧的植物连带行为
@@ -608,18 +614,22 @@ export class Player implements System, PhysicsBody {
       if (above.shape === 'cross') {
         this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
         this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
-        this.collectDrops(above);
+        this.collectDrops(above, hit.x, hit.y + 1, hit.z);
       }
     }
   }
 
   /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
-  collectDrops(def: BlockDefinition) {
+  collectDrops(def: BlockDefinition, x = 0, y = 0, z = 0) {
     if (!this.survival.isSurvival) return;
-    for (const d of def.drops) {
-      if (d.chance !== undefined && Math.random() > d.chance) continue;
-      const name = d.name === 'self' ? def.name : d.name;
-      this.survival.addDrop(name, d.count ?? 1);
+    const dropped = rollDrops(def.drops, {
+      seed: this.world.generator.seed,
+      source: `b:${x},${y},${z}`,
+      daylight: this.daylight,
+      biome: this.world.generator.biomeAt?.(x, z) as string | undefined,
+    });
+    for (const d of dropped) {
+      this.survival.addDrop(d.name === 'self' ? def.name : d.name, d.count);
     }
   }
 
@@ -627,6 +637,8 @@ export class Player implements System, PhysicsBody {
 
   /** 右键 / 放置键：手持方块则放置，种子 / 浆果则种植，空手则采集蓄能植物 */
   useSelected() {
+    // 堆肥桶优先：手持可堆肥物投放，或空手收取成熟肥料
+    if (this.tryCompost()) return;
     const stack = this.selectedStack();
     if (!stack) {
       // 空手右键可交互方块（如工作台）：交给上层打开对应界面
@@ -636,6 +648,11 @@ export class Player implements System, PhysicsBody {
     }
     if (stack.kind === 'item') {
       const item = this.selectedItem();
+      // 肥料 / 骨粉：对着目标格补充土壤养分（骨粉还额外给植物能量）
+      if (stack.id === 'fertilizer' || stack.id === 'bone_meal') {
+        if (this.applyFertilizer(stack.id === 'bone_meal')) this.survival.consume(stack, 1);
+        return;
+      }
       if (item?.plant) {
         const def = this.registry.byNameGet(item.plant);
         // 甜浆果既能种植也能进食：对准可种位置时优先种植，否则吃掉
@@ -648,6 +665,43 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
+  }
+
+  /** 手持可堆肥物投放 / 空手从成熟桶取肥；返回是否处理了这次右键 */
+  private tryCompost(): boolean {
+    const hit = this.target;
+    if (!hit || !this.survival.isSurvival) return false;
+    const id = this.world.getBlock(hit.x, hit.y, hit.z);
+    const name = this.registry.get(id).name;
+    if (!name.startsWith('composter')) return false;
+    const stack = this.selectedStack();
+    if (!stack) {
+      const harvest = composterHarvest(id);
+      if (!harvest) return false;
+      if (!this.world.setBlock(hit.x, hit.y, hit.z, COMPOSTER_ID)) return false;
+      this.survival.addDrop(harvest, 1);
+      this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
+      this.sound.click(1150);
+      this.swing();
+      return true;
+    }
+    const key = stack.kind === 'item' ? `item:${stack.id}` : (() => {
+      const def = this.registry.get(stack.id as BlockId);
+      return def.name;
+    })();
+    if (!COMPOST_VALUES[key]) return false;
+    const next = composterNext(id, key);
+    if (next === null) return false;
+    // 先确认写入成功再扣物品，避免 setBlock 失败时白吃掉材料
+    if (!this.world.setBlock(hit.x, hit.y, hit.z, next)) return false;
+    if (!this.survival.consume(stack, 1)) {
+      this.world.setBlock(hit.x, hit.y, hit.z, id); // 回滚等级
+      return false;
+    }
+    this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
+    this.sound.place('wood');
+    this.swing();
+    return true;
   }
 
   /**
@@ -707,6 +761,29 @@ export class Player implements System, PhysicsBody {
     // 沙类失去支撑立即下落（受更新下落：放置也算一次方块更新）
     this.falling?.triggerColumn(x, y, z);
     this.sound.place(def.sound);
+    this.swing();
+    return true;
+  }
+
+  /**
+   * 手持肥料右键：给准星所指格补养分。
+   * 骨粉额外给该格植物 +15 能量（可直接推过开花阈值）。
+   * 返回是否生效（未对准目标 / 非生存模式时不消耗物品）。
+   */
+  private applyFertilizer(boneMeal: boolean): boolean {
+    const hit = this.target;
+    if (!hit || !this.survival.isSurvival || !this.botany) return false;
+    this.botany.enrichSoil(hit.x, hit.y - 1, hit.z, boneMeal ? 55 : 35);
+    if (boneMeal) {
+      const id = this.world.getBlock(hit.x, hit.y, hit.z);
+      if (id !== AIR && this.world.registry.get(id).shape === 'cross') {
+        // setEnergy 只对已跟踪植物生效；未跟踪植物按起始 32 能量计，+15 后起步
+        this.botany.setEnergy(hit.x, hit.y, hit.z, Math.max(32, this.botany.energyAt(hit.x, hit.y, hit.z)) + 15);
+      }
+    }
+    const color = this.atlas.avgColor(boneMeal ? 'bone_meal' : 'fertilizer');
+    this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 8, 0.25, 1.2);
+    this.sound.click(boneMeal ? 1180 : 980);
     this.swing();
     return true;
   }

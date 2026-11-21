@@ -14,6 +14,14 @@ export interface DropSpec {
   chance?: number;
   /** 数量，默认 1 */
   count?: number;
+  /** 最小数量（与 max 搭配时覆盖 count，闭区间） */
+  min?: number;
+  /** 最大数量（与 min 搭配时覆盖 count，闭区间） */
+  max?: number;
+  /** 只在夜晚（daylight < 0.3）掉落 */
+  nightOnly?: boolean;
+  /** 只在指定群系掉落 */
+  biome?: string;
 }
 
 export interface BlockDefinition {
@@ -366,4 +374,14 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [{ name: 'self' }],
   });
+
+  // ---- 堆肥桶（id 110~118，末位追加；等级编码进 block id，借 world.edits 免费持久化） ----
+  for (let i = 0; i <= 7; i++) {
+    cube(i === 0 ? 'composter' : `composter_${i}`, i === 0 ? '堆肥桶' : `堆肥桶 ${i}/7`,
+      { top: 'composter_top', bottom: 'composter_bottom', side: 'composter_side' },
+      { id: 110 + i, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
+  }
+  cube('composter_ready', '堆肥桶（成熟）',
+    { top: 'composter_ready_top', bottom: 'composter_bottom', side: 'composter_side' },
+    { id: 118, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
 }

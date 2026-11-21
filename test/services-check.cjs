@@ -622,6 +622,38 @@ const validSave = () => ({
   savedAt: 1700000000000,
 });
 ok('validateSave 接受合法档', () => assert.strictEqual(validateSave(validSave()), true));
+ok('validateSave 接受含可选生态字段的新档', () => {
+  const d = validSave();
+  d.dayCount = 5;
+  d.botany = { v: 1, plants: [[3, 21, 4, 60, 88, 1]], soil: [[3, 20, 4, 64]] };
+  assert.strictEqual(validateSave(d), true);
+  assert.strictEqual(normalizeSave(d).botany.plants.length, 1);
+  // 世界支持负坐标，生态存档必须接受
+  d.botany.plants.push([-17, 21, -9, 60, 40, 0]);
+  d.botany.soil.push([-17, 20, -9, 30]);
+  assert.strictEqual(validateSave(d), true);
+});
+ok('validateSave 拒绝损坏的生态字段', () => {
+  const bad = [
+    (d) => { d.dayCount = -1; },
+    (d) => { d.dayCount = NaN; },
+    (d) => { d.botany = { v: 2, plants: [], soil: [] }; },
+    (d) => { d.botany = { v: 1, plants: 'x', soil: [] }; },
+    (d) => { d.botany = { v: 1, plants: [[1.5, 2, 3, 4, 5, 0]], soil: [] }; },
+    (d) => { d.botany = { v: 1, plants: [], soil: [[1, 2, 3, 500]] }; },
+  ];
+  for (const mutate of bad) {
+    const d = validSave();
+    mutate(d);
+    assert.strictEqual(validateSave(d), false, `应拒绝生态坏档：${mutate.toString().slice(0, 50)}`);
+  }
+});
+ok('旧档缺生态字段仍通过校验并补默认值', () => {
+  const d = validSave();
+  const normalized = normalizeSave(d);
+  assert.strictEqual(normalized.dayCount, 0);
+  assert.strictEqual(normalized.botany, undefined);
+});
 ok('validateSave 拒绝各类坏档', () => {
   const bad = [
     (d) => { d.version = 1; },

@@ -33,9 +33,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **tag 与 Release 成对**：打 tag 的同时创建对应 GitHub Release（标题
   `vX.Y.Z 预发布  <主题>` / `vN 正式版  <主题>`，正文含自上一 tag 的 changelog 与验证情况），
   禁止裸 tag。
-- **方块 id 只追加**：内置方块 id 1..91 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+- **方块 id 只追加**：内置方块 id 1..109 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
-  插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），不要占用内置区间。
+  插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），v1.6 堆肥桶占 110~118，不要占用内置区间。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
   `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止
@@ -58,6 +58,15 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `api:emit` 要同时盖住 `ctx.events.emit` 与 `api.events.scope` 子通道；manifest 存 / 取
   都要防御性拷贝。`ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
+- **确定性掉落**：掉落判定只能走 `rollDrops()`（`src/world/drops.ts`），禁止在玩家 / 实体掉落路径
+  再写 `Math.random`；来源标识用 `b:x,y,z` / `e:id:serial` 保证同 seed 可复现。
+- **新纯数据模块编译进快照**：`ecology.ts` / `soil.ts` / `drops.ts` / `compost.ts` 是被
+  `botany.ts` / `blocks.ts` 传递引入的纯模块，tsc 快照会自动包含；新增独立测试入口才需改
+  `scripts/build-test-snapshot.mjs` 的 `entries`。`entity.ts` / `models.ts` 为实体掉落回归显式加入 entries。
+- **生态状态存档**：`SaveData.botany` / `dayCount` 是可选字段，旧档缺省必须仍通过 `validateSave`；
+  `restoreEcology()` 对坏档逐条丢弃不抛错。堆肥等级不进存档（编码在 block id 里，走 `world.edits`）。
+- **compost:change 必须标脏**：`World.setBlock` 不发 `block:place`，堆肥等级变化必须显式发
+  `compost:change`，autosave 插件已监听；新增类似的「仅 setBlock 的状态变化」时同样处理。
 - **生态扩展点**：插件植物通过 `CraftAPI.botany.registerPlant/registerRule` 接入，
   `Botany` 只在内置规则全部未命中时按方块 id 兜底分派；禁止把插件植物写进
   `PLANT_TRAITS` / `BotanyIds`，也不要为单个插件植物加 `if` 分支。插件停用必须

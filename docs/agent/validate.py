@@ -56,6 +56,53 @@ CHECKS = [
         lambda: "sessionStorage" in read("test/visual-check.mjs")
         and "2026" in read("test/visual-check.mjs"),
     ),
+    # ---- 植物系统深化任务卡（P00~P06）----
+    (
+        "plant env",
+        "季节历法模块存在且一季为 6 游戏日",
+        lambda: "export function seasonAt" in read("src/world/ecology.ts")
+        and "DAYS_PER_SEASON = 6" in read("src/world/ecology.ts"),
+    ),
+    (
+        "soil nutrient",
+        "土壤养分模块暴露 nutrientAt / enrich",
+        lambda: "export function nutrientAt" in read("src/world/soil.ts")
+        and "export function enrich" in read("src/world/soil.ts"),
+    ),
+    (
+        "plant save schema",
+        "存档 schema 含可选 botany / dayCount 字段",
+        lambda: "botany?:" in read("src/save/save.ts")
+        and "dayCount?:" in read("src/save/save.ts"),
+    ),
+    (
+        "plant drops",
+        "确定性掉落模块存在且玩家/实体掉落路径已迁移",
+        lambda: "export function rollDrops" in read("src/world/drops.ts")
+        and "rollDrops" in read("src/player/player.ts")
+        and "rollDrops" in read("src/entity/entity.ts"),
+    ),
+    (
+        "compost bin",
+        "堆肥桶方块 id 110~118 与图集 painter 已注册",
+        lambda: "composter_ready" in read("src/world/blocks.ts")
+        and "composter" in read("src/gfx/atlas.ts"),
+    ),
+    (
+        "plant rule context",
+        "植物规则上下文暴露 season / soil 且支持优先级",
+        lambda: "season():" in read("src/world/plantRules.ts")
+        and "priority" in read("src/world/plantRules.ts"),
+    ),
+    (
+        "任务卡校验器",
+        "validate.py 覆盖植物深化六个契约关键词",
+        lambda: all(k in read("docs/agent/validate.py") for k in (
+            "plant env", "soil nutrient", "plant save schema",
+            "plant drops", "compost bin", "plant rule context",
+        )),
+    ),
+    # ---- 护甲插件化（A2 / v1.5.2-alpha.1）----
     (
         "test:armor",
         "package.json 声明 test:armor 且脚本文件存在",
@@ -90,6 +137,16 @@ CHECKS = [
         "DESIGN-V2-ARMOR",
         "护甲插件设计文档存在",
         lambda: (ROOT / "docs/DESIGN-V2-ARMOR.md").exists(),
+    ),
+    (
+        "verify",
+        "package.json 声明完整回归脚本族（含 test:armor）",
+        lambda: all(s in pkg_scripts() for s in (
+            "verify", "typecheck", "test:snapshot", "test:logic",
+            "test:terrain-system", "test:services", "test:diagnostics",
+            "test:botany", "test:botany-rules", "test:plant-energy",
+            "test:armor", "test:visual", "test:smoke",
+        )),
     ),
 ]
 
