@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [1.6.0] - 2026-11-21
+## [1.5.2] - 2026-11-21 · 内容体系完善（正式版）
 
 ### 新增
 - **新动物**：牛 / 鸡 / 兔三种被动动物加入加权生成表（`ANIMALS` / `BREED_FOODS`，权重来自 `dropHash`）；猪 / 羊既有数值原样搬入。新动物掉落全部带 `item:` 前缀（皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉），与既有物品同键可堆叠。
@@ -19,7 +19,7 @@
 - 确定性硬规则范围澄清：只约束掉落判定（禁止在掉落路径写 `Math.random`，散开 / 加权抽取走 `dropHash`）；既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，本轮不动。运行时唯一依赖仍为 three。
 
 ### 验证
-- `check:version` 三处一致（VERSION 1.6.0 / `package.json` / README）；`typecheck` 0 error；非浏览器回归链（含 `test:drop`、`test:crafting`）全绿；`python3 docs/agent/validate.py --strict` 0 FAIL / 0 WARN。浏览器实景组 `test:smoke` / `test:visual` / `test:options` 因本机无可用 Chromium 未执行（用户决定放弃），故未宣称 `npm run verify` 全绿。
+- `check:version` 三处一致（VERSION 1.5.2 / `package.json` / README；`RELEASE=v1` 正式版）；`typecheck` 0 error；非浏览器回归链（含 `test:drop`、`test:crafting`）全绿；`python3 docs/agent/validate.py --strict` 0 FAIL / 0 WARN。浏览器实景组 `test:smoke` / `test:visual` / `test:options` 因本机无可用 Chromium 未执行（用户决定放弃），故未宣称 `npm run verify` 全绿。
 
 ## [1.5.2] - 2026-11-21
 
@@ -27,7 +27,7 @@
 - **画面调参**：收敛黄昏过曝、云体积化、树叶镂空与星空；属受控实验硬规则 #14 范围，已在 Release Notes 标注需在 CI 复核。
 - **28 种新植物（内置 id 120~147 末位追加）**：温带花甸（薰衣草 / 金凤花 / 勿忘我 / 万寿菊 / 毛地黄 / 蜀葵 / 紫罗兰）、林下阴湿（林地银莲花 / 野蒜 / 风信子 / 常春藤 / 荧光苔）、雪线花卉（雪滴花 / 雪绒花 / 雪莲 / 番红花 / 高山龙胆）、沙漠旱生（丝兰 / 沙漠金盏 / 幽灵花）、海岸盐生（海滩草 / 海石竹）、水生（浮萍 / 海葵 / 红藻）、洞穴发光（月光花 / 荧光蕨）。
 - **成片花圃与植被表现力**：`BIOME_PROFILES` 新增 `flowerBeds` 按群系生成同色系花团；植物高度分层、世界坐标风摆动画、新花卉像素贴图；新植物接入能量体系与随机刻（常春藤垂挂 / 浮萍铺水 / 发光植物暗处扩散）。
-- **装备与掉落**：猪 / 羊新增皮革掉落，装备非堆叠拾取接入背包；插件 6 种植物 id 顺延 148~153（`lavender` 更名 `thistle`）。
+- **装备与掉落**：猪 / 羊新增皮革掉落，装备非堆叠拾取接入背包；插件 6 种植物 id 顺延 159~164（内置方块扩充后）（`lavender` 更名 `thistle`）。
 - **展示资源**：首屏演示 GIF 换 animated WebP（6.5MB → 2.8MB），确立「大二进制不入库」规则。
 
 ### 修复（整合自 v1.5.1 收尾线）
