@@ -223,7 +223,7 @@ export class Botany {
     }
     // 攀爬 / 漂浮 / 洞穴发光植物按能力分派到对应规则
     for (const id of [this.id.vine, this.id.ivy]) if (id) this.climbers.add(id);
-    for (const id of [this.id.lilyPad, this.id.duckweed]) if (id) this.floaters.add(id);
+    for (const id of [this.id.lilyPad, this.id.duckweed, byName('lotus')]) if (id) this.floaters.add(id);
     for (const id of [this.id.glowLichen, this.id.glowMoss, this.id.glowFern, this.id.moonflower]) {
       if (id) this.luminous.add(id);
     }

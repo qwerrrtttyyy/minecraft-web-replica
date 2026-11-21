@@ -124,12 +124,12 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块为 141 种（群系扩充 12 + 堆肥桶 9 + 熔炉 1 + 移植植物 28），插件未挤占内置表',
-    t.reg.all().length === 141, `${t.reg.all().length}`);
-  ok('内置最大 id 为 147（glow_fern）', Math.max(...t.reg.all().map((d) => d.id)) === 147);
+  ok('内置方块为 152 种（141 基线 + 内容植物扩充 11），插件未挤占内置表',
+    t.reg.all().length === 152, `${t.reg.all().length}`);
+  ok('内置最大 id 为 158（glow_torch）', Math.max(...t.reg.all().map((d) => d.id)) === 158);
   install(t);
-  ok('6 种插件植物 id 148~153 连续末位追加',
-    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 148 + i),
+  ok('6 种插件植物 id 159~164 连续末位追加',
+    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 159 + i),
     EXPANSION_PLANTS.map((p) => `${p.name}=${t.reg.byNameGet(p.name).id}`).join(' '));
   ok('旧 id 未重排（black_wool=44 / spruce_leaves=91 / glow_fern=147）',
     t.reg.byNameGet('black_wool').id === 44 && t.reg.byNameGet('spruce_leaves').id === 91 &&
@@ -340,7 +340,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 141);
+  ok('内置方块总数未变', t.reg.all().length === 152);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

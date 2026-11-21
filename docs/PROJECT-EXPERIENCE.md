@@ -66,7 +66,7 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   复现；不要把「禁止新增 `Math.random`」误读成要重构既有 AI / 生成坐标。
 - **图集 tile 只追加**：图集 16×16=256 槽，新 painter 必须注册在全部既有 painter 之后，
   既有 tile 索引保持不变，否则旧存档 `edits` 指向的方块几何错位。方块 id 同样只追加；
-  本轮不新增方块（煤炭是物品、动物 / 掉落物是实体），总数 141、id 到 147，图集既有索引不变。
+  内容体系本轮不新增方块（煤炭是物品、动物 / 掉落物是实体）；合并 v1.7.0 内容植物扩充后总数为 152（原 141 基线 + 11 种新方块，内置 id 到 158），图集既有索引不变。
 - **新纯数据模块编译进快照**：`ecology.ts` / `soil.ts` / `drops.ts` / `compost.ts` 被
   `botany.ts` / `blocks.ts` 传递引入，`tuning.ts` / `breeding.ts` 被 `dropLogic.ts` / `entity.ts`
   传递引入，tsc 快照会自动包含；需要被测试直接 require 的入口才显式加进

@@ -52,6 +52,12 @@ export const ITEMS: Record<string, ItemDefinition> = {
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
   /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */
   bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
+  // v1.7.0：内容植物产出（葡萄可种回，其余按用途进入合成）
+  cotton: { name: 'cotton', label: '棉花', tile: 'cotton' },
+  rice: { name: 'rice', label: '稻米', tile: 'rice', food: 5 },
+  grapes: { name: 'grapes', label: '葡萄', tile: 'grapes', food: 2, plant: 'grape_vine' },
+  chili: { name: 'chili', label: '辣椒', tile: 'chili', food: 3 },
+  glow_spore: { name: 'glow_spore', label: '荧光孢子', tile: 'glow_spore' },
   /** 内容体系新增物品：食物值统一取自 tuning.ts 的 NEW_ITEMS */
   coal: { name: 'coal', label: '煤炭', tile: 'coal', food: NEW_ITEMS.coal.food },
   leather: { name: 'leather', label: '皮革', tile: 'leather', food: NEW_ITEMS.leather.food },

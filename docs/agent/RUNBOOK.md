@@ -102,7 +102,7 @@ xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run t
 
 - 方块 id 只能末尾追加；新增内置方块后同步更新 `test/terrain-system-check.cjs`
   的 id 断言与 `docs/TESTING.md`。本轮不新增方块（煤炭 / 动物 / 掉落物分别是物品 / 实体），
-  总数仍为 141、id 到 147。
+  内容体系本轮不新增方块；合并 v1.7.0 内容植物扩充后总数为 152（原 141 基线 + 11 种新方块，内置 id 到 158）。
 - **图集 tile 只追加**：新 painter 注册在全部既有 painter 之后，既有 tile 索引保持不变，
   否则旧存档 `edits` 指向的方块几何错位；新物品纹理同样末位追加，图集既有 0..63 等索引不动。
 - 地表 / 装饰规则统一写进 `src/world/generator.ts` 的 `BIOME_PROFILES`，

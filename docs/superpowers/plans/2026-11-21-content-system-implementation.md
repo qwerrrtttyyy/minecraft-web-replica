@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 方块总数 **141**、id 到 **147**；**本轮不新增方块**，两处断言 `test/terrain-system-check.cjs:96` 与 `:522` 不动。
+- 方块总数 **141（原基线；合并 v1.7.0 内容植物扩充后为 152）**、id 到 **147**；**本轮不新增方块**，两处断言 `test/terrain-system-check.cjs:96` 与 `:522` 不动。
 - 图集 16×16=256 槽；新 painter **只能追加在 `atlas.ts` 既有 painter 之后**（`composter_bottom` 之后），既有 tile 索引不变。
 - 新物品掉落名**一律 `item:` 前缀**（与 `item:porkchop` 同口径），否则世界掉落物无法与既有物品合并。
 - 随机性：新增散开/加权抽取走 `dropHash(seed, source, index)`，**禁止新增 `Math.random()`**；既有实体 AI 游荡/生成坐标的 `Math.random()` 属技术债，本轮不动。
@@ -24,7 +24,7 @@
 
 ## Review Focus
 
-- **旧存档与方块 id 漂移**：任何新增方块 id 或重排都会让旧档 `edits` 指向错方块 → Task 2 的 `test:terrain-system` 明确断言总数仍 141、`coal_ore` 仍在原 id。
+- **旧存档与方块 id 漂移**：任何新增方块 id 或重排都会让旧档 `edits` 指向错方块 → Task 2 的 `test:terrain-system` 明确断言总数仍 141（原基线；合并 v1.7.0 内容植物扩充后为 152）、`coal_ore` 仍在原 id。
 - **掉落物合并口径**：新动物掉落若漏 `item:` 前缀，牛皮革与既有物品变两种 `mergeKey`、永远不堆叠 → Task 2 断言掉落名前缀，Task 5 断言同类合并/异类不合并。
 - **幼崽受击缩放**：`hurt()` 写 `scale=1.14`、`update()` 衰减到 1，幼崽若直接写死 1 会受一次击就变大 → Task 4 断言幼崽受击后目标缩放仍为 `babyScale × 闪光系数`。
 - **入水/出水与边界**：水花只在入水首次触发、出水恢复重力、`y<0` 立即消失，错一处就会反复播音效或掉落物穿地 → Task 5 的 `test:drop` 逐项断言。
@@ -84,7 +84,7 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
-ok('方块总数仍为 141', reg.all().length === 141);
+ok('方块总数 152（141 基线 + 内容植物扩充 11）', reg.all().length === 152);
 ```
 在 `test/crafting-check.cjs` 末尾追加：
 ```js
@@ -114,7 +114,7 @@ Expected: FAIL（煤矿石掉落与火把配方尚未改动）。
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `npm run typecheck && npm run test:snapshot && npm run test:terrain-system && npm run test:crafting`
-Expected: 全 PASS，方块总数断言仍 141。
+Expected: 全 PASS，方块总数断言仍 141（原基线；合并 v1.7.0 内容植物扩充后为 152）。
 
 - [ ] **Step 6: 收紧校验器关键词**
 

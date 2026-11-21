@@ -10,7 +10,7 @@
 
 | 主题 | 现状 | 位置 |
 |---|---|---|
-| 内置方块 | **141 种**，id 到 **147**；熔炉 `furnace` 是 id=119 的占位方块，**无任何烧炼逻辑** | `src/world/blocks.ts:96-97,425`；`test/terrain-system-check.cjs:96,522` |
+| 内置方块 | **141（原基线；合并 v1.7.0 内容植物扩充后为 152） 种**，id 到 **147**；熔炉 `furnace` 是 id=119 的占位方块，**无任何烧炼逻辑** | `src/world/blocks.ts:96-97,425`；`test/terrain-system-check.cjs:96,522` |
 | 火把 | 方块已存在，`lightEmission=14`，开局送 8 支；**无配方**，用完断供 | `blocks.ts:221-225`；`main.ts:218,513` |
 | 煤矿石 | 方块已存在，当前 `drops` 默认掉落**自身**（整块矿石），无"煤炭"物品 | `blocks.ts:214` |
 | 合成 | 8 条配方；UI 直接遍历 `CRAFTING_RECIPES`，新配方自动出现；断言全是结构性，无总数硬编码 | `crafting.ts:58-113`；`ui/crafting.ts:316`；`test/crafting-check.cjs:52-60,303-304` |
@@ -45,14 +45,14 @@
 -  farming 自动化、作物成熟加速联动。
 
 **反目标（做了就算失败）**
-- 破坏既有 141 方块 id 与图集索引 → 旧存档 `edits` 错位。
+- 破坏既有 141（原基线；合并 v1.7.0 内容植物扩充后为 152） 方块 id 与图集索引 → 旧存档 `edits` 错位。
 - 既有回归测试需要被改才能绿（新数值必须原样搬入，不偷改既有行为）。
 - 在新逻辑里引入 `Math.random()` → 违反确定性硬规则。**范围澄清**：项目硬规则原文只约束**掉落判定**（`docs/PROJECT-EXPERIENCE.md:61-62`：掉落走 `rollDrops()`，禁止在玩家/实体掉落路径再写 `Math.random`）；既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，**本轮不动**（用户已要求"既有行为不动 / 数值原样搬入"）。本轮新增的散开判定与加权抽取一律用 `dropHash`。
 - 把 DOM / three 带进 `dropLogic.ts` 等纯逻辑模块 → 无法编译进快照测试。
 
 ## 3. 约束
 
-- 方块 id 只追加；本轮**不新增任何方块**（煤炭是物品、动物和掉落物是实体），方块总数 141 断言不动。
+- 方块 id 只追加；本轮**不新增任何方块**（煤炭是物品、动物和掉落物是实体），方块总数 141（原基线；合并 v1.7.0 内容植物扩充后为 152） 断言不动。
 - 图集 tile 只追加在末尾；新增 6 个物品 tile。
 - 生成层无 DOM；`dropLogic.ts` / `tuning.ts` / `breeding.ts` 纯数据。
 - 随机性走 `dropHash(seed, source, index)` 或现有 `createRng`；不新增运行时依赖（唯一依赖仍为 three）。**裁定**：`seed` 从 `main.ts` 注入 `DropManager` 构造（即 `world.generator.seed`）；`source` 用掉落来源串（`b:x,y,z` / `e:id:serial`，直接 spawn 回退 `d:x,y,z`）；`index` 用一次 roll 内的 materials 下标 + manager 内 `spawnSerial` 组合，保证同种子同来源同序号可复现。实体游荡/生成坐标的既有 `Math.random()` 不在本轮范围。
@@ -224,7 +224,7 @@ export const NEW_ITEMS = { /*  food：beef 7 / rabbit_meat 5 / egg 3；其余不
 - 新动物 `BREED_FOODS` 命中 / 未命中、权重和、上限数值。
 
 **既有测试的同步**：
-- `test/terrain-system-check.cjs`：方块总数仍 141（不动），新增 `coal_ore.drops === item:coal` 断言。
+- `test/terrain-system-check.cjs`：方块总数仍 141（原基线；合并 v1.7.0 内容植物扩充后为 152）（不动），新增 `coal_ore.drops === item:coal` 断言。
 - `test/crafting-check.cjs`：结构已覆盖新配方，补一条"火把配方可合成 + 材料组"断言。
 - `test/botany-rules-check.cjs`：方块总数断言不动。
 - `package.json`：加 `"test:drop"`，并在 `verify` 链 `test:snapshot` 之后追加 `&& npm run test:drop`。
@@ -329,7 +329,7 @@ C05 收尾 bump         → npm run verify（100% PASS）
 ## 11. 验收清单（跨卡）
 
 - [ ] `tuning.ts` 既有数值逐项与原源码一致（可用 diff 或断言核对），新数值全部来自本文。
-- [ ] 方块总数仍 141，图集既有 tile 索引不变，`validate.py --strict` 0 FAIL/WARN。
+- [ ] 方块总数仍 141（原基线；合并 v1.7.0 内容植物扩充后为 152），图集既有 tile 索引不变，`validate.py --strict` 0 FAIL/WARN。
 - [ ] 煤矿石掉 `item:coal`；煤炭+木棍可合成 4 火把；火把光正常传播。
 - [ ] 五种被动动物均可繁殖；喂错材料静默；求爱/冷却/成长/上限数值与 `tuning.ts` 一致；幼崽受击不变大。
 - [ ] 掉落物可见、浮动自转、可拾取、可合并、限时消失、入水缓慢下沉、掉出世界消失、不进存档；散开与加权抽取可复现、无新增 `Math.random`（既有 AI 游荡/生成坐标的 `Math.random()` 不在本轮）；新动物掉落名全部带 `item:` 前缀、与既有物品可合并。
