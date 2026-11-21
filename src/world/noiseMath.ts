@@ -17,6 +17,30 @@ export interface NoiseFunctions {
   fbm2(x: number, y: number, octaves: number, lacunarity: number, gain: number): number;
   fbm3(x: number, y: number, z: number, octaves: number, lacunarity: number, gain: number): number;
   ridged2(x: number, y: number, octaves: number, lacunarity: number, gain: number): number;
+  /**
+   * 批量求值：coords 每 3 个 f64 一个点（x,y,z，2D 函数忽略 z），结果写入 out[0..count)。
+   * 返回实际处理点数。WASM 后端一次跨界算完整批，JS 后端逐个循环，输出逐位一致。
+   */
+  batch(
+    kind: NoiseBatchKind, coords: Float64Array, count: number, out: Float64Array,
+    opts?: NoiseBatchOptions,
+  ): number;
+}
+
+/** 可批量求值的噪声函数种类 */
+export type NoiseBatchKind = 'noise2' | 'noise3' | 'fbm2' | 'fbm3' | 'ridged2';
+
+/**
+ * 单次批量求值的最大点数。与 WASM 内核的 BATCH_CAPACITY 一致（`test:wasm` 会断言两者相等）；
+ * `Noise.batch` 在两条后端上都按这个上限校验，避免「JS 能跑、WASM trap」的行为分叉。
+ */
+export const NOISE_BATCH_CAPACITY = 1024;
+
+/** 批量求值的分形参数；noise2 / noise3 忽略 */
+export interface NoiseBatchOptions {
+  octaves?: number;
+  lacunarity?: number;
+  gain?: number;
 }
 
 /**
@@ -125,7 +149,40 @@ export function makeNoiseFunctions(perm: Uint8Array): NoiseFunctions {
     return sum / norm;
   };
 
-  return { noise2, noise3, fbm2, fbm3, ridged2 };
+  const batch = (
+    kind: NoiseBatchKind, coords: Float64Array, count: number, out: Float64Array,
+    opts: NoiseBatchOptions = {},
+  ): number => {
+    if (count < 0 || count * 3 > coords.length || count > out.length) {
+      throw new RangeError(`batch 缓冲区不足：count=${count} coords=${coords.length} out=${out.length}`);
+    }
+    const o = opts.octaves ?? 1;
+    const l = opts.lacunarity ?? 2;
+    const g = opts.gain ?? 0.5;
+    // switch 放在循环外：避免逐点分支，同时保持与逐点参考完全相同的求值顺序
+    switch (kind) {
+      case 'noise2':
+        for (let i = 0; i < count; i++) out[i] = noise2(coords[i * 3], coords[i * 3 + 1]);
+        break;
+      case 'noise3':
+        for (let i = 0; i < count; i++) out[i] = noise3(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]);
+        break;
+      case 'fbm2':
+        for (let i = 0; i < count; i++) out[i] = fbm2(coords[i * 3], coords[i * 3 + 1], o, l, g);
+        break;
+      case 'fbm3':
+        for (let i = 0; i < count; i++) out[i] = fbm3(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2], o, l, g);
+        break;
+      case 'ridged2':
+        for (let i = 0; i < count; i++) out[i] = ridged2(coords[i * 3], coords[i * 3 + 1], o, l, g);
+        break;
+      default:
+        throw new RangeError(`未知的批量种类：${String(kind)}`);
+    }
+    return count;
+  };
+
+  return { noise2, noise3, fbm2, fbm3, ridged2, batch };
 }
 
 /** 等价性自检的固定采样点：覆盖小数 / 负数 / 大坐标 / 零点，坐标域保持在 i32 之内 */

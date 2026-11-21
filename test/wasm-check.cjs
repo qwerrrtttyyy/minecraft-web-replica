@@ -1,8 +1,9 @@
 /**
- * WASM 层回归（v1.5.0，纯逻辑 / Node 自带 WebAssembly，无需浏览器）。
+ * WASM 层回归（v1.5.0 引入，v1.5.2 批量内核 ABI 3，纯逻辑 / Node 自带 WebAssembly，无需浏览器）。
  *
- * 覆盖：内联二进制完整性、ABI 与导出契约、逐位等价性对拍、噪声后端接管与回退、
- * WasmRuntime 生命周期、自定义模块准入、权限裁剪。
+ * 覆盖：内联二进制完整性、ABI 与导出契约、逐位等价性对拍、批量内核（容量 / 边界 /
+ * 与 JS 逐点一致 / `?wasmBatch=0` 对照）、噪声后端接管与回退、WasmRuntime 生命周期、
+ * 自定义模块准入、权限裁剪。
  * 依赖 test:snapshot 生成的 CommonJS 快照，验证前必须先跑 npm run test:snapshot。
  */
 const assert = require('node:assert');
@@ -39,11 +40,13 @@ const hasIssue = (fn, re) => assert.throws(fn, re);
 
 // ---------- 协议与内联产物 ----------
 ok('协议常量与 ABI 一致', () => {
-  assert.strictEqual(protocol.KERNEL_ABI, 2);
-  assert.strictEqual(binary.KERNEL_ABI, 2);
+  assert.strictEqual(protocol.KERNEL_ABI, 3);
+  assert.strictEqual(binary.KERNEL_ABI, 3);
   assert.strictEqual(protocol.PERM_SIZE, 512);
   assert.ok(protocol.MODULE_LIMITS.maxBytes > kernelBytes.length);
   assert.ok(protocol.KERNEL_REQUIRED_EXPORTS.includes('mc_fbm2_batch'));
+  // 世界层的批量上限必须等于内核容量，否则会出现「JS 能跑、WASM 越界」
+  assert.strictEqual(noiseMath.NOISE_BATCH_CAPACITY, protocol.BATCH_CAPACITY);
 });
 
 ok('base64 解码与原始二进制逐字节一致', () => {
@@ -67,27 +70,27 @@ ok('fnv1a 稳定且与 jsFingerprint 有确定值', () => {
   assert.ok(Number.isFinite(protocol.jsFingerprint()));
 });
 
-ok('内核二进制：零 import / 14 个导出 / ABI 2', () => {
+ok('内核二进制：零 import / 22 个导出 / ABI 3', () => {
   const mod = new WebAssembly.Module(kernelBytes);
   const imports = WebAssembly.Module.imports(mod);
   assert.strictEqual(imports.length, 0, `不允许 import，实际 ${imports.length}`);
   const names = WebAssembly.Module.exports(mod).map((e) => e.name);
-  assert.strictEqual(names.length, 14);
+  assert.strictEqual(names.length, 22);
   for (const name of protocol.KERNEL_REQUIRED_EXPORTS) {
     assert.ok(names.includes(name), `缺少导出 ${name}`);
   }
   const ex = new WebAssembly.Instance(mod, {}).exports;
-  assert.strictEqual(ex.mc_abi(), 2);
+  assert.strictEqual(ex.mc_abi(), 3);
   assert.ok(Object.is(ex.mc_fingerprint(), protocol.jsFingerprint()));
 });
 
 ok('loadBuiltinKernel 元数据完整', () => {
   const m = kernel.loadBuiltinKernel();
-  assert.strictEqual(m.abi, 2);
+  assert.strictEqual(m.abi, 3);
   assert.strictEqual(m.bytes, kernelBytes.length);
   assert.strictEqual(m.sha256, binary.KERNEL_SHA256);
   assert.match(m.checksum, /^[0-9a-f]{8}$/);
-  assert.strictEqual(m.exports.length, 14);
+  assert.strictEqual(m.exports.length, 22);
 });
 
 ok('compileKernel 拒绝损坏二进制', () => {
@@ -149,6 +152,140 @@ ok('createNoiseBackend 与 JS 参考逐位一致（多 seed）', () => {
   }
 });
 
+// ---------- 批量内核（ABI 3） ----------
+const BATCH_KINDS = ['noise2', 'noise3', 'fbm2', 'fbm3', 'ridged2'];
+
+/** 与逐点参考同源的批量样本：固定种子、覆盖小数 / 负数 / 大坐标 */
+function batchSamples(count, offset = 0) {
+  const coords = new Float64Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const k = i + offset;
+    coords[i * 3] = (k * 0.137 - 27.31) * (k % 3 === 0 ? -1 : 1);
+    coords[i * 3 + 1] = (k * 0.271 + 9.77) * (k % 5 === 0 ? -1 : 1);
+    coords[i * 3 + 2] = (k * 0.053 - 4.19) * (k % 7 === 0 ? -1 : 1);
+  }
+  return coords;
+}
+
+ok('批量内核：容量 / 指针合法，n 钳制到容量上限', () => {
+  const m = kernel.loadBuiltinKernel();
+  const inst = m.instantiate();
+  inst.setPerm(noiseMath.makePermutation(2026));
+  const cap = inst.exports.mc_batch_capacity();
+  assert.strictEqual(cap, protocol.BATCH_CAPACITY);
+  assert.ok(inst.exports.mc_batch_in_ptr() > 0);
+  assert.ok(inst.exports.mc_batch_out_ptr() > 0);
+  assert.ok(inst.exports.mc_batch_in_ptr() + cap * 3 * 8 <= inst.memory.buffer.byteLength);
+  assert.ok(inst.exports.mc_batch_out_ptr() + cap * 8 <= inst.memory.buffer.byteLength);
+  // 内核把 n 钳制到 [0, cap]；JS 层在越界时主动拒绝，避免静默截断
+  assert.strictEqual(inst.exports.mc_batch_noise2(-1), 0);
+  assert.strictEqual(inst.exports.mc_batch_noise2(cap + 1), cap);
+  assert.throws(() => inst.sampleBatch('noise2', new Float64Array(3), cap + 1, new Float64Array(cap + 1)), /超出/);
+});
+
+ok('批量内核与 JS 逐点逐位一致（多 seed × 5 函数 × 容量边界）', () => {
+  const m = kernel.loadBuiltinKernel();
+  const counts = [0, 1, 7, 256, 1023, 1024];
+  const opts = { octaves: 4, lacunarity: 2, gain: 0.5 };
+  let checks = 0;
+  for (const seed of [2026, 4242, 777]) {
+    const perm = noiseMath.makePermutation(seed);
+    const js = noiseMath.makeNoiseFunctions(perm);
+    const inst = m.instantiate();
+    inst.setPerm(perm);
+    for (const n of counts) {
+      const coords = batchSamples(n, seed % 97);
+      const got = new Float64Array(n);
+      const want = new Float64Array(n);
+      for (const kind of BATCH_KINDS) {
+        const handled = inst.sampleBatch(kind, coords, n, got, opts);
+        assert.strictEqual(handled, n, `${kind} n=${n}`);
+        js.batch(kind, coords, n, want, opts);
+        for (let i = 0; i < n; i++) {
+          assert.ok(
+            Object.is(got[i], want[i]),
+            `seed=${seed} ${kind} n=${n} i=${i} wasm=${got[i]} js=${want[i]}`,
+          );
+          checks++;
+        }
+      }
+    }
+  }
+  assert.ok(checks > 15000, `批量对拍样本数 ${checks}`);
+});
+
+ok('批量后端接管后 Noise.batch 与 JS 参考逐位一致', () => {
+  const rt = new WasmRuntime();
+  rt.init();
+  const js = noiseMath.makeNoiseFunctions(noiseMath.makePermutation(2026));
+  const n = new noise.Noise(2026);
+  const count = 1024;
+  const coords = batchSamples(count);
+  const got = new Float64Array(count);
+  const want = new Float64Array(count);
+  for (const kind of BATCH_KINDS) {
+    const handled = n.batch(kind, coords, count, got, { octaves: 3, lacunarity: 2, gain: 0.5 });
+    assert.strictEqual(handled, count);
+    js.batch(kind, coords, count, want, { octaves: 3, lacunarity: 2, gain: 0.5 });
+    for (let i = 0; i < count; i++) {
+      assert.ok(Object.is(got[i], want[i]), `${kind} i=${i} wasm=${got[i]} js=${want[i]}`);
+    }
+  }
+  rt.dispose();
+  // 卸载后端后同一条批量路径走 JS 参考，输出不变
+  const after = new Float64Array(count);
+  new noise.Noise(2026).batch('fbm2', coords, count, after, { octaves: 3, lacunarity: 2, gain: 0.5 });
+  js.batch('fbm2', coords, count, want, { octaves: 3, lacunarity: 2, gain: 0.5 });
+  for (let i = 0; i < count; i++) assert.ok(Object.is(after[i], want[i]), `fallback fbm2 i=${i}`);
+});
+
+ok('?wasmBatch=0 对照开关：逐点路径与批量路径逐位一致', () => {
+  const n = new noise.Noise(2026);
+  const count = 512;
+  const coords = batchSamples(count);
+  const batchOut = new Float64Array(count);
+  const pointOut = new Float64Array(count);
+  const opts = { octaves: 3, lacunarity: 2, gain: 0.5 };
+  for (const kind of BATCH_KINDS) {
+    n.batch(kind, coords, count, batchOut, opts);
+    noise.setNoiseBatchEnabled(false);
+    try {
+      n.batch(kind, coords, count, pointOut, opts);
+    } finally {
+      noise.setNoiseBatchEnabled(true);
+    }
+    for (let i = 0; i < count; i++) {
+      assert.ok(Object.is(batchOut[i], pointOut[i]), `pointwise ${kind} i=${i} batch=${batchOut[i]} point=${pointOut[i]}`);
+    }
+  }
+  assert.strictEqual(noise.isNoiseBatchEnabled(), true, '开关必须复位，避免污染后续用例');
+});
+
+ok('批量调用抛错时后端自动回退 JS 且只上报一次', () => {
+  const perm = noiseMath.makePermutation(2026);
+  const js = noiseMath.makeNoiseFunctions(perm);
+  let failures = 0;
+  let wasmCalls = 0;
+  const fake = {
+    abi: 3, bytes: 1, sha256: '', checksum: '', exports: [],
+    instantiate: () => ({
+      exports: {}, memory: { buffer: new ArrayBuffer(8192) },
+      setPerm() {}, crc32: () => 0, call: () => 0,
+      sampleBatch: () => { wasmCalls++; throw new Error('simulated batch trap'); },
+    }),
+  };
+  const backend = kernel.createNoiseBackend(fake, perm, { onFailure: () => { failures++; } });
+  const coords = batchSamples(8);
+  const out = new Float64Array(8);
+  const want = new Float64Array(8);
+  backend.batch('noise2', coords, 8, out);
+  js.batch('noise2', coords, 8, want);
+  for (let i = 0; i < 8; i++) assert.ok(Object.is(out[i], want[i]), `fallback noise2 i=${i}`);
+  backend.batch('noise2', coords, 8, out);
+  assert.strictEqual(failures, 1, '批量回退只上报一次');
+  assert.strictEqual(wasmCalls, 1, '回退后不应再次尝试 WASM');
+});
+
 ok('WASM 调用抛错时后端自动回退 JS 且只上报一次', () => {
   const perm = noiseMath.makePermutation(2026);
   const js = noiseMath.makeNoiseFunctions(perm);
@@ -176,7 +313,7 @@ ok('WasmRuntime 自检通过后进入 ready 并发事件', () => {
   assert.strictEqual(rt.init(), 'ready');
   const st = rt.stats();
   assert.strictEqual(st.status, 'ready');
-  assert.strictEqual(st.abi, 2);
+  assert.strictEqual(st.abi, 3);
   assert.strictEqual(st.bytes, kernelBytes.length);
   assert.strictEqual(st.selfCheckSamples, SAMPLE_COUNT);
   assert.strictEqual(st.selfCheckMismatches, 0);
@@ -252,7 +389,7 @@ ok('benchmark 结果自洽（批量路径 + 逐位正确）', () => {
 ok('callKernel 暴露整数原语与 ABI', () => {
   const rt = new WasmRuntime();
   rt.init();
-  assert.strictEqual(rt.callKernel('mc_abi', []), 2);
+  assert.strictEqual(rt.callKernel('mc_abi', []), 3);
   assert.strictEqual(rt.callKernel('mc_ao', [1, 1, 1]), 0);
   assert.strictEqual(rt.callKernel('mc_ao', [0, 1, 0]), 2);
   assert.ok(Number.isFinite(rt.callKernel('mc_noise2', [1.25, -3.5])));

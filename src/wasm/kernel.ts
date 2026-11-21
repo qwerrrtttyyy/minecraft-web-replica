@@ -18,7 +18,7 @@ import {
 } from './protocol';
 import {
   EQUIVALENCE_SAMPLES, makeNoiseFunctions, makePermutation,
-  type NoiseBackend,
+  type NoiseBackend, type NoiseBatchKind, type NoiseBatchOptions,
 } from '../world/noiseMath';
 
 export interface KernelExports {
@@ -36,6 +36,14 @@ export interface KernelExports {
   mc_fbm2_batch(x0: number, y0: number, step: number, n: number, o: number, l: number, g: number): number;
   mc_ao(s1: number, s2: number, cc: number): number;
   mc_crc32(ptr: number, len: number): number;
+  mc_batch_in_ptr(): number;
+  mc_batch_out_ptr(): number;
+  mc_batch_capacity(): number;
+  mc_batch_noise2(n: number): number;
+  mc_batch_noise3(n: number): number;
+  mc_batch_fbm2(n: number, o: number, l: number, g: number): number;
+  mc_batch_fbm3(n: number, o: number, l: number, g: number): number;
+  mc_batch_ridged2(n: number, o: number, l: number, g: number): number;
 }
 
 export interface WasmKernelInstance {
@@ -45,6 +53,11 @@ export interface WasmKernelInstance {
   crc32(data: Uint8Array): number;
   /** 按导出名调用数值函数（供 CraftAPI.wasm.call 与插件使用） */
   call(name: string, args: readonly number[]): number;
+  /** 批量求值：coords 每 3 个 f64 一个点，结果写入 out；返回实际处理点数 */
+  sampleBatch(
+    kind: NoiseBatchKind, coords: Float64Array, count: number, out: Float64Array,
+    opts?: NoiseBatchOptions,
+  ): number;
 }
 
 export interface WasmKernelModule {
@@ -158,6 +171,42 @@ function makeKernelInstance(mod: WebAssembly.Module, label: string): WasmKernelI
       return ex.mc_crc32(0, data.length) >>> 0;
     },
     call: (name, args) => callNumeric(instance.exports, name, args, label),
+    sampleBatch(kind, coords, count, out, opts = {}) {
+      const capacity = ex.mc_batch_capacity();
+      if (!Number.isInteger(count) || count < 0 || count > capacity) {
+        throw new WasmKernelError('bad-arguments', `批量点数 ${count} 超出 [0, ${capacity}]`);
+      }
+      if (coords.length < count * 3 || out.length < count) {
+        throw new WasmKernelError(
+          'bad-arguments',
+          `批量缓冲区不足：count=${count} coords=${coords.length} out=${out.length}`,
+        );
+      }
+      if (count === 0) return 0;
+      const inPtr = ex.mc_batch_in_ptr();
+      const outPtr = ex.mc_batch_out_ptr();
+      // memory.buffer 可能因 grow 失效，每次重新取视图
+      new Float64Array(memory.buffer, inPtr, count * 3).set(coords.subarray(0, count * 3));
+      const o = opts.octaves ?? 1;
+      const l = opts.lacunarity ?? 2;
+      const g = opts.gain ?? 0.5;
+      let handled: number;
+      switch (kind) {
+        case 'noise2': handled = ex.mc_batch_noise2(count); break;
+        case 'noise3': handled = ex.mc_batch_noise3(count); break;
+        case 'fbm2': handled = ex.mc_batch_fbm2(count, o, l, g); break;
+        case 'fbm3': handled = ex.mc_batch_fbm3(count, o, l, g); break;
+        case 'ridged2': handled = ex.mc_batch_ridged2(count, o, l, g); break;
+        default:
+          throw new WasmKernelError('bad-arguments', `未知批量种类：${String(kind)}`);
+      }
+      // count 已钳在容量内，内核必须整批处理；少算意味着输出尾部是旧值，必须回退而不是带病返回
+      if (handled !== count) {
+        throw new WasmKernelError('call-failed', `批量内核返回处理点数 ${handled}，期望 ${count}`);
+      }
+      out.set(new Float64Array(memory.buffer, outPtr, handled), 0);
+      return handled;
+    },
   };
 }
 
@@ -240,6 +289,22 @@ export function createNoiseBackend(
     fbm2: (x, y, o, l, g) => guard('fbm2', (e) => e.mc_fbm2(x, y, o, l, g), () => js.fbm2(x, y, o, l, g)),
     fbm3: (x, y, z, o, l, g) => guard('fbm3', (e) => e.mc_fbm3(x, y, z, o, l, g), () => js.fbm3(x, y, z, o, l, g)),
     ridged2: (x, y, o, l, g) => guard('ridged2', (e) => e.mc_ridged2(x, y, o, l, g), () => js.ridged2(x, y, o, l, g)),
+    batch: (kind, coords, count, out, opts) => {
+      if (!alive || !ex) return js.batch(kind, coords, count, out, opts);
+      try {
+        const handled = instance.sampleBatch(kind, coords, count, out, opts);
+        hooks.onCall?.();
+        return handled;
+      } catch (e) {
+        // 参数错误是调用方的问题，不代表内核失效：原样抛回，不降级也不上报，
+        // 否则插件一次误调用就会把地形生成打成纯 JS
+        if (e instanceof WasmKernelError && e.code === 'bad-arguments') throw e;
+        alive = false;
+        ex = null;
+        hooks.onFailure?.(new Error(`[wasm] batch 调用异常，已回退 JS：${e instanceof Error ? e.message : String(e)}`));
+        return js.batch(kind, coords, count, out, opts);
+      }
+    },
     dispose: () => {
       if (!alive) return;
       alive = false;

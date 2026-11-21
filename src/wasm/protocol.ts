@@ -7,16 +7,21 @@
  */
 
 /** 内核 ABI：native/mc_kernel.c 的 mc_abi()，变更时两侧必须同步 */
-export const KERNEL_ABI = 2;
+export const KERNEL_ABI = 3;
 export const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d] as const;
 export const PERM_SIZE = 512;
 export const SCRATCH_SIZE = 4096;
+/** 批量求值区单次最大点数；与 native/mc_kernel.c 的 BATCH_CAPACITY 一致 */
+export const BATCH_CAPACITY = 1024;
 
 /** 内置内核必须提供的导出（build-wasm.mjs 会用同一张表做编译期校验） */
 export const KERNEL_REQUIRED_EXPORTS = [
   'memory', 'mc_abi', 'mc_perm_ptr', 'mc_scratch_ptr', 'mc_scratch_size',
   'mc_fingerprint', 'mc_noise2', 'mc_noise3', 'mc_fbm2', 'mc_fbm3',
   'mc_ridged2', 'mc_fbm2_batch', 'mc_ao', 'mc_crc32',
+  'mc_batch_in_ptr', 'mc_batch_out_ptr', 'mc_batch_capacity',
+  'mc_batch_noise2', 'mc_batch_noise3', 'mc_batch_fbm2', 'mc_batch_fbm3',
+  'mc_batch_ridged2',
 ] as const;
 
 /** 插件自定义模块的安全边界：无 import、体积 / 内存 / 导出数量均受限 */

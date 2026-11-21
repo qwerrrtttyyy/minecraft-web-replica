@@ -1,4 +1,4 @@
-# 测试体系（v1.4.9）
+# 测试体系（v1.5.2）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -13,28 +13,32 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| # | 命令 | 内容 | 依赖快照 |
-|---|---|---|---|
-| 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
-| 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 4 | `npm run build` | 单文件 `dist/index.html` | — |
-| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 6 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
-| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 | ✓ |
-| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入） | ✓ |
-| 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 | ✓ |
-| 15 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 16 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 | ✓ |
-| 17 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 18 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 19 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 20 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 2 | `npm run wasm:check` | 内联内核与 `native/mc_kernel.wasm` 一致（ABI / 导出 / 指纹 / 批量区） | — |
+| 3 | `npm run lint` | Biome 静态检查 | — |
+| 4 | `npm run lint:eslint` | ESLint 门禁（`--max-warnings 0`） | — |
+| 5 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
+| 6 | `npm run build` | 单文件 `dist/index.html` | — |
+| 7 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 8 | `npm run test:wasm` | WASM 内核：ABI 契约 / 逐位对拍 / 批量 / 回退 / 自定义模块（29 项） | ✓ |
+| 9 | `npm run test:plugin-v2` | 插件体系 v2：权限 / 生命周期 / 扩展点（25 项） | ✓ |
+| 10 | `npm run test:plugin-carrier` | 插件三载体（js / wasm:module / wasm:host）准入与调用（15 项） | ✓ |
+| 11 | `npm run test:review-fixes` | 审查修复回归（16 项） | ✓ |
+| 12 | `npm run test:logic` | 生存状态机 8 组 + 地形基础回归 23 组 | ✓ |
+| 13 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 14 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益（51 项） | ✓ |
+| 15 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（48 项） | ✓ |
+| 16 | `npm run test:diagnostics` | 运行时诊断组：健康快照 + 异常注入（25 组） | ✓ |
+| 17 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步（6 组） | ✓ |
+| 18 | `npm run test:unstuck` | AABB 脱困纯逻辑回归（25 项） | ✓ |
+| 19 | `npm run test:edits` | 世界编辑差分回归（10 组） | ✓ |
+| 20 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表（34 组） | ✓ |
+| 21 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树（28 组） | ✓ |
+| 22 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享（29 组） | ✓ |
+| 23 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种（46 组） | ✓ |
+| 24 | `npm run test:crafting` | 合成规则 / 匹配 / 背包取放闭环（43 组） | ✓ |
+| 25 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端，109 项） | — |
+| 26 | `npm run test:options` | 设置页与选项持久化/行为回归（41 项） | — |
+| 27 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙，13 项） | — |
 
 ## 快照机制
 
@@ -48,6 +52,17 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 
 ## 各测试组的职责
 
+- **wasm-check**：内联内核完整性（base64 / sha256 / 字节数）、零 import / 22 导出 / ABI 3、
+  多 seed 逐位对拍（含批量路径与 0 / 1 / 1023 / 1024 / 1025 容量边界）、伪造内核检出、
+  运行期异常回退、`ready` / `fallback` / `disabled` 状态机、`benchmark`、`?wasmBatch=0`
+  对照、自定义模块准入与权限裁剪。
+- **plugin-v2**：semver 约束、manifest 静态校验、依赖版本与可选依赖、反向依赖保护、
+  `setup` 超时、热重载、按优先级启用、上下文能力（config / storage / 私有服务）、
+  源码加载器与权限裁剪。
+- **plugin-carrier**：三载体（js / wasm:module / wasm:host）、扩展点注册表、host 导入白名单、
+  ABI 校验、确定性 PRNG、事件桥接、卸载自动清理与负例隔离。
+- **review-fixes**：审查修复回归——`once` 幂等、卸载错误文案、相机远平面收敛、
+  `NoiseBackend.dispose` 后回退 JS、`moveBody` 同轴多方块按最近面钳制。
 - **logic-check**：生存状态机（掉落 / 消耗 / 进食 / 伤害无敌帧 / 序列化）。
 - **terrain-check**：确定性、生成顺序无关、高度范围、水面与洞穴顶连续、
   矿脉分层、跨区块树冠双向连续、参数开关、性能基准。
@@ -124,5 +139,8 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 3. 新增插件生态规则 / 扩展植物必须同时更新 `test:botany-rules`，
    并在 `scripts/build-test-snapshot.mjs` 的 `entries` 中登记纯数据入口。
 4. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
-5. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
-6. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。
+5. 改 WASM 导出 / ABI 时同步 `native/mc_kernel.c`、`src/wasm/protocol.ts`、
+   `scripts/build-wasm.mjs` 三处，重新 `npm run build:wasm`，并在 `test:wasm` 里
+   补逐位对拍；**不要**为了让测试过而放宽 `Object.is` 比较。
+6. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
+7. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。

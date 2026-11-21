@@ -217,44 +217,53 @@ export class WasmRuntime implements Disposable {
   }
 
   /**
-   * JS 参考 vs WASM 的同负载基准（批量路径）。
+   * JS 参考 vs WASM 的同负载批量基准。
    *
-   * 逐点跨界调用会被 JS↔WASM 边界开销吃掉收益（实测 V8 上 WASM 反而略慢），
-   * 因此用 mc_fbm2_batch 一次调用算 64 个点，这才是该内核的正确用法。
-   * 两侧累加顺序一致，correct 用 Object.is 逐位判定；未就绪时返回 null。
+   * 两侧都走 `batch` 接口、同样点数、同样调用次数，坐标拷贝与结果回传都计入，
+   * 测的是**真实调用形态**，而不是「JS 逐点 vs WASM 批量」这种混合口径。
+   * 逐点等价仍保留在正确性校验里（与 init 自检同源）；未就绪时返回 null。
    */
   benchmark(iterations = 2000): WasmBenchmark | null {
     if (this.status !== 'ready' || !this.module || !this.kernelInstance) return null;
     const perm = makePermutation(2026);
     const js = makeNoiseFunctions(perm);
-    const ex = this.kernelInstance.exports;
     const backend = createNoiseBackend(this.module, perm);
     try {
-      // 1) 逐点等价（与 init 的自检同源，作为基准自身的可信度校验）
+      // 1) 正确性：逐点 + 批量各做一轮逐位对拍，作为基准自身的可信度校验
       const expected = EQUIVALENCE_SAMPLES.map(([x, y]) => js.fbm2(x, y, 4, 2, 0.5));
       const got = EQUIVALENCE_SAMPLES.map(([x, y]) => backend.fbm2(x, y, 4, 2, 0.5));
       const pointCorrect = expected.every((v, i) => Object.is(v, got[i]));
 
-      const bx = -3.25, by = 7.5, step = 0.137, n = 64;
-      let jsBatch = 0;
-      for (let i = 0; i < n; i++) jsBatch += js.fbm2(bx + i * step, by, 4, 2, 0.5);
-      const batchCorrect = Object.is(jsBatch, ex.mc_fbm2_batch(bx, by, step, n, 4, 2, 0.5));
+      const n = 256;
+      const opts = { octaves: 4, lacunarity: 2, gain: 0.5 };
+      const coords = new Float64Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        coords[i * 3] = -3.25 + i * 0.137;
+        coords[i * 3 + 1] = 7.5;
+        coords[i * 3 + 2] = 0;
+      }
+      const jsOut = new Float64Array(n);
+      const wasmOut = new Float64Array(n);
+      js.batch('fbm2', coords, n, jsOut, opts);
+      backend.batch('fbm2', coords, n, wasmOut, opts);
+      const batchCorrect = jsOut.every((v, i) => Object.is(v, wasmOut[i]));
 
-      // 2) 计时：JS 逐点 vs WASM 单次批量，负载完全相同
+      // 2) 计时：同接口 / 同点数 / 同调用次数
       let jsSink = 0;
       const t0 = now();
       for (let i = 0; i < iterations; i++) {
-        const x0 = bx + i * 0.0001;
-        let s = 0;
-        for (let j = 0; j < n; j++) s += js.fbm2(x0 + j * step, by, 4, 2, 0.5);
-        jsSink += s;
+        coords[0] = -3.25 + i * 0.0001;
+        js.batch('fbm2', coords, n, jsOut, opts);
+        jsSink += jsOut[0];
       }
       const jsMs = now() - t0;
 
       let wasmSink = 0;
       const t1 = now();
       for (let i = 0; i < iterations; i++) {
-        wasmSink += ex.mc_fbm2_batch(bx + i * 0.0001, by, step, n, 4, 2, 0.5);
+        coords[0] = -3.25 + i * 0.0001;
+        backend.batch('fbm2', coords, n, wasmOut, opts);
+        wasmSink += wasmOut[0];
       }
       const wasmMs = now() - t1;
 

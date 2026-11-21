@@ -10,6 +10,7 @@ import {
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
+import { setNoiseBatchEnabled } from './world/noise';
 import { World } from './world/world';
 import { Botany } from './world/botany';
 import { ChunkManager } from './world/chunkManager';
@@ -64,6 +65,8 @@ async function boot() {
 
   // 调试 / 基准参数必须在创建渲染器之前解析：MSAA 只能在上下文创建时决定
   const qs = new URLSearchParams(location.search);
+  // 调试对照：?wasmBatch=0 关闭批量采样，回到逐点调用（与默认路径产出一致，仅用于 A/B 计时）
+  setNoiseBatchEnabled(qs.get('wasmBatch') !== '0');
   const aaParam = qs.get('aa');
   let engine: Engine;
   try {
@@ -142,7 +145,7 @@ async function boot() {
   sound.setEnabled(settings.sound);
   plugins.setExperimental(settings.experimental);
 
-  // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭）----
+  // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭；?wasmBatch=0 关闭批量采样做对照）----
   // 必须在 DefaultGenerator 构造前完成自检与后端安装；失败自动回退纯 JS。
   const wasm = new WasmRuntime({
     enabled: settings.experimental && qs.get('wasm') !== '0',

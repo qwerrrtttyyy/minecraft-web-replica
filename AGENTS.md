@@ -165,6 +165,8 @@ src/
 | [docs/PROJECT-EXPERIENCE.md](docs/PROJECT-EXPERIENCE.md) | **改代码前必读**：硬规则全文 + 常见排查 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试体系、快照机制、各测试组职责与断言数 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | 3D 优化的受控实验：设置 / 原始数据 / 结论与复现 |
+| [docs/WASM.md](docs/WASM.md) | WASM 内核：约束、ABI 契约、生命周期、性能数据、插件扩展 |
+| [docs/WASM-BATCH-PLAN.md](docs/WASM-BATCH-PLAN.md) | WASM 批量化方案：ABI 3 设计、分期、风险与验收 |
 | [docs/agent/RUNBOOK.md](docs/agent/RUNBOOK.md) | 运作手册：开发流程、基线命令、运行时诊断、常见问题 |
 | [docs/agent/tasks/*.yaml](docs/agent/tasks/) | 任务卡（`touch.allow` / `outputs` 契约），用 `python3 docs/agent/validate.py` 校验 |
 | [README.md](README.md) | 对外说明、版本沿革、快速开始 |

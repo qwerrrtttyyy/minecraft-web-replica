@@ -20,11 +20,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cSrc = path.join(root, 'native', 'mc_kernel.c');
 const wasmPath = path.join(root, 'native', 'mc_kernel.wasm');
 const outPath = path.join(root, 'src', 'wasm', 'kernelBinary.ts');
-const ABI = 2;
+const ABI = 3;
 const REQUIRED_EXPORTS = [
   'memory', 'mc_abi', 'mc_perm_ptr', 'mc_scratch_ptr', 'mc_scratch_size',
   'mc_fingerprint', 'mc_noise2', 'mc_noise3', 'mc_fbm2', 'mc_fbm3',
   'mc_ridged2', 'mc_fbm2_batch', 'mc_ao', 'mc_crc32',
+  'mc_batch_in_ptr', 'mc_batch_out_ptr', 'mc_batch_capacity',
+  'mc_batch_noise2', 'mc_batch_noise3', 'mc_batch_fbm2', 'mc_batch_fbm3',
+  'mc_batch_ridged2',
 ];
 
 const fail = (msg) => { console.error(`[wasm] ${msg}`); process.exit(1); };
@@ -58,7 +61,11 @@ function validate(bytes) {
   if (!(mem instanceof WebAssembly.Memory)) fail('memory 导出类型错误');
   const pp = ex.mc_perm_ptr(), sp = ex.mc_scratch_ptr(), ss = ex.mc_scratch_size();
   if (pp < 0 || sp < 0 || ss < 0 || pp + 512 > mem.buffer.byteLength) fail('perm / scratch 地址越界');
-  console.log(`[wasm] ABI 校验通过：${bytes.length} 字节，${names.size} 个导出，0 个 import`);
+  const bi = ex.mc_batch_in_ptr(), bo = ex.mc_batch_out_ptr(), bc = ex.mc_batch_capacity();
+  if (!(bc > 0) || bi < 0 || bo < 0 || bi + bc * 3 * 8 > mem.buffer.byteLength || bo + bc * 8 > mem.buffer.byteLength) {
+    fail('批量求值区地址越界');
+  }
+  console.log(`[wasm] ABI 校验通过：${bytes.length} 字节，${names.size} 个导出，0 个 import，批量容量 ${bc}`);
 }
 
 function generate(bytes) {
