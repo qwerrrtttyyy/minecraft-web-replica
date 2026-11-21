@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.2-alpha.1",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -19,6 +19,7 @@
     "format:check": "biome format .",
     "test:snapshot": "node scripts/build-test-snapshot.mjs",
     "test:logic": "node test/logic-check.cjs && node test/terrain-check.cjs",
+    "test:armor": "node test/armor-check.cjs",
     "test:mesher": "node test/mesher-check.cjs",
     "test:services": "node test/services-check.cjs",
     "test:diagnostics": "node test/diagnostics-check.cjs",

@@ -25,7 +25,8 @@ if (!m) fail('src/core/version.ts 未找到 VERSION 常量');
 if (!r) fail('src/core/version.ts 未找到 RELEASE 常量');
 const version = m[1], release = r[1];
 
-if (!/^\d+\.\d+\.\d+$/.test(version)) fail(`非正式版格式错误：${version}（应为 X.Y.Z，不带 v 前缀）`);
+// 预发布版使用 SemVer 后缀（1.5.2-alpha.1 → beta → rc → 1.5.2），见 README「版本规范」
+if (!/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(version)) fail(`非正式版格式错误：${version}（应为 X.Y.Z[-alpha.N]，不带 v 前缀）`);
 if (!/^v\d+$/.test(release)) fail(`正式版格式错误：${release}（应为 vN，N 为整数）`);
 if (version !== pkg.version) fail(`不一致：package.json=${pkg.version}，version.ts=${version}`);
 if (!readme.includes(`当前非正式版：${version}`)) fail(`README.md 缺少版本标记行「当前非正式版：${version}」`);

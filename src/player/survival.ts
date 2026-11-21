@@ -1,4 +1,5 @@
 import type { EventService } from '../services/events';
+import { EXTENSION_POINTS } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
 
@@ -89,7 +90,15 @@ export class SurvivalState {
   private drownAcc = 0;
   private iframes = 0;
 
-  constructor(private events: EventService, private registry: BlockRegistry) {}
+  constructor(
+    private events: EventService,
+    private registry: BlockRegistry,
+    /** 可选扩展注册表：注册后伤害结算前经 combat:damage-incoming 管道改写 */
+    private extensions?: {
+      has(p: string): boolean;
+      reduce<P extends object>(p: string, payload: P): { payload: P };
+    },
+  ) {}
 
   get isSurvival() {
     return this.mode === 'survival';
@@ -166,6 +175,15 @@ export class SurvivalState {
     if (useIframes) {
       if (this.iframes > 0) return false;
       this.iframes = 0.32;
+    }
+    // 管道扩展点（如护甲减伤）在落账前改写伤害；无处理器时零行为变化
+    if (this.extensions?.has(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING)) {
+      const { payload } = this.extensions.reduce(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING, {
+        amount,
+        source: cause,
+      });
+      amount = Math.max(0, payload.amount);
+      if (amount <= 0) return false;
     }
     this.health = Math.max(0, this.health - amount);
     this.events.emit('survival:damage', { amount, health: this.health, cause });
