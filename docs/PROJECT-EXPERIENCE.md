@@ -70,8 +70,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **新纯数据模块编译进快照**：`ecology.ts` / `soil.ts` / `drops.ts` / `compost.ts` 被
   `botany.ts` / `blocks.ts` 传递引入，`tuning.ts` / `breeding.ts` 被 `dropLogic.ts` / `entity.ts`
   传递引入，tsc 快照会自动包含；需要被测试直接 require 的入口才显式加进
-  `scripts/build-test-snapshot.mjs` 的 `entries`——`dropLogic.ts` 与 `droppedItem.ts`
-  （依赖 three，供 `test:drop` 注入暂停回归）已显式登记，和 `entity.ts` / `models.ts` 一样。
+  `scripts/build-test-snapshot.mjs` 的 `entries`——`dropLogic.ts`（纯逻辑、无 three / DOM）
+  与 `droppedItem.ts`（依赖 three，供 `test:drop` 注入暂停回归）已显式登记，和
+  `entity.ts` / `models.ts` 一样。
 - **生态状态存档**：`SaveData.botany` / `dayCount` 是可选字段，旧档缺省必须仍通过 `validateSave`；
   `restoreEcology()` 对坏档逐条丢弃不抛错。堆肥等级不进存档（编码在 block id 里，走 `world.edits`）。
 - **compost:change 必须标脏**：`World.setBlock` 不发 `block:place`，堆肥等级变化必须显式发

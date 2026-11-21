@@ -19,7 +19,7 @@
 - 确定性硬规则范围澄清：只约束掉落判定（禁止在掉落路径写 `Math.random`，散开 / 加权抽取走 `dropHash`）；既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，本轮不动。运行时唯一依赖仍为 three。
 
 ### 验证
-- `check:version` 三处一致（VERSION 1.6.0 / `package.json` / README）；`typecheck` 0 error；非浏览器回归链（含 `test:drop`、`test:crafting`）全绿；`python3 docs/agent/validate.py --strict` 0 FAIL / 0 WARN。浏览器实景组 `test:smoke` / `test:visual` 因本机无可用 Chromium 未执行（用户决定放弃），故未宣称 `npm run verify` 全绿。
+- `check:version` 三处一致（VERSION 1.6.0 / `package.json` / README）；`typecheck` 0 error；非浏览器回归链（含 `test:drop`、`test:crafting`）全绿；`python3 docs/agent/validate.py --strict` 0 FAIL / 0 WARN。浏览器实景组 `test:smoke` / `test:visual` / `test:options` 因本机无可用 Chromium 未执行（用户决定放弃），故未宣称 `npm run verify` 全绿。
 
 ## [1.5.2] - 2026-11-21
 
