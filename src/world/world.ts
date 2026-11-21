@@ -228,13 +228,57 @@ export class World {
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
     if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
     if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
+    // M07：边角格的光照/网格变化也会影响对角区块的边界面（AO、贪婪合并跨角），
+    // 一并标脏避免对角 chunk 渲染错位。
+    if (lx === 0 && lz === 0) this.dirty.add(chunkKey(cx - 1, cz - 1));
+    if (lx === CS - 1 && lz === 0) this.dirty.add(chunkKey(cx + 1, cz - 1));
+    if (lx === 0 && lz === CS - 1) this.dirty.add(chunkKey(cx - 1, cz + 1));
+    if (lx === CS - 1 && lz === CS - 1) this.dirty.add(chunkKey(cx + 1, cz + 1));
     return true;
+  }
+
+  /**
+   * M04：批量写入方块（爆炸等一次性多格改动）。先落所有数据编辑与脏标记，
+   * 光照播种延迟到末尾统一排空（deferred flush，配合 M03 的逐帧预算），避免
+   * 相邻格的光照回收与重扩散重复触发完整 BFS。返回实际写入的格数。
+   */
+  setBlocks(entries: readonly [number, number, number, BlockId][]): number {
+    let written = 0;
+    for (const [x, y, z, id] of entries) {
+      if (y < 1 || y >= H) continue;
+      const cx = Math.floor(x / CS);
+      const cz = Math.floor(z / CS);
+      const chunk = this.ensureChunk(cx, cz);
+      const lx = x - cx * CS;
+      const lz = z - cz * CS;
+      const idx = chunk.idx(lx, y, lz);
+      const old = chunk.data[idx];
+      if (old === id) continue;
+      chunk.data[idx] = id;
+      this.recordEdit(blockKey(x, y, z), id);
+      this.dirty.add(chunkKey(cx, cz));
+      if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
+      if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
+      if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
+      if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
+      if (lx === 0 && lz === 0) this.dirty.add(chunkKey(cx - 1, cz - 1));
+      if (lx === CS - 1 && lz === 0) this.dirty.add(chunkKey(cx + 1, cz - 1));
+      if (lx === 0 && lz === CS - 1) this.dirty.add(chunkKey(cx - 1, cz + 1));
+      if (lx === CS - 1 && lz === CS - 1) this.dirty.add(chunkKey(cx + 1, cz + 1));
+      // 光照延迟到末尾统一刷新（M04 deferred flush，配合 M03 预算帧）
+      this.light.queueBlockUpdate(x, y, z, old, id);
+      written++;
+    }
+    // 统一排空光照队列（受 M03 预算限制，可跨帧），并把 touched 并入 dirty
+    while (!this.light.step(2)) {}
+    this.light.flush();
+    return written;
   }
 
   /**
    * 生成期装饰写入：只改已生成区块的数据，不记录玩家编辑差分、不标脏、
    * 不触发光照增量更新——与 DefaultGenerator.stageDecorate 直接写 data 的语义一致。
-   * 网格由 ChunkManager 在本次生成后统一派发，因此新植物会被包含进去。
+   * 网格由 ChunkManager 在本次生成后统一派发，因此新植物会包含在内。
    * 供插件在 chunk:generated 阶段补种，避免污染存档与流式加载队列。
    */
   setBlockGenerated(x: number, y: number, z: number, id: BlockId): boolean {
@@ -248,6 +292,31 @@ export class World {
     const at = chunk.idx(lx, y, lz);
     if (chunk.data[at] === id) return false;
     chunk.data[at] = id;
+    return true;
+  }
+
+  /**
+   * M08：插件装饰写入并初始化光照。语义同 setBlockGenerated，但会为
+   * lightEmission > 0 的方块播种方块光并触发一次增量更新，避免插件放置
+   * 火把/灯笼等发光方块后不亮。
+   */
+  setBlockGeneratedWithLight(x: number, y: number, z: number, id: BlockId): boolean {
+    if (y < 1 || y >= H) return false;
+    const cx = Math.floor(x / CS);
+    const cz = Math.floor(z / CS);
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (!chunk?.generated) return false;
+    const lx = x - cx * CS;
+    const lz = z - cz * CS;
+    const at = chunk.idx(lx, y, lz);
+    const old = chunk.data[at];
+    if (old === id) return false;
+    chunk.data[at] = id;
+    // M08：仅对发光方块做方块光增量播种；天空光不受装饰方块影响（除非遮挡，
+    // 但装饰阶段只在已生成区块写入，且生成时已由 initChunk 完成天空光）。
+    if (this.registry.get(id).lightEmission > 0) {
+      this.light.updateBlock(x, y, z, old, id);
+    }
     return true;
   }
 

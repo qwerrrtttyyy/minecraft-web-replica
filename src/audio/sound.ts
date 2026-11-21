@@ -12,11 +12,14 @@ export class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
+  private eatTimeout: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   /** 必须在用户手势中调用一次以解锁音频 */
-  unlock() {
+  async unlock(): Promise<void> {
+    if (this.disposed) return;
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state === 'suspended') await this.ctx.resume();
       return;
     }
     try {
@@ -30,6 +33,8 @@ export class SoundEngine {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     } catch {
       this.ctx = null;
+      this.master = null;
+      this.noiseBuf = null;
     }
   }
 
@@ -42,6 +47,21 @@ export class SoundEngine {
   setVolume(v: number) {
     this.volume = clamp(v, 0, 100) / 100;
     if (this.master && this.enabled) this.master.gain.value = this.volume;
+  }
+
+  /** 清理音频资源，取消所有挂起的定时器 */
+  dispose(): void {
+    this.disposed = true;
+    if (this.eatTimeout) {
+      clearTimeout(this.eatTimeout);
+      this.eatTimeout = null;
+    }
+    if (this.ctx) {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+    }
+    this.master = null;
+    this.noiseBuf = null;
   }
 
   private burst(freq: number, dur: number, gain: number, type: BiquadFilterType = 'bandpass', q = 1.2) {

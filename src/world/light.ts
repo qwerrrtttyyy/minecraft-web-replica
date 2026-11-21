@@ -32,6 +32,15 @@ export class LightEngine {
    */
   private costCache = new Uint8Array(256).fill(255);
 
+  /**
+   * M03：逐帧 BFS 时间预算（ms）。runSky/runBlock 最多运行这段时间后让出，
+   * 剩余队列留在下一帧继续；避免大规模光照回收（如爆炸后整块区域变暗）
+   * 长期独占主线程。skyHead/blockHead 记录已处理位置，支持跨帧续接。
+   */
+  private budgetMs = 2;
+  private skyHead = 0;
+  private blockHead = 0;
+
   constructor(private world: World) {}
 
   /** 区块生成（含编辑差分）后初始化光照 */
@@ -126,13 +135,24 @@ export class LightEngine {
       }
     }
 
-    this.runSky();
-    this.runBlock();
+    this.drain(this.budgetMs);
     this.flush();
   }
 
   /** 方块变化后的增量光照更新 */
+  /** 单格方块变化后的增量光照更新：播种队列后立即排空，保证返回时光照已生效。 */
   updateBlock(x: number, y: number, z: number, oldId: BlockId, newId: BlockId) {
+    this.queueBlockUpdate(x, y, z, oldId, newId);
+    this.drain(this.budgetMs);
+    this.flush();
+  }
+
+  /**
+   * M04：批量方块变更的光照播种（仅入队，不排空）。多格改动（如爆炸）应先
+   * 逐格调用 queueBlockUpdate 入队，再统一 drain + flush，避免相邻格的光照
+   * 回收与重扩散重复触发完整 BFS。
+   */
+  queueBlockUpdate(x: number, y: number, z: number, oldId: BlockId, newId: BlockId) {
     const oldDef = this.world.registry.get(oldId);
     const newDef = this.world.registry.get(newId);
     const oldCost = this.opacity(oldId);
@@ -165,10 +185,6 @@ export class LightEngine {
 
     // 非遮挡方块：允许六邻居的光流进来
     if (newCost < 16) this.seedNeighbors(x, y, z);
-
-    this.runSky();
-    this.runBlock();
-    this.flush();
   }
 
   // ---------- 内部 ----------
@@ -217,17 +233,16 @@ export class LightEngine {
     return level - cost > nc.sky[idx];
   }
 
-  private runSky() {
+  private runSky(maxMs: number): boolean {
     const q = this.skyQ;
-    let head = 0;
+    let head = this.skyHead;
+    const start = performance.now();
     while (head < q.length) {
       const x = q[head++];
       const y = q[head++];
       const z = q[head++];
       const level = q[head++];
       if (level <= 1) continue;
-      // 队列里可能记录的是回收之前的旧亮度（先播种、后被 removeLight 调低），
-      // 这类陈旧种子会把已经暗下去的格子重新点亮，必须在出队时校验当前值。
       const sc = this.chunkAt(x >> 4, z >> 4);
       if (!sc || !sc.lit) continue;
       if (sc.sky[sc.idx(x & 15, y, z & 15)] < level) continue;
@@ -247,20 +262,27 @@ export class LightEngine {
         this.touched.add(chunkKey(nc.cx, nc.cz));
         q.push(nx, ny, nz, next);
       }
+      if (performance.now() - start >= maxMs) break;
     }
-    q.length = 0;
+    this.skyHead = head;
+    const done = head >= q.length;
+    if (done) {
+      q.length = 0;
+      this.skyHead = 0;
+    }
+    return done;
   }
 
-  private runBlock() {
+  private runBlock(maxMs: number): boolean {
     const q = this.blockQ;
-    let head = 0;
+    let head = this.blockHead;
+    const start = performance.now();
     while (head < q.length) {
       const x = q[head++];
       const y = q[head++];
       const z = q[head++];
       const level = q[head++];
       if (level <= 1) continue;
-      // 同 runSky：出队时校验本格当前亮度，丢弃回收前留下的陈旧种子
       const sc = this.chunkAt(x >> 4, z >> 4);
       if (!sc || !sc.lit) continue;
       if (sc.block[sc.idx(x & 15, y, z & 15)] < level) continue;
@@ -280,8 +302,28 @@ export class LightEngine {
         this.touched.add(chunkKey(nc.cx, nc.cz));
         q.push(nx, ny, nz, next);
       }
+      if (performance.now() - start >= maxMs) break;
     }
-    q.length = 0;
+    this.blockHead = head;
+    const done = head >= q.length;
+    if (done) {
+      q.length = 0;
+      this.blockHead = 0;
+    }
+    return done;
+  }
+
+  /** 逐帧推进光照 BFS，每张队列各自不超过 maxMs；返回 true 当两张队列都已排空。
+   *  不能用 `runSky() && runBlock()` 短路：sky 未排完时 block 会整帧饿死。 */
+  step(maxMs: number): boolean {
+    const skyDone = this.runSky(maxMs);
+    const blockDone = this.runBlock(maxMs);
+    return skyDone && blockDone;
+  }
+
+  /** 把当前队列全部排空（同步阻塞，供 initChunk/updateBlock 等确保光照即时生效的路径） */
+  private drain(maxMs: number): void {
+    while (!this.step(maxMs)) {}
   }
 
   /** 标准「移除 + 边界重扩散」 */
@@ -413,7 +455,7 @@ export class LightEngine {
     }
   }
 
-  private flush() {
+  flush() {
     if (this.touched.size === 0) return;
     for (const key of this.touched) this.world.dirty.add(key);
     this.touched.clear();

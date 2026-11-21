@@ -8,7 +8,7 @@ const { ServiceContainer, token } = require('./logic/services/ServiceContainer.j
 const { EventService } = require('./logic/services/events/EventService.js');
 const { EventChannel } = require('./logic/services/events/EventChannel.js');
 const { PluginService, scopeAPI } = require('./logic/services/plugins/PluginService.js');
-const { validateSave, LocalStorageProvider } = require('./logic/save/save.js');
+const { validateSave, normalizeSave, LocalStorageProvider } = require('./logic/save/save.js');
 const shim = require('./logic/core/events.js');
 
 const results = [];
@@ -91,6 +91,19 @@ ok('off 取消订阅', () => {
   ev.off('game:pause', fn);
   ev.emit('game:pause', { paused: true });
   assert.strictEqual(n, 0);
+});
+ok('M11 过期 off() 不抹掉后续同类型订阅', () => {
+  const ev = new EventService();
+  let a = 0, b = 0;
+  const fnA = () => a++;
+  const fnB = () => b++;
+  const offA = ev.on('game:start', fnA);
+  ev.off('game:start', fnA);          // 先把 fnA 直接移除，offA 变为 stale
+  ev.on('game:start', fnB);          // 新订阅复用同 key
+  offA();                             // 旧 unsubscribe 应该不误删 fnB
+  ev.emit('game:start', { seed: 1 });
+  assert.strictEqual(a, 0);
+  assert.strictEqual(b, 1);
 });
 ok('同一事件多个订阅者均收到', () => {
   const ev = new EventService();
@@ -186,27 +199,50 @@ okAsync('waitFor 超时 reject', async () => {
 });
 
 // ---------- 插件服务 ----------
-const fakeApi = () => ({
-  version: '1.2.0',
-  world: { setBlock: () => true, getBlock: () => 0 },
-  player: { teleport() {}, setFly() {}, break() {}, place() {}, setCamera() {} },
-  save: { import() {}, setProvider() {} },
-  blocks: { register() {}, get: (id) => id },
-  tnt: { ignite() {} },
-  entities: { spawn() {}, list: () => [] },
-  survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
-  time: { set() {}, setDayLength() {} },
-  settings: { renderDistance() {}, sensitivity() {}, fov() {}, sound() {} },
-  plugins: { register() {}, enable() {}, disable() {}, unload() {}, list: () => [] },
-  registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
-  on() { return () => {}; }, off() {}, emit() {},
-  events: {
-    scope(ns, options) { return { ns, options }; },
-    stats: () => ({ emitted: {}, subscribers: 0, channels: [] }),
-    onAny() { return () => {}; },
-    waitFor() { return Promise.resolve(); },
-  },
-});
+const makeFakeApi = () => {
+  const registeredById = new Map();
+  const registeredByName = new Map();
+  // 预注册内置方块 id 1~91，模拟 registerBuiltinBlocks 的效果
+  for (let i = 1; i <= 91; i++) {
+    registeredById.set(i, { id: i, name: `builtin:${i}` });
+    registeredByName.set(`builtin:${i}`, { id: i });
+  }
+  return {
+    version: '1.2.0',
+    world: { setBlock: () => true, getBlock: () => 0 },
+    player: { teleport() {}, setFly() {}, break() {}, place() {}, setCamera() {} },
+    save: { import() {}, setProvider() {} },
+    blocks: { 
+      register() {}, 
+      get: (id) => id 
+    },
+    tnt: { ignite() {} },
+    entities: { spawn() {}, list: () => [] },
+    survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
+    time: { set() {}, setDayLength() {} },
+    settings: { renderDistance() {}, sensitivity() {}, fov() {}, sound() {} },
+    plugins: { register() {}, enable() {}, disable() {}, unload() {}, list: () => [] },
+    registerBlock(input) {
+      if (registeredByName.has(input.name)) throw new Error(`方块名重复: ${input.name}`);
+      const id = input.id ?? 200;
+      if (id < 1 || id > 255) throw new Error(`方块 id 超出 1~255: ${id}`);
+      if (registeredById.has(id)) throw new Error(`方块 id 重复: ${id}`);
+      const def = { ...input, id, drops: input.drops ?? [{ name: 'self' }] };
+      registeredById.set(id, def);
+      registeredByName.set(def.name, def);
+      return def;
+    },
+    registerTile() {}, registerEntity() {}, setGenerator() {},
+    on() { return () => {}; }, off() {}, emit() {},
+    events: {
+      scope(ns, options) { return { ns, options }; },
+      stats: () => ({ emitted: {}, subscribers: 0, channels: [] }),
+      onAny() { return () => {}; },
+      waitFor() { return Promise.resolve(); },
+    },
+  };
+};
+const fakeApi = makeFakeApi;
 const makePluginService = () => {
   const ev = new EventService();
   const c = new ServiceContainer();
@@ -420,6 +456,22 @@ ok('权限裁剪：blocks 只读代理与 tnt / entities / survival 写入口', 
   const allowed = scopeAPI(fakeApi(), ['blocks:register']);
   assert.doesNotThrow(() => allowed.blocks.register({}));
 });
+ok('M09 块 ID/名称冲突治理：重复 id 抛错', () => {
+  const base = fakeApi();
+  const scoped = scopeAPI(base, ['blocks:register']);
+  // 注册一个带指定 id 的方块
+  const def1 = scoped.registerBlock({ name: 'test:block_a', id: 200, tiles: { top: 'test', bottom: 'test', side: 'test' } });
+  assert.strictEqual(def1.id, 200);
+  // 同 id 再次注册 → 抛错
+  assert.throws(() => scoped.registerBlock({ name: 'test:block_b', id: 200, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 重复: 200/);
+  // 同 name 再次注册 → 抛错（即使 id 不同）
+  assert.throws(() => scoped.registerBlock({ name: 'test:block_a', id: 201, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块名重复: test:block_a/);
+  // 内置方块 id（如 1=stone）不可覆盖
+  assert.throws(() => scoped.registerBlock({ name: 'test:override_stone', id: 1, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 重复: 1/);
+  // id 超出 1~255 → 抛错
+  assert.throws(() => scoped.registerBlock({ name: 'test:outrange', id: 300, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 超出 1~255/);
+  assert.throws(() => scoped.registerBlock({ name: 'test:neg', id: 0, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 超出 1~255/);
+});
 ok('权限裁剪：time / settings / plugins 写入口默认拒绝', () => {
   const scoped = scopeAPI(fakeApi(), []);
   assert.throws(() => scoped.time.set(0.5), /缺少权限 time:write/);
@@ -624,6 +676,18 @@ okAsync('v1 旧存档自动升级并补齐 9 格快捷栏', async () => {
   assert.strictEqual(loaded.mode, 'creative');
   assert.strictEqual(loaded.hotbar.length, 9);
   assert.strictEqual(validateSave(loaded), true);
+});
+ok('M10 v2 存档缺失 mode 字段应拒绝（防静默模式切换）', () => {
+  const v2NoMode = {
+    version: 2, seed: 7, mode: undefined,
+    edits: [], player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
+    survival: { health: 20, hunger: 20, breath: 15, inventory: [], spawn: { x: 1, y: 2, z: 3 } },
+    dayTime: 0.3, hotbar: Array(9).fill(null), slot: 0,
+    settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
+    savedAt: 1,
+  };
+  assert.strictEqual(validateSave(v2NoMode), false);
+  assert.strictEqual(normalizeSave(v2NoMode), null);
 });
 
 Promise.all(pending).then(() => {

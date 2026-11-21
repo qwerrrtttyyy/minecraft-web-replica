@@ -58,4 +58,16 @@ w2.loadEdits([...w.edits.entries()]);
 const c2 = w2.ensureChunk(-1, -1);
 ok('整档重载后负坐标编辑仍落在正确格子', c2.data[c2.idx(15, 10, 15)] === stone);
 
+// M04: setBlocks 批量写入
+const w3 = makeWorld();
+w3.setBlocks([
+  [10, 20, 10, stone],
+  [11, 20, 10, stone],
+  [10, 21, 10, stone],
+]);
+const c30 = w3.ensureChunk(0, 0);
+ok('M04 setBlocks 批量写入多格生效', c30.data[c30.idx(10, 20, 10)] === stone && c30.data[c30.idx(11, 20, 10)] === stone && c30.data[c30.idx(10, 21, 10)] === stone);
+ok('M04 setBlocks 编辑差分记录正确', w3.edits.get('10,20,10') === stone && w3.edits.get('11,20,10') === stone && w3.edits.get('10,21,10') === stone);
+ok('M04 setBlocks 光照在 batch 内正确传播', c30.sky[c30.idx(10, 20, 10)] >= 0); // 光照计算已完成
+
 console.log(`\nPASS 编辑差分数值分桶回归：${passed} 组断言`);

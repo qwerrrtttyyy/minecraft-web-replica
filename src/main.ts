@@ -381,8 +381,10 @@ async function boot() {
         }
       }
     }
+    // M04：批量写入爆炸破坏的方块，光照在末尾统一排空（deferred flush），
+    // 避免球形区域内相邻格的光照回收重复触发完整 BFS。
+    world.setBlocks(destroyed.map(([x, y, z]) => [x, y, z, AIR] as [number, number, number, BlockId]));
     for (const [x, y, z, id] of destroyed) {
-      world.setBlock(x, y, z, AIR);
       if (registry.get(id).name === 'tnt') {
         events.emit('block:ignite', { x, y, z });
       } else {
@@ -396,14 +398,25 @@ async function boot() {
     sound.explosion();
     hud.flash();
     const blastCenter = new THREE.Vector3(cx, cy, cz);
+
+    // M13: 视线检查辅助函数——从爆炸中心向目标发射射线，若被实体方块阻挡则返回 false
+    const hasLineOfSight = (target: THREE.Vector3): boolean => {
+      const dir = new THREE.Vector3().subVectors(target, blastCenter);
+      const dist = dir.length();
+      if (dist === 0) return true;
+      dir.normalize();
+      const hit = world.raycast(blastCenter.clone(), dir, dist - 0.01);
+      return hit === null;
+    };
+
     const dist = player.pos.distanceTo(blastCenter);
     player.shake(clamp(0.75 * (1 - dist / 12), 0, 0.75));
-    if (survival.isSurvival && dist < r * 1.6) {
+    if (survival.isSurvival && dist < r * 1.6 && hasLineOfSight(player.pos)) {
       survival.damage(Math.round(9 * (1 - dist / (r * 1.6))), '爆炸');
     }
     for (const e of entities.entities) {
       const d = e.pos.distanceTo(blastCenter);
-      if (d < r * 2.5 && d > 0.01) {
+      if (d < r * 2.5 && d > 0.01 && hasLineOfSight(e.pos)) {
         const k = 9 / Math.max(1, d);
         e.vel.x += (e.pos.x - cx) * k;
         e.vel.y += 4 * k;

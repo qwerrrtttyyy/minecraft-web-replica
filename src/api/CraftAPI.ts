@@ -346,7 +346,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       seed: () => d.world.generator.seed,
       getBlock: (x, y, z) => d.world.getBlock(x, y, z),
       setBlock: (x, y, z, id) => d.world.setBlock(x, y, z, id),
-      decorate: (x, y, z, id) => d.world.setBlockGenerated(x, y, z, id),
+      decorate: (x, y, z, id) => d.world.setBlockGeneratedWithLight(x, y, z, id),
       surfaceHeight: (x, z) => d.world.surfaceHeight(x, z),
       biomeAt: (x, z) => d.world.generator.biomeAt?.(x, z) ?? 'unknown',
       terrain: (x, z) => d.world.generator.columnInfo?.(x, z) ?? null,
