@@ -1,0 +1,23 @@
+id: P05
+title: 植物规则上下文与优先级
+description: |
+  PlantRuleContext 增 day/season/weather/soil/enrichSoil；
+  PlantRule 增 priority，ruleFor 按 (priority,id) 双键排序、list 暴露；
+  内置 botany-expansion 加雨天 boost 演示规则；README 补扩展示例。
+  测试：新上下文可读、排序确定、enrichSoil 生效、按 owner 注销仍有效。
+
+touch:
+  allow:
+    - src/world/plantRules.ts
+    - src/world/botany.ts
+    - src/api/CraftAPI.ts
+    - src/plugins/builtin/botanyContent.ts
+    - test/botany-rules-check.cjs
+    - docs/ARCHITECTURE.md
+    - README.md
+  deny:
+    - src/save/save.ts
+
+outputs:
+  - plant rule context: 上下文暴露 day/season/weather/soil 且优先级双键排序确定
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:botany-rules 全绿

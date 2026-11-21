@@ -1,0 +1,26 @@
+id: P03
+title: 土壤养分与施肥（第二资源）
+description: |
+  新增 soil.ts（懒初始化 100 / 上限 1024）；PlantTrait 增 growthNutrient；
+  grow 成功才扣、decay/break 归还；Botany.enrichSoil 公开；
+  ITEMS 增 fertilizer/bone_meal；player 右键施肥（bone_meal 额外 +15 能量）；
+  plant:soil 事件；F3 增 soilAvg。
+  测试：耗尽阻断、归还、两种肥料效果、懒初始化中性、上限淘汰。
+
+touch:
+  allow:
+    - src/world/soil.ts
+    - src/world/plantTraits.ts
+    - src/world/botany.ts
+    - src/player/survival.ts
+    - src/player/player.ts
+    - src/gfx/atlas.ts
+    - src/main.ts
+    - test/plant-energy-check.cjs
+    - docs/TESTING.md
+  deny:
+    - src/save/save.ts
+
+outputs:
+  - soil nutrient: 养分懒初始化中性、耗尽阻断生长、两种肥料可测
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:plant-energy && npm run test:botany 全绿

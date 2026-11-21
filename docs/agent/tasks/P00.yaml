@@ -1,0 +1,26 @@
+id: P00
+title: 任务卡校验器扩展（植物深化七卡）
+description: |
+  docs/agent/validate.py 的 CHECKS 目前只覆盖视觉回归。CI 用 --strict，
+  未匹配关键词的 output 会 WARN → exit 2。本卡为 P01~P06 每条 output
+  补机械检查（文件/符号存在），使 validate.py 能判定完成度。
+  本分支只在 P06 最终合入，故直接实现真实符号检查，不做两阶段收紧。
+
+touch:
+  allow:
+    - docs/agent/validate.py
+    - docs/agent/tasks/P0*.yaml
+    - docs/superpowers/specs/*.md
+    - docs/superpowers/plans/*.md
+  deny:
+    - src/**
+    - test/**
+
+outputs:
+  - plant env: ecology.ts 导出 seasonAt/weatherAt 且 DAYS_PER_SEASON=6
+  - soil nutrient: soil.ts 导出 nutrientAt/enrich
+  - plant save schema: save.ts 含 botany/dayCount 可选字段校验
+  - plant drops: drops.ts 导出 rollDrops 且玩家/实体调用已迁移
+  - compost bin: blocks.ts 含 composter 110~118 且 atlas 含 composter tile
+  - plant rule context: plantRules.ts 含 day/season/weather/soil 方法
+  - 任务卡校验器: CHECKS 含上述六个关键词
