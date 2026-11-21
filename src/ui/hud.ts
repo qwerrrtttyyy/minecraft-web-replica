@@ -48,6 +48,8 @@ export interface HUDOptions {
   onAutosaveInterval: (v: number) => void;
   /** 实验性内容开关（WASM 内核 / 插件载体） */
   onExperimental: (v: boolean) => void;
+  /** 实验性内容：横屏模式（锁定设备横屏 + 宽屏 HUD 适配） */
+  onLandscapeMode: (v: boolean) => void;
   /** 实验性玩法：随机刻速度档位 */
   onRandomTickSpeed: (v: RandomTickSpeed) => void;
   /** 实验性玩法：推进昼夜循环 */
@@ -154,6 +156,10 @@ export class HUD {
   private toastEl!: HTMLElement;
   private saveNote!: HTMLElement;
   private statsWrap!: HTMLElement;
+  private xpWrap!: HTMLElement;
+  private xpBar!: HTMLElement;
+  private xpFill!: HTMLElement;
+  private xpLevel!: HTMLElement;
   private heartsRow!: HTMLElement;
   private hungerRow!: HTMLElement;
   private breathRow!: HTMLElement;
@@ -170,6 +176,7 @@ export class HUD {
   private keybindCapture: string | null = null;
   private deathOverlay!: HTMLElement;
   private deathCause!: HTMLElement;
+  private deathNote!: HTMLElement;
   private soundBtn!: HTMLButtonElement;
   private flyBtn!: HTMLButtonElement;
   private rdSlider!: HTMLInputElement;
@@ -193,6 +200,7 @@ export class HUD {
   private threadsRow!: HTMLButtonElement;
   private autosaveRow!: HTMLButtonElement;
   private experimentalRow?: HTMLButtonElement;
+  private landscapeRow?: HTMLButtonElement;
   private tickSpeedRow?: HTMLButtonElement;
   private daylightRow?: HTMLButtonElement;
   private keepInvRow?: HTMLButtonElement;
@@ -206,6 +214,7 @@ export class HUD {
   private ioCopyBtn!: HTMLButtonElement;
   private ioApplyBtn!: HTMLButtonElement;
   private aboutOverlay!: HTMLElement;
+  private rotateHint!: HTMLElement;
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
   private crafting!: CraftingPanel;
@@ -232,6 +241,7 @@ export class HUD {
     this.buildHelp();
     this.buildKeybinds();
     this.buildDeath();
+    this.buildRotateHint();
     // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
     this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
     this.root.appendChild(this.crafting.root);
@@ -435,6 +445,15 @@ export class HUD {
     this.statsWrap.style.display = 'none';
     this.gameHud.appendChild(this.statsWrap);
 
+    // 经验条（Java 版 1.20 标志性 HUD：绿色弧形进度 + 等级数字，位于快捷栏正上方）
+    this.xpWrap = h('div', 'xp-wrap');
+    this.xpLevel = h('div', 'xp-level', '0');
+    this.xpBar = h('div', 'xp-bar');
+    this.xpFill = h('div', 'xp-fill');
+    this.xpBar.appendChild(this.xpFill);
+    this.xpWrap.append(this.xpLevel, this.xpBar);
+    this.gameHud.appendChild(this.xpWrap);
+
     // 快捷栏
     const hotbarWrap = h('div', 'hotbar-wrap');
     this.itemName = h('div', 'item-name');
@@ -614,6 +633,15 @@ export class HUD {
     this.breathRow.style.display = showBreath ? '' : 'none';
     if (showBreath) fill(this.breathRow, s.breath, MAX_BREATH);
     this.heartsRow.classList.toggle('dead', s.dead);
+  }
+
+  /**
+   * 经验条（Java 版 HUD 元素）。本项目暂无经验系统，默认显示 0 级空条作为视觉还原；
+   * 未来接入经验时由组装根每帧调用本方法即可，无需改布局。
+   */
+  setExperience(level: number, progress: number) {
+    this.xpLevel.textContent = String(Math.max(0, Math.floor(level)));
+    this.xpFill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
   }
 
   setMining(state: MiningState | null) {
@@ -834,7 +862,13 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.experimentalRow);
+    this.landscapeRow = this.optionRow('横屏模式', () => {
+      this.opts.onLandscapeMode(!this.opts.getOptions().landscapeMode);
+      this.syncOptions(this.opts.getOptions());
+    });
+    exp.appendChild(this.landscapeRow);
     exp.appendChild(h('div', 'menu-note', '默认关闭；开启后启用 WebAssembly 计算内核与插件三载体，关闭即回到纯 JS 路径。'));
+    exp.appendChild(h('div', 'menu-note', '横屏模式：锁定设备为横向并启用宽屏 HUD 布局；不支持锁定的浏览器会提示手动旋转设备。'));
 
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');
@@ -977,6 +1011,7 @@ export class HUD {
     this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
+    if (this.landscapeRow) this.setRowVal(this.landscapeRow, o.landscapeMode ? '开' : '关', !o.landscapeMode);
     if (this.tickSpeedRow) this.setRowVal(this.tickSpeedRow, choiceLabel(TICK_SPEED_CHOICES, o.randomTickSpeed), o.randomTickSpeed === 0);
     if (this.daylightRow) this.setRowVal(this.daylightRow, o.doDaylightCycle ? '开' : '关', !o.doDaylightCycle);
     if (this.keepInvRow) this.setRowVal(this.keepInvRow, o.keepInventory ? '开' : '关', !o.keepInventory);
@@ -1172,7 +1207,9 @@ export class HUD {
     row.appendChild(this.mcButton('重生', () => this.opts.onRespawn(), 'mc-btn-big'));
     row.appendChild(this.mcButton('返回标题', () => this.opts.onQuitToTitle()));
     panel.appendChild(row);
-    panel.appendChild(h('div', 'menu-note', '物品会保留在背包里'));
+    // 文案随「死亡保留物品」开关变化，避免关闭后仍提示保留而误导玩家（v1.5.2 修复）
+    this.deathNote = h('div', 'menu-note', '');
+    panel.appendChild(this.deathNote);
     this.deathOverlay.appendChild(panel);
     this.deathOverlay.style.display = 'none';
     this.root.appendChild(this.deathOverlay);
@@ -1180,6 +1217,10 @@ export class HUD {
 
   showDeath(cause: string) {
     this.deathCause.textContent = cause ? `死因：${cause}` : '';
+    const keep = this.opts.getOptions().keepInventory;
+    this.deathNote.textContent = keep
+      ? '物品会保留在背包里'
+      : '物品已从背包掉落（原版规则）';
     this.deathOverlay.style.display = '';
   }
 
@@ -1189,6 +1230,39 @@ export class HUD {
 
   get deathOpen() {
     return this.deathOverlay.style.display !== 'none';
+  }
+
+  // ---------- 横屏模式：旋转设备提示 ----------
+  private buildRotateHint() {
+    this.rotateHint = h('div', 'rotate-hint');
+    const card = h('div', 'rotate-hint-card');
+    // 手机旋转图标（绕中心顺时针旋转的手势）
+    const icon = h('div', 'rotate-icon');
+    icon.innerHTML = '<svg viewBox="0 0 64 64"><rect x="21" y="6" width="22" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 47l7 5-7 5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M43 17a15 15 0 1 1-13-8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M30 4l3 6-7 1" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+    card.appendChild(icon);
+    card.appendChild(h('div', 'rotate-title', '请旋转设备'));
+    card.appendChild(h('div', 'rotate-sub', '横屏模式下请将手机/平板横向放置，以获得完整的宽屏游戏体验'));
+    this.rotateHint.appendChild(card);
+    this.rotateHint.style.display = 'none';
+    this.root.appendChild(this.rotateHint);
+  }
+
+  /**
+   * 应用横屏模式：给根加 class 驱动 CSS 布局适配。
+   * @param active 是否开启横屏模式
+   * @param showRotate 是否展示「请旋转设备」提示（竖屏且无法锁定时由组装根判定）
+   */
+  setLandscape(active: boolean, showRotate: boolean) {
+    this.root.classList.toggle('landscape-mode', active);
+    const portrait = typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches;
+    const visible = active && showRotate && portrait;
+    this.rotateHint.style.display = visible ? '' : 'none';
+  }
+
+  /** 方向变化时由组装根调用，仅更新旋转提示显隐 */
+  refreshRotateHint(active: boolean, showRotate: boolean) {
+    const portrait = typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches;
+    this.rotateHint.style.display = active && showRotate && portrait ? '' : 'none';
   }
 
   // ---------- 帮助 ----------
