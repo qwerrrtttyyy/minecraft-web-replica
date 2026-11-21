@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [1.6.0] - 2026-11-21
+## [1.5.2-beta.1] - 2026-11-21
 
 ### 新增
 - **季节与天气**：`src/world/ecology.ts` 提供 6 日一季的纯函数历法与 seed 派生的天气；季节 / 天气倍率按 solar / hydro / fungal 三代谢调制正向蓄能与生长概率，默认 spring/clear 对旧行为逐值中性。`Sky` 新增 `dayCount` 与 `setTime`。
