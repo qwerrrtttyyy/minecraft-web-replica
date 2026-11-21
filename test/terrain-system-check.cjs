@@ -145,8 +145,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     ['seagrass', 'kelp', 'sea_anemone', 'red_algae']
       .every((n) => reg.byNameGet(n).waterPlant === true) &&
     reg.byNameGet('vine').waterPlant !== true && reg.byNameGet('duckweed').waterPlant !== true);
-  ok('28 种新植物 id 92~119 连续末位追加',
-    FLOWER_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 92 + i),
+  ok('28 种新植物 id 111~138 连续末位追加（AtomGit v1.6.0 移植，因 98~110 已占用顺延 +19）',
+    FLOWER_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 111 + i),
     `${FLOWER_BLOCKS[0]}=${reg.byNameGet(FLOWER_BLOCKS[0])?.id}..${FLOWER_BLOCKS.at(-1)}=${reg.byNameGet(FLOWER_BLOCKS.at(-1))?.id}`);
   ok('28 种新植物全部是十字面且纹理 / 高度完整',
     FLOWER_BLOCKS.every((n) => {

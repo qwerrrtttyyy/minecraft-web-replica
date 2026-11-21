@@ -181,7 +181,12 @@ function coverage(mesh) {
       const tile = [g.tile[q * 8].toFixed(5), g.tile[q * 8 + 1].toFixed(5)].join(',');
       for (let c2 = Math.floor(lo2 + 1e-6); c2 <= Math.floor(hi2 - 1e-6); c2++) {
         for (let c1 = Math.floor(lo1 + 1e-6); c1 <= Math.floor(hi1 - 1e-6); c1++) {
-          cells.set(`${ch}|${axis}|${sign}|${plane}|${c1}|${c2}`, { bright, tile, lightKey });
+          const key = `${ch}|${axis}|${sign}|${plane}|${c1}|${c2}`;
+          // 同一面格可被多个 quad 覆盖（如十字面植物与相邻立方体面）；
+          // 记成多重集，比较时与发射顺序无关
+          const list = cells.get(key);
+          if (list) list.push({ bright, tile, lightKey });
+          else cells.set(key, [{ bright, tile, lightKey }]);
         }
       }
     }
@@ -199,11 +204,20 @@ function compareCoverage(a, b, label) {
   let brightDiff = 0;
   let tileDiff = 0;
   let lightDiff = 0;
-  for (const [k, v] of a) {
-    const w = b.get(k);
-    brightDiff = Math.max(brightDiff, Math.abs(v.bright - w.bright));
-    if (v.tile !== w.tile) tileDiff++;
-    if (v.lightKey !== w.lightKey) lightDiff++;
+  const sortKey = (v) => `${v.tile}|${v.bright}|${v.lightKey}`;
+  for (const [k, va] of a) {
+    const vb = b.get(k);
+    if (va.length !== vb.length) {
+      tileDiff += Math.abs(va.length - vb.length);
+      continue;
+    }
+    const sa = [...va].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    const sb = [...vb].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+    for (let i = 0; i < sa.length; i++) {
+      brightDiff = Math.max(brightDiff, Math.abs(sa[i].bright - sb[i].bright));
+      if (sa[i].tile !== sb[i].tile) tileDiff++;
+      if (sa[i].lightKey !== sb[i].lightKey) lightDiff++;
+    }
   }
   assert.ok(brightDiff < 1e-6, `${label}: 亮度差异 ${brightDiff}`);
   assert.strictEqual(tileDiff, 0, `${label}: ${tileDiff} 个面格贴图 tile 不一致`);

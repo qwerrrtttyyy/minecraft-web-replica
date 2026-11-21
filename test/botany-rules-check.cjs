@@ -83,7 +83,7 @@ function install(t) {
 function fakeCtx(overrides = {}) {
   const calls = { boost: [], grow: [], write: [] };
   const ctx = {
-    x: 5, y: 21, z: 5, id: 120, daylight: 1,
+    x: 5, y: 21, z: 5, id: 139, daylight: 1,
     rng: () => 0,
     energy: () => 100,
     boost: (...a) => calls.boost.push(a),
@@ -128,12 +128,12 @@ log('\n[1] 扩展植物 id 契约');
     t.reg.all().length === 132, `${t.reg.all().length}`);
   ok('内置最大 id 为 138（glow_fern）', Math.max(...t.reg.all().map((d) => d.id)) === 138);
   install(t);
-  ok('6 种植物 id 120~125 连续末位追加',
-    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 120 + i),
+  ok('6 种植物 id 139~144 连续末位追加',
+    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 139 + i),
     EXPANSION_PLANTS.map((p) => `${p.name}=${t.reg.byNameGet(p.name).id}`).join(' '));
-  ok('旧 id 未重排（black_wool=44 / spruce_leaves=91 / glow_fern=119）',
+  ok('旧 id 未重排（black_wool=44 / spruce_leaves=91 / glow_fern=138）',
     t.reg.byNameGet('black_wool').id === 44 && t.reg.byNameGet('spruce_leaves').id === 91 &&
-    t.reg.byNameGet('glow_fern').id === 119);
+    t.reg.byNameGet('glow_fern').id === 138);
   ok('全部 id ≤ 255（Uint8Array 存储安全）',
     EXPANSION_PLANTS.every((p) => t.reg.byNameGet(p.name).id <= 255));
   ok('覆盖 solar / hydro / fungal 三类代谢',
@@ -157,20 +157,20 @@ log('\n[2] 规则注册表契约');
   assert.throws(() => r.register(a), /重复注册/);
   assert.throws(() => r.register({ id: '', owner: 'o', plants: ['x'], tick: () => false }), /字段不完整/);
   ok('重复 id 与字段缺失都会被拒绝', r.size === 2, `${r.size}`);
-  ok('同一方块命中多条规则', r.ruleFor(120).length === 2, `${r.ruleFor(120).length}`);
-  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(120).length === 0);
+  ok('同一方块命中多条规则', r.ruleFor(139).length === 2, `${r.ruleFor(139).length}`);
+  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(139).length === 0);
 
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
   late.register({ id: 'late', owner: 'late', plants: ['future_plant'], tick: () => false });
-  ok('注册时方块尚未存在 → 不命中', late.ruleFor(139).length === 0);
+  ok('注册时方块尚未存在 → 不命中', late.ruleFor(145).length === 0);
   t.reg.register({
-    id: 139, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
+    id: 145, name: 'future_plant', label: '未来植物', shape: 'cross', solid: false,
     opaque: false, liquid: false, transparentPass: false, lightEmission: 0,
     hardness: 0, sound: 'plant',
     tiles: { top: 'x', bottom: 'x', side: 'x' },
   });
-  ok('方块补齐后按名称重新解析即命中', late.ruleFor(139).length === 1);
+  ok('方块补齐后按名称重新解析即命中', late.ruleFor(145).length === 1);
 }
 
 log('\n[3] botany:register 权限裁剪');

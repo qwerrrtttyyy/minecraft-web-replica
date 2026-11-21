@@ -49,7 +49,7 @@ const nectar = { item: 'item:nectar', count: 1 };
  */
 export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
-    name: 'thistle', label: '蓟', id: 120,
+    name: 'thistle', label: '蓟', id: 139,
     trait: { metabolism: 'solar', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     spawn: { plains: 0.008, forest: 0.004 },
     paint: (set) => {
@@ -62,7 +62,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'cattail', label: '香蒲', id: 121,
+    name: 'cattail', label: '香蒲', id: 140,
     trait: { metabolism: 'hydro', bloom: 70, growthCost: 16, shareRadius: 2, sharePower: 10 },
     spawn: { beach: 0.02, plains: 0.012, forest: 0.008 },
     nearWater: true, waterPlant: true,
@@ -73,7 +73,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'glow_mushroom', label: '荧光菇', id: 122,
+    name: 'glow_mushroom', label: '荧光菇', id: 141,
     trait: { metabolism: 'fungal', bloom: 65, growthCost: 14, shareRadius: 3, sharePower: 16, hub: true },
     spawn: { forest: 0.005, taiga: 0.004 },
     lightEmission: 5,
@@ -88,7 +88,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'frost_bloom', label: '霜花', id: 123,
+    name: 'frost_bloom', label: '霜花', id: 142,
     trait: { metabolism: 'solar', bloom: 75, growthCost: 20, shareRadius: 2, sharePower: 10, harvest: nectar },
     spawn: { alpine: 0.012 },
     paint: (set) => {
@@ -99,7 +99,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'ember_fern', label: '余烬蕨', id: 124,
+    name: 'ember_fern', label: '余烬蕨', id: 143,
     trait: { metabolism: 'fungal', bloom: 60, growthCost: 12, shareRadius: 2, sharePower: 10 },
     spawn: { forest: 0.006, taiga: 0.006 },
     paint: (set) => {
@@ -111,7 +111,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'moonlotus', label: '月莲', id: 125,
+    name: 'moonlotus', label: '月莲', id: 144,
     trait: { metabolism: 'hydro', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     spawn: { ocean: 0.006, beach: 0.01 },
     nearWater: true, waterPlant: true,
