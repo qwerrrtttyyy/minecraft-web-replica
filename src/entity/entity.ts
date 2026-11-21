@@ -11,6 +11,7 @@ import type { Particles } from '../gfx/particles';
 import { dropHash, rollDrops } from '../world/drops';
 import { ANIMALS, BREED, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
+import type { AIService } from '../ai/AIService';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -260,6 +261,8 @@ export class EntityManager {
   private spawnSerial = 0;
   /** 求爱心形粒子的节流计时，避免每帧刷屏 */
   private heartTimer = 0;
+  /** AI 服务：spawn/attach，despawn/detach */
+  private aiService: AIService | null = null;
 
   constructor(
     private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
@@ -320,12 +323,17 @@ export class EntityManager {
     return this.types.get(id);
   }
 
+  setAIService(ai: AIService | null): void {
+    this.aiService = ai;
+  }
+
   spawn(typeId: string, x: number, y: number, z: number): Entity | null {
     const type = this.types.get(typeId);
     if (!type) return null;
     const e = new Entity(type, x, y, z, this.events);
     this.entities.push(e);
     this.scene.add(e.model.group);
+    this.aiService?.attach(e, typeId);
     this.events.emit('entity:spawn', { type: typeId, id: e.id });
     return e;
   }
@@ -333,6 +341,7 @@ export class EntityManager {
   despawn(e: Entity) {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
+    this.aiService?.detach?.(e as any);
     this.scene.remove(e.model.group);
     // 模型材质/几何是每个实例新建的，离场时必须释放，否则反复刷新种群会持续泄漏 GPU 资源
     disposeModel(e.model.group);

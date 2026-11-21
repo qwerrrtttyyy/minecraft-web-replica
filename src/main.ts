@@ -29,6 +29,7 @@ import type { CraftingHost, CraftingMaterial } from './ui/crafting';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
+import { AIService } from './ai/AIService';
 import { DropManager } from './entity/droppedItem';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
@@ -215,6 +216,8 @@ async function boot() {
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
   const entities = new EntityManager(world, engine.scene, events, seed, particles);
+  const aiService = new AIService(world, events, undefined, seed);
+  entities.setAIService(aiService);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -1243,6 +1246,7 @@ async function boot() {
     parseStack: parseKey,
     diagnostics: diagnosticsApi,
   });
+  aiService.setApi(api);
   container.provide(TOKENS.CraftAPI, api);
   (window as unknown as Record<string, unknown>).CraftAPI = api;
   events.emit('service:ready', { services: container.keys() });
@@ -1381,6 +1385,7 @@ async function boot() {
       drops.update(dt, player.pos, mode === 'playing');
       if (mode === 'playing') {
         player.update(dt);
+        aiService.update(dt, { playerPos: player.pos, daylight: sky.daylight, playerDead: survival.dead });
         entities.update(dt, {
           playerPos: player.pos,
           daylight: sky.daylight,

@@ -3,7 +3,7 @@ import { Blackboard } from './Blackboard';
 import { TickContext } from './Node';
 
 /** 把 (worldSeed, entityId, label) 混成一个 32 位种子，供 mulberry32 使用。 */
-function hashSeed(worldSeed: number, entityId: number, label: string): number {
+export function hashSeed(worldSeed: number, entityId: number, label: string): number {
   let h = (worldSeed >>> 0) ^ (entityId >>> 0);
   for (let i = 0; i < label.length; i++) {
     h = ((h << 5) - h + label.charCodeAt(i)) | 0;

@@ -334,4 +334,45 @@ ok('NodeRegistry register/create 自定义节点',
     return inst instanceof DummyNode && inst.tick(makeCtx()) === NodeStatus.Success;
   })());
 
+// ---- 9. AIService / AIComponent ----
+const { AIService } = require('./logic/ai/AIService.js');
+
+ok('AIService registerType/attach/update 驱动行为树 tick',
+  (() => {
+    const events = { emitted: [], emit(t, p) { this.emitted.push({ t, p }); } };
+    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, events, {}, 12345);
+    ai.registerType('dummy', { root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: { ok: true } } });
+    const entity = { id: 1, pos: { x: 0, y: 0, z: 0 }, type: { id: 'dummy' } };
+    ai.attach(entity, 'dummy');
+    ai.update(0.05);
+    return events.emitted.length >= 1 && events.emitted[0].t === 'ai:tick';
+  })());
+ok('AIService disable 后不再 tick；enable 后恢复',
+  (() => {
+    const events = { emitted: [], emit(t, p) { this.emitted.push({ t, p }); } };
+    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, events, {}, 12345);
+    ai.registerType('dummy', { root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: {} } });
+    const entity = { id: 1, pos: { x: 0, y: 0, z: 0 }, type: { id: 'dummy' } };
+    ai.attach(entity, 'dummy');
+    ai.disable();
+    ai.update(0.05);
+    const before = events.emitted.length;
+    ai.enable();
+    ai.update(0.05);
+    return before === 0 && events.emitted.length >= 1;
+  })());
+ok('AIService reloadConfig 重新编译行为树不抛错',
+  (() => {
+    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, { emit() {} }, {}, 1);
+    ai.registerType('dummy', { root: { type: 'condition', name: 'd', nodeType: 'IsDay' } });
+    ai.reloadConfig('dummy', { root: { type: 'condition', name: 'n', nodeType: 'IsNight' } });
+    return true;
+  })());
+ok('AIService dispose 清空组件不抛错',
+  (() => {
+    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, { emit() {} }, {}, 1);
+    ai.dispose();
+    return true;
+  })());
+
 console.log(`\n全部 ${passed} 条断言通过`);
