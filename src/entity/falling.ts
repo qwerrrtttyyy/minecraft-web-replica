@@ -19,7 +19,7 @@ export class FallingBlock {
   private mesh: THREE.Mesh;
   private mat: THREE.MeshBasicMaterial;
   private vel = -1.5;
-  private onPlantDrop: ((def: BlockDefinition) => void) | null;
+  private onPlantDrop: ((def: BlockDefinition, x: number, y: number, z: number) => void) | null;
   /** H09：落点被玩家/生物 AABB 占据时返回 true（落地悬停，不实体化进实体） */
   isBlocked: ((x: number, y: number, z: number) => boolean) | null = null;
   done = false;
@@ -35,7 +35,7 @@ export class FallingBlock {
     private z: number,
     private id: BlockId,
     private onLand: (x: number, y: number, z: number) => void,
-    onPlantDrop: ((def: BlockDefinition) => void) | null,
+    onPlantDrop: ((def: BlockDefinition, x: number, y: number, z: number) => void) | null,
   ) {
     this.onPlantDrop = onPlantDrop;
     const def = registry.get(id);
@@ -92,7 +92,7 @@ export class FallingBlock {
     const existing = this.world.getBlock(this.x, landY, this.z);
     if (existing !== AIR && !this.world.isSolidAt(this.x, landY, this.z)) {
       this.events.emit('block:break', { x: this.x, y: landY, z: this.z, block: existing });
-      this.onPlantDrop?.(this.registry.get(existing));
+      this.onPlantDrop?.(this.registry.get(existing), this.x, landY, this.z);
     }
     this.world.setBlock(this.x, landY, this.z, this.id);
     this.events.emit('block:place', { x: this.x, y: landY, z: this.z, block: this.id });
@@ -117,7 +117,7 @@ export class FallingSystem {
   /** 实验性玩法「方块重力」：false 时 triggerColumn 不触发，悬空方块保持原位 */
   enabled = true;
   /** 植物失去支撑的掉落回调（组装根接到生存背包，创造模式忽略） */
-  onPlantDrop: ((def: BlockDefinition) => void) | null = null;
+  onPlantDrop: ((def: BlockDefinition, x: number, y: number, z: number) => void) | null = null;
   /** H09：落点阻挡检查（玩家/实体 AABB），由组装根注入 */
   isBlocked: ((x: number, y: number, z: number) => boolean) | null = null;
 
@@ -162,7 +162,7 @@ export class FallingSystem {
       if (def.shape === 'cross' && !supported) {
         this.world.setBlock(x, yy, z, AIR);
         this.events.emit('block:break', { x, y: yy, z, block: id });
-        this.onPlantDrop?.(def);
+        this.onPlantDrop?.(def, x, yy, z);
         continue;
       }
       return; // 支撑成立：柱子稳定

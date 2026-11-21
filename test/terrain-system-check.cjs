@@ -18,6 +18,8 @@ const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require('./terrain-logic/
 const idx = (x, y, z) => (y * CS + z) * CS + x;
 const { levelOf, nextId: composterNext, harvestOf } = require('./terrain-logic/world/compost.js');
 const { EntityManager } = require('./terrain-logic/entity/entity.js');
+const { FallingSystem } = require('./terrain-logic/entity/falling.js');
+const { CRAFTING_RECIPES, matchRecipe } = require('./terrain-logic/player/crafting.js');
 const THREE = require('three');
 
 const log = (...a) => console.log(...a);
@@ -432,6 +434,67 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     mobs.getType('pig').drops.some((d) => d.name === 'item:fertilizer') &&
     mobs.getType('sheep').drops.some((d) => d.name === 'item:fertilizer') &&
     mobs.getType('skeleton').drops.some((d) => d.name === 'item:bone_meal'));
+}
+
+// 评审修复：堆肥桶必须能在生存模式获得（E 方块库仅创造模式全覆盖）
+{
+  const recipe = CRAFTING_RECIPES.find((r) => r.id === 'composter');
+  ok('堆肥桶有可用合成配方（生存模式可获得）', !!recipe);
+  if (recipe) {
+    const m = matchRecipe(
+      ['oak_planks', 'oak_planks', 'oak_planks', 'dirt'], 2,
+    );
+    ok('合成木板+泥土产出堆肥桶', !!m && m.result.material === 'composter',
+      m ? m.result.material : 'no match');
+  }
+}
+
+// 评审修复：nightOnly 掉落必须能拿到真实 daylight（生产路径不能永远当作白天）
+{
+  const mobWorld = {
+    registry: { get: () => ({ liquid: false }) },
+    getBlock: () => 0,
+    surfaceHeight: () => 20,
+    isSolidAt: () => false,
+  };
+  const mobs = new EntityManager(mobWorld, new THREE.Scene(), { on() {}, emit() {} }, 1);
+  mobs.registerType({
+    id: 'nightprobe', label: '夜行探针', width: 0.5, height: 1, speed: 1,
+    build: () => ({ group: new THREE.Group(), animate() {} }),
+    drops: [{ name: 'item:apple', chance: 1, nightOnly: true }],
+  });
+  const ctx = (daylight) => ({
+    daylight, playerPos: new THREE.Vector3(), hurtPlayer: () => false, playerDead: false,
+  });
+  const drops = [];
+  mobs.onDrop = (name) => drops.push(name);
+  const day = mobs.spawn('nightprobe', 0, 1, 0);
+  mobs.update(0, ctx(1));
+  day.hurt(999);
+  mobs.update(0, ctx(1));
+  ok('白天夜行掉落不触发', drops.length === 0, drops.join(','));
+  const night = mobs.spawn('nightprobe', 0, 1, 0);
+  mobs.update(0, ctx(0.1));
+  night.hurt(999);
+  mobs.update(0, ctx(0.1));
+  ok('夜晚夜行掉落触发（daylight 已接入生产路径）', drops.length === 1, drops.join(','));
+}
+
+// 评审修复：失支撑植物掉落必须带真实坐标，而非固定 b:0,0,0
+{
+  const freg = new BlockRegistry();
+  registerBuiltinBlocks(freg);
+  const fworld = {
+    getBlock: (_x, y) => (y === 21 ? freg.byNameGet('poppy').id : 0),
+    setBlock: () => true,
+    isSolidAt: () => false,
+  };
+  const falling = new FallingSystem(fworld, freg, {}, new THREE.Scene(), { emit() {} });
+  let seen = null;
+  falling.onPlantDrop = (_def, x, y, z) => { seen = [x, y, z]; };
+  falling.triggerColumn(7, 21, 9);
+  ok('失支撑植物掉落携带真实坐标', !!seen && seen[0] === 7 && seen[1] === 21 && seen[2] === 9,
+    JSON.stringify(seen));
 }
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

@@ -38,7 +38,7 @@ npm run verify   # 全量核验，CI 要求 100% PASS
 
 - **版本双轨单一来源**：`src/core/version.ts` 是唯一版本源。日常 PR **不要**改版本号
   （`VERSION` / `RELEASE` 的推进由维护者在里程碑提交中完成）。
-- **方块 id 只追加**：内置方块 id 1..91 不能调整或重排（旧存档 `edits` 差分会指向错误方块），
+- **方块 id 只追加**：内置方块 id 1..118 不能调整或重排（旧存档 `edits` 差分会指向错误方块），
   新方块只能末位追加，且必须同步测试。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，
   禁止 `import three / World / TextureAtlas`。

@@ -44,7 +44,7 @@ export interface BotanyStats {
   tracked: number;
   charged: number;
   avgEnergy: number;
-  /** 附近被跟踪土壤的平均养分（未记录土壤不计入），0 表示无记录 */
+  /** 附近被跟踪土壤的平均养分（未记录土壤不计入），无记录时为 100 */
   soilAvg: number;
   solar: number;
   hydro: number;
@@ -291,6 +291,12 @@ export class Botany {
     this.soil.set(blockKey(x, y, z), clamp(value, 0, MAX_SOIL_NUTRIENT));
   }
 
+  /** 自然归还养分：季节 / 天气的 soil 倍率在此生效（雨天回肥更快、冬季更慢） */
+  private returnNutrient(x: number, y: number, z: number, amount: number): void {
+    const scaled = Math.max(1, Math.round(amount * modifiers(this.env).soil));
+    returnToSoil(this.soil, x, y - 1, z, scaled);
+  }
+
   /** 施肥：给支撑格土壤补充养分，并发出 plant:soil 事件 */
   enrichSoil(x: number, y: number, z: number, delta: number): void {
     enrichNutrient(this.soil, x, y, z, delta);
@@ -318,6 +324,9 @@ export class Botany {
       if (parts.length !== 3) continue;
       const [x, y, z] = parts.map(Number);
       if (![x, y, z].every(Number.isInteger)) continue;
+      // 只输出 validateSave 认可的坐标：对着 y=0 施肥会产生 y=-1 的土壤 key，
+      // 不在这里过滤就会让自产存档被自己的校验器判为坏档。
+      if (y < 0 || y >= H) continue;
       soil.push([x, y, z, Math.round(value)]);
     }
     return { v: 1, plants, soil };
@@ -367,7 +376,6 @@ export class Botany {
       this.soil.set(key, value);
       soilRestored++;
     }
-    void soilRestored;
     return restored;
   }
 
@@ -418,9 +426,9 @@ export class Botany {
     if (mode === 'use' && id === this.id.berryBushRipe) {
       this.set(x, y, z, this.id.berryBush, 'harvest');
     }
-    // 破坏结算把一半生长养分归还土壤
+    // 破坏结算把一半生长养分归还土壤（季节 / 雨天 modifier 生效）
     const nutrient = trait.growthNutrient ?? Math.ceil(trait.growthCost / 3);
-    returnToSoil(this.soil, x, y - 1, z, Math.floor(nutrient / 2));
+    this.returnNutrient(x, y, z, Math.floor(nutrient / 2));
     st.bloomed = false;
     this.events?.emit('plant:bloom', { x, y, z, block: id, energy: Math.round(st.energy) });
     return { ...trait.harvest };
@@ -775,7 +783,7 @@ export class Botany {
       }
     }
     if (changed && nutrient > 0) {
-      returnToSoil(this.soil, x, y - 1, z, Math.floor(nutrient / 2));
+      this.returnNutrient(x, y, z, Math.floor(nutrient / 2));
     }
     return changed;
   }

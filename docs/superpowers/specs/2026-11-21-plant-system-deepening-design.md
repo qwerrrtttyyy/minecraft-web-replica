@@ -88,8 +88,13 @@ SaveData.compost?: never;      // 堆肥等级走 world.edits，不进存档
 
 - `DAYS_PER_SEASON = 6`，`DAYS_PER_YEAR = 24`；`seasonAt(day) = ['spring','summer','autumn','winter'][Math.floor((day%24)/6)]`。
 - `weatherAt(seed, day)`：整数哈希 `(seed ^ Math.imul(day, 0x9e3779b1)) >>> 0`，`< 0.25` → `'rain'`，否则 `'clear'`。
+> **实施裁定（2026-11-21）**：§1.3 要求「默认环境（spring/clear）的所有倍率均为 1」且
+> 既有生态测试逐值中性；§2.1 又给 spring `growth:1.3`。两者直接冲突，因为主循环始终传入
+> env，spring 的 1.3 必然改变旧行为。实施取 §1.3（约束优先），将 `spring.growth` 定为 1；
+> 季节生长差异由 summer 1.15 / autumn 0.85 / winter 0.7 体现。代价：前 6 日无额外生长加速。
+
 - `modifiers(env)` 返回 `{ growth, solar, hydro, fungal, soil }`：
-  - spring `{growth:1.3, solar:1, hydro:1, fungal:1, soil:1}`
+  - spring `{growth:1（实施裁定，见上）, solar:1, hydro:1, fungal:1, soil:1}`
   - summer `{growth:1.15, solar:1.15, hydro:0.9, fungal:0.9, soil:1}`
   - autumn `{growth:0.85, solar:0.9, hydro:1, fungal:1.1, soil:1}`
   - winter `{growth:0.7, solar:0.55, hydro:0.7, fungal:1.25, soil:0.8}`

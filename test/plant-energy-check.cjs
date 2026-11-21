@@ -359,6 +359,24 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
     grew = get(t, 7, 21, 3) === t.id('wheat_growing');
   }
   ok('施肥后恢复生长', grew, `n=${t.botany.nutrientAt(7, 20, 3)}`);
+
+  // soil 倍率必须真正影响自然回肥（之前只定义未消费）
+  const { DEFAULT_PLANT_ENV: NEUTRAL } = require('./terrain-logic/world/ecology.js');
+  const spring = makeWorld();
+  const winter = makeWorld();
+  for (const [tt, season] of [[spring, 'spring'], [winter, 'winter']]) {
+    isolate(tt, 8, 8);
+    put(tt, 8, 21, 8, 'poppy');
+    tt.botany.setEnergy(8, 21, 8, 100);
+    tt.botany.setNutrient(8, 20, 8, 10);
+    // 先用 tickAt 设定当季 env，再经真实 harvest('break') 路径归还养分
+    tt.botany.tickAt(8, 21, 8, 1, { ...NEUTRAL, season });
+    tt.botany.setEnergy(8, 21, 8, 100);
+    tt.botany.harvest(8, 21, 8, 'break');
+  }
+  ok('冬季自然回肥低于春季（soil 倍率生效）',
+    winter.botany.nutrientAt(8, 20, 8) < spring.botany.nutrientAt(8, 20, 8),
+    `spring=${spring.botany.nutrientAt(8, 20, 8)} winter=${winter.botany.nutrientAt(8, 20, 8)}`);
 }
 
 // 13) 生态状态存档：round-trip / 坏档隔离 / 截断 / 柱状锚点清理
@@ -379,6 +397,12 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
   const restored = fresh.restoreEcology(snap);
   ok('恢复后能量 / 养分 / bloom 数值一致',
     restored === 1 && fresh.energyAt(11, 21, 11) === 88 && fresh.nutrientAt(11, 20, 11) === 64);
+
+  // 序列化器绝不输出校验器会拒绝的坐标（否则自产存档下次加载即被判坏档）
+  t.botany.enrichSoil(20, -1, 20, 35); // 玩家对着 y=0 基岩施肥 → 土壤 key y=-1
+  const edge = t.botany.serializeEcology();
+  ok('序列化过滤越界土壤坐标，保证自产存档可校验',
+    edge.soil.every((s) => s[1] >= 0 && s[1] < 80), JSON.stringify(edge.soil));
 
   const bad = {
     v: 1,

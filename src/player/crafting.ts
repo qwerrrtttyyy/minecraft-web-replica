@@ -102,6 +102,14 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { P: '#planks' },
     result: { material: 'item:stick', count: 4 },
   },
+  {
+    // 堆肥桶：2×2 个人合成格即可制作，保证生存模式能进入堆肥→施肥闭环
+    id: 'composter',
+    label: '堆肥桶',
+    pattern: ['PP', 'PD'],
+    key: { P: '#planks', D: 'dirt' },
+    result: { material: 'composter', count: 1 },
+  },
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

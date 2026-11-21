@@ -211,6 +211,8 @@ export class EntityManager {
   onDrop: ((name: string, count: number) => void) | null = null;
   /** 世界种子：掉落判定必须可复现 */
   private readonly seed: number;
+  /** 最近一次 update / maintainPopulation 的日照，供 nightOnly 掉落使用 */
+  private daylight = 1;
   /** 死亡序号：同一实体多次触发也能得到不同来源标识 */
   private killSerial = 0;
 
@@ -270,6 +272,7 @@ export class EntityManager {
     const dropped = rollDrops(e.type.drops ?? [], {
       seed: this.seed,
       source: `e:${e.id}:${this.killSerial++}`,
+      daylight: this.daylight,
     });
     for (const d of dropped) this.onDrop?.(d.name, d.count);
     this.events.emit('entity:dead', { type: e.type.id, id: e.id });
@@ -297,6 +300,7 @@ export class EntityManager {
   }
 
   update(dt: number, ctx: EntityContext) {
+    this.daylight = ctx.daylight;
     for (const e of [...this.entities]) {
       e.update(dt, this.world, ctx);
       if (e.dead) this.kill(e);
@@ -305,6 +309,7 @@ export class EntityManager {
 
   /** 维持种群：夜晚在生存模式额外生成僵尸，白天清退 */
   maintainPopulation(dt: number, playerPos: THREE.Vector3, opts: { survival: boolean; daylight: number }) {
+    this.daylight = opts.daylight;
     this.popTimer -= dt;
     if (this.popTimer > 0) return;
     this.popTimer = 2.5;

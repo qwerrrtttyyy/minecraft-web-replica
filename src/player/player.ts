@@ -15,7 +15,9 @@ import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
 import { rollDrops } from '../world/drops';
-import { nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES } from '../world/compost';
+import {
+  COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
+} from '../world/compost';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -93,6 +95,8 @@ export class Player implements System, PhysicsBody {
   private lastEmitZ = 0;
   private eatTimer = 0;
   private botany: Botany | null = null;
+  /** 当前日照强度（组装根每帧回填），供 nightOnly 掉落判定使用 */
+  daylight = 1;
   /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
   private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
@@ -621,6 +625,7 @@ export class Player implements System, PhysicsBody {
     const dropped = rollDrops(def.drops, {
       seed: this.world.generator.seed,
       source: `b:${x},${y},${z}`,
+      daylight: this.daylight,
       biome: this.world.generator.biomeAt?.(x, z) as string | undefined,
     });
     for (const d of dropped) {
@@ -673,7 +678,7 @@ export class Player implements System, PhysicsBody {
     if (!stack) {
       const harvest = composterHarvest(id);
       if (!harvest) return false;
-      this.world.setBlock(hit.x, hit.y, hit.z, 110);
+      if (!this.world.setBlock(hit.x, hit.y, hit.z, COMPOSTER_ID)) return false;
       this.survival.addDrop(harvest, 1);
       this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
       this.sound.click(1150);
@@ -687,8 +692,12 @@ export class Player implements System, PhysicsBody {
     if (!COMPOST_VALUES[key]) return false;
     const next = composterNext(id, key);
     if (next === null) return false;
-    if (!this.survival.consume(stack, 1)) return false;
-    this.world.setBlock(hit.x, hit.y, hit.z, next);
+    // 先确认写入成功再扣物品，避免 setBlock 失败时白吃掉材料
+    if (!this.world.setBlock(hit.x, hit.y, hit.z, next)) return false;
+    if (!this.survival.consume(stack, 1)) {
+      this.world.setBlock(hit.x, hit.y, hit.z, id); // 回滚等级
+      return false;
+    }
     this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
     this.sound.place('wood');
     this.swing();

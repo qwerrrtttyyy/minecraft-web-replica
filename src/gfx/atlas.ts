@@ -1483,7 +1483,7 @@ export class TextureAtlas {
     this.painters.set('composter_side', composterSidePainter);
     this.painters.set('composter_top', composterTopPainter(false));
     this.painters.set('composter_ready_top', composterTopPainter(true));
-    this.painters.set('composter_bottom', composterTopPainter(false));
+    this.painters.set('composter_bottom', composterSidePainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

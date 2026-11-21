@@ -231,7 +231,7 @@ async function boot() {
   player.setBotany(botany);
   // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
   const falling = new FallingSystem(world, registry, atlas, engine.scene, events);
-  falling.onPlantDrop = (def) => player.collectDrops(def);
+  falling.onPlantDrop = (def, x, y, z) => player.collectDrops(def, x, y, z);
   player.setFalling(falling);
   // H09：落点在玩家/生物 AABB 内的沙块悬停等待，不实体化进实体
   falling.isBlocked = (x, y, z) => {
@@ -1371,6 +1371,7 @@ async function boot() {
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进生态，避免回到游戏时世界突然变化
       if (mode !== 'playing') return;
+      player.daylight = sky.daylight;
       botany.update(dt, player.pos.x, player.pos.z, sky.daylight, {
         day: sky.dayCount,
         season: seasonAt(sky.dayCount),

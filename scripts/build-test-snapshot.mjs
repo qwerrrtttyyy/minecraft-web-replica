@@ -60,6 +60,7 @@ const entries = [
   'src/diagnostics/RuntimeDiagnostics.ts',
   'src/entity/models.ts',
   'src/entity/entity.ts',
+  'src/entity/falling.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
