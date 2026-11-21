@@ -357,6 +357,49 @@ async function main() {
     assert.match(ps.get('p:scoped').error, /缺少权限 plugins:manage/);
   });
 
+  await ok('register 后修改 manifest.permissions 不会提权', async () => {
+    const { ps } = make();
+    let ctx;
+    const def = {
+      manifest: { id: 'p:freeze', permissions: [] },
+      setup(c) { ctx = c; },
+    };
+    ps.register(def);
+    def.manifest.permissions.push('world:write');
+    await ps.enable('p:freeze');
+    assert.throws(() => ctx.api.world.setBlock(0, 0, 0, 1), /缺少权限 world:write/);
+  });
+
+  await ok('settings 写入口全部受 settings:write 约束', async () => {
+    const { ps } = make();
+    let ctx;
+    ps.register({ manifest: { id: 'p:settings', permissions: [] }, setup(c) { ctx = c; } });
+    await ps.enable('p:settings');
+    assert.throws(() => ctx.api.settings.importOptions('{}'), /缺少权限 settings:write/);
+    assert.throws(() => ctx.api.settings.mesherThreads('main'), /缺少权限 settings:write/);
+  });
+
+  await ok('worldgen:column 扩展点要求 world:write', async () => {
+    const { ps } = make();
+    let ctx;
+    ps.register({ manifest: { id: 'p:ext', permissions: [] }, setup(c) { ctx = c; } });
+    await ps.enable('p:ext');
+    assert.throws(() => ctx.extensions.register('worldgen:column', 'p:ext', () => {}), /world:write/);
+    assert.doesNotThrow(() => ctx.extensions.register('gameplay:tick', 'p:ext', () => {}));
+  });
+
+  await ok('ctx.extensions 不能派发宿主扩展点或撤销他人注册', async () => {
+    const { ps } = make();
+    let ctx;
+    ps.register({ manifest: { id: 'p:ext2', permissions: ['world:write'] }, setup(c) { ctx = c; } });
+    await ps.enable('p:ext2');
+    assert.throws(() => ctx.extensions.emit('worldgen:column', {}), /宿主扩展点/);
+    assert.throws(() => ctx.extensions.emit('event:player:move', {}), /宿主扩展点/);
+    assert.strictEqual(ctx.extensions.unregisterOwner('other:plugin'), 0);
+    assert.throws(() => ctx.extensions.register('gameplay:tick', 'other:plugin', () => {}), /owner/);
+    assert.doesNotThrow(() => ctx.extensions.emit('p:custom', { value: 1 }));
+  });
+
   console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'} 插件体系 v2 回归：${passed} 项断言，失败 ${failures} 项`);
   process.exit(failures > 0 ? 1 : 0);
 }

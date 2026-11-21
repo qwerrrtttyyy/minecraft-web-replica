@@ -10,7 +10,7 @@
  * PluginDefinition；加载器只做静态校验，真正的权限 / 依赖 / API 版本校验由
  * PluginService.register 统一执行。
  */
-import type { PluginDefinition, PluginPermission } from './PluginContext';
+import { PLUGIN_PERMISSIONS, type PluginDefinition } from './PluginContext';
 
 export class PluginLoadError extends Error {
   constructor(message: string) {
@@ -25,10 +25,6 @@ export interface PluginSourceOptions {
 }
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{1,63}$/i;
-const VALID_PERMISSIONS: ReadonlySet<string> = new Set<PluginPermission>([
-  'world:write', 'player:write', 'save:write', 'api:emit',
-  'blocks:register', 'botany:register', 'wasm:use', 'plugins:manage',
-]);
 
 export function loadPluginDefinition(
   source: string,
@@ -60,12 +56,14 @@ export function loadPluginDefinition(
   if (typeof manifest.id !== 'string' || !ID_PATTERN.test(manifest.id)) {
     throw new PluginLoadError(`非法插件 id: ${String(manifest.id)}`);
   }
-  if (typeof def.setup !== 'function') throw new PluginLoadError('缺少 setup(ctx) 函数');
+  if (typeof def.setup !== 'function' && !def.carrier) {
+    throw new PluginLoadError('缺少 setup(ctx) 或 carrier（JS / WASM 载体二选一）');
+  }
   const permissions = manifest.permissions;
   if (permissions !== undefined) {
     if (!Array.isArray(permissions)) throw new PluginLoadError('manifest.permissions 必须是数组');
     for (const p of permissions) {
-      if (typeof p !== 'string' || !VALID_PERMISSIONS.has(p)) {
+      if (typeof p !== 'string' || !(PLUGIN_PERMISSIONS as readonly string[]).includes(p)) {
         throw new PluginLoadError(`未知权限: ${String(p)}`);
       }
     }

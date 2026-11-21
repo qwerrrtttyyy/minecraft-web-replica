@@ -68,6 +68,15 @@ export function payloadNumbers(point: string, payload: unknown): [number, number
   if (point === 'worldgen:column') return [num('cx'), num('cz'), 0, 0];
   if (point === 'gameplay:tick') return [num('now'), 0, 0, 0];
   if (point === 'event:survival:damage') return [num('amount'), num('health'), 0, 0];
+  // 这三个事件的载荷不是顶层 x/y/z，必须显式摊平，否则 WASM 插件只能拿到全 0。
+  if (point === 'event:chunk:generated') return [num('cx'), num('cz'), 0, 0];
+  if (point === 'event:player:move') {
+    const pos = (p.position && typeof p.position === 'object' ? p.position : {}) as Record<string, unknown>;
+    const n = (k: string): number => typeof pos[k] === 'number' && Number.isFinite(pos[k]) ? pos[k] as number : 0;
+    return [n('x'), n('y'), n('z'), 0];
+  }
+  // entity:spawn 的 type 是字符串，数值通道只传 id；需要 type 时走 mc_log / 扩展文本通道。
+  if (point === 'event:entity:spawn') return [num('id'), 0, 0, 0];
   return [num('x'), num('y'), num('z'), num('block')];
 }
 

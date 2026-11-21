@@ -10,12 +10,12 @@ import {
   createPluginStorage, defaultPluginStorageProvider,
   type PluginStorageProvider,
 } from './storage';
-import type {
-  PluginContext, PluginDefinition, PluginManifest, PluginPermission,
-  PluginRecord, PluginState, PluginStats,
+import {
+  PLUGIN_PERMISSIONS,
+  type PluginContext, type PluginDefinition, type PluginManifest, type PluginPermission,
+  type PluginRecord, type PluginState, type PluginStats,
 } from './PluginContext';
-import { ExtensionRegistry } from './extensions';
-import { PLUGIN_PERMISSIONS } from './PluginContext';
+import { EXTENSION_POINTS, ExtensionRegistry, type ExtensionHandler } from './extensions';
 import type { CarrierHost, CarrierInfo, WasmBytes } from './carriers/types';
 import { activateModuleCarrier, activateHostCarrier } from './carriers';
 
@@ -41,7 +41,7 @@ const deny = (p: PluginPermission): never => {
 };
 
 /** 按权限裁剪公开 API：未授权的写能力换成抛错桩，读能力全部保留 */
-const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
+const WRITE_CAPABILITIES: Partial<Record<PluginPermission, readonly string[][]>> = {
   'world:write': [
     ['world', 'setBlock'],
     ['world', 'decorate'],
@@ -68,6 +68,18 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
     ['settings', 'sensitivity'],
     ['settings', 'fov'],
     ['settings', 'sound'],
+    ['settings', 'volume'],
+    ['settings', 'invertY'],
+    ['settings', 'quality'],
+    ['settings', 'particles'],
+    ['settings', 'viewBob'],
+    ['settings', 'autoJump'],
+    ['settings', 'touchSensitivity'],
+    ['settings', 'debugOverlay'],
+    ['settings', 'greedy'],
+    ['settings', 'mesherThreads'],
+    ['settings', 'autosaveInterval'],
+    ['settings', 'importOptions'],
   ],
   'plugins:manage': [
     ['plugins', 'register'],
@@ -83,8 +95,21 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
   ],
   'api:emit': [['emit']],
   'wasm:use': [['wasm', 'call'], ['wasm', 'callModule'], ['wasm', 'registerModule'], ['wasm', 'unregisterModule'], ['wasm', 'setEnabled']],
-  'events:subscribe': [['on'], ['off']],
+  // events:subscribe 只约束 WASM host 的 mc_ext_register（见 carriers/index.ts）。
+  // JS 插件统一走 ctx.events 命名空间通道，api.on/off 由 channel 分支接管，
+  // 因此这里不再登记 on/off，避免出现永远被覆盖的死拦截。
 };
+
+/** 扩展点里会写世界的点：JS 侧注册时要求对应权限（WASM 侧由 mc_world_set 的 world:write 门控） */
+const EXTENSION_WRITE_PERMISSIONS: Partial<Record<string, PluginPermission>> = {
+  [EXTENSION_POINTS.WORLDGEN_COLUMN]: 'world:write',
+};
+
+/** 宿主保留的扩展点：插件只能注册处理器，不能自行派发（防止伪造 worldgen 载荷触发他人写世界） */
+const HOST_EXTENSION_POINTS: ReadonlySet<string> = new Set([
+  EXTENSION_POINTS.WORLDGEN_COLUMN,
+  EXTENSION_POINTS.GAMEPLAY_TICK,
+]);
 
 /** 沿路径逐层建立 shadow（Object.create 继承原对象），把末端换成抛错桩 */
 const denyPath = (root: CraftAPI, path: readonly string[], permission: PluginPermission): void => {
@@ -178,6 +203,18 @@ export function scopeAPI(
 const CAPABILITY_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,63}$/i;
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** 拷贝并冻结 manifest 及其数组字段：调用方在 register 后仍持有 def，不能再改权限 / 依赖 */
+function freezeManifest(m: PluginManifest): PluginManifest {
+  return Object.freeze({
+    ...m,
+    permissions: m.permissions ? Object.freeze([...m.permissions]) as PluginPermission[] : undefined,
+    dependencies: m.dependencies ? Object.freeze([...m.dependencies]) as string[] : undefined,
+    optionalDependencies: m.optionalDependencies ? Object.freeze([...m.optionalDependencies]) as string[] : undefined,
+    capabilities: m.capabilities ? Object.freeze([...m.capabilities]) as string[] : undefined,
+    config: m.config ? Object.freeze({ ...m.config }) : undefined,
+  });
+}
 
 /** 注册期的 manifest 静态校验：错误在组装阶段暴露，不拖到 enable */
 function validateManifest(manifest: PluginManifest, apiVersion: string): void {
@@ -297,6 +334,50 @@ export class PluginService implements Disposable {
   /** 供组装根 / 测试取得本服务使用的扩展注册表（与容器令牌同实例） */
   getExtensions(): ExtensionRegistry { return this.extensions; }
 
+  /**
+   * 给插件一个受权限约束的扩展点视图：worldgen:column 这类会写世界的点要求 world:write。
+   * 其余方法 bind 回宿主注册表，保证内部状态一致；插件不得 dispose 全局注册表。
+   */
+  private scopeExtensions(id: string, permissions: readonly PluginPermission[]): ExtensionRegistry {
+    const perms = new Set(permissions);
+    const base = this.extensions;
+    const guardedRegister = <P>(point: string, owner: string, handler: ExtensionHandler<P>, priority = 0) => {
+      // owner 必须是本插件 id：否则停用时 unregisterOwner(id) 清不掉这条注册。
+      if (owner !== id) {
+        throw new Error(`[plugins] ${id} 注册扩展点时 owner 必须是插件 id（实际 ${owner}）`);
+      }
+      const required = EXTENSION_WRITE_PERMISSIONS[point];
+      if (required && !perms.has(required)) {
+        throw new Error(`[plugins] ${id} 注册 ${point} 需要 ${required} 权限`);
+      }
+      return base.register(point, id, handler, priority);
+    };
+    return new Proxy(base, {
+      get(target, prop) {
+        if (prop === 'register') return guardedRegister;
+        if (prop === 'unregisterOwner') {
+          // 只能撤销自己的注册，避免插件互相拆台。
+          return (owner: string) => owner === id ? target.unregisterOwner(owner) : 0;
+        }
+        if (prop === 'emit') {
+          // 宿主保留点（worldgen / tick / event:*）只能由引擎派发；
+          // 插件自定义的点仍允许 emit，保留插件间扩展能力。
+          return <P>(point: string, payload: P) => {
+            if (HOST_EXTENSION_POINTS.has(point) || point.startsWith('event:')) {
+              throw new Error(`[plugins] ${id} 不得派发宿主扩展点 ${point}`);
+            }
+            return target.emit(point, payload);
+          };
+        }
+        if (prop === 'dispose') return () => { /* 插件不得销毁宿主注册表 */ };
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+  }
+
   /** 实验性内容开关：关闭后新启用的 WASM 载体插件会被隔离为 failed；已启用的不受影响 */
   setExperimental(v: boolean): void { this.experimental = v; }
   getExperimental(): boolean { return this.experimental; }
@@ -337,16 +418,26 @@ export class PluginService implements Disposable {
         throw new Error(`[plugins] ${id} 使用 WASM 载体，但宿主桥接未接线（组装根需注入 wasmHost）`);
       }
     }
+    // 先按原始类型校验，再做拷贝冻结：冻结时会把 config 等字段展开成新对象，
+    // 若顺序反过来，非法类型（如 config 传数组）会被摊平成普通对象而漏过校验。
     validateManifest(def.manifest, this.apiVersion);
-    if ((def.manifest.dependencies ?? []).some((s: string) => parseDependency(s)?.id === id)) {
+    // 先校验 permissions 类型，再冻结：freezeManifest 会把非数组值展开成新数组，
+    // 顺序反过来会让 permissions 传字符串这类错误漏到后续的「未知权限」分支。
+    if (def.manifest.permissions !== undefined && !Array.isArray(def.manifest.permissions)) {
+      throw new Error(`[plugins] ${id} 的 permissions 必须是数组`);
+    }
+    // 防御性拷贝并冻结：register 的调用方仍持有 def，若不拷贝，注册后修改
+    // manifest.permissions 就能绕过 enable 时的 scopeAPI 裁剪（install 路径已冻结）。
+    const manifest = freezeManifest(def.manifest);
+    const frozenDef: PluginDefinition = Object.freeze({ ...def, manifest });
+    if ((manifest.dependencies ?? []).some((s: string) => parseDependency(s)?.id === id)) {
       throw new Error(`[plugins] 插件 ${id} 不能依赖自己`);
     }
-    const perms = def.manifest.permissions ?? [];
-    if (!Array.isArray(perms)) throw new Error(`[plugins] ${id} 的 permissions 必须是数组`);
+    const perms = manifest.permissions ?? [];
     const unknown = perms.filter((p: string) => !(PLUGIN_PERMISSIONS as readonly string[]).includes(p));
     if (unknown.length > 0) throw new Error(`[plugins] ${id} 声明了未知权限：${unknown.join(', ')}`);
     const rec: InternalRecord = {
-      def, state: 'registered', teardown: [], epoch: 0,
+      def: frozenDef, state: 'registered', teardown: [], epoch: 0,
       warnings: [], registry: new Map<string, unknown>(),
     };
     this.records.set(id, rec);
@@ -403,7 +494,8 @@ export class PluginService implements Disposable {
   private async runEnable(rec: InternalRecord, stack: Set<string>): Promise<void> {
     const id = rec.def.manifest.id;
     const epoch = ++rec.epoch;
-    const channel = this.events.scope(id, { canEmit: (rec.def.manifest.permissions ?? []).includes('api:emit') });
+    const permissions = rec.def.manifest.permissions ?? [];
+    const channel = this.events.scope(id, { canEmit: permissions.includes('api:emit') });
     rec.channel = channel;
     rec.warnings = [];
     rec.registry.clear();
@@ -450,7 +542,7 @@ export class PluginService implements Disposable {
       }
 
       const base = this.api();
-      const scoped = scopeAPI(base, rec.def.manifest.permissions, channel);
+      const scoped = scopeAPI(base, permissions, channel);
       const storage = createPluginStorage(this.storage, id);
       const saved = storage.get<unknown>('config', {});
       const config = Object.freeze({
@@ -474,7 +566,7 @@ export class PluginService implements Disposable {
           return rec.registry.get(name) as T;
         },
         tryRequire: <T>(name: string): T | undefined => rec.registry.get(name) as T | undefined,
-        extensions: this.extensions,
+        extensions: this.scopeExtensions(id, permissions),
       };
       const timeoutMs = rec.def.manifest.timeoutMs ?? this.defaultTimeoutMs;
 
@@ -491,6 +583,11 @@ export class PluginService implements Disposable {
         };
         if (def.carrier.kind.startsWith('wasm:') && !this.experimental) {
           throw new Error(`[plugins] ${id} 使用实验性 WASM 载体，请在设置页开启「实验性内容」`);
+        }
+        // 自带 WASM 模块的载体等价于「注册自定义模块」，必须声明 wasm:use；
+        // 否则零权限插件可以绕过 scopeAPI 的 wasm 裁剪直接注册并实例化模块。
+        if (def.carrier.kind === 'wasm:module' && !permissions.includes('wasm:use')) {
+          throw new Error(`[plugins] ${id} 使用 wasm:module 载体需声明 wasm:use 权限`);
         }
         const activation = def.carrier.kind === 'wasm:module'
           ? activateModuleCarrier(def.carrier, ctx, bridge)

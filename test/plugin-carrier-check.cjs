@@ -129,6 +129,10 @@ async function main() {
     assert.deepStrictEqual(payloadNumbers('worldgen:column', { cx: 3, cz: -2 }), [3, -2, 0, 0]);
     assert.deepStrictEqual(payloadNumbers('gameplay:tick', { now: 99 }), [99, 0, 0, 0]);
     assert.deepStrictEqual(payloadNumbers('event:block:place', { x: 1, y: 2, z: 3, block: 4 }), [1, 2, 3, 4]);
+    // 这三个事件的载荷不是顶层 x/y/z，回归防止再次退化成全 0。
+    assert.deepStrictEqual(payloadNumbers('event:player:move', { position: { x: 1, y: 2, z: 3 } }), [1, 2, 3, 0]);
+    assert.deepStrictEqual(payloadNumbers('event:chunk:generated', { cx: 4, cz: -5 }), [4, -5, 0, 0]);
+    assert.deepStrictEqual(payloadNumbers('event:entity:spawn', { type: 'zombie', id: 7 }), [7, 0, 0, 0]);
     assert.strictEqual(POINT_KINDS['worldgen:column'], 1);
     assert.strictEqual(EVENT_TO_POINT['block:place'], 'event:block:place');
     assert.strictEqual(HOST_PLUGIN_ABI, 1);

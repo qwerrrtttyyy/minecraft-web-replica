@@ -121,6 +121,12 @@ function compileRaw(bytes: Uint8Array, strict: boolean): WebAssembly.Module {
   return mod;
 }
 
+function assertMemoryLimit(memory: WebAssembly.Memory, label: string): void {
+  if (memory.buffer.byteLength / 65536 > MODULE_LIMITS.maxMemoryPages) {
+    throw new WasmKernelError('memory-limit', `${label} 内存超过 ${MODULE_LIMITS.maxMemoryPages} 页`);
+  }
+}
+
 function makeKernelInstance(mod: WebAssembly.Module, label: string): WasmKernelInstance {
   let instance: WebAssembly.Instance;
   try {
@@ -133,9 +139,7 @@ function makeKernelInstance(mod: WebAssembly.Module, label: string): WasmKernelI
   if (!(memory instanceof WebAssembly.Memory)) {
     throw new WasmKernelError('missing-export', `${label} 缺少 memory 导出`);
   }
-  if (memory.buffer.byteLength / 65536 > MODULE_LIMITS.maxMemoryPages) {
-    throw new WasmKernelError('memory-limit', `${label} 内存超过 ${MODULE_LIMITS.maxMemoryPages} 页`);
-  }
+  assertMemoryLimit(memory, label);
   return {
     exports: ex,
     memory,
@@ -330,9 +334,14 @@ export function compilePluginModule(
 }
 
 function makePluginInstance(mod: WebAssembly.Module, id: string): WebAssembly.Instance {
+  let instance: WebAssembly.Instance;
   try {
-    return new WebAssembly.Instance(mod, {});
+    instance = new WebAssembly.Instance(mod, {});
   } catch (e) {
     throw new WasmKernelError('instantiate-failed', `模块 ${id} 实例化失败：${e instanceof Error ? e.message : String(e)}`);
   }
+  // 模块若导出 memory，就与内核走同一条上限检查（未导出 memory 的模块无法从 JS 侧读取大小）。
+  const memory = (instance.exports as unknown as { memory?: unknown }).memory;
+  if (memory instanceof WebAssembly.Memory) assertMemoryLimit(memory, `module:${id}`);
+  return instance;
 }

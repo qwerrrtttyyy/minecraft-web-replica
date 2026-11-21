@@ -23,6 +23,7 @@
 
 零 import（复用 `compilePluginModule` 的安全边界），激活时经 `WasmRuntime.registerModule` 注册：
 停用自动注销。调用走 `ctx.api.wasm.callModule(id, fn, ...)`（需 `wasm:use` 权限）。
+注册载体本身同样要求 manifest 声明 `wasm:use`——否则零权限插件可以绕过 `scopeAPI` 直接注册并实例化模块。
 
 ```ts
 CraftAPI.plugins.register({
@@ -105,8 +106,9 @@ interface WorldgenColumnPayload {
 ```
 
 时机选择保证两点：玩家编辑仍覆盖插件写入（编辑在后），且新方块参与光照初始化（光照在后）。
+JS 插件通过 `ctx.extensions.register('worldgen:column', …)` 注册时需要 `world:write` 权限；
 WASM 插件在 `mc_hook` 里对 `kind === POINT_KINDS['worldgen:column']` 调用 `mc_world_set`，
-`a/b` 参数是 `cx/cz`（见 fixture）。
+写副作用同样受 `world:write` 门控，`a/b` 参数是 `cx/cz`（见 fixture）。
 
 > 仅当注册了对应扩展点时才构造 payload，`extensions.has()` 短路，热路径零开销。
 

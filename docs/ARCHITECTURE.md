@@ -149,7 +149,7 @@ register ──► registered ──► enable ──► [递归启用依赖] �
 | `api:emit` | `CraftAPI.emit`、`ctx.events.emit`、`api.events.scope(...).emit` |
 | `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` / `blocks.register` |
 | `time:write` | `time.set` / `time.setDayLength` |
-| `settings:write` | `settings.renderDistance` / `sensitivity` / `fov` / `sound` |
+| `settings:write` | 全部 `settings.*` 写方法（含 `importOptions`；`exportOptions` 只读） |
 | `plugins:manage` | `plugins.register` / `enable` / `disable` / `unload`（`list` 只读） |
 
 未声明的写能力在插件上下文里会抛错（读能力默认全开）。写入口集中登记在
