@@ -1007,6 +1007,11 @@ export class Botany {
       neighbors: (nx, ny, nz) => DIRS.map(
         ([dx, dy, dz]) => [nx + dx, ny + dy, nz + dz] as [number, number, number],
       ),
+      day: () => this.env.day,
+      season: () => this.env.season,
+      weather: () => this.env.weather,
+      soil: (qx, qy, qz) => this.nutrientAt(qx, qy, qz),
+      enrichSoil: (qx, qy, qz, delta) => this.enrichSoil(qx, qy, qz, delta),
     };
   }
 

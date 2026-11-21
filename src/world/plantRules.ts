@@ -41,6 +41,16 @@ export interface PlantRuleContext {
   biome(x: number, z: number): string;
   surface(x: number, z: number): number;
   neighbors(x: number, y: number, z: number): [number, number, number][];
+  /** 当前累计游戏日（由 Sky.dayCount 提供） */
+  day(): number;
+  /** 当前季节 */
+  season(): string;
+  /** 当前天气 */
+  weather(): string;
+  /** 读取土壤养分（未跟踪返回 100） */
+  soil(x: number, y: number, z: number): number;
+  /** 给土壤补充养分，自动钳制到 0~100 */
+  enrichSoil(x: number, y: number, z: number, delta: number): void;
 }
 
 export interface PlantRule {
@@ -50,6 +60,8 @@ export interface PlantRule {
   owner: string;
   /** 适用方块的注册名。按名称动态解析，注册方块与规则的先后顺序无关 */
   plants: readonly string[];
+  /** 执行优先级，默认 0；越小越先执行，同优先级按 id 字典序 */
+  priority?: number;
   /** 返回是否改变了世界 */
   tick(ctx: PlantRuleContext): boolean;
 }
@@ -58,6 +70,7 @@ export interface PlantRuleInfo {
   id: string;
   owner: string;
   plants: string[];
+  priority: number;
 }
 
 /** 规则表：按 owner 批量注销，按方块 id 缓存查表结果 */
@@ -97,6 +110,12 @@ export class PlantRuleRegistry {
       // 每次查表都按名称重新解析：插件后注册方块也能命中
       if (rule.plants.some((name) => this.resolveId(name) === id)) found.push(rule);
     }
+    // (priority, id) 双键排序：同优先级按 id 字典序，保证确定性
+    found.sort((a, b) => {
+      const pa = a.priority ?? 0;
+      const pb = b.priority ?? 0;
+      return pa - pb || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
     // 只缓存命中结果：未命中不落缓存，否则「先注册规则、后注册方块」会被空结果永久钉死。
     // ruleFor 只在内置分支全部未命中时才调用，规则数量极少，重复解析的开销可忽略。
     if (found.length) this.cache.set(id, found);
@@ -105,7 +124,7 @@ export class PlantRuleRegistry {
 
   list(): PlantRuleInfo[] {
     return [...this.byId.values()].map((r) => ({
-      id: r.id, owner: r.owner, plants: [...r.plants],
+      id: r.id, owner: r.owner, plants: [...r.plants], priority: r.priority ?? 0,
     }));
   }
 

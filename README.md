@@ -455,14 +455,19 @@ CraftAPI.botany.registerPlant('my_flower', {
 });
 CraftAPI.botany.registerRule({
   id: 'me:my-pack:rule', owner: 'me:my-pack', plants: ['my_flower'],
-  tick: (ctx) => { /* 用 ctx.grow / boost / write，不直接碰 World */ return false; },
+  priority: 0, // 可选：按 (priority, id) 双键稳定排序，越小越先执行
+  tick: (ctx) => {
+    // 读环境：ctx.day() / season() / weather() / soil(x,y,z)
+    // 写土壤：ctx.enrichSoil(x,y,z,delta)；生长仍走 ctx.grow / boost / write
+    return false;
+  },
 });
 CraftAPI.botany.unregisterRules('me:my-pack'); // 停用插件时整体注销
 ```
 
 `Botany` 只在内置规则全部未命中时按方块 id 兜底分派插件规则，因此扩展不会
 改变任何既有生态行为。内置插件 `core:botany-expansion` 就是用这套接口注册了
-6 种植物（id 92~97）与 3 条规则，并订阅 `chunk:generated` 按群系补种。
+6 种植物（id 92~97）与 4 条规则（含雨天补能演示），并订阅 `chunk:generated` 按群系补种。
 控制台可用 `CraftAPI.plugins.disable('core:botany-expansion')` 验证停用后规则立即失效。
 
 ## 扩展 API（为未来预留的接口）
