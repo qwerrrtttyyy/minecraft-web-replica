@@ -61,6 +61,7 @@ npm run test:diagnostics
 npm run test:worker-pool
 npm run test:edits
 npm run test:terrain-system
+npm run test:drop       # 可见掉落物：散开 / 拾取 / 合并 / 入水 / 暂停不推进 age
 npm run test:botany
 npm run test:plant-energy
 npm run test:botany-rules
@@ -68,7 +69,7 @@ npm run verify          # 以上全部 + build + 浏览器实景 + 视觉回归
 ```
 
 `test:snapshot` 必须先于全部 require CJS 快照的纯逻辑测试
-（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system / test:botany / test:plant-energy / test:botany-rules`）。
+（`test:logic / test:light / test:mesher / test:services / test:diagnostics / test:terrain-system / test:drop / test:botany / test:plant-energy / test:botany-rules`）。
 
 浏览器实景在 Linux 无 GPU 环境下：
 
@@ -86,10 +87,24 @@ xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run t
 新增检查项时，同时更新 `test/diagnostics-check.cjs`，并在注入异常的快照上断言对应
 `issue.id`，确保检查项本身不会静默失效。
 
+## 内容体系与确定性
+
+- 四个新模块：`core/tuning.ts`（数值中心）、`world/dropLogic.ts`（掉落纯判定）、
+  `entity/droppedItem.ts`（`DropManager` 渲染与生命周期）、`entity/breeding.ts`（繁殖纯规则）。
+  新增动物 / 掉落 / 繁殖参数只改 `tuning.ts`；掉落判定与渲染分离，`dropLogic` /
+  `breeding` 可脱离 three / DOM 单测。
+- **确定性范围**：硬规则只约束掉落判定——散开 / 加权抽取走 `dropHash(seed, source, index)`，
+  掉落路径禁止新增 `Math.random()`。既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，
+  本轮不动、不承诺跨会话复现；不要为了「消灭 `Math.random`」去重构它们。新增高风险不变量仍按
+  硬规则 13 在 `RuntimeDiagnostics.ts` 加检查并在 `test/diagnostics-check.cjs` 做注入式回归。
+
 ## 地形与方块
 
 - 方块 id 只能末尾追加；新增内置方块后同步更新 `test/terrain-system-check.cjs`
-  的 id 断言与 `docs/TESTING.md`。
+  的 id 断言与 `docs/TESTING.md`。本轮不新增方块（煤炭 / 动物 / 掉落物分别是物品 / 实体），
+  总数仍为 141、id 到 147。
+- **图集 tile 只追加**：新 painter 注册在全部既有 painter 之后，既有 tile 索引保持不变，
+  否则旧存档 `edits` 指向的方块几何错位；新物品纹理同样末位追加，图集既有 0..63 等索引不动。
 - 地表 / 装饰规则统一写进 `src/world/generator.ts` 的 `BIOME_PROFILES`，
   不要在地形阶段里散落 `if (biome === ...)`。
 - 新增生成阶段会改变 `TERRAIN_STAGES` 契约，必须同时更新阶段顺序断言。

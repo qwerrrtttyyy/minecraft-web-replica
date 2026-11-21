@@ -705,10 +705,12 @@ ok('新动物掉落名带 item: 前缀',
     const p2 = pm.spawn('sheep', 3.5, 41.05, 2.5);
     pm.spawn('sheep', 8.5, 41.05, 2.5);
     pm.spawn('cow', 3.5, 41.05, 2.5);
+    const beforeLove = !canBreed(p1, p2);
+    p1.loveTimer = BREED_TUNING.loveDuration;
+    const oneLoving = !canBreed(p1, p2);
+    p2.loveTimer = BREED_TUNING.loveDuration;
     ok('canBreed 要求双方同类成体且都在求爱且冷却结束',
-      !canBreed(p1, p2) &&
-      !!(p1.loveTimer = BREED_TUNING.loveDuration) && !canBreed(p1, p2) &&
-      !!(p2.loveTimer = BREED_TUNING.loveDuration) && canBreed(p1, p2));
+      beforeLove && oneLoving && canBreed(p1, p2));
     ok('pickMate 只在半径内按 id 升序选求爱伙伴',
       pickMate(p1, pm.entities, BREED_TUNING.mateRadius) === p2 &&
       pickMate(p1, pm.entities, 0.5) === null);

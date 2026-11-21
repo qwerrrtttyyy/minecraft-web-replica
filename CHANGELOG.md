@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-21
+
+### 新增
+- **新动物**：牛 / 鸡 / 兔三种被动动物加入加权生成表（`ANIMALS` / `BREED_FOODS`，权重来自 `dropHash`）；猪 / 羊既有数值原样搬入。新动物掉落全部带 `item:` 前缀（皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉），与既有物品同键可堆叠。
+- **繁殖**：猪 / 羊 / 牛 / 鸡 / 兔五种被动动物均可喂食进入求爱窗口，半径 8 格内同类成体双亲冷却结束后产幼崽，幼崽 120 秒长成（0.55 缩放）；择偶按实体 id 升序稳定选择，同种子同状态可复现。食物白名单与所有数值集中在 `src/core/tuning.ts`。
+- **可见悬浮掉落物**：新增 `src/entity/droppedItem.ts`（`DropManager` / `DroppedItem`）与纯逻辑 `src/world/dropLogic.ts`；掉落物以小方块实体弹出、浮动自转，0.8 格内同类合并（上限 999），仅限 `playing` 推进 age，超时 / 掉出世界消失，入水终端下沉 `-waterSink` 且水平 `exp(-8*dt)` 衰减、出水恢复重力；拾取回背包并带粒子 / 音效反馈，**不进存档**。散开偏移由 `scatterOffset(seed, source, index)` 用 `dropHash` 生成。
+- **物品与配方闭环**：煤矿石改掉 `item:coal`（1~2），新增 6 种物品（煤炭 / 皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉）与对应图集纹理（追加在末尾，既有 tile 索引不变）；新增「煤炭 + 木棍 → 4 火把」配方（`torch_fuel`）。**方块总数仍为 141、id 到 147，不新增方块**。
+- **测试**：新增 `test:drop`（9 项：确定性散开 / 拾取半径与延迟 / 同类合并异类不合并 / 超时与掉出世界 / 入水出水 / 暂停不推进 age）并挂进 `verify`；`validate.py` 增加阶段-B CHECK。
+
+### 说明
+- 确定性硬规则范围澄清：只约束掉落判定（禁止在掉落路径写 `Math.random`，散开 / 加权抽取走 `dropHash`）；既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，本轮不动。运行时唯一依赖仍为 three。
+
+### 验证
+- `check:version` 三处一致（VERSION 1.6.0 / `package.json` / README）；`typecheck` 0 error；非浏览器回归链（含 `test:drop`、`test:crafting`）全绿；`python3 docs/agent/validate.py --strict` 0 FAIL / 0 WARN。浏览器实景组 `test:smoke` / `test:visual` 因本机无可用 Chromium 未执行（用户决定放弃），故未宣称 `npm run verify` 全绿。
+
 ## [1.5.2] - 2026-11-21
 
 ### 新增（整合自 AtomGit v1.6.0 植物扩充线）

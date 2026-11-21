@@ -112,6 +112,14 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 新增自然方块时，优先在 `terrain-system-check.cjs` 里断言「固定种子 + 固定半径内
 一定出现」，并写清生成位置规则（群系 / 深度 / 邻水等），不要把断言放宽成「偶尔出现」。
 
+**确定性范围澄清**：项目的确定性硬规则只约束**掉落判定**——可见掉落物的散开与新动物加权
+抽取走 `dropHash(seed, source, index)`（`src/world/dropLogic.ts`），掉落路径禁止新增
+`Math.random()`。既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属既有技术债，本轮不动，
+也不作为回归断言的目标；`test:drop` 只锁定散开 / 拾取 / 合并 / 入水 / 暂停计时等掉落判定。
+繁殖择偶按实体 id 升序稳定选择，同种子同状态结果一致（`src/entity/breeding.ts`）。
+所有相关数值集中在 `src/core/tuning.ts`，`DropManager`（`src/entity/droppedItem.ts`）负责
+渲染与生命周期；新增纯逻辑入口才需登记 `scripts/build-test-snapshot.mjs` 的 `entries`。
+
 ## 浏览器环境
 
 无 GPU 的 Linux / CI：
@@ -137,3 +145,9 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 4. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
 5. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
 6. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。
+7. 掉落 / 繁殖判定必须可复现：新增随机性一律走 `dropHash` / `createRng`，不要新增
+   `Math.random()`；确定性硬规则只管掉落判定，既有 AI 游荡 / 生成坐标的 `Math.random()`
+   不在本轮范围。新增掉落规则同时更新 `test:drop`。
+8. 图集新增纹理（含新物品 tile）必须追加在全部既有 painter 之后，既有 tile 索引不变；
+   方块 id 只追加，本轮方块总数仍 141、id 到 147。新增方块 / 纹理后同步更新
+   `test:terrain-system` 的 id / tile 断言与本文。

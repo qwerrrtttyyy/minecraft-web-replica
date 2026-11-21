@@ -490,6 +490,34 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 - `Botany.serializeEcology()/restoreEcology()`：紧凑元组存档，逐条校验坐标 / id / trait / 数值范围，同锚点去重、植物与土壤分别截断 1024；坏档丢弃不抛错。`SaveData` 加可选 `botany/dayCount`，`Sky.setTime()` 回填天数。
 - `block:break/place` 订阅额外清掉同 x,z 且同 id 的锚点能量，修复柱状 / 藤蔓中间段被拆后残留储能。
 
+## 8.8 内容体系（v1.6.0）
+
+内容体系由四个新模块承担，接线仍遵守 `main → services → 业务模块` 单向依赖；生成器
+不接触 DOM / three：
+
+| 模块 | 接口 | 职责 |
+|---|---|---|
+| `src/core/tuning.ts` | `POPULATION` / `BREED` / `DROPS` / `BREED_FOODS` / `ANIMALS` / `NEW_ITEMS` | 纯数据数值中心：既有种群 / 交互距离原样搬入，新动物 / 掉落 / 繁殖 / 食物参数集中一处，调参零改调用方 |
+| `src/world/dropLogic.ts` | `scatterOffset` / `canPickup` / `mergeKey` / `dropsMerge` / `shouldDespawn` / `advanceWater` | 可见掉落物的纯判定（无 three / DOM）：确定性散开、拾取半径与延迟、同类合并、超时 / 掉出世界、入水终端下沉与水平衰减 |
+| `src/entity/droppedItem.ts` | `DropManager.spawn / update / clear` 与 `DroppedItem` | 渲染与生命周期：复用 `moveBody` 做碰撞、按材料键缓存几何 / 共享材质、浮动自转、入水水花与拾取反馈；拾取 / 消失只 `scene.remove`，不 dispose 共享资源 |
+| `src/entity/breeding.ts` | `isBreedFood` / `pickMate` / `canBreed` | 纯规则判定：食物白名单、按实体 id 升序稳定择偶、同类成体求爱且冷却结束才可繁殖；状态字段（age / loveTimer / cooldown）挂在 `Entity` 上 |
+
+新增动物（牛 / 鸡 / 兔）与猪 / 羊一起进入 `ANIMALS` 加权生成表，权重与掉落走
+`dropHash(seed, 'spawn:'+serial, 0)` 抽取；五种被动动物均可喂食繁殖。`ITEMS` 追加
+6 项（煤炭 / 皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉），煤矿石改掉 `item:coal`，新增
+「煤炭 + 木棍 → 4 火把」配方。掉落物**不进存档**（同生态状态之外的临时实体），
+由 `DropManager.clear()` 在 newWorld / 返回标题 / 重生时清空。
+
+**确定性范围**：新增的散开与加权抽取一律走 `dropHash(seed, source, index)`，
+禁止在这些路径写 `Math.random()`。项目的确定性硬规则（见
+[PROJECT-EXPERIENCE.md](PROJECT-EXPERIENCE.md)）只约束**掉落判定**；既有实体 AI
+的游荡 / 生成坐标 `Math.random()` 属既有技术债，本轮不动、不承诺跨会话复现。
+
+**图集 append-only 纪律**：图集为 16×16=256 槽，新 painter 必须在全部既有
+painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）保持不变，否则旧存档
+`edits` 指向的方块几何会错位。新物品纹理与方块纹理一样末位追加；方块 id 同样只追加
+（本轮不新增方块，总数仍为 141、id 到 147）。
+
 ## 9. 后续路线（带验收标准）
 
 | 版本 | 目标 | 可机械检查的验收标准 |
