@@ -39,8 +39,6 @@ export interface BlockDefinition {
   lightEmission: number;
   /** 硬度：生存模式挖掘耗时 ≈ hardness * 1.1 秒（徒手），Infinity 不可破坏 */
   hardness: number;
-  /** 工具类别：手持匹配类别的工具才加速挖掘（配置表见 TOOL_BY_BLOCK） */
-  tool?: 'pickaxe' | 'axe' | 'shovel';
   sound: SoundMaterial;
   /** 三个面使用的纹理名（atlas 中注册） */
   tiles: { top: string; bottom: string; side: string };
@@ -61,28 +59,6 @@ export type BlockInput = Omit<BlockDefinition, 'id' | 'drops'> & {
 };
 
 export const AIR: BlockId = 0;
-
-/**
- * 方块 → 工具类别（集中配置，避免散落在各阶段）。
- * 未列出的方块不享受工具加速；剑也不加速任何方块。
- */
-const TOOL_BY_BLOCK: Record<string, 'pickaxe' | 'axe' | 'shovel'> = {
-  // 镐：石质 / 矿石 / 砖
-  stone: 'pickaxe', cobblestone: 'pickaxe', mossy_cobblestone: 'pickaxe',
-  stone_bricks: 'pickaxe', bricks: 'pickaxe', sandstone: 'pickaxe',
-  granite: 'pickaxe', obsidian: 'pickaxe', bedrock: 'pickaxe',
-  coal_ore: 'pickaxe', iron_ore: 'pickaxe', gold_ore: 'pickaxe', diamond_ore: 'pickaxe',
-  copper_ore: 'pickaxe', emerald_ore: 'pickaxe', lapis_ore: 'pickaxe', redstone_ore: 'pickaxe',
-  terracotta_red: 'pickaxe', terracotta_orange: 'pickaxe', terracotta_yellow: 'pickaxe',
-  terracotta_white: 'pickaxe', terracotta_blue: 'pickaxe', furnace: 'pickaxe',
-  // 斧：原木 / 木板 / 木制品
-  oak_log: 'axe', birch_log: 'axe', spruce_log: 'axe', acacia_log: 'axe', cherry_log: 'axe',
-  oak_planks: 'axe', birch_planks: 'axe', spruce_planks: 'axe',
-  crafting_table: 'axe', bookshelf: 'axe', pumpkin: 'axe', jack_o_lantern: 'axe',
-  // 锹：土 / 沙 / 砾 / 泥
-  dirt: 'shovel', sand: 'shovel', red_sand: 'shovel', gravel: 'shovel', clay: 'shovel',
-  snow: 'shovel', mud: 'shovel', podzol: 'shovel', dry_grass: 'shovel',
-};
 
 /** 数组快通道的最大 id；更大的自定义 id 回退到 Map，避免稀疏大数组 */
 const FAST_ID_LIMIT = 65536;
@@ -178,12 +154,10 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     extra: Partial<BlockInput> = {},
   ) => {
     const t = { top: name, bottom: name, side: name, ...tiles };
-    const def = reg.register({
+    reg.register({
       name, label, shape: 'cube', solid: true, opaque: true, liquid: false,
       transparentPass: false, lightEmission: 0, hardness: 1, sound: 'stone', tiles: t, ...extra,
     });
-    def.tool = TOOL_BY_BLOCK[name];
-    return def;
   };
 
   cube('grass', '草方块', { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
@@ -229,8 +203,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('dandelion', '蒲公英');
 
   // 矿石追加在末尾：不改动已有方块 id，保证旧存档 edits 差分仍指向同一方块
-  // 煤是熔炉燃料：挖煤矿直接掉煤（原版行为），不再掉矿石方块
-  cube('coal_ore', '煤矿石', {}, { hardness: 2.5, drops: [{ name: 'item:coal' }] });
+  cube('coal_ore', '煤矿石', {}, { hardness: 2.5 });
   cube('iron_ore', '铁矿石', {}, { hardness: 3 });
   cube('gold_ore', '金矿石', {}, { hardness: 3 });
   cube('diamond_ore', '钻石矿石', {}, { hardness: 4 });
@@ -393,11 +366,4 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [{ name: 'self' }],
   });
-
-  // ---- 熔炉（E03，id 110 末位追加；右键打开烧炼界面） ----
-  cube('furnace', '熔炉', { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side' },
-    { id: 110, hardness: 2 });
 }
-
-/** 可右键交互的熔炉方块名（player.tryInteract 用） */
-export const FURNACE_BLOCK = 'furnace';

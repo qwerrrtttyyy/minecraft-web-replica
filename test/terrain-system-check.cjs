@@ -65,8 +65,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 104 种（v1.4.1 追加 35 种植物，v1.5.1 群系扩充 12 种，E03 熔炉 1 种）',
-    all.length === 104, `${all.length}`);
+  ok('内置方块总数 103 种（v1.4.1 追加 35 种植物，v1.5.1 群系扩充追加 12 种）',
+    all.length === 103, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,

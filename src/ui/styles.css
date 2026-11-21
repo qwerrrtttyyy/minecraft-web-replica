@@ -162,20 +162,6 @@ img { image-rendering: pixelated; }
 }
 .crafting-pattern-cell img { width: 12px; height: 12px; image-rendering: pixelated; }
 
-/* ============ 熔炉（E03） ============ */
-.furnace-panel {
-  width: min(600px, 94vw);
-  max-height: 92vh;
-  overflow-y: auto;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.furnace-input { width: 56px; height: 56px; }
-.furnace-input img { width: 42px; height: 42px; pointer-events: none; image-rendering: pixelated; }
-.furnace-input.ready { border-color: #6a8a4a; }
-.furnace-fuel { text-align: center; font-size: 13px; color: #ffd070; }
-.furnace-progress { height: 14px; background: #2a2a2a; border: 2px solid #5a5a5a; }
-.furnace-progress-fill { height: 100%; width: 0; background: #e08b28; transition: width .1s linear; }
-
 /* ============ 标题屏 ============ */
 .title-screen {
   position: absolute; inset: 0;

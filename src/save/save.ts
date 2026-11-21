@@ -1,6 +1,5 @@
 import type { BlockId, GameMode } from '../core/types';
 import type { Stack, SurvivalSave } from '../player/survival';
-import type { SmeltingSave } from '../player/smelting';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -15,8 +14,6 @@ export interface SaveData {
   edits: [string, BlockId][];
   player: { x: number; y: number; z: number; yaw: number; pitch: number; fly: boolean };
   survival: SurvivalSave;
-  /** 熔炉烧炼状态（旧档无字段时按空熔炉处理） */
-  smelting?: SmeltingSave;
   dayTime: number;
   hotbar: (Stack | null)[];
   slot: number;
@@ -100,31 +97,6 @@ export function validateSave(data: unknown): data is SaveData {
     if (!ITEM_KEY_RE.test(e[0]) && !BLOCK_KEY_RE.test(e[0])) return false;
     if (!intIn(e[1], 1, 999)) return false;
     if (BLOCK_KEY_RE.test(e[0]) && !intIn(Number(e[0].slice(2)), 1, 255)) return false;
-  }
-  // 装备字段为可选：旧档没有时按空装备处理；存在时逐字段校验
-  if (s.equipment !== undefined) {
-    const eq = s.equipment;
-    if (!eq || typeof eq !== 'object') return false;
-    if (!eq.slots || typeof eq.slots !== 'object') return false;
-    for (const slot of ['head', 'chest', 'legs', 'feet'] as const) {
-      const entry = eq.slots[slot];
-      if (entry === undefined) continue;
-      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' ||
-          !intIn(entry[1], 1, 100000)) return false;
-    }
-    if (!Array.isArray(eq.durability)) return false;
-    for (const entry of eq.durability) {
-      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' ||
-          !ITEM_KEY_RE.test(entry[0]) || !intIn(entry[1], 1, 100000)) return false;
-    }
-  }
-  // 熔炉字段可选：旧档没有时按空熔炉处理
-  if (d.smelting !== undefined) {
-    const sm = d.smelting;
-    if (!sm || typeof sm !== 'object') return false;
-    if (!finite(sm.fuelTime) || sm.fuelTime < 0) return false;
-    if (sm.input !== null && typeof sm.input !== 'string') return false;
-    if (!finite(sm.progress) || sm.progress < 0 || sm.progress > 1) return false;
   }
   if (!finite(d.dayTime) || d.dayTime < 0 || d.dayTime > 1 || !Array.isArray(d.hotbar) ||
       d.hotbar.length !== 9 || !d.hotbar.every(isStack)) return false;

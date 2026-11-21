@@ -24,8 +24,6 @@ import {
   type MaterialId,
 } from './player/crafting';
 import type { CraftingHost, CraftingMaterial } from './ui/crafting';
-import { SmeltingState } from './player/smelting';
-import type { FurnaceHost } from './ui/furnace';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
@@ -304,8 +302,6 @@ async function boot() {
   let paletteReturn: 'game' | 'menu' = 'game';
   /** 合成界面的来源：关闭后回到菜单还是直接恢复游戏 */
   let craftingReturn: 'game' | 'menu' = 'game';
-  /** 熔炉界面的来源 */
-  let furnaceReturn: 'game' | 'menu' = 'game';
   /** 新世界 / 导入存档触发 reload 时，禁止 beforeunload 用旧状态反写存档 */
   let suppressUnloadSave = false;
 
@@ -326,7 +322,6 @@ async function boot() {
     edits: [...world.edits.entries()],
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, fly: player.fly },
     survival: survival.serialize(),
-    smelting: smelting.serialize(),
     dayTime: sky.dayTime,
     hotbar: [...hotbar.slots],
     slot: hotbar.index,
@@ -501,47 +496,9 @@ async function boot() {
     },
   };
 
-  // ---- 熔炉 / 烧炼 ----
-  const smelting = new SmeltingState({
-    takeInput(material) {
-      const stack = materialToStack(material, registry);
-      if (!stack) return false;
-      const key = stack.kind === 'block' ? `b:${stack.id}` : `i:${stack.id}`;
-      if (survival.countKey(key) <= 0) return false;
-      return survival.consume(stack, 1);
-    },
-    produce(material, count) {
-      const stack = materialToStack(material, registry);
-      if (!stack) return;
-      if (stack.kind === 'block') survival.addBlock(stack.id, count);
-      else survival.addItem(stack.id, count);
-    },
-    onSmelted(recipe) {
-      events.emit('smelting:done', { recipe: recipe.id, result: recipe.output });
-      sound.click(760);
-      hud.toast(`烧炼完成：${recipe.label}`);
-      markDirty();
-    },
-  });
-  if (saved?.smelting) smelting.restore(saved.smelting);
-
-  const furnaceHost: FurnaceHost = {
-    getMaterials: () => craftingHost.getMaterials(),
-    take: (material) => craftingHost.take(material),
-    removeInput: () => {
-      const material = smelting.takeInput();
-      if (material) craftingHost.giveBack(material);
-    },
-    putFuel: (material) => smelting.putFuel(material),
-    getState: () => ({ input: smelting.input, fuelTime: smelting.fuelTime, progress: smelting.progress }),
-    onClose: () => closeFurnace(),
-  };
-
   const hud = new HUD({
     uiRoot, atlas, registry, hotbar, isMobile,
     craftingHost,
-    furnaceHost,
-    onFurnaceOpen: (from) => openFurnace(from),
     onStart: (cont, chosen) => {
       if (cont) { void startGame(true); return; } // 继续游戏保留存档模式
       // 标题页选的模式必须真正写回状态机，否则选「创造」仍会进入生存
@@ -806,9 +763,8 @@ async function boot() {
     chunks.transparentSortEnabled = settings.sortTransparent;
   };
 
-  // 空手右键工作台 / 熔炉 → 打开对应界面
+  // 空手右键工作台方块 → 打开合成界面
   events.on('crafting:open', () => openCrafting('game'));
-  events.on('furnace:open', () => openFurnace('game'));
   const cycleCamera = () => {
     player.cycleCamera();
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
@@ -986,30 +942,6 @@ async function boot() {
   function closeCrafting() {
     hud.hideCrafting();
     if (craftingReturn === 'menu') hud.showMenu(true);
-    else resumeGame();
-  }
-
-  /** 熔炉烧炼界面（与合成一样属于暂停态，后台烧炼在主循环继续） */
-  function openFurnace(from: 'game' | 'menu') {
-    if (!survival.isSurvival) {
-      hud.toast('创造模式不需要烧炼');
-      return;
-    }
-    furnaceReturn = from;
-    if (mode === 'playing') {
-      mode = 'paused';
-      input.enabled = false;
-      input.reset();
-      input.exitLock();
-      events.emit('game:pause', { paused: true });
-    }
-    hud.showMenu(false);
-    hud.showFurnace();
-  }
-
-  function closeFurnace() {
-    hud.hideFurnace();
-    if (furnaceReturn === 'menu') hud.showMenu(true);
     else resumeGame();
   }
 
@@ -1294,7 +1226,6 @@ async function boot() {
             if (hud.keybindOpen) hud.showKeybinds(false);
             else if (hud.helpOpen) hud.showHelp(false);
             else if (hud.craftingOpen) closeCrafting();
-            else if (hud.furnaceOpen) closeFurnace();
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
           }
@@ -1454,9 +1385,6 @@ async function boot() {
       hud.setUnderwater(uw);
       // 天空的水下大气：暂停时保持入水状态（sky.update 暂停期间不推进），回档后不闪烁
       sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
-      // 熔炉后台烧炼：暂停时也继续（面板关闭不中断），死亡 / 加载时不推进
-      if (mode === 'playing' || mode === 'paused') smelting.tick(dt);
-      hud.tickFurnace();
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
         hud.setSurvival(survival);
         hud.setMining(mode === 'playing' && player.miningProgress !== null && player.miningBlock
@@ -1549,7 +1477,6 @@ async function boot() {
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
     openCrafting, closeCrafting,
-    openFurnace, closeFurnace,
   };
 }
 

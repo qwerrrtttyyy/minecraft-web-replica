@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, SEA_LEVEL, WORLD_HEIGHT, type BlockId, type System } from '../core/types';
 import type { EventService } from '../services/events';
-import { AIR, FURNACE_BLOCK, type BlockDefinition, type BlockRegistry } from '../world/blocks';
+import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { Input } from '../input/input';
@@ -12,7 +12,6 @@ import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
-import { equipmentDef, miningSpeedFor, toolKindOf } from './equipment';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
 
@@ -479,32 +478,6 @@ export class Player implements System, PhysicsBody {
     }
   }
 
-  // ---------- 装备辅助 ----------
-
-  /** 手持工具对目标方块的挖掘倍率（类别不匹配或徒手为 1） */
-  private toolSpeed(def: BlockDefinition): number {
-    const held = this.selectedStack();
-    if (!held || held.kind !== 'item') return 1;
-    return miningSpeedFor(held.id as string, def.tool);
-  }
-
-  /** 手持装备扣耐久；损坏时清空快捷栏格子并从背包移除 */
-  private damageHeldEquipment(kind: 'tool' | 'weapon') {
-    if (!this.survival.isSurvival) return;
-    const held = this.selectedStack();
-    if (!held || held.kind !== 'item') return;
-    const def = equipmentDef(held.id as string);
-    if (!def) return;
-    if (kind === 'tool' && !toolKindOf(def.kind)) return;
-    if (kind === 'weapon' && def.kind !== 'sword') return;
-    const key = `i:${held.id}`;
-    if (this.survival.equipment.damageHeld(key)) {
-      this.hotbar.slots[this.hotbar.index] = null;
-      this.setHeldStack(null);
-      this.survival.consume(held, 1);
-    }
-  }
-
   // ---------- 挖掘 ----------
 
   private resetMining() {
@@ -531,7 +504,7 @@ export class Player implements System, PhysicsBody {
     this.mineIdle = 0;
     if (key !== this.mineKey) {
       this.mineKey = key;
-      this.mineTime = Math.max(0.06, def.hardness * 1.1 / this.toolSpeed(def));
+      this.mineTime = Math.max(0.06, def.hardness * 1.1);
       this.miningProgress = 0;
       this.miningBlock = def;
       this.mineSoundAcc = 0;
@@ -572,7 +545,7 @@ export class Player implements System, PhysicsBody {
     const key = `${hit.x},${hit.y},${hit.z}`;
     if (key !== this.mineKey) {
       this.mineKey = key;
-      this.mineTime = Math.max(0.06, def.hardness * 1.1 / this.toolSpeed(def));
+      this.mineTime = Math.max(0.06, def.hardness * 1.1);
       this.miningProgress = 0;
     }
     this.mineIdle = 0;
@@ -624,7 +597,6 @@ export class Player implements System, PhysicsBody {
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
     this.collectDrops(def);
-    this.damageHeldEquipment('tool');
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
     // 未注入重力系统时保留旧的植物连带行为
@@ -686,15 +658,9 @@ export class Player implements System, PhysicsBody {
     const hit = this.target;
     if (!hit || !this.survival.isSurvival) return false;
     const def = this.registry.get(hit.block);
-    if (def.name === INTERACTIVE_BLOCK) {
-      this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
-      return true;
-    }
-    if (def.name === FURNACE_BLOCK) {
-      this.events.emit('furnace:open', { x: hit.x, y: hit.y, z: hit.z });
-      return true;
-    }
-    return false;
+    if (def.name !== INTERACTIVE_BLOCK) return false;
+    this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
+    return true;
   }
 
   /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */
@@ -768,16 +734,8 @@ export class Player implements System, PhysicsBody {
     if (this.attackTimer > 0) return;
     this.attackTimer = 0.55;
     this.swing();
-    let dmg = this.survival.isSurvival ? 3 : 999;
-    if (this.survival.isSurvival) {
-      const held = this.selectedStack();
-      if (held?.kind === 'item') {
-        const weapon = equipmentDef(held.id as string);
-        if (weapon?.attack) dmg = weapon.attack;
-      }
-    }
+    const dmg = this.survival.isSurvival ? 3 : 999;
     target.entity.hurt(dmg, this.pos.x, this.pos.z);
-    this.damageHeldEquipment('weapon');
     this.survival.exhaust(0.1);
     this.sound.hit();
     // 命中确认：碎屑贴在被击者身上（世界空间生成），小幅度屏震不抢操作

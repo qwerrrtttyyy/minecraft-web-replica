@@ -1,8 +1,6 @@
 import type { EventService } from '../services/events';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
-import { EQUIPMENT, armorReduction, equipmentDef } from './equipment';
-import { EquipmentState, type EquipmentSave } from './equipmentState';
 
 /**
  * 生存模式状态机：生命 / 饥饿 / 氧气 / 背包 / 进食 / 死亡与重生。
@@ -30,24 +28,6 @@ export interface ItemDefinition {
   food?: number;
   /** 右键时种植的方块名（种子 / 浆果等可种植物品） */
   plant?: string;
-  /** 装备定义 id（EQUIPMENT 的 key）；有值表示该物品是装备 */
-  equip?: string;
-}
-
-/** 烧炼 / 合成用的基础材料（非装备） */
-const MATERIAL_ITEMS: Record<string, ItemDefinition> = {
-  coal: { name: 'coal', label: '煤', tile: 'coal' },
-  leather: { name: 'leather', label: '皮革', tile: 'leather' },
-  iron_ingot: { name: 'iron_ingot', label: '铁锭', tile: 'iron_ingot' },
-  gold_ingot: { name: 'gold_ingot', label: '金锭', tile: 'gold_ingot' },
-  copper_ingot: { name: 'copper_ingot', label: '铜锭', tile: 'copper_ingot' },
-  diamond: { name: 'diamond', label: '钻石', tile: 'diamond' },
-};
-
-/** 由装备定义表生成的物品条目，保证 id / label / tile 与 EQUIPMENT 单一来源一致 */
-const EQUIP_ITEMS: Record<string, ItemDefinition> = {};
-for (const def of Object.values(EQUIPMENT)) {
-  EQUIP_ITEMS[def.id] = { name: def.id, label: def.label, tile: def.tile, equip: def.id };
 }
 
 export const ITEMS: Record<string, ItemDefinition> = {
@@ -59,8 +39,6 @@ export const ITEMS: Record<string, ItemDefinition> = {
   },
   nectar: { name: 'nectar', label: '花蜜', tile: 'nectar', food: 3 },
   stick: { name: 'stick', label: '木棍', tile: 'stick' },
-  ...MATERIAL_ITEMS,
-  ...EQUIP_ITEMS,
 };
 
 export const itemKey = (name: string) => `i:${name}`;
@@ -79,8 +57,6 @@ export interface SurvivalSave {
   breath: number;
   inventory: [string, number][];
   spawn: Vec3Like;
-  /** 装备槽位与背包装备耐久（旧档无此字段时按空装备处理） */
-  equipment?: EquipmentSave;
 }
 
 export interface SurvivalContext {
@@ -106,8 +82,6 @@ export class SurvivalState {
 
   /** key -> 数量，key 形如 b:12 / i:apple */
   readonly inventory = new Map<string, number>();
-  /** 装备槽位与耐久（与背包分离，由组装根共享给 Player 使用） */
-  readonly equipment: EquipmentState;
 
   private exhaustion = 0;
   private regenAcc = 0;
@@ -115,9 +89,7 @@ export class SurvivalState {
   private drownAcc = 0;
   private iframes = 0;
 
-  constructor(private events: EventService, private registry: BlockRegistry, equipment?: EquipmentState) {
-    this.equipment = equipment ?? new EquipmentState(events);
-  }
+  constructor(private events: EventService, private registry: BlockRegistry) {}
 
   get isSurvival() {
     return this.mode === 'survival';
@@ -134,15 +106,7 @@ export class SurvivalState {
 
   addItem(name: string, count = 1) {
     if (!this.isSurvival) return;
-    const item = ITEMS[name];
-    if (!item || count <= 0) return;
-    if (item.equip) {
-      // 装备不可堆叠：每种最多 1 件，耐久单独记在 EquipmentState
-      const key = itemKey(name);
-      this.equipment.initDurability(key, name);
-      if (this.countKey(key) <= 0) this.addKey(key, 1);
-      return;
-    }
+    if (!ITEMS[name] || count <= 0) return;
     this.addKey(itemKey(name), count);
   }
 
@@ -181,10 +145,7 @@ export class SurvivalState {
     const have = this.countKey(key);
     if (have < n) return false;
     this.addKey(key, -n);
-    if (this.countKey(key) <= 0) {
-      this.inventory.delete(key);
-      if (s.kind === 'item' && ITEMS[s.id as string]?.equip) this.equipment.durability.delete(key);
-    }
+    if (this.countKey(key) <= 0) this.inventory.delete(key);
     return true;
   }
 
@@ -198,30 +159,6 @@ export class SurvivalState {
     return ids;
   }
 
-  // ---------- 装备 ----------
-
-  /** 从背包穿戴装备：校验持有并把耐久转入甲槽 */
-  equipFromInventory(id: string): boolean {
-    const def = equipmentDef(id);
-    if (!this.isSurvival || !def?.slot) return false;
-    const key = itemKey(id);
-    if (this.countKey(key) <= 0) return false;
-    const durability = this.equipment.durabilityOf(key) ?? def.durability;
-    if (!this.equipment.equip(def.slot, id, durability)) return false;
-    this.consume({ kind: 'item', id }, 1);
-    return true;
-  }
-
-  /** 卸下甲槽装备并退回背包（保留剩余耐久） */
-  unequipToInventory(slot: Parameters<EquipmentState['unequip']>[0]): boolean {
-    if (!this.isSurvival) return false;
-    const eq = this.equipment.unequip(slot);
-    if (!eq) return false;
-    this.addItem(eq.id, 1);
-    this.equipment.durability.set(itemKey(eq.id), eq.durability);
-    return true;
-  }
-
   // ---------- 生命 ----------
 
   damage(amount: number, cause = '未知', useIframes = true) {
@@ -230,11 +167,8 @@ export class SurvivalState {
       if (this.iframes > 0) return false;
       this.iframes = 0.32;
     }
-    // 护甲减伤：每点 4%，上限 80%；实际扣除后才扣甲耐久
-    const applied = Math.max(0, Math.round(amount * (1 - armorReduction(this.equipment.armorPoints))));
-    if (applied > 0) this.equipment.damageArmor();
-    this.health = Math.max(0, this.health - applied);
-    this.events.emit('survival:damage', { amount: applied, health: this.health, cause });
+    this.health = Math.max(0, this.health - amount);
+    this.events.emit('survival:damage', { amount, health: this.health, cause });
     if (this.health <= 0) this.die(cause);
     return true;
   }
@@ -355,7 +289,6 @@ export class SurvivalState {
       breath: this.breath,
       inventory: [...this.inventory.entries()],
       spawn: { ...this.spawn },
-      equipment: this.equipment.serialize(),
     };
   }
 
@@ -371,12 +304,10 @@ export class SurvivalState {
       }
     }
     if (data.spawn) this.spawn = { ...data.spawn };
-    this.equipment.restore(data.equipment);
     this.dead = this.health <= 0;
   }
 
   resetInventory() {
     this.inventory.clear();
-    this.equipment.clear();
   }
 }

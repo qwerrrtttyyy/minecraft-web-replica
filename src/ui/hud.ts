@@ -5,7 +5,6 @@ import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
 import { CraftingPanel, type CraftingHost } from './crafting';
-import { FurnacePanel, type FurnaceHost } from './furnace';
 import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
 
 /**
@@ -71,12 +70,8 @@ export interface HUDOptions {
   onPaletteClose: () => void;
   /** 合成面板：背包宿主（由组装根实现，UI 不直接碰 SurvivalState） */
   craftingHost: CraftingHost;
-  /** 熔炉面板：烧炼宿主 */
-  furnaceHost: FurnaceHost;
   /** 打开合成界面（from: 'game' = 游戏中，'menu' = 从菜单进入） */
   onCraftOpen: (from: 'game' | 'menu') => void;
-  /** 打开熔炉烧炼界面 */
-  onFurnaceOpen: (from: 'game' | 'menu') => void;
   onRespawn: () => void;
   onModeToggle: () => void;
   onExportSave: () => void;
@@ -214,7 +209,6 @@ export class HUD {
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
   private crafting!: CraftingPanel;
-  private furnace!: FurnacePanel;
 
   hudHidden = false;
   private itemNameTimer = 0;
@@ -241,8 +235,6 @@ export class HUD {
     // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
     this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
     this.root.appendChild(this.crafting.root);
-    this.furnace = new FurnacePanel(opts.furnaceHost, opts.atlas, opts.registry);
-    this.root.appendChild(this.furnace.root);
   }
 
   private icon(stack: Stack): string {
@@ -652,7 +644,6 @@ export class HUD {
     btnRow.appendChild(this.mcButton('设置', () => this.opts.onOptionsOpen('menu')));
     // 工作台：生存模式下随时可开（材料来自背包），与右键工作台方块等价
     btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
-    btnRow.appendChild(this.mcButton('熔炉', () => this.opts.onFurnaceOpen('menu')));
     btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
 
@@ -1168,25 +1159,6 @@ export class HUD {
 
   get craftingOpen() {
     return this.crafting.isOpen;
-  }
-
-  // ---------- 熔炉 ----------
-
-  showFurnace() {
-    this.furnace.show();
-  }
-
-  hideFurnace() {
-    this.furnace.hide();
-  }
-
-  get furnaceOpen() {
-    return this.furnace.isOpen;
-  }
-
-  /** 每帧刷新烧炼进度（面板打开时） */
-  tickFurnace() {
-    this.furnace.updateProgress();
   }
 
   // ---------- 死亡 ----------
