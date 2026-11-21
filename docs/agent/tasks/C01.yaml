@@ -1,0 +1,7 @@
+id: C01
+title: tuning.ts 与煤炭火把闭环
+description: 新建 tuning.ts（既有值原样搬入）；ITEMS 加 6 项 + 图集末尾 6 个 painter；coal_ore.drops 改 item:coal；加火把配方（煤+棍→4）。
+touch: { allow: [src/core/tuning.ts, src/player/survival.ts, src/player/crafting.ts, src/gfx/atlas.ts, src/world/blocks.ts, test/terrain-system-check.cjs, test/crafting-check.cjs, docs/TESTING.md], deny: [src/world/mesher.ts] }
+outputs:
+  - tuning center: 既有数值原样、新数值集中，test:crafting 与 test:terrain-system 全绿
+  - coal torch: 煤矿石掉煤炭、火把配方可合成

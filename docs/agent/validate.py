@@ -188,6 +188,39 @@ CHECKS = [
         lambda: "test:equipment" in pkg_scripts().get("verify", "")
         and "test:smelting" in pkg_scripts().get("verify", ""),
     ),
+    # ---- 内容体系完善任务卡（C00~C05）----
+    # 阶段 A：谓词只检查关键词是否出现在声明它的任务卡文本中；
+    # Tasks 2~5 会各自把对应谓词收紧为真实符号检查。
+    (
+        "tuning center",
+        "内容体系：tuning center 关键词落地（阶段 A：卡片文本包含）",
+        lambda: all("tuning center" in read(f"docs/agent/tasks/{n}.yaml")
+                    for n in ("C00", "C01")),
+    ),
+    (
+        "drop system",
+        "内容体系：drop system 关键词落地（阶段 A：卡片文本包含）",
+        lambda: all("drop system" in read(f"docs/agent/tasks/{n}.yaml")
+                    for n in ("C00", "C04")),
+    ),
+    (
+        "animal breeding",
+        "内容体系：animal breeding 关键词落地（阶段 A：卡片文本包含）",
+        lambda: all("animal breeding" in read(f"docs/agent/tasks/{n}.yaml")
+                    for n in ("C00", "C02", "C03")),
+    ),
+    (
+        "coal torch",
+        "内容体系：coal torch 关键词落地（阶段 A：卡片文本包含）",
+        lambda: all("coal torch" in read(f"docs/agent/tasks/{n}.yaml")
+                    for n in ("C00", "C01")),
+    ),
+    (
+        "test:drop",
+        "内容体系：test:drop 关键词落地（阶段 A：卡片文本包含）",
+        lambda: all("test:drop" in read(f"docs/agent/tasks/{n}.yaml")
+                    for n in ("C00", "C04")),
+    ),
 ]
 
 

@@ -1,0 +1,7 @@
+id: C04
+title: 可见悬浮掉落物
+description: dropLogic.ts 纯逻辑 + droppedItem.ts 渲染与 DropManager；接入 player.collectDrops / entities.onDrop / falling；入水水花与缓慢下沉、拾取反馈、合并、消失、clear。
+touch: { allow: [src/world/dropLogic.ts, src/entity/droppedItem.ts, src/player/player.ts, src/entity/entity.ts, src/main.ts, src/core/tuning.ts, test/drop-check.cjs, scripts/build-test-snapshot.mjs, package.json, docs/TESTING.md], deny: [src/world/mesher.ts, src/save/save.ts] }
+outputs:
+  - drop system: 掉落物可见、可拾取、入水缓慢下沉、超时消失、不进存档
+  - test:drop: 六组纯逻辑断言全绿，verify 链包含 test:drop
