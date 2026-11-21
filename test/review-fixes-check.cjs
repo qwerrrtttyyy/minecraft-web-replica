@@ -157,6 +157,12 @@ async function main() {
     const body2 = { pos: { x: 4.1, y: 0, z: 0.5 }, vel: { x: -2, y: 0, z: 0 }, width: 0.6, height: 1.8, onGround: false };
     moveBody(world, body2, 0.05);
     ok('碰撞钳制到最近阻挡面（反向）', body2.pos.x > 4.29 && body2.pos.x < 4.31, `x=${body2.pos.x}`);
+    // 顶面恰好贴住上方方块底面：只是相切、不算重叠，不应被抬升
+    const solidAbove = new Set(['0,10,0']);
+    const worldAbove = { isSolidAt: (x, y, z) => solidAbove.has(`${x},${y},${z}`) };
+    const body3 = { pos: { x: 0, y: 8.25, z: 0 }, vel: { x: 0, y: -1, z: 0 }, width: 0.6, height: 1.8, onGround: false };
+    moveBody(worldAbove, body3, 0.05);
+    ok('顶面与方块底面齐平时不被抬升', Math.abs(body3.pos.y - 8.2) < 1e-6 && !body3.onGround, `y=${body3.pos.y}`);
   }
 
   console.log(`\nPASS 审查修复回归：${passed} 项断言全部通过`);

@@ -110,6 +110,8 @@ export class TouchControls {
     });
     canvas.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.lookId) return;
+      // 暂停 / 死亡期间 input 被禁用：丢弃这次拖动，避免恢复后把累积增量一次性应用。
+      if (!this.input.enabled) { this.lookId = null; return; }
       const dx = e.clientX - this.lookLast.x;
       const dy = e.clientY - this.lookLast.y;
       this.lookLast = { x: e.clientX, y: e.clientY };
@@ -119,6 +121,7 @@ export class TouchControls {
     const lookEnd = (e: PointerEvent) => {
       if (e.pointerId !== this.lookId) return;
       this.lookId = null;
+      if (!this.input.enabled) return; // 暂停 / 死亡期间不触发轻点破坏
       const dt = performance.now() - this.lookStart.t;
       const dist = Math.hypot(e.clientX - this.lookStart.x, e.clientY - this.lookStart.y);
       if (dt < 230 && dist < 12) this.input.pushEdge({ type: 'tapBreak' });
@@ -128,6 +131,7 @@ export class TouchControls {
   }
 
   private updateJoy(e: PointerEvent, zone: HTMLElement) {
+    if (!this.input.enabled) return;
     const rect = zone.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -148,6 +152,11 @@ export class TouchControls {
   }
 
   setVisible(v: boolean) {
+    if (!v) {
+      // 隐藏时清掉进行中的指针，避免暂停期间残留的拖动/摇杆继续喂输入
+      this.lookId = null;
+      this.joyId = null;
+    }
     this.root.style.display = v ? '' : 'none';
   }
 
