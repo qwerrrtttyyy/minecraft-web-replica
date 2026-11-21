@@ -107,6 +107,11 @@ export class FallingBlock {
     this.mesh.geometry.dispose();
     this.mat.dispose();
   }
+
+  /** 退出到标题等清场：移除网格（不回写、不级联） */
+  remove(): void {
+    this.finish();
+  }
 }
 
 /**
@@ -177,6 +182,12 @@ export class FallingSystem {
         if (i >= 0) this.list.splice(i, 1);
       }
     }
+  }
+
+  /** 退出到标题等清场：移除所有下落实体网格（不回写方块） */
+  clear(): void {
+    for (const f of this.list) f.remove();
+    this.list.length = 0;
   }
 
   /** 运行时诊断：在途下落实体数 */

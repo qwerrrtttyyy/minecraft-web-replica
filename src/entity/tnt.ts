@@ -58,4 +58,13 @@ export class PrimedTnt {
       this.onExplode(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, 3.4);
     }
   }
+
+  /** 退出到标题等清场：移除网格（不爆炸、不回落） */
+  remove(): void {
+    if (this.done) return;
+    this.done = true;
+    this.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mat.dispose();
+  }
 }
