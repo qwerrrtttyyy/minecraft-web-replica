@@ -45,7 +45,7 @@ export interface GameEvents {
   /** 生存模式：任何来源的掉血 */
   'survival:damage': { amount: number; health: number; cause: string };
   /** 生存模式：死亡 */
-  'survival:death': { cause: string };
+  'survival:death': { cause: string; itemsLost?: number; keepInventory?: boolean };
   /** 生存模式：重生 */
   'survival:respawn': { position: Vec3Like };
   /** 生存模式：进食 */

@@ -1,5 +1,5 @@
 import type { BlockId, GameMode } from '../core/types';
-import type { MesherThreads, Options, QualityMode } from '../core/options';
+import type { MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
 import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
@@ -48,6 +48,20 @@ export interface HUDOptions {
   onAutosaveInterval: (v: number) => void;
   /** 实验性内容开关（WASM 内核 / 插件载体） */
   onExperimental: (v: boolean) => void;
+  /** 实验性玩法：随机刻速度档位 */
+  onRandomTickSpeed: (v: RandomTickSpeed) => void;
+  /** 实验性玩法：推进昼夜循环 */
+  onDaylightCycle: (v: boolean) => void;
+  /** 实验性玩法：死亡保留背包 */
+  onKeepInventory: (v: boolean) => void;
+  /** 实验性玩法：自动维持生物种群 */
+  onMobSpawning: (v: boolean) => void;
+  /** 实验性玩法：渲染体素云层 */
+  onShowClouds: (v: boolean) => void;
+  /** 实验性玩法：方块重力 */
+  onBlockGravity: (v: boolean) => void;
+  /** 实验性玩法：透明通道距离排序 */
+  onSortTransparent: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
   onCopyOptions: (json: string) => void;
@@ -102,6 +116,13 @@ const AUTOSAVE_CHOICES: { value: number; label: string }[] = [
   { value: 8, label: '8 秒' },
   { value: 15, label: '15 秒' },
   { value: 30, label: '30 秒' },
+];
+/** 实验性玩法「随机刻速度」候选档位（对齐原版 /gamerule randomTickSpeed 的语义） */
+const TICK_SPEED_CHOICES: { value: RandomTickSpeed; label: string }[] = [
+  { value: 0, label: '暂停' },
+  { value: 1, label: '慢' },
+  { value: 2, label: '标准' },
+  { value: 3, label: '快' },
 ];
 
 /** 循环行当前值对应的展示文案（找不到候选时退回原始值） */
@@ -172,6 +193,13 @@ export class HUD {
   private threadsRow!: HTMLButtonElement;
   private autosaveRow!: HTMLButtonElement;
   private experimentalRow?: HTMLButtonElement;
+  private tickSpeedRow?: HTMLButtonElement;
+  private daylightRow?: HTMLButtonElement;
+  private keepInvRow?: HTMLButtonElement;
+  private mobSpawnRow?: HTMLButtonElement;
+  private cloudsRow?: HTMLButtonElement;
+  private gravityRow?: HTMLButtonElement;
+  private sortRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
   private ioTitle!: HTMLElement;
   private ioTextArea!: HTMLTextAreaElement;
@@ -799,7 +827,7 @@ export class HUD {
       this.touchSensVal = ts.val;
     }
 
-    // ---- 实验性内容（类似原版的实验性玩法，可随时关闭）----
+    // ---- 实验性内容（引擎 / 内核）----
     const exp = group('实验性内容');
     this.experimentalRow = this.optionRow('WASM 内核 / 插件载体', () => {
       this.opts.onExperimental(!this.opts.getOptions().experimental);
@@ -807,6 +835,43 @@ export class HUD {
     });
     exp.appendChild(this.experimentalRow);
     exp.appendChild(h('div', 'menu-note', '默认关闭；开启后启用 WebAssembly 计算内核与插件三载体，关闭即回到纯 JS 路径。'));
+
+    // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
+    const gamerules = group('实验性玩法');
+    this.tickSpeedRow = this.cycleRow('随机刻速度', TICK_SPEED_CHOICES,
+      () => this.opts.getOptions().randomTickSpeed, (v) => this.opts.onRandomTickSpeed(v));
+    gamerules.appendChild(this.tickSpeedRow);
+    this.daylightRow = this.optionRow('昼夜循环', () => {
+      this.opts.onDaylightCycle(!this.opts.getOptions().doDaylightCycle);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.daylightRow);
+    this.keepInvRow = this.optionRow('死亡保留物品', () => {
+      this.opts.onKeepInventory(!this.opts.getOptions().keepInventory);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.keepInvRow);
+    this.mobSpawnRow = this.optionRow('生物生成', () => {
+      this.opts.onMobSpawning(!this.opts.getOptions().doMobSpawning);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.mobSpawnRow);
+    this.cloudsRow = this.optionRow('体素云层', () => {
+      this.opts.onShowClouds(!this.opts.getOptions().showClouds);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.cloudsRow);
+    this.gravityRow = this.optionRow('方块重力', () => {
+      this.opts.onBlockGravity(!this.opts.getOptions().blockGravity);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.gravityRow);
+    this.sortRow = this.optionRow('透明排序', () => {
+      this.opts.onSortTransparent(!this.opts.getOptions().sortTransparent);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.sortRow);
+    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；后三项为渲染/玩法特性对照，全部立即生效并自动保存。'));
 
     // ---- 开发者 ----
     const dev = group('开发者');
@@ -912,6 +977,13 @@ export class HUD {
     this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
+    if (this.tickSpeedRow) this.setRowVal(this.tickSpeedRow, choiceLabel(TICK_SPEED_CHOICES, o.randomTickSpeed), o.randomTickSpeed === 0);
+    if (this.daylightRow) this.setRowVal(this.daylightRow, o.doDaylightCycle ? '开' : '关', !o.doDaylightCycle);
+    if (this.keepInvRow) this.setRowVal(this.keepInvRow, o.keepInventory ? '开' : '关', !o.keepInventory);
+    if (this.mobSpawnRow) this.setRowVal(this.mobSpawnRow, o.doMobSpawning ? '开' : '关', !o.doMobSpawning);
+    if (this.cloudsRow) this.setRowVal(this.cloudsRow, o.showClouds ? '开' : '关', !o.showClouds);
+    if (this.gravityRow) this.setRowVal(this.gravityRow, o.blockGravity ? '开' : '关', !o.blockGravity);
+    if (this.sortRow) this.setRowVal(this.sortRow, o.sortTransparent ? '开' : '关', !o.sortTransparent);
   }
 
   showOptions(v: boolean) {

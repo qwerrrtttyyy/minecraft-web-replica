@@ -114,6 +114,8 @@ export class FallingBlock {
  */
 export class FallingSystem {
   readonly list: FallingBlock[] = [];
+  /** 实验性玩法「方块重力」：false 时 triggerColumn 不触发，悬空方块保持原位 */
+  enabled = true;
   /** 植物失去支撑的掉落回调（组装根接到生存背包，创造模式忽略） */
   onPlantDrop: ((def: BlockDefinition) => void) | null = null;
   /** H09：落点阻挡检查（玩家/实体 AABB），由组装根注入 */
@@ -135,6 +137,7 @@ export class FallingSystem {
    * 悬空植物在扫描中连带掉落，语义与 breakBlock 的「上方植物随之掉落」一致。
    */
   triggerColumn(x: number, y: number, z: number): void {
+    if (!this.enabled) return;
     let started = false;
     for (let yy = Math.max(0, y); yy < WORLD_HEIGHT; yy++) {
       const id = this.world.getBlock(x, yy, z);

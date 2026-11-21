@@ -5,7 +5,7 @@ import { VERSION, RELEASE } from './core/version';
 import { clamp, type BlockId, type GameMode } from './core/types';
 import {
   loadOptions, normalizeOptions, persistOptions, qualityScale,
-  type MesherThreads, type Options, type QualityMode,
+  type MesherThreads, type Options, type QualityMode, type RandomTickSpeed,
 } from './core/options';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
@@ -266,6 +266,14 @@ async function boot() {
   player.viewBob = settings.viewBob;
   player.autoJump = settings.autoJump;
   applyQuality(settings.quality);
+  // 实验性玩法初始值（从 localStorage / 存档还原后立即推送到子系统）
+  botany.setTickSpeed(settings.randomTickSpeed);
+  sky.advanceTime = settings.doDaylightCycle;
+  survival.keepInventory = settings.keepInventory;
+  entities.allowSpawn = settings.doMobSpawning;
+  sky.setCloudsEnabled(settings.showClouds);
+  falling.enabled = settings.blockGravity;
+  chunks.transparentSortEnabled = settings.sortTransparent;
 
   const tntList: PrimedTnt[] = [];
   const highlight = new BlockHighlight(engine.scene);
@@ -566,6 +574,56 @@ async function boot() {
     },
     onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
     onExperimental: (v) => setExperimental(v),
+    // ---- 实验性玩法：即时生效 + 反馈 + 持久化 ----
+    onRandomTickSpeed: (v: RandomTickSpeed) => {
+      settings.randomTickSpeed = v;
+      botany.setTickSpeed(v);
+      hud.toast(`随机刻速度：${['暂停生长', '慢', '标准', '快'][v]}`);
+      persistOptions(settings);
+      markDirty();
+    },
+    onDaylightCycle: (v) => {
+      settings.doDaylightCycle = v;
+      sky.advanceTime = v;
+      hud.toast(v ? '昼夜循环已开启：时间继续流动' : '昼夜循环已冻结：太阳定格当前时刻');
+      persistOptions(settings);
+      markDirty();
+    },
+    onKeepInventory: (v) => {
+      settings.keepInventory = v;
+      survival.keepInventory = v;
+      hud.toast(v ? '死亡保留物品：开启' : '死亡保留物品：关闭（死亡将清空背包）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onMobSpawning: (v) => {
+      settings.doMobSpawning = v;
+      entities.allowSpawn = v;
+      hud.toast(v ? '生物生成：开启' : '生物生成：关闭（现有生物将逐渐消散）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onShowClouds: (v) => {
+      settings.showClouds = v;
+      sky.setCloudsEnabled(v);
+      hud.toast(v ? '体素云层：开启' : '体素云层：关闭（省电）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onBlockGravity: (v) => {
+      settings.blockGravity = v;
+      falling.enabled = v;
+      hud.toast(v ? '方块重力：开启' : '方块重力：关闭（悬空方块保持原位）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onSortTransparent: (v) => {
+      settings.sortTransparent = v;
+      chunks.transparentSortEnabled = v;
+      hud.toast(v ? '透明排序：开启' : '透明排序：关闭（玻璃/水可能穿帮）');
+      persistOptions(settings);
+      markDirty();
+    },
     onExportOptions: () => JSON.stringify(settings, null, 2),
     onCopyOptions: (json) => {
       void copyText(json);
@@ -690,6 +748,14 @@ async function boot() {
     if (!debugOn) hud.setDebug(null);
     chunks.greedy = settings.greedy;
     applyMesherThreads(settings.mesherThreads);
+    // 实验性玩法：启动 / 重置 / 导入时统一推送到各子系统
+    botany.setTickSpeed(settings.randomTickSpeed);
+    sky.advanceTime = settings.doDaylightCycle;
+    survival.keepInventory = settings.keepInventory;
+    entities.allowSpawn = settings.doMobSpawning;
+    sky.setCloudsEnabled(settings.showClouds);
+    falling.enabled = settings.blockGravity;
+    chunks.transparentSortEnabled = settings.sortTransparent;
   };
 
   // 空手右键工作台方块 → 打开合成界面

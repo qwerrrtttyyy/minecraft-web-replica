@@ -46,7 +46,24 @@ export interface Options {
   autosaveInterval: number;
   /** 实验性内容：WASM 内核 / 插件三载体（默认关闭，开启后重启生效） */
   experimental: boolean;
+  /** 实验性玩法：随机刻速度档位 0~3（0=暂停生长，1=慢，2=标准，3=快） */
+  randomTickSpeed: RandomTickSpeed;
+  /** 实验性玩法：推进昼夜循环（关闭后时间/太阳定格） */
+  doDaylightCycle: boolean;
+  /** 实验性玩法：死亡保留背包（关闭后死亡清空背包，原版默认行为） */
+  keepInventory: boolean;
+  /** 实验性玩法：维持生物种群（关闭后不再自动刷新生物） */
+  doMobSpawning: boolean;
+  /** 实验性玩法：渲染体素云层（关闭后隐藏云并跳过重建，省电） */
+  showClouds: boolean;
+  /** 实验性玩法：方块重力（沙/砾石下落，关闭后悬空方块保持原位） */
+  blockGravity: boolean;
+  /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
+  sortTransparent: boolean;
 }
+
+/** 随机刻速度档位：0 暂停 / 1 慢 / 2 标准 / 3 快 */
+export type RandomTickSpeed = 0 | 1 | 2 | 3;
 
 export const OPTIONS_KEY = 'minecraft-ts-options-v1';
 
@@ -68,10 +85,18 @@ export const DEFAULT_OPTIONS: Options = {
   mesherThreads: 'auto',
   autosaveInterval: 8,
   experimental: false,
+  randomTickSpeed: 2,
+  doDaylightCycle: true,
+  keepInventory: true,
+  doMobSpawning: true,
+  showClouds: true,
+  blockGravity: true,
+  sortTransparent: true,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];
 const MESHER_THREAD_OPTIONS: readonly MesherThreads[] = ['auto', 'main', 1, 2, 4];
+const RANDOM_TICK_SPEEDS: readonly RandomTickSpeed[] = [0, 1, 2, 3];
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const bool = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def);
@@ -121,6 +146,13 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       mesherThreads: pick(o.mesherThreads, MESHER_THREAD_OPTIONS, base.mesherThreads),
       autosaveInterval: Math.round(num(o.autosaveInterval, base.autosaveInterval, 0, 120)),
       experimental: bool(o.experimental, base.experimental),
+      randomTickSpeed: pick(o.randomTickSpeed, RANDOM_TICK_SPEEDS, base.randomTickSpeed),
+      doDaylightCycle: bool(o.doDaylightCycle, base.doDaylightCycle),
+      keepInventory: bool(o.keepInventory, base.keepInventory),
+      doMobSpawning: bool(o.doMobSpawning, base.doMobSpawning),
+      showClouds: bool(o.showClouds, base.showClouds),
+      blockGravity: bool(o.blockGravity, base.blockGravity),
+      sortTransparent: bool(o.sortTransparent, base.sortTransparent),
     };
   } catch {
     return base;
@@ -156,5 +188,12 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     mesherThreads: pick(base.mesherThreads, MESHER_THREAD_OPTIONS, DEFAULT_OPTIONS.mesherThreads),
     autosaveInterval: Math.round(num(base.autosaveInterval, DEFAULT_OPTIONS.autosaveInterval, 0, 120)),
     experimental: bool(base.experimental, DEFAULT_OPTIONS.experimental),
+    randomTickSpeed: pick(base.randomTickSpeed, RANDOM_TICK_SPEEDS, DEFAULT_OPTIONS.randomTickSpeed),
+    doDaylightCycle: bool(base.doDaylightCycle, DEFAULT_OPTIONS.doDaylightCycle),
+    keepInventory: bool(base.keepInventory, DEFAULT_OPTIONS.keepInventory),
+    doMobSpawning: bool(base.doMobSpawning, DEFAULT_OPTIONS.doMobSpawning),
+    showClouds: bool(base.showClouds, DEFAULT_OPTIONS.showClouds),
+    blockGravity: bool(base.blockGravity, DEFAULT_OPTIONS.blockGravity),
+    sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
   };
 }

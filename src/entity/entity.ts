@@ -204,6 +204,8 @@ export class EntityManager {
   private types = new Map<string, EntityType>();
   private popTimer = 0;
   targetPopulation = 7;
+  /** 实验性玩法「生物生成」：false 时不再自动补刷生物（已存在的按距离/日照自然清退） */
+  allowSpawn = true;
   /** 掉落回调，由主装配接到生存背包 */
   onDrop: ((name: string, count: number) => void) | null = null;
 
@@ -262,6 +264,7 @@ export class EntityManager {
 
   /** 在玩家附近的草方块上生成生物 */
   trySpawnNear(playerPos: THREE.Vector3, typeId?: string) {
+    if (!this.allowSpawn) return false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = 16 + Math.random() * 22;
