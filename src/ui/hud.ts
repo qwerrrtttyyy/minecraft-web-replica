@@ -62,6 +62,8 @@ export interface HUDOptions {
   onBlockGravity: (v: boolean) => void;
   /** 实验性玩法：透明通道距离排序 */
   onSortTransparent: (v: boolean) => void;
+  /** 实验性内容开关：我的世界 UI 还原（原版 Java 版风格 HUD） */
+  onVanillaUI: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
   onCopyOptions: (json: string) => void;
@@ -200,6 +202,7 @@ export class HUD {
   private cloudsRow?: HTMLButtonElement;
   private gravityRow?: HTMLButtonElement;
   private sortRow?: HTMLButtonElement;
+  private vanillaUIRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
   private ioTitle!: HTMLElement;
   private ioTextArea!: HTMLTextAreaElement;
@@ -834,7 +837,12 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.experimentalRow);
-    exp.appendChild(h('div', 'menu-note', '默认关闭；开启后启用 WebAssembly 计算内核与插件三载体，关闭即回到纯 JS 路径。'));
+    this.vanillaUIRow = this.optionRow('我的世界 UI 还原', () => {
+      this.opts.onVanillaUI(!this.opts.getOptions().vanillaUI);
+      this.syncOptions(this.opts.getOptions());
+    });
+    exp.appendChild(this.vanillaUIRow);
+    exp.appendChild(h('div', 'menu-note', '默认关闭。WASM 开关启用计算内核与插件三载体；「我的世界 UI 还原」把 HUD 整体切换为原版 Java 版风格，均即时生效。'));
 
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');
@@ -984,6 +992,7 @@ export class HUD {
     if (this.cloudsRow) this.setRowVal(this.cloudsRow, o.showClouds ? '开' : '关', !o.showClouds);
     if (this.gravityRow) this.setRowVal(this.gravityRow, o.blockGravity ? '开' : '关', !o.blockGravity);
     if (this.sortRow) this.setRowVal(this.sortRow, o.sortTransparent ? '开' : '关', !o.sortTransparent);
+    if (this.vanillaUIRow) this.setRowVal(this.vanillaUIRow, o.vanillaUI ? '开' : '关', !o.vanillaUI);
   }
 
   showOptions(v: boolean) {
