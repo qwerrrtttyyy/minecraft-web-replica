@@ -620,4 +620,53 @@ ok('新动物掉落名带 item: 前缀',
   ['cow', 'chicken', 'rabbit'].every((id) =>
     mobs.getType(id).drops.every((d) => d.name.startsWith('item:'))));
 
+// C02 回归：固化按权重确定性生成，防后续任务改 ANIMALS / pickPassiveType 后静默失守
+{
+  const pickWorld = {
+    registry: { get: (id) => ({ name: id === 1 ? 'grass' : 'air', liquid: false }) },
+    getBlock: (_x, y) => (y === 40 ? 1 : 0),
+    surfaceHeight: () => 40,
+    isSolidAt: () => false,
+  };
+  const pickEvents = { on() {}, emit() {} };
+  const player = new THREE.Vector3(0, 0, 0);
+  const passive = ['pig', 'sheep', 'cow', 'chicken', 'rabbit'];
+
+  // 走公开 trySpawnNear：草地桩保证每次都命中，抽完立即 despawn 以绕过 cap 但保留生成序号
+  const naturalSequence = (seed, n) => {
+    const m = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, seed);
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      m.trySpawnNear(player);
+      const e = m.entities[m.entities.length - 1];
+      ids.push(e ? e.type.id : null);
+      if (e) m.despawn(e);
+    }
+    return ids;
+  };
+
+  const N = 200;
+  const seqA = naturalSequence(424242, N);
+  const seqB = naturalSequence(424242, N);
+  ok('同 seed + 同生成序号序列：加权抽取完全复现',
+    seqA.length === N && JSON.stringify(seqA) === JSON.stringify(seqB));
+  const seen = new Set(seqA);
+  ok('加权抽取覆盖全部正权重被动动物且无未知 id',
+    passive.every((id) => seen.has(id)) && seqA.every((id) => passive.includes(id)),
+    [...seen].join(','));
+
+  // typeId 覆盖优先，且不消耗 spawnSerial：下一次自然抽取仍是该 seed 的首个结果
+  const fresh = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, 424242);
+  fresh.trySpawnNear(player);
+  const expectedFirst = fresh.entities[0].type.id;
+  const overridden = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, 424242);
+  overridden.trySpawnNear(player, 'zombie');
+  const overrideId = overridden.entities[0] ? overridden.entities[0].type.id : null;
+  overridden.trySpawnNear(player);
+  const afterOverrideId = overridden.entities[1] ? overridden.entities[1].type.id : null;
+  ok('typeId 覆盖优先且不消耗生成序号',
+    overrideId === 'zombie' && afterOverrideId === expectedFirst,
+    `${overrideId} -> ${afterOverrideId} (期望 ${expectedFirst})`);
+}
+
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);
