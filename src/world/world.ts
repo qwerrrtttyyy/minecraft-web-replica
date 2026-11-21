@@ -166,8 +166,10 @@ export class World {
       chunk.generated = true;
       // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
       this.light.initChunk(chunk);
-      // 邻接已网格化区块需要重绘边界面
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      // 邻接已网格化区块需要重绘边界面；对角块也要算，因为 AO / 角点光照会采样对角 halo 格。
+      for (const [dx, dz] of [
+        [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+      ] as const) {
         const nk = chunkKey(cx + dx, cz + dz);
         if (this.chunks.get(nk)?.generated) this.dirty.add(nk);
       }

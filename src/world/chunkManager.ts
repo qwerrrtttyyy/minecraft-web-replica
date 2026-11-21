@@ -313,6 +313,10 @@ export class ChunkManager implements System {
       this.applySync(cx, cz);
       rec.resolve();
     }
+    // 重建池后必须让 getConfig() 重新下发配置：新 Worker 的 config 初始为 null，
+    // 只有收到 config 才会排空 mesh.worker.ts 的 queued。若这里不置空，
+    // getConfig() 会直接返回旧对象、不触发 postConfig()，新池将永远收不到配置。
+    this.config = null;
   }
 
   /**
@@ -686,6 +690,8 @@ export class ChunkManager implements System {
         this.meshes.delete(key);
         this.sortDirty = true;
       }
+      // 先让光照引擎的区块缓存失效，再删除数据：否则重建后 BFS 可能写入旧对象。
+      this.world.light.invalidate(chunk.cx, chunk.cz);
       this.world.unloadChunk(key);
       this.world.dirty.delete(key);
       this.events.emit('chunk:unloaded', { cx: chunk.cx, cz: chunk.cz });

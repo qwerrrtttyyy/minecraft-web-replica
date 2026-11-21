@@ -189,6 +189,14 @@ export class LightEngine {
 
   // ---------- 内部 ----------
 
+  /** 区块卸载时让单条目缓存失效，避免光照 BFS 继续读写已删除的旧 Chunk */
+  invalidate(cx: number, cz: number): void {
+    if (cx !== this.cacheCx || cz !== this.cacheCz) return;
+    this.cacheCx = NaN;
+    this.cacheCz = NaN;
+    this.cacheChunk = undefined;
+  }
+
   private chunkAt(cx: number, cz: number): Chunk | undefined {
     if (cx === this.cacheCx && cz === this.cacheCz) return this.cacheChunk;
     this.cacheCx = cx;
