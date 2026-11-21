@@ -195,4 +195,100 @@ ok('BlackboardEq 键值相等 → Success；不等 → Failure',
 ok('CanReach 目标在可达范围内 → Success；不可达 → Failure',
   new CanReach(5, 1, 0).tick(ctxWith(airWorld)) === NodeStatus.Success);
 
+// ---- 7. 动作节点：ChasePlayer / FleeFrom / AttackPlayer / Wander / LookAt / Wait / EmitEvent / SetBlackboard ----
+const {
+  ChasePlayer, FleeFrom, AttackPlayer, Wander, LookAt, Wait, EmitEvent, SetBlackboard,
+  SpawnEntity, BreakBlock, PlaceBlock, PlaySound,
+} = require('./logic/ai/actions.js');
+
+function actionCtx() {
+  const events = { emitted: [], emit(type, payload) { this.emitted.push({ type, payload }); } };
+  const api = {
+    spawned: [], broken: [], placed: [], played: [],
+    spawnEntity(t, o, c) { this.spawned.push({ t, o, c }); },
+    breakBlock(x, y, z) { this.broken.push({ x, y, z }); },
+    placeBlock(x, y, z, b) { this.placed.push({ x, y, z, b }); },
+    playSound(s, v) { this.played.push({ s, v }); },
+  };
+  const c = ctxWith(airWorld);
+  c.events = events;
+  c.api = api;
+  c.dt = 0.05;
+  return { c, events, api };
+}
+
+ok('ChasePlayer 距离 ≤ stopDist → Success；> stopDist → Running',
+  new ChasePlayer(1.0, 10).tick(actionCtx().c) === NodeStatus.Success
+  && new ChasePlayer(1.0, 4).tick(actionCtx().c) === NodeStatus.Running);
+
+ok('FleeFrom 距离 ≥ minDist → Success；< minDist → Running',
+  (() => {
+    const { c } = actionCtx();
+    c.playerPos = { x: 50, y: 1, z: 0 }; // 远离
+    return new FleeFrom('player', 1.0, 5).tick(c) === NodeStatus.Success;
+  })()
+  && (() => {
+    const { c } = actionCtx();
+    return new FleeFrom('player', 1.0, 50).tick(c) === NodeStatus.Running;
+  })());
+
+ok('AttackPlayer 冷却结束且在攻击距离 → Success 并发事件；冷却中 → Running',
+  (() => {
+    const { c, events } = actionCtx();
+    c.playerPos = { x: 1, y: 1, z: 0 }; // 距离 1 ≤ 1.8
+    const attack = new AttackPlayer(3, 1.05);
+    const r1 = attack.tick(c);
+    const emitted = events.emitted.filter((e) => e.type === 'survival:damage').length;
+    const r2 = attack.tick(c); // 冷却中
+    return r1 === NodeStatus.Success && emitted === 1 && r2 === NodeStatus.Running;
+  })());
+
+ok('Wait(0.1) 累计 dt 达阈值 → Success',
+  (() => {
+    const { c } = actionCtx();
+    const w = new Wait(0.1);
+    let r;
+    for (let i = 0; i < 3; i++) r = w.tick(c);
+    return r === NodeStatus.Success;
+  })());
+
+ok('SetBlackboard 写入键值 → Success 且黑板可读',
+  (() => {
+    const { c } = actionCtx();
+    const r = new SetBlackboard('mode', 'chase').tick(c);
+    return r === NodeStatus.Success && c.blackboard.get('mode') === 'chase';
+  })());
+
+ok('EmitEvent 发送事件 → Success 且 events 收到',
+  (() => {
+    const { c, events } = actionCtx();
+    const r = new EmitEvent('test:event', { a: 1 }).tick(c);
+    return r === NodeStatus.Success
+      && events.emitted.length === 1
+      && events.emitted[0].type === 'test:event'
+      && events.emitted[0].payload.a === 1;
+  })());
+
+ok('SpawnEntity / BreakBlock / PlaceBlock / PlaySound 经 api 发送 → Success',
+  (() => {
+    const { c, api } = actionCtx();
+    const r1 = new SpawnEntity('pig', { x: 0.5, y: 0, z: 0.5 }, 1.0).tick(c);
+    const r2 = new BreakBlock(2, 3, 4).tick(c);
+    const r3 = new PlaceBlock(2, 4, 4, 1).tick(c);
+    const r4 = new PlaySound('step', 1.0).tick(c);
+    return r1 === NodeStatus.Success && r2 === NodeStatus.Success && r3 === NodeStatus.Success && r4 === NodeStatus.Success
+      && api.spawned.length === 1 && api.spawned[0].t === 'pig'
+      && api.broken.length === 1 && api.broken[0].x === 2
+      && api.placed.length === 1 && api.placed[0].b === 1
+      && api.played.length === 1 && api.played[0].s === 'step';
+  })());
+
+ok('Wander 持续返回 Running 且不抛错',
+  (() => {
+    const { c } = actionCtx();
+    const w = new Wander(1.0, 1, 2, 2, 4);
+    for (let i = 0; i < 5; i++) w.tick(c);
+    return true;
+  })());
+
 console.log(`\n全部 ${passed} 条断言通过`);

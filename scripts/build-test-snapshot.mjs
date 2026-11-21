@@ -72,6 +72,7 @@ const entries = [
   'src/ai/decorators.ts',
   'src/ai/Perception.ts',
   'src/ai/conditions.ts',
+  'src/ai/actions.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
