@@ -62,7 +62,7 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
-- **botany-rules**：扩展植物 id 92~97 末位追加、`PlantRuleRegistry` 动态解析 /
+- **botany-rules**：扩展植物 id 148~153 末位追加、`PlantRuleRegistry` 动态解析 /
   多规则命中 / 按 owner 注销、`botany:register` 权限裁剪、4 条规则的确定性行为
   （异花传粉 / 夜间蔓延 / 高山霜线 / 雨天补能）、规则按 (priority,id) 排序、
   扩展上下文 day/season/weather/soil/enrichSoil、Botany 兜底分派与注销后失效、

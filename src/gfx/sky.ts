@@ -75,16 +75,16 @@ export class Sky implements System {
 
   private cDayTop = new THREE.Color(0x5f9dff);
   private cDayHorizon = new THREE.Color(0xc4ddff);
-  private cNightTop = new THREE.Color(0x060a1c);
-  private cNightHorizon = new THREE.Color(0x131a32);
-  private cDusk = new THREE.Color(0xff9a4a);
+  private cNightTop = new THREE.Color(0x0a1030);
+  private cNightHorizon = new THREE.Color(0x1b2547);
+  private cDusk = new THREE.Color(0xf0a765);
   private tmpTop = new THREE.Color();
   private tmpHorizon = new THREE.Color();
   private tmpSun = new THREE.Color();
   /** 每帧复用的临时对象：update() 不再分配 Vector3 / Color */
   private tmpSunDir = new THREE.Vector3();
   private cDuskTop = new THREE.Color(0x4a5a8a);
-  private cSunset = new THREE.Color(0xff8a3c);
+  private cSunset = new THREE.Color(0xf59a55);
   private cWhite = new THREE.Color(0xffffff);
   private cWarm = new THREE.Color(0xffb066);
   private cUnderFog = new THREE.Color(UNDERWATER_FOG);
@@ -138,8 +138,8 @@ export class Sky implements System {
           float hl = length(hz) * length(sh);
           if (hl > 1e-4) {
             float az = max(dot(hz, sh) / hl, 0.0);
-            float band = exp(-abs(dir.y) * 5.5);
-            col += uSunColor * pow(az, 3.0) * band * 0.22 * vis * (1.0 - uDaylight * 0.55);
+            float band = exp(-abs(dir.y) * 7.0);
+            col += uSunColor * pow(az, 4.0) * band * 0.11 * vis * (1.0 - uDaylight * 0.55);
           }
           float md = max(dot(dir, -sd), 0.0);
           col += vec3(0.7, 0.8, 1.0) * pow(md, 120.0) * 0.22 * (1.0 - uDaylight);
@@ -237,9 +237,9 @@ export class Sky implements System {
     const col: number[] = [];
     const idx: number[] = [];
     const y = 80;
-    const thick = 1.4;
+    const thick = 2.6;
     // 逐面烘焙明暗（顶亮 / 底暗 / 侧面区分 x、z 轴），让方块云读成有厚度的体素而非白色纸片
-    const shade = [1, 0.74, 0.82, 0.88, 0.78, 0.84];
+    const shade = [1, 0.62, 0.74, 0.86, 0.70, 0.80];
     const addBox = (x0: number, z0: number) => {
       const x1 = x0 + cell, z1 = z0 + cell, y0 = y, y1 = y + thick;
       const faces = [
@@ -329,8 +329,8 @@ export class Sky implements System {
 
     this.tmpTop.copy(this.cNightTop).lerp(this.cDayTop, this.daylight);
     this.tmpHorizon.copy(this.cNightHorizon).lerp(this.cDayHorizon, this.daylight);
-    this.tmpHorizon.lerp(this.cDusk, dusk * 0.75);
-    this.tmpTop.lerp(this.cDuskTop, dusk * 0.25);
+    this.tmpHorizon.lerp(this.cDusk, dusk * 0.42);
+    this.tmpTop.lerp(this.cDuskTop, dusk * 0.18);
 
     const u = this.domeMat.uniforms;
     (u.uTop.value as THREE.Color).copy(this.tmpTop);
@@ -361,8 +361,8 @@ export class Sky implements System {
       moonMat.map = this.moonTextures[phase];
       moonMat.needsUpdate = true;
     }
-    // 两组星以不同相位缓慢闪烁
-    const starVis = (1 - this.daylight) * 0.9;
+    // 两组星以不同相位缓慢闪烁；用 pow 门控，黄昏余晖尚在时不提前冒出
+    const starVis = (1 - this.daylight) ** 2.2 * 0.9;
     this.starMat.opacity = starVis * (0.84 + 0.16 * Math.sin(elapsed * 1.7));
     this.starMatB.opacity = starVis * (0.84 + 0.16 * Math.sin(elapsed * 2.3 + 1.9));
     this.stars.rotation.y = elapsed * 0.004;
@@ -386,16 +386,17 @@ export class Sky implements System {
     const cloudMat = this.clouds.material as THREE.MeshBasicMaterial;
     // 日落/日出时把云染向霞光色，夜里压暗；水下淡出以免穿帮
     // 原版云：白天接近纯白、夜间压暗，且不过度跟随天色偏蓝
-    cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.55 + this.daylight * 0.45);
-    cloudMat.color.lerp(this.tmpSun, dusk * 0.22);
-    cloudMat.color.multiplyScalar(0.5 + this.daylight * 0.5);
+    cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.5 + this.daylight * 0.5);
+    cloudMat.color.lerp(this.tmpSun, dusk * 0.15);
+    // 夜间云压到接近天穹底色，避免纯灰横条漂浮感
+    cloudMat.color.multiplyScalar(0.28 + this.daylight * 0.72);
     cloudMat.opacity = (0.28 + this.daylight * 0.6) * (1 - sub * 0.9);
     this.clouds.visible = this.showClouds && sub < 0.99;
 
     // 雾：水下切换为近距蓝雾；世界亮度由区块 shader 的天空光 / 方块光分别处理
     const R = this.getRenderDistance() * 16;
     this.fog.color.copy(this.tmpHorizon).lerp(this.cUnderFog, sub);
-    this.fog.color.lerp(this.tmpSun, dusk * 0.1 * (1 - sub));
+    this.fog.color.lerp(this.tmpSun, dusk * 0.045 * (1 - sub));
     // 远景更早雾化，海面与天穹之间不再硬切
     this.fog.near = lerp(R * 0.42, 2, sub);
     this.fog.far = lerp(R * 0.92, R * 0.42, sub);
@@ -404,7 +405,7 @@ export class Sky implements System {
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);
     this.sunLight.target.position.copy(cam);
     this.sunLight.intensity = 0.18 + this.daylight * 1.0;
-    this.sunLight.color.set(0xffffff).lerp(this.cWarm, dusk * 0.8);
+    this.sunLight.color.set(0xffffff).lerp(this.cWarm, dusk * 0.5);
     this.hemi.intensity = 0.32 + this.daylight * 0.5;
     this.hemi.color.copy(this.tmpTop).lerp(this.cWhite, 0.4);
 

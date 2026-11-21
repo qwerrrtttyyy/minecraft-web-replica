@@ -1,8 +1,8 @@
 name: showcase
 
-# README 首屏 GIF 的实机录制（手动触发）。
+# README 首屏 WebP 的实机录制（手动触发）。
 # 本机没有可用 WebGL 时，用 GitHub Actions 的 Xvfb + Mesa 渲染 180 帧，
-# 再合成 docs/assets/showcase.gif，产物从 Artifacts 下载。
+# 再合成 docs/assets/showcase.webp，产物从 Artifacts 下载。
 on:
   workflow_dispatch:
 
@@ -18,10 +18,10 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-      - name: 安装 Chromium / Xvfb / Mesa / 中文字体 / ffmpeg / gifsicle
+      - name: 安装 Chromium / Xvfb / Mesa / 中文字体 / ffmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y chromium xvfb libgl1-mesa-dri mesa-utils fonts-noto-cjk ffmpeg gifsicle
+          sudo apt-get install -y chromium xvfb libgl1-mesa-dri mesa-utils fonts-noto-cjk ffmpeg
       - run: npm ci
       - run: npm run build
       - name: 录制实机帧
@@ -30,16 +30,14 @@ jobs:
           CHROME_PATH: /usr/bin/chromium
           MC_HEADLESS: '0'
           MC_GL: desktop
-      - name: 合成首屏 GIF（720px / 10fps / 96 色 + gifsicle 有损压缩）
+      - name: 合成首屏 WebP（720px / 10fps / libwebp_anim 有损压缩）
         run: |
           mkdir -p docs/assets
           ffmpeg -y -framerate 12 -i test/artifacts/showcase/frame-%03d.png \
-            -vf "fps=10,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
-            -loop 0 docs/assets/showcase-pre.gif
-          gifsicle -O3 --lossy=120 --colors 96 docs/assets/showcase-pre.gif -o docs/assets/showcase.gif
-          rm -f docs/assets/showcase-pre.gif
-          ls -lh docs/assets/showcase.gif
+            -vf "fps=10,scale=720:-1:flags=lanczos" \
+            -c:v libwebp_anim -quality 25 -preset icon -loop 0 docs/assets/showcase.webp
+          ls -lh docs/assets/showcase.webp
       - uses: actions/upload-artifact@v4
         with:
-          name: showcase-gif
-          path: docs/assets/showcase.gif
+          name: showcase-webp
+          path: docs/assets/showcase.webp

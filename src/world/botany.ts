@@ -70,10 +70,12 @@ export const ECOLOGY_SAVE_LIMIT = 1024;
 
 /** 生态规则的方块 id 表：显式接口保证漏键在编译期暴露，而不是静默变成 0 */
 interface BotanyIds {
-  grass: BlockId; dirt: BlockId; podzol: BlockId; water: BlockId;
+  grass: BlockId; dirt: BlockId; podzol: BlockId; sand: BlockId; water: BlockId;
   sugarCane: BlockId; cactus: BlockId; bamboo: BlockId;
   kelp: BlockId; seagrass: BlockId; lilyPad: BlockId;
-  vine: BlockId; glowLichen: BlockId; mossCarpet: BlockId;
+  duckweed: BlockId; seaAnemone: BlockId; redAlgae: BlockId;
+  vine: BlockId; ivy: BlockId; glowLichen: BlockId; mossCarpet: BlockId; glowMoss: BlockId;
+  glowFern: BlockId; moonflower: BlockId;
   wheatSeedling: BlockId; wheatGrowing: BlockId; wheat: BlockId;
   berryBush: BlockId; berryBushRipe: BlockId; pumpkinStem: BlockId; pumpkin: BlockId;
   oakSapling: BlockId; birchSapling: BlockId; spruceSapling: BlockId;
@@ -131,6 +133,12 @@ export class Botany {
   private readonly saplings = new Map<BlockId, TreeSpecies>();
   private readonly aquatic = new Set<BlockId>();
   private readonly columns = new Set<BlockId>();
+  /** 攀爬植物：藤蔓 / 常春藤，向下垂挂或沿墙横爬，共享整条储能 */
+  private readonly climbers = new Set<BlockId>();
+  /** 水面漂浮植物：睡莲 / 浮萍，在水面上铺开 */
+  private readonly floaters = new Set<BlockId>();
+  /** 洞穴发光植物：附着在任意实心面（石壁 / 地面）上，在暗处扩散 */
+  private readonly luminous = new Set<BlockId>();
   private readonly meadow: { id: BlockId; weight: number }[] = [];
   private meadowTotal = 0;
   /** 插件生态规则表：内置规则未命中时才分派，停用插件可整体注销 */
@@ -153,10 +161,15 @@ export class Botany {
     const byName = (name: string) => registry.byNameGet(name)?.id ?? 0;
     this.id = {
       grass: byName('grass'), dirt: byName('dirt'), podzol: byName('podzol'),
+      sand: byName('sand'),
       water: byName('water'),
       sugarCane: byName('sugar_cane'), cactus: byName('cactus'), bamboo: byName('bamboo'),
       kelp: byName('kelp'), seagrass: byName('seagrass'), lilyPad: byName('lily_pad'),
-      vine: byName('vine'), glowLichen: byName('glow_lichen'), mossCarpet: byName('moss_carpet'),
+      duckweed: byName('duckweed'), seaAnemone: byName('sea_anemone'),
+      redAlgae: byName('red_algae'),
+      vine: byName('vine'), ivy: byName('ivy'), glowLichen: byName('glow_lichen'),
+      mossCarpet: byName('moss_carpet'), glowMoss: byName('glow_moss'),
+      glowFern: byName('glow_fern'), moonflower: byName('moonflower'),
       wheatSeedling: byName('wheat_seedling'), wheatGrowing: byName('wheat_growing'),
       wheat: byName('wheat'),
       berryBush: byName('sweet_berry_bush'), berryBushRipe: byName('sweet_berry_bush_ripe'),
@@ -171,16 +184,30 @@ export class Botany {
       'poppy', 'dandelion', 'bluebell', 'allium', 'azure_bluet', 'oxeye_daisy',
       'cornflower', 'lily_of_the_valley', 'tulip_red', 'tulip_orange', 'tulip_white',
       'tulip_pink', 'sunflower', 'lilac', 'rose_bush', 'peony',
+      // v1.6.0 花海扩充：温带 / 林下 / 雪线 / 沙岸花卉
+      'lavender', 'buttercup', 'forget_me_not', 'marigold', 'foxglove', 'hollyhock',
+      'violet', 'wood_anemone', 'wild_garlic', 'hyacinth', 'snowdrop', 'edelweiss',
+      'snow_lily', 'crocus', 'gentian', 'desert_marigold', 'sea_thrift', 'ghost_flower',
     ];
     for (const name of flowerNames) {
       const id = byName(name);
       if (id) this.flowers.add(id);
     }
-    for (const id of [this.id.tallGrass, this.id.fern, this.id.tallFern]) {
+    for (const id of [this.id.tallGrass, this.id.fern, this.id.tallFern, byName('beach_grass')]) {
       if (id) this.spreadable.add(id);
     }
-    // 花与草都能由草方块自然长出；权重大致对应野外观感
-    for (const id of this.flowers) this.meadow.push({ id, weight: 0.7 });
+    // 花与草都能由草方块自然长出；雪线 / 沙漠 / 海岸花卉只走群系配置，不混入温带草甸
+    const meadowFlowerNames = [
+      'poppy', 'dandelion', 'bluebell', 'allium', 'azure_bluet', 'oxeye_daisy',
+      'cornflower', 'lily_of_the_valley', 'tulip_red', 'tulip_orange', 'tulip_white',
+      'tulip_pink', 'sunflower', 'lilac', 'rose_bush', 'peony',
+      'lavender', 'buttercup', 'forget_me_not', 'marigold', 'foxglove', 'hollyhock',
+      'violet', 'wood_anemone', 'wild_garlic', 'hyacinth',
+    ];
+    for (const name of meadowFlowerNames) {
+      const id = byName(name);
+      if (id) this.meadow.push({ id, weight: 0.7 });
+    }
     for (const id of [this.id.tallGrass, this.id.fern, this.id.tallFern]) {
       if (id) this.meadow.push({ id, weight: 3 });
     }
@@ -191,7 +218,15 @@ export class Botany {
     if (this.id.oakSapling) this.saplings.set(this.id.oakSapling, 'oak');
     if (this.id.birchSapling) this.saplings.set(this.id.birchSapling, 'birch');
     if (this.id.spruceSapling) this.saplings.set(this.id.spruceSapling, 'spruce');
-    for (const id of [this.id.kelp, this.id.seagrass]) if (id) this.aquatic.add(id);
+    for (const id of [this.id.kelp, this.id.seagrass, this.id.seaAnemone, this.id.redAlgae]) {
+      if (id) this.aquatic.add(id);
+    }
+    // 攀爬 / 漂浮 / 洞穴发光植物按能力分派到对应规则
+    for (const id of [this.id.vine, this.id.ivy]) if (id) this.climbers.add(id);
+    for (const id of [this.id.lilyPad, this.id.duckweed]) if (id) this.floaters.add(id);
+    for (const id of [this.id.glowLichen, this.id.glowMoss, this.id.glowFern, this.id.moonflower]) {
+      if (id) this.luminous.add(id);
+    }
     // 柱状能量锚点：甘蔗 / 竹子 / 仙人掌都按整列共享储能与顶部光照
     for (const id of [this.id.sugarCane, this.id.bamboo, this.id.cactus]) {
       if (id) this.columns.add(id);
@@ -443,7 +478,7 @@ export class Botany {
       while (ay - 1 >= 1 && this.world.getBlock(x, ay - 1, z) === id) ay--;
       return [x, ay, z];
     }
-    if (id === this.id.vine) {
+    if (this.climbers.has(id)) {
       let ay = y;
       while (ay + 1 < H && this.world.getBlock(x, ay + 1, z) === id) ay++;
       return [x, ay, z];
@@ -686,17 +721,17 @@ export class Botany {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
       return this.tickCactus(x, y, z);
     }
-    if (id === this.id.lilyPad) {
+    if (this.floaters.has(id)) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickLily(x, y, z);
+      return this.tickLily(x, y, z, id);
     }
-    if (id === this.id.vine) {
+    if (this.climbers.has(id)) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickVine(x, y, z);
+      return this.tickVine(x, y, z, id);
     }
-    if (id === this.id.glowLichen) {
+    if (this.luminous.has(id)) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickLichen(x, y, z, daylight);
+      return this.tickLichen(x, y, z, daylight, id);
     }
     if (id === this.id.mossCarpet) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
@@ -748,8 +783,8 @@ export class Botany {
 
   private supported(id: BlockId, x: number, y: number, z: number): boolean {
     const below = this.world.getBlock(x, y - 1, z);
-    if (id === this.id.vine || id === this.id.glowLichen) {
-      // 藤蔓可以挂在实心方块或另一段藤蔓上（向下垂挂成串）
+    if (this.climbers.has(id) || this.luminous.has(id)) {
+      // 藤蔓 / 常春藤可挂在实心方块或同类上；发光植物可贴任意石壁
       if (below === id || this.world.getBlock(x, y + 1, z) === id || this.registry.isSolid(below)) return true;
       for (const [dx, dy, dz] of DIRS) {
         const n = this.world.getBlock(x + dx, y + dy, z + dz);
@@ -757,11 +792,11 @@ export class Botany {
       }
       return false;
     }
-    if (id === this.id.lilyPad) {
+    if (this.floaters.has(id)) {
       return this.registry.isSolid(below) || this.registry.get(below).liquid;
     }
     if (this.aquatic.has(id)) {
-      return this.registry.isSolid(below) || below === this.id.kelp || below === this.id.seagrass;
+      return this.registry.isSolid(below) || this.aquatic.has(below);
     }
     if (this.columns.has(id)) {
       return this.registry.isSolid(below) || below === id;
@@ -836,7 +871,8 @@ export class Botany {
   private tickSpread(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
     if (this.lightAt(x, y, z, daylight) < 9) return false;
     if (this.rng() > scaledChance(0.09, this.env)) return false;
-    const spot = this.findGroundSpot(x, y, z, 2, true);
+    // 海滩 / 沙漠花卉允许在沙面蔓延；树苗 / 蘑菇仍只认土壤
+    const spot = this.findGroundSpot(x, y, z, 2, true, true);
     return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, y, z) : false;
   }
 
@@ -862,7 +898,8 @@ export class Botany {
     if (top - base + 1 >= max) {
       // 竹子长满后横向扩繁
       if (id !== this.id.bamboo || this.rng() > scaledChance(0.06, this.env)) return false;
-      const spot = this.findGroundSpot(base, top, z, 2, true);
+      // 以竹柱底部为基准向四周找地面；base/top 都是 Y 坐标，不能当 x/y 传入。
+      const spot = this.findGroundSpot(x, base, z, 2, true);
       return spot ? this.grow(spot[0], spot[1], spot[2], id, 'spread', x, base, z) : false;
     }
     if (this.world.getBlock(x, top + 1, z) !== AIR) return false;
@@ -901,30 +938,30 @@ export class Botany {
     return this.grow(dx, y, dz, id, 'spread', x, y, z);
   }
 
-  private tickLily(x: number, y: number, z: number): boolean {
+  private tickLily(x: number, y: number, z: number, id: BlockId): boolean {
     if (this.rng() > scaledChance(0.1, this.env)) return false;
     const [nx, nz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
     const below = this.world.getBlock(nx, y - 1, nz);
     if (below !== this.id.water) return false;
-    return this.grow(nx, y, nz, this.id.lilyPad, 'spread', x, y, z);
+    return this.grow(nx, y, nz, id, 'spread', x, y, z);
   }
 
-  private tickVine(x: number, y: number, z: number): boolean {
+  private tickVine(x: number, y: number, z: number, id: BlockId): boolean {
     if (this.rng() > scaledChance(0.3, this.env)) return false;
     // 优先向下垂挂（y 减小），其次沿墙面横爬
     if (this.rng() < 0.6) {
       if (y - 1 >= 1 && this.world.getBlock(x, y - 1, z) === AIR) {
-        return this.grow(x, y - 1, z, this.id.vine, 'grow', x, y, z);
+        return this.grow(x, y - 1, z, id, 'grow', x, y, z);
       }
       return false;
     }
     const [nx, nz] = this.pickNeighbor(x, z);
     if (this.world.getBlock(nx, y, nz) !== AIR) return false;
-    return this.grow(nx, y, nz, this.id.vine, 'spread', x, y, z);
+    return this.grow(nx, y, nz, id, 'spread', x, y, z);
   }
 
-  private tickLichen(x: number, y: number, z: number, daylight: number): boolean {
+  private tickLichen(x: number, y: number, z: number, daylight: number, id: BlockId): boolean {
     const light = Math.max(
       this.world.getSkyLight(x, y, z) * (0.3 + 0.7 * clamp(daylight, 0, 1)),
       this.world.getBlockLight(x, y, z),
@@ -938,7 +975,7 @@ export class Botany {
       if (ny < 1 || ny >= H - 1) continue;
       if (this.world.getBlock(nx, ny, nz) !== AIR) continue;
       if (!this.hasSolidNeighbor(nx, ny, nz)) continue;
-      return this.grow(nx, ny, nz, this.id.glowLichen, 'spread', x, y, z);
+      return this.grow(nx, ny, nz, id, 'spread', x, y, z);
     }
     return false;
   }
@@ -1067,7 +1104,7 @@ export class Botany {
   }
 
   private findGroundSpot(
-    x: number, y: number, z: number, radius: number, needLight: boolean,
+    x: number, y: number, z: number, radius: number, needLight: boolean, allowSand = false,
   ): [number, number, number] | null {
     for (let i = 0; i < 8; i++) {
       const nx = x + ((this.rng() * (radius * 2 + 1)) | 0) - radius;
@@ -1076,7 +1113,8 @@ export class Botany {
       if (ny < 1 || ny >= H - 1) continue;
       if (nx === x && ny === y && nz === z) continue;
       if (this.world.getBlock(nx, ny, nz) !== AIR) continue;
-      if (!this.isSoil(this.world.getBlock(nx, ny - 1, nz))) continue;
+      const below = this.world.getBlock(nx, ny - 1, nz);
+      if (!this.isSoil(below) && !(allowSand && below === this.id.sand)) continue;
       if (needLight &&
         this.world.getSkyLight(nx, ny, nz) < 9 &&
         this.world.getBlockLight(nx, ny, nz) < 9) continue;

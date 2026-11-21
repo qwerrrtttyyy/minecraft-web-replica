@@ -1,5 +1,5 @@
 /**
- * 录制 README 首屏 GIF 的实机素材（真实游戏画面，无合成）。
+ * 录制 README 首屏 WebP 的实机素材（真实游戏画面，无合成）。
  *
  * 用法（Linux 无 GPU / CI）：
  *   npm run build
@@ -7,11 +7,10 @@
  *     env MC_HEADLESS=0 MC_GL=desktop node scripts/capture-showcase.mjs
  *
  * 产物：test/artifacts/showcase/frame-000.png …（逐帧 PNG）
- * 再用 ffmpeg + gifsicle 合成 GIF（见 .github/workflows/showcase.yml）：
+ * 再用 ffmpeg 合成 animated WebP（见 .github/workflows/showcase.yml）：
  *   ffmpeg -framerate 12 -i test/artifacts/showcase/frame-%03d.png \
- *     -vf "fps=10,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
- *     -loop 0 showcase-pre.gif
- *   gifsicle -O3 --lossy=120 --colors 96 showcase-pre.gif -o docs/assets/showcase.gif
+ *     -vf "fps=10,scale=720:-1:flags=lanczos" \
+ *     -c:v libwebp_anim -quality 25 -preset icon -loop 0 docs/assets/showcase.webp
  *
  * 脚本只依赖仓库已有的 puppeteer-core，不修改游戏源码；
  * 所有操作都通过 window.__mc 调试钩子与 CraftAPI 完成。

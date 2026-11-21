@@ -62,6 +62,8 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
   // 每个顶点的开关：0 普通 / 1 群系染色 / 2 自发光（不受光照与染色影响）
   g.setAttribute('aTint', new THREE.BufferAttribute(p.tints, 1));
+  // 每个顶点的风摆权重（0~1）：底部 0 / 顶部随植物高度，只对十字面植物生效
+  g.setAttribute('aSway', new THREE.BufferAttribute(p.sways, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   g.computeBoundingSphere();
   return g;
@@ -104,9 +106,9 @@ vec3 foliageTint(vec2 wxz) {
   float band = foliageNoise(wxz * 0.012);
   // 注意：patch 是 GLSL ES 保留字（细分着色器），不可作变量名
   float patchN = foliageNoise(wxz * 0.055 + 17.3);
-  vec3 cool = vec3(0.62, 0.98, 0.62);
-  vec3 base = vec3(0.82, 1.12, 0.50);
-  vec3 warm = vec3(1.06, 1.10, 0.42);
+  vec3 cool = vec3(0.72, 1.06, 0.70);
+  vec3 base = vec3(0.92, 1.18, 0.58);
+  vec3 warm = vec3(1.12, 1.14, 0.50);
   vec3 t = mix(cool, base, smoothstep(0.25, 0.62, band));
   t = mix(t, warm, smoothstep(0.58, 0.88, band));
   return t * (1.0 - 0.10 * patchN);
@@ -154,6 +156,25 @@ function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: 
     // 自发光不参与光照，但保留面定向 × AO 的明暗（与旧 emissive 通道的观感一致）
     diffuseColor.rgb *= mix(vShade * (0.07 + 0.93 * lit) * lightTint, vec3(vShade), unlit);
     diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
+  );
+}
+
+/**
+ * 植物风摆：aSway 为每顶点权重（底部 0 → 顶部 = 植物高度）。
+ * 位移完全由世界坐标 + 时间驱动，因此相邻区块的接缝处相位连续；
+ * 普通方块 aSway=0，水面与地形不受影响。
+ */
+function injectSway(shader: ChunkShader, time: { value: number }) {
+  shader.uniforms.uSwayTime = time;
+  shader.vertexShader = 'attribute float aSway;\nuniform float uSwayTime;\n' + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+    if (aSway > 0.0) {
+      vec3 swayPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      float phase = swayPos.x * 0.63 + swayPos.z * 0.71;
+      transformed.x += sin(uSwayTime * 1.35 + phase) * aSway * 0.055;
+      transformed.z += cos(uSwayTime * 1.12 + phase * 1.27) * aSway * 0.038;
+    }`,
   );
 }
 
@@ -265,6 +286,15 @@ export class ChunkManager implements System {
     if (!this.mergeEmissiveOption) {
       this.materials.emissive.onBeforeCompile = (shader) => injectLegacyEmissive(shader);
     }
+    // 植物风摆：不透明 / 半透明通道（v1.5.1 起自发光已并入不透明，无需单独注入）；
+    // 水面另有波动，不叠加
+    for (const ch of ['opaque', 'transparent'] as const) {
+      const prev = this.materials[ch].onBeforeCompile;
+      this.materials[ch].onBeforeCompile = (shader, renderer) => {
+        prev?.call(this.materials[ch], shader, renderer);
+        injectSway(shader, this.waterTime);
+      };
+    }
     // 各通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）
     for (const ch of MESH_CHANNELS) installTiledAtlas(this.materials[ch]);
 
@@ -313,6 +343,10 @@ export class ChunkManager implements System {
       this.applySync(cx, cz);
       rec.resolve();
     }
+    // 重建池后必须让 getConfig() 重新下发配置：新 Worker 的 config 初始为 null，
+    // 只有收到 config 才会排空 mesh.worker.ts 的 queued。若这里不置空，
+    // getConfig() 会直接返回旧对象、不触发 postConfig()，新池将永远收不到配置。
+    this.config = null;
   }
 
   /**
@@ -686,6 +720,8 @@ export class ChunkManager implements System {
         this.meshes.delete(key);
         this.sortDirty = true;
       }
+      // 先让光照引擎的区块缓存失效，再删除数据：否则重建后 BFS 可能写入旧对象。
+      this.world.light.invalidate(chunk.cx, chunk.cz);
       this.world.unloadChunk(key);
       this.world.dirty.delete(key);
       this.events.emit('chunk:unloaded', { cx: chunk.cx, cz: chunk.cz });

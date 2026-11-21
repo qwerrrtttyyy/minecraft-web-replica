@@ -129,6 +129,35 @@ try {
     opened.sliders.join(','));
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));
 
+  // 实验性内容：我的世界 UI 还原开关
+  ok('设置页含「我的世界 UI 还原」选项行', await page.evaluate(() =>
+    [...document.querySelectorAll('.options-panel .opt-row .opt-label')]
+      .some((e) => e.textContent === '我的世界 UI 还原')));
+  const uiBefore = await page.evaluate(() => document.getElementById('ui').classList.contains('vanilla-ui'));
+  await clickRow(page, '我的世界 UI 还原');
+  await sleep(200);
+  const uiOn = await page.evaluate(() => ({
+    cls: document.getElementById('ui').classList.contains('vanilla-ui'),
+    val: [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '我的世界 UI 还原')
+      ?.querySelector('.opt-val')?.textContent,
+    saved: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI,
+  }));
+  ok('UI 还原开关即时给 #ui 挂上 vanilla-ui 类', !uiBefore && uiOn.cls,
+    `before=${uiBefore} after=${uiOn.cls}`);
+  ok('UI 还原开关显示「开」并写入 localStorage', uiOn.val === '开' && uiOn.saved === true,
+    `val=${uiOn.val} saved=${uiOn.saved}`);
+  const pixelFont = await page.evaluate(() => {
+    const el = document.querySelector('.options-panel .opt-label');
+    return el ? getComputedStyle(el).fontFamily : '';
+  });
+  ok('UI 还原启用像素字体', pixelFont.includes('MC Pixel'), pixelFont);
+  await clickRow(page, '我的世界 UI 还原');
+  await sleep(200);
+  ok('再点一次恢复默认界面', await page.evaluate(() =>
+    !document.getElementById('ui').classList.contains('vanilla-ui') &&
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI === false));
+
   // Esc 关闭（标题屏来源 → 回到标题）
   // 固定 sleep 在负载高时会偶发失败，按项目硬规则改为条件轮询
   await page.keyboard.press('Escape');

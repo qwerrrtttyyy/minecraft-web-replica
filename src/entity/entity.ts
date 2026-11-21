@@ -222,16 +222,26 @@ export class EntityManager {
     this.seed = seed;
     this.registerType({
       id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
-      health: 8, drops: [{ name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 }],
+      health: 8, drops: [
+        { name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 },
+        { name: 'item:leather', chance: 0.5 },
+      ],
     });
     this.registerType({
       id: 'sheep', label: '羊', width: 0.9, height: 1.15, speed: 1.0, build: buildSheep,
-      health: 8, drops: [{ name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 }],
+      health: 8, drops: [
+        { name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 },
+        { name: 'item:leather', chance: 0.3 },
+      ],
     });
     this.registerType({
       id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
       hostile: true, health: 14, damage: 3, attackRange: 1.7, burnInDay: true,
-      drops: [{ name: 'item:apple', chance: 0.35 }],
+      drops: [
+        { name: 'item:apple', chance: 0.35 },
+        { name: 'item:iron_ingot', chance: 0.15 },
+        { name: 'item:iron_sword', chance: 0.04 },
+      ],
     });
     this.registerType({
       id: 'skeleton', label: '骷髅', width: 0.6, height: 1.9, speed: 1.0, build: buildSkeleton,

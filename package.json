@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.5.2-beta.1",
+  "version": "1.5.2",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -27,7 +27,6 @@
     "test:unstuck": "node test/unstuck-check.cjs",
     "test:edits": "node test/world-edits-check.cjs",
     "test:terrain-system": "node test/terrain-system-check.cjs",
-    "test:feel": "node test/feel-check.cjs",
     "test:botany": "node test/botany-check.cjs",
     "test:botany-rules": "node test/botany-rules-check.cjs",
     "test:plant-energy": "node test/plant-energy-check.cjs",
@@ -36,17 +35,17 @@
     "test:options": "node test/options-check.mjs",
     "test:smoke:xvfb": "xvfb-run -a -s \"-screen 0 1280x760x24\" env MC_HEADLESS=0 MC_GL=desktop node test/survival-smoke.mjs",
     "verify": "npm run check:version && npm run test:permtable && npm run wasm:check && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:wasm && npm run test:plugin-v2 && npm run test:plugin-carrier && npm run test:review-fixes && npm run test:logic && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:unstuck && npm run test:edits && npm run test:terrain-system && npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:botany-rules && npm run test:crafting && npm run test:smoke && npm run test:options && npm run test:visual",
+    "test:feel": "node test/feel-check.cjs",
+    "test:permtable": "node test/permission-table-check.cjs",
     "test:light": "node test/light-check.cjs",
     "test:visual": "node test/visual-check.mjs",
-    "test:experiment": "node test/experiment-3d.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
     "wasm:check": "node scripts/build-wasm.mjs --check",
     "test:wasm": "node test/wasm-check.cjs",
     "test:plugin-v2": "node test/plugin-v2-check.cjs",
     "test:plugin-carrier": "node test/plugin-carrier-check.cjs",
     "test:review-fixes": "node test/review-fixes-check.cjs",
-    "build:plugin-fixtures": "node scripts/build-plugin-fixtures.mjs",
-    "test:permtable": "node test/permission-table-check.cjs"
+    "build:plugin-fixtures": "node scripts/build-plugin-fixtures.mjs"
   },
   "dependencies": {
     "three": "0.170.0"
@@ -57,7 +56,6 @@
     "@typescript-eslint/eslint-plugin": "^8.72.2",
     "@typescript-eslint/parser": "^8.72.2",
     "eslint": "^9.39.5",
-    "jsdom": "^25.0.1",
     "puppeteer-core": "^23.11.1",
     "typescript": "5.6.3",
     "vite": "5.4.11",

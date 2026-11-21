@@ -32,11 +32,13 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
 
   const aabbCells = () => ({
     minX: Math.floor(body.pos.x - half),
-    maxX: Math.floor(body.pos.x + half),
+    // 上界用 ceil-1：AABB 最大边恰好落在整数格边界时只是相切、并不重叠，
+    // 不能计入碰撞，否则向下运动会被错误抬升到上方方块顶面。
+    maxX: Math.ceil(body.pos.x + half) - 1,
     minY: Math.floor(body.pos.y),
-    maxY: Math.floor(body.pos.y + body.height),
+    maxY: Math.ceil(body.pos.y + body.height) - 1,
     minZ: Math.floor(body.pos.z - half),
-    maxZ: Math.floor(body.pos.z + half),
+    maxZ: Math.ceil(body.pos.z + half) - 1,
   });
 
   /** 沿某轴取移动方向上最近的阻挡面坐标；无重叠返回 null */

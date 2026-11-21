@@ -2,6 +2,7 @@ import type { EventService } from '../services/events';
 import { EXTENSION_POINTS } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
+import { EQUIPMENT } from './equipment';
 
 /**
  * 生存模式状态机：生命 / 饥饿 / 氧气 / 背包 / 进食 / 死亡与重生。
@@ -31,6 +32,12 @@ export interface ItemDefinition {
   plant?: string;
 }
 
+/** 由装备定义表生成物品条目，保证 id / label / tile 与 EQUIPMENT 单一来源一致 */
+const EQUIP_ITEMS: Record<string, ItemDefinition> = {};
+for (const def of Object.values(EQUIPMENT)) {
+  EQUIP_ITEMS[def.id] = { name: def.id, label: def.label, tile: def.tile };
+}
+
 export const ITEMS: Record<string, ItemDefinition> = {
   apple: { name: 'apple', label: '苹果', tile: 'apple', food: 4 },
   porkchop: { name: 'porkchop', label: '生猪排', tile: 'porkchop', food: 6 },
@@ -44,6 +51,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
   /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */
   bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
+  ...EQUIP_ITEMS,
 };
 
 export const itemKey = (name: string) => `i:${name}`;
@@ -117,20 +125,21 @@ export class SurvivalState {
     this.addKey(blockKeyOf(id), count);
   }
 
-  addItem(name: string, count = 1) {
-    if (!this.isSurvival) return;
-    if (!ITEMS[name] || count <= 0) return;
+  addItem(name: string, count = 1): boolean {
+    if (!this.isSurvival) return false;
+    if (!ITEMS[name] || count <= 0) return false;
     this.addKey(itemKey(name), count);
+    return true;
   }
 
-  /** 按掉落表名加入背包：'self' 需调用方换成方块名 */
-  addDrop(name: string, count = 1) {
-    if (name.startsWith('item:')) this.addItem(name.slice(5), count);
-    else if (ITEMS[name]) this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
-    else {
-      const def = this.registry.byNameGet(name);
-      if (def) this.addBlock(def.id, count);
-    }
+  /** 按掉落表名加入背包：'self' 需调用方换成方块名；返回是否真的加入 */
+  addDrop(name: string, count = 1): boolean {
+    if (name.startsWith('item:')) return this.addItem(name.slice(5), count);
+    if (ITEMS[name]) return this.addItem(name, count); // CraftAPI.survival.give('apple') 也能用
+    const def = this.registry.byNameGet(name);
+    if (!def) return false;
+    this.addBlock(def.id, count);
+    return true;
   }
 
   private addKey(key: string, count: number) {

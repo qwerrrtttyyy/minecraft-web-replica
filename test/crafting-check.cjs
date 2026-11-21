@@ -297,4 +297,35 @@ ok('材料组非空且成员合法',
   ok('非法背包键 → null', inventoryKeyToMaterial('x:1', reg) === null);
 }
 
+// ---- 12. E04：装备配方 ----
+{
+  const { EQUIPMENT } = require('./logic/player/equipment.js');
+  const equipRecipes = CRAFTING_RECIPES.filter((r) => !!EQUIPMENT[r.id]);
+  ok('36 件装备各有配方', equipRecipes.length === 36, String(equipRecipes.length));
+  for (const r of equipRecipes) {
+    ok(`配方 ${r.id} 产物与 EQUIPMENT 一致`,
+      r.result.material === `item:${r.id}` && !!ITEMS[r.id] && r.result.count === 1);
+  }
+
+  // 铁剑/铁镐：材料 + 木棍
+  const grid = (rows, symbols) => rows.join('').split('').map((c) => symbols[c] ?? null);
+  const iron = { I: 'item:iron_ingot', S: 'item:stick' };
+  ok('铁剑配方可匹配', matchRecipe(grid(['I  ', 'I  ', 'S  '], iron), 3)?.recipe.id === 'iron_sword');
+  ok('铁镐配方可匹配', matchRecipe(grid(['III', ' S ', ' S '], iron), 3)?.recipe.id === 'iron_pickaxe');
+  ok('铁斧配方可匹配', matchRecipe(grid(['II ', 'IS ', ' S '], iron), 3)?.recipe.id === 'iron_axe');
+  ok('铁锹配方可匹配', matchRecipe(grid(['I  ', 'S  ', 'S  '], iron), 3)?.recipe.id === 'iron_shovel');
+  ok('多放材料不误匹配', matchRecipe(grid(['III', 'ISI', 'SSS'], iron), 3) === null);
+
+  // 皮革盔甲
+  const leather = { L: 'item:leather' };
+  ok('皮头盔配方可匹配', matchRecipe(grid(['LLL', 'L L'], leather), 3)?.recipe.id === 'leather_helmet');
+  ok('皮胸甲配方可匹配', matchRecipe(grid(['L L', 'LLL', 'LLL'], leather), 3)?.recipe.id === 'leather_chestplate');
+  ok('皮护腿配方可匹配', matchRecipe(grid(['LLL', 'L L', 'L L'], leather), 3)?.recipe.id === 'leather_leggings');
+  ok('皮靴配方可匹配', matchRecipe(grid(['L L', 'L L'], leather), 3)?.recipe.id === 'leather_boots');
+
+  // 木工具使用材料组 #planks，任一木板均可
+  const wood = { P: 'birch_planks', S: 'item:stick' };
+  ok('木剑可用白桦木板', matchRecipe(grid(['P  ', 'P  ', 'S  '], wood), 3)?.recipe.id === 'wooden_sword');
+}
+
 log(`\n合成回归全部通过（${passed} 项）`);

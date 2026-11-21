@@ -25,12 +25,14 @@ export interface MeshBlockDef {
   tiles: { top: string; bottom: string; side: string };
   /** 群系染色（草 / 叶 / 藤蔓）：灰度纹理，shader 按世界坐标噪声乘群系色 */
   tint: boolean;
+  /** 十字面植物的可视高度（0~1，默认 1）：只影响几何，不改变碰撞 */
+  crossHeight: number;
 }
 
 export const AIR_MESH_DEF: MeshBlockDef = {
   id: 0, name: 'air', shape: 'cube', opaque: false, cullSame: false,
   liquid: false, transparentPass: false, lightEmission: 0,
-  tiles: { top: '', bottom: '', side: '' }, tint: false,
+  tiles: { top: '', bottom: '', side: '' }, tint: false, crossHeight: 1,
 };
 
 export const ZERO_UV: UVRect = [0, 0, 0, 0];
@@ -98,6 +100,8 @@ export interface GeoArrays {
   tile: number[];
   /** 每顶点开关：0 普通、1 群系染色、2 自发光（不受光照与染色影响） */
   tints: number[];
+  /** 每顶点风摆权重（0~1）：普通方块为 0，十字面植物由底部 0 渐变到顶部（= 植物高度） */
+  sways: number[];
   indices: number[];
 }
 
@@ -117,6 +121,7 @@ export interface PackedGeo {
   lights: Float32Array;
   tile: Float32Array;
   tints: Float32Array;
+  sways: Float32Array;
   indices: Uint32Array;
 }
 
@@ -154,9 +159,10 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
     const l = new Float32Array(g.lights);
     const t = new Float32Array(g.tile);
     const tn = new Float32Array(g.tints);
+    const sw = new Float32Array(g.sways);
     const i = new Uint32Array(g.indices);
-    transfer.push(p.buffer, u.buffer, s.buffer, l.buffer, t.buffer, tn.buffer, i.buffer);
-    return { positions: p, uvs: u, shade: s, lights: l, tile: t, tints: tn, indices: i };
+    transfer.push(p.buffer, u.buffer, s.buffer, l.buffer, t.buffer, tn.buffer, sw.buffer, i.buffer);
+    return { positions: p, uvs: u, shade: s, lights: l, tile: t, tints: tn, sways: sw, indices: i };
   };
   return {
     mesh: {

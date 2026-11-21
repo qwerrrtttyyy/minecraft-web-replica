@@ -33,9 +33,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **tag 与 Release 成对**：打 tag 的同时创建对应 GitHub Release（标题
   `vX.Y.Z 预发布  <主题>` / `vN 正式版  <主题>`，正文含自上一 tag 的 changelog 与验证情况），
   禁止裸 tag。
-- **方块 id 只追加**：内置方块 id 1..109 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+- **方块 id 只追加**：内置方块 id 1..147 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
-  插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），v1.6 堆肥桶占 110~118，不要占用内置区间。
+  插件扩展植物从 id 148 起显式固定（见 `botanyContent.ts`）；堆肥桶 110~118、熔炉 119、移植植物 120~147 均为内置末位追加，后续新方块只能从 154 起。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在
   `BIOME_PROFILES`；生成阶段顺序（`TERRAIN_STAGES`）是契约，不要随意插入新阶段。
 - **数据 / 渲染解耦**：Worker 侧只允许依赖 `MeshSource` / `MeshSnapshot` 纯数据，禁止
@@ -86,6 +86,9 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **冻结场景不是「把 system 过滤掉」**：`main.ts` 注册的是**闭包** system
   （内部自己调 `chunks.update` / `sky.update`），按对象引用过滤无效，必须整体替换 `engine.systems`；
   且 `chunks.waterTime` / `sky.localTime` 是持续动画，冻结时要归零再 `sky.update(0,0)`，否则两次探针不是同一帧。
+- **大二进制不入库**：禁止向 git 提交 >1MB 的二进制（演示动画 / 视频 / 打包产物等）。
+  演示媒体优先转成 animated WebP（README 首屏 `docs/assets/showcase.webp`），否则放 GitHub
+  Release 资产或 Actions Artifacts；录制与压缩流程见 `.github/workflows/showcase.yml`。
 
 ## 常见排查
 

@@ -60,6 +60,8 @@ export interface Options {
   blockGravity: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
+  /** 实验性内容：我的世界 UI 还原（开启后 HUD 切换为原版 Java 版风格） */
+  vanillaUI: boolean;
 }
 
 /** 随机刻速度档位：0 暂停 / 1 慢 / 2 标准 / 3 快 */
@@ -92,6 +94,7 @@ export const DEFAULT_OPTIONS: Options = {
   showClouds: true,
   blockGravity: true,
   sortTransparent: true,
+  vanillaUI: false,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];
@@ -153,6 +156,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       showClouds: bool(o.showClouds, base.showClouds),
       blockGravity: bool(o.blockGravity, base.blockGravity),
       sortTransparent: bool(o.sortTransparent, base.sortTransparent),
+      vanillaUI: bool(o.vanillaUI, base.vanillaUI),
     };
   } catch {
     return base;
@@ -195,5 +199,6 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     showClouds: bool(base.showClouds, DEFAULT_OPTIONS.showClouds),
     blockGravity: bool(base.blockGravity, DEFAULT_OPTIONS.blockGravity),
     sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
+    vanillaUI: bool(base.vanillaUI, DEFAULT_OPTIONS.vanillaUI),
   };
 }

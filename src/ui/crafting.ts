@@ -41,6 +41,8 @@ export interface CraftingHost {
   giveBack(material: MaterialId): void;
   /** 产出进背包 */
   produce(material: MaterialId, count: number): void;
+  /** 产物能否被背包接受（装备不可堆叠时防止材料被白白消耗）；缺省视为可接受 */
+  canProduce?(material: MaterialId): boolean;
   /** 合成成功的反馈（音效 / 提示） */
   onCrafted(recipe: Recipe, result: RecipeResult): void;
   /** 用户关闭合成界面（回到菜单或继续游戏） */
@@ -379,6 +381,11 @@ export class CraftingPanel {
   private craft() {
     const match = matchRecipe(this.cells, this.size);
     if (!match) return;
+    // 装备不可堆叠：背包已有同类时先拦住，避免材料扣了却拿不到产物
+    if (this.host.canProduce && !this.host.canProduce(match.result.material)) {
+      this.hintEl.textContent = '背包已有该装备，无法合成更多';
+      return;
+    }
     // 网格里的材料在放入时已从背包取出，这里直接消耗并产出
     for (const idx of match.cells) this.cells[idx] = null;
     this.selected = -1;
