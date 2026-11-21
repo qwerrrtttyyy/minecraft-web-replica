@@ -34,12 +34,15 @@ export class AIService {
   attach(entity: EntityLike, typeId: string): void {
     const tree = this.trees.get(typeId);
     if (!tree) return;
-    this.components.set(entity, new AIComponent(entity, tree, this.seed));
+    const comp = new AIComponent(entity, tree, this.seed);
+    this.components.set(entity, comp);
+    (entity as any).aiComponent = comp;
   }
 
   /** 从实体上卸载 AI。 */
   detach(entity: EntityLike): void {
     this.components.delete(entity);
+    (entity as any).aiComponent = undefined;
   }
 
   private frameCtx: { playerPos: { x: number; y: number; z: number }; daylight: number; playerDead: boolean } = {

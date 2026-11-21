@@ -77,6 +77,8 @@ export class Entity implements PhysicsBody {
   private state: 'idle' | 'walk' = 'idle';
   private timer = 1 + Math.random() * 2;
   private phase = 0;
+  /** AI 运行时组件（行为树 + 黑板），由 AIService.attach 设置 */
+  aiComponent?: import('../ai/AIComponent').AIComponent;
   readonly model: MobModel;
 
   constructor(readonly type: EntityType, x: number, y: number, z: number, private events: EventService) {
@@ -153,27 +155,47 @@ export class Entity implements PhysicsBody {
     let moving = false;
     let speed = 0;
 
-    if (this.hostile && ctx && !ctx.playerDead) {
-      const dx = ctx.playerPos.x - this.pos.x;
-      const dz = ctx.playerPos.z - this.pos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 26) {
-        this.yaw = Math.atan2(-dx, -dz);
-        moving = true;
-        speed = this.type.speed * (dist > 2.2 ? 1.45 : 1.1);
+    const ai = this.aiComponent;
+    if (ai && ai.enabled) {
+      // AI 行为树已在 AIService.update 中 tick，黑板已写入决策
+      moving = ai.blackboard.get<boolean>('moving') === true;
+      speed = ai.blackboard.get<number>('moveSpeed') ?? 0;
+      const yaw = ai.blackboard.get<number>('moveYaw');
+      if (typeof yaw === 'number') this.yaw = yaw;
+      if (ai.blackboard.get<boolean>('wantAttack') === true && ctx && !ctx.playerDead) {
         const dy = Math.abs(ctx.playerPos.y - this.pos.y);
+        const dist = Math.hypot(ctx.playerPos.x - this.pos.x, ctx.playerPos.z - this.pos.z);
         if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
           this.attackCooldown = 1.05;
           ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
-          // 攻击前扑
           this.vel.x += (-Math.sin(this.yaw)) * 2.2;
           this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+        }
+        ai.blackboard.set('wantAttack', false);
+      }
+    } else {
+      if (this.hostile && ctx && !ctx.playerDead) {
+        const dx = ctx.playerPos.x - this.pos.x;
+        const dz = ctx.playerPos.z - this.pos.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 26) {
+          this.yaw = Math.atan2(-dx, -dz);
+          moving = true;
+          speed = this.type.speed * (dist > 2.2 ? 1.45 : 1.1);
+          const dy = Math.abs(ctx.playerPos.y - this.pos.y);
+          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
+            this.attackCooldown = 1.05;
+            ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
+            // 攻击前扑
+            this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+            this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+          }
         }
       }
     }
 
-    // 非追击状态：随机漫步
-    if (!moving) {
+    // 非追击状态：随机漫步（仅在无 AI 组件时使用硬编码逻辑）
+    if (!this.aiComponent && !moving) {
       this.timer -= dt;
       if (this.timer <= 0) {
         if (this.state === 'idle') {
