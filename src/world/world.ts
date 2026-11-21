@@ -138,8 +138,10 @@ export class World {
       chunk.generated = true;
       // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
       this.light.initChunk(chunk);
-      // 邻接已网格化区块需要重绘边界面
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      // 邻接已网格化区块需要重绘边界面；对角块也要算，因为 AO / 角点光照会采样对角 halo 格。
+      for (const [dx, dz] of [
+        [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+      ] as const) {
         const nk = chunkKey(cx + dx, cz + dz);
         if (this.chunks.get(nk)?.generated) this.dirty.add(nk);
       }
@@ -208,6 +210,11 @@ export class World {
     if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
     if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
     if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
+    // 角格改方块：对角区块的角落顶点 AO / 光照会采样到这一格，必须一并重网格化。
+    if (lx === 0 && lz === 0) this.dirty.add(chunkKey(cx - 1, cz - 1));
+    if (lx === 0 && lz === CS - 1) this.dirty.add(chunkKey(cx - 1, cz + 1));
+    if (lx === CS - 1 && lz === 0) this.dirty.add(chunkKey(cx + 1, cz - 1));
+    if (lx === CS - 1 && lz === CS - 1) this.dirty.add(chunkKey(cx + 1, cz + 1));
     return true;
   }
 
