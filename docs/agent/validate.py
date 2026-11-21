@@ -56,6 +56,41 @@ CHECKS = [
         lambda: "sessionStorage" in read("test/visual-check.mjs")
         and "2026" in read("test/visual-check.mjs"),
     ),
+    (
+        "test:armor",
+        "package.json 声明 test:armor 且脚本文件存在",
+        lambda: "test:armor" in pkg_scripts()
+        and (ROOT / "test/armor-check.cjs").exists(),
+    ),
+    (
+        "combat:damage-incoming",
+        "管道扩展点落地：extensions 常量 + survival 伤害接线",
+        lambda: "COMBAT_DAMAGE_INCOMING" in read("src/services/plugins/extensions.ts")
+        and "COMBAT_DAMAGE_INCOMING" in read("src/player/survival.ts"),
+    ),
+    (
+        "core:armor",
+        "armor 内置插件存在并注册进 builtinPlugins",
+        lambda: "core:armor" in read("src/plugins/builtin/armor.ts")
+        and "armorPlugin" in read("src/plugins/builtin/index.ts"),
+    ),
+    (
+        "EQUIPMENT 定义表",
+        "装备定义表存在且快照构建覆盖装备源文件",
+        lambda: "equipmentDef" in read("src/player/equipment.ts")
+        and "src/player/equipment.ts" in read("scripts/build-test-snapshot.mjs"),
+    ),
+    (
+        "EquipmentState",
+        "装备状态层存在（甲槽/耐久/序列化对称）",
+        lambda: "serialize" in read("src/player/equipmentState.ts")
+        and "restore" in read("src/player/equipmentState.ts"),
+    ),
+    (
+        "DESIGN-V2-ARMOR",
+        "护甲插件设计文档存在",
+        lambda: (ROOT / "docs/DESIGN-V2-ARMOR.md").exists(),
+    ),
 ]
 
 

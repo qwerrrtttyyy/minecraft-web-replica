@@ -23,7 +23,7 @@ touch:
     - src/services/**
     - src/save/**
 outputs:
-  - EQUIPMENT 覆盖 5 材质工具与 4 材质盔甲，ITEMS 条目与 tile 一致
-  - 新纹理注册在图集末尾，既有 tile 索引不变
-  - test:equipment 纯逻辑回归通过
-  - typecheck / build 通过
+  - EQUIPMENT 定义表覆盖 5 材质剑/镐/斧/锹与 4 材质盔甲，ITEMS 条目与 tile 一致
+  - 新纹理注册在图集末尾，既有 tile 索引不变；快照构建覆盖装备源文件（EQUIPMENT 定义表同链）
+  - test:armor 纯逻辑回归通过
+  - typecheck / build 通过（test:armor 同链验证）

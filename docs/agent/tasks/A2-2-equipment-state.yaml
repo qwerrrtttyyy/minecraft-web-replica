@@ -23,8 +23,7 @@ touch:
     - src/save/**
     - src/player/player.ts
 outputs:
-  - EquipmentState 4 甲槽 / 耐久 / serialize/restore 对称，存档走插件存储
-  - 旧档无装备字段时清空不残留（沿用 WIP 行为）
-  - equipment:change / equipment:broken 事件语义与 WIP 一致
-  - test:equipment 覆盖存档往返与卸载零残留
-  - typecheck / lint / build 通过
+  - EquipmentState 管理 4 甲槽 / 耐久 / serialize/restore 对称，存档走插件存储
+  - 旧档无装备字段时清空不残留（沿用 WIP 行为）；EquipmentState 的 equipment:change / equipment:broken 事件语义与 WIP 一致
+  - test:armor 覆盖存档往返与卸载零残留
+  - typecheck / lint / build 通过（test:armor 同链验证）
