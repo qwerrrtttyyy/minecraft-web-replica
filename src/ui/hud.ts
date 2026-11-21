@@ -48,6 +48,8 @@ export interface HUDOptions {
   onAutosaveInterval: (v: number) => void;
   /** 实验性内容开关（WASM 内核 / 插件载体） */
   onExperimental: (v: boolean) => void;
+  /** 实验性内容开关：我的世界 UI 还原（原版 Java 版风格 HUD） */
+  onVanillaUI: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
   onCopyOptions: (json: string) => void;
@@ -172,6 +174,7 @@ export class HUD {
   private threadsRow!: HTMLButtonElement;
   private autosaveRow!: HTMLButtonElement;
   private experimentalRow?: HTMLButtonElement;
+  private vanillaUIRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
   private ioTitle!: HTMLElement;
   private ioTextArea!: HTMLTextAreaElement;
@@ -806,7 +809,12 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.experimentalRow);
-    exp.appendChild(h('div', 'menu-note', '默认关闭；开启后启用 WebAssembly 计算内核与插件三载体，关闭即回到纯 JS 路径。'));
+    this.vanillaUIRow = this.optionRow('我的世界 UI 还原', () => {
+      this.opts.onVanillaUI(!this.opts.getOptions().vanillaUI);
+      this.syncOptions(this.opts.getOptions());
+    });
+    exp.appendChild(this.vanillaUIRow);
+    exp.appendChild(h('div', 'menu-note', '默认关闭。WASM 开关启用计算内核与插件三载体；「我的世界 UI 还原」把 HUD 整体切换为原版 Java 版风格，均即时生效。'));
 
     // ---- 开发者 ----
     const dev = group('开发者');
@@ -912,6 +920,7 @@ export class HUD {
     this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
+    if (this.vanillaUIRow) this.setRowVal(this.vanillaUIRow, o.vanillaUI ? '开' : '关', !o.vanillaUI);
   }
 
   showOptions(v: boolean) {

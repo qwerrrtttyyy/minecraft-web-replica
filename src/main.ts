@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import './ui/vanilla-ui.css';
 import * as THREE from 'three';
 import { Engine } from './core/engine';
 import { VERSION, RELEASE } from './core/version';
@@ -161,6 +162,13 @@ async function boot() {
   });
   sound.setEnabled(settings.sound);
   plugins.setExperimental(settings.experimental);
+
+  // ---- 实验性内容：我的世界 UI 还原（把原版 Java 版风格样式挂到 UI 根节点）----
+  // 纯 CSS 主题切换：不改 HUD 的 DOM 逻辑，开关即时生效，导入设置后也会重新应用。
+  const applyVanillaUI = (v: boolean) => {
+    uiRoot.classList.toggle('vanilla-ui', v);
+  };
+  applyVanillaUI(settings.vanillaUI);
 
   // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭）----
   // 必须在 DefaultGenerator 构造前完成自检与后端安装；失败自动回退纯 JS。
@@ -566,6 +574,13 @@ async function boot() {
     },
     onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
     onExperimental: (v) => setExperimental(v),
+    onVanillaUI: (v) => {
+      settings.vanillaUI = v;
+      applyVanillaUI(v);
+      persistOptions(settings);
+      hud.toast(v ? '我的世界 UI 还原：已切换为原版 Java 版风格' : '我的世界 UI 还原：已关闭，恢复默认界面');
+      markDirty();
+    },
     onExportOptions: () => JSON.stringify(settings, null, 2),
     onCopyOptions: (json) => {
       void copyText(json);
@@ -690,6 +705,7 @@ async function boot() {
     if (!debugOn) hud.setDebug(null);
     chunks.greedy = settings.greedy;
     applyMesherThreads(settings.mesherThreads);
+    applyVanillaUI(settings.vanillaUI);
   };
 
   // 空手右键工作台方块 → 打开合成界面
