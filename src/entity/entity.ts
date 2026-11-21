@@ -248,8 +248,8 @@ export class EntityManager {
   targetPopulation = 7;
   /** 实验性玩法「生物生成」：false 时不再自动补刷生物（已存在的按距离/日照自然清退） */
   allowSpawn = true;
-  /** 掉落回调，由主装配接到生存背包 */
-  onDrop: ((name: string, count: number) => void) | null = null;
+  /** 掉落回调，由主装配接到可见掉落物管理器（带死亡坐标与来源串） */
+  onDrop: ((name: string, count: number, x: number, y: number, z: number, source: string) => void) | null = null;
   /** 世界种子：掉落判定必须可复现 */
   private readonly seed: number;
   /** 最近一次 update / maintainPopulation 的日照，供 nightOnly 掉落使用 */
@@ -341,12 +341,16 @@ export class EntityManager {
 
   /** 死亡：发事件 + 掉落 */
   private kill(e: Entity) {
+    // 同一个来源串同时驱动掉落判定与散开，保证同种子同序列可复现
+    const source = `e:${e.id}:${this.killSerial++}`;
     const dropped = rollDrops(e.type.drops ?? [], {
       seed: this.seed,
-      source: `e:${e.id}:${this.killSerial++}`,
+      source,
       daylight: this.daylight,
     });
-    for (const d of dropped) this.onDrop?.(d.name, d.count);
+    for (const d of dropped) {
+      this.onDrop?.(d.name, d.count, e.pos.x, e.pos.y, e.pos.z, source);
+    }
     this.events.emit('entity:dead', { type: e.type.id, id: e.id });
     this.despawn(e);
   }

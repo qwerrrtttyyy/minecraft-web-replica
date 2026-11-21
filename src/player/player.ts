@@ -11,6 +11,7 @@ import { PlayerModel } from '../entity/models';
 import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
+import type { DropManager } from '../entity/droppedItem';
 import { isBreedFood } from '../entity/breeding';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
@@ -98,6 +99,8 @@ export class Player implements System, PhysicsBody {
   private botany: Botany | null = null;
   /** 当前日照强度（组装根每帧回填），供 nightOnly 掉落判定使用 */
   daylight = 1;
+  /** 掉落管理器由组装根注入；未注入时 collectDrops 不生成可见掉落物 */
+  dropManager: DropManager | null = null;
   /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
   private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
@@ -622,17 +625,18 @@ export class Player implements System, PhysicsBody {
     }
   }
 
-  /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
+  /** 生存模式把掉落物生成到世界里（FallingSystem 的植物连带也复用）；创造模式忽略 */
   collectDrops(def: BlockDefinition, x = 0, y = 0, z = 0) {
     if (!this.survival.isSurvival) return;
+    const source = `b:${x},${y},${z}`;
     const dropped = rollDrops(def.drops, {
       seed: this.world.generator.seed,
-      source: `b:${x},${y},${z}`,
+      source,
       daylight: this.daylight,
       biome: this.world.generator.biomeAt?.(x, z) as string | undefined,
     });
     for (const d of dropped) {
-      this.survival.addDrop(d.name === 'self' ? def.name : d.name, d.count);
+      this.dropManager?.spawn(d.name === 'self' ? def.name : d.name, d.count, x, y, z, source);
     }
   }
 

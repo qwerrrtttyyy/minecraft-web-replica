@@ -21,21 +21,22 @@ npm run verify
 | 4 | `npm run build` | 单文件 `dist/index.html` | — |
 | 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
 | 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
-| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
-| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
-| 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 141 | ✓ |
-| 15 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
-| 16 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 17 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
-| 18 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 19 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 20 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 21 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 7 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
+| 8 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 9 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 10 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
+| 11 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 12 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 13 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 14 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 15 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 141 | ✓ |
+| 16 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
+| 17 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
+| 18 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
+| 19 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
+| 20 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 21 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
+| 22 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -52,6 +53,10 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **logic-check**：生存状态机（掉落 / 消耗 / 进食 / 伤害无敌帧 / 序列化）。
 - **terrain-check**：确定性、生成顺序无关、高度范围、水面与洞穴顶连续、
   矿脉分层、跨区块树冠双向连续、参数开关、性能基准。
+- **drop-check**：可见掉落物纯逻辑——同 seed + source + index 散开可复现、拾取半径与
+  `pickupDelay` 边界、同类合并 / 异类不合并（`item:` 前缀口径）、超时与 `y<0` 消失、
+  入水终端下沉 `-waterSink` 与水平 `exp(-8*dt)` 衰减、出水恢复重力，以及
+  `DropManager.update(dt, pos, false)` 不推进 age（暂停期间掉落物不过期）。
 - **terrain-system**：方块是否末位追加（id 45~91，v1.5.0+ 群系扩充追加 98~109，
   92~97 保留给插件）、`TERRAIN_STAGES` 顺序契约、
   `BIOME_PROFILES` 是否覆盖 11 个群系（原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）

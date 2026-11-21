@@ -200,9 +200,9 @@ CHECKS = [
     ),
     (
         "drop system",
-        "内容体系：drop system 关键词落地（阶段 A：卡片文本包含）",
-        lambda: all("drop system" in read(f"docs/agent/tasks/{n}.yaml")
-                    for n in ("C00", "C04")),
+        "内容体系：dropLogic.ts 含 scatterOffset 且 droppedItem.ts 含 DropManager（阶段 B：真实符号）",
+        lambda: "export function scatterOffset" in read("src/world/dropLogic.ts")
+        and "export class DropManager" in read("src/entity/droppedItem.ts"),
     ),
     (
         "animal breeding",
@@ -218,9 +218,9 @@ CHECKS = [
     ),
     (
         "test:drop",
-        "内容体系：test:drop 关键词落地（阶段 A：卡片文本包含）",
-        lambda: all("test:drop" in read(f"docs/agent/tasks/{n}.yaml")
-                    for n in ("C00", "C04")),
+        "内容体系：test/drop-check.cjs 存在且 verify 链包含 npm run test:drop",
+        lambda: (ROOT / "test/drop-check.cjs").exists()
+        and "npm run test:drop" in pkg_scripts().get("verify", ""),
     ),
 ]
 
