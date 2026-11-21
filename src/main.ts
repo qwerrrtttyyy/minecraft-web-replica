@@ -582,6 +582,13 @@ async function boot() {
     },
     onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
     onExperimental: (v) => setExperimental(v),
+    onLandscapeMode: (v) => {
+      settings.landscapeMode = v;
+      applyLandscapeMode(v, true);
+      persistOptions(settings);
+      hud.toast(v ? '横屏模式：已开启（将尝试锁定横向）' : '横屏模式：已关闭');
+      markDirty();
+    },
     // ---- 实验性玩法：即时生效 + 反馈 + 持久化 ----
     onRandomTickSpeed: (v: RandomTickSpeed) => {
       settings.randomTickSpeed = v;
@@ -638,7 +645,8 @@ async function boot() {
     },
     onImportOptions: (json) => importOptions(json),
     onResetOptions: () => {
-      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5 }));
+      // 重置必须与首次进入的默认值一致：移动端渲染距离更近、默认开自动跳跃
+      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5, autoJump: isMobile }));
       applyAllSettings();
       persistOptions(settings);
       hud.syncOptions(settings);
@@ -686,6 +694,66 @@ async function boot() {
   hud.setSound(settings.sound);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
+
+  // ---- 实验性内容：横屏模式（锁定设备横向 + 宽屏 HUD 适配）----
+  let landscapeActive = settings.landscapeMode;
+  let landscapeLockOk = false;
+  /** 尝试锁定横屏；成功返回 true。桌面浏览器 / iOS 常拒绝，返回 false 走「旋转设备」提示兜底 */
+  const lockLandscape = async (): Promise<boolean> => {
+    try {
+      const so = screen.orientation as ScreenOrientation & {
+        lock?: (o: 'landscape') => Promise<void>;
+      } | undefined;
+      if (so && typeof so.lock === 'function') {
+        await so.lock('landscape');
+        return true;
+      }
+      // 退路：先请求全屏再锁定（iOS PWA / 部分 Android 浏览器需要）
+      const root = document.documentElement;
+      if (root.requestFullscreen && !document.fullscreenElement) {
+        await root.requestFullscreen();
+        if (so && typeof so.lock === 'function') {
+          await so.lock('landscape');
+          return true;
+        }
+      }
+    } catch {
+      /* 不支持或被用户拒绝：交给旋转提示兜底 */
+    }
+    return false;
+  };
+  /** 是否需要在竖屏时提示旋转：仅移动端 + 锁定未生效时 */
+  const needRotateHint = () => landscapeActive && !landscapeLockOk && isMobile;
+  const applyLandscapeMode = (v: boolean, fromGesture = false) => {
+    landscapeActive = v;
+    // body 与 hud-root 两处 class 都要切换：body 供全局，hud-root 驱动 HUD 内部宽屏布局重排
+    document.body.classList.toggle('landscape-mode', v);
+    hud.setLandscape(v, v && !landscapeLockOk && isMobile);
+    if (v) {
+      if (fromGesture) {
+        void lockLandscape().then((ok) => {
+          landscapeLockOk = ok;
+          hud.refreshRotateHint(landscapeActive, needRotateHint());
+        });
+      } else {
+        // 启动 / 导入 / 重置：非用户手势，锁定几乎必失败，直接进入提示兜底
+        landscapeLockOk = false;
+        hud.refreshRotateHint(landscapeActive, needRotateHint());
+      }
+    } else {
+      try {
+        (screen.orientation as { unlock?: () => void } | undefined)?.unlock?.();
+      } catch { /* 忽略 */ }
+      landscapeLockOk = false;
+      hud.refreshRotateHint(false, false);
+    }
+  };
+  // 方向 / 尺寸变化时重算提示（引擎已各自监听 resize 处理画布，这里只管 UI 提示）
+  addEventListener('orientationchange', () =>
+    window.setTimeout(() => hud.refreshRotateHint(landscapeActive, needRotateHint()), 160));
+  addEventListener('resize', () => hud.refreshRotateHint(landscapeActive, needRotateHint()));
+  // 启动时应用持久化的横屏设置
+  applyLandscapeMode(settings.landscapeMode, false);
 
   /** 开发者设置：网格化线程（auto = 按核数推断，main = 主线程同步） */
   const applyMesherThreads = (v: MesherThreads) => {
@@ -756,6 +824,11 @@ async function boot() {
     if (!debugOn) hud.setDebug(null);
     chunks.greedy = settings.greedy;
     applyMesherThreads(settings.mesherThreads);
+    // 实验性内容：导入 / 重置也必须把开关推到 WASM 内核与插件载体，
+    // 否则界面显示「开」而实际仍在纯 JS 路径（v1.5.2 修复）。
+    wasm.setEnabled(settings.experimental && qs.get('wasm') !== '0');
+    plugins.setExperimental(settings.experimental);
+    applyLandscapeMode(settings.landscapeMode, false);
     // 实验性玩法：启动 / 重置 / 导入时统一推送到各子系统
     botany.setTickSpeed(settings.randomTickSpeed);
     sky.advanceTime = settings.doDaylightCycle;
