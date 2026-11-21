@@ -260,8 +260,9 @@ for (const seed of seeds) {
 
     // 3) 收益
     // 平滑光照让四角亮度不一致的面退回逐面输出，叠加新群系（恶地层状陶瓦、泥、
-    // 干草原等高差区块）后最差 seed 的合并收益收敛到 12.5%。阈值从 15% 放宽到 10%，
-    // 仍能证明 Greedy 有效；「确有合并发生」与 diagnostics 的 mergeBudget 继续兜底。
+    // 干草原等高差区块）与 v1.6.0 花海（十字面占比上升）后，最差 seed 的合并
+    // 收益收敛到 12.5%。阈值从 15% 放宽到 10%，仍能证明 Greedy 有效；
+    // 「确有合并发生」与 diagnostics 的 mergeBudget 继续兜底。
     ok(`quad 数下降（${tag}）`, covG.quads <= covL.quads * 0.90,
       `${covL.quads} → ${covG.quads}（${((1 - covG.quads / covL.quads) * 100).toFixed(1)}%）`);
     ok(`顶点数 = quad × 4（${tag}）`, greedy.stats.vertices === covG.quads * 4,

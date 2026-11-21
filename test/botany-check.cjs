@@ -222,6 +222,52 @@ for (const [sapling, logName, leafName] of [
     `${count(t, 'glow_lichen')} 处，天光 ${t.world.getSkyLight(4, 21, 10)}`);
 }
 
+// 6b) v1.6.0 新生态：常春藤垂挂 / 浮萍铺水 / 洞穴发光植物扩散
+{
+  const t = makeWorld();
+  t.world.setBlock(14, 23, 14, t.id('stone'));
+  put(t, 14, 22, 14, 'ivy');
+  ok('常春藤向下垂挂', until(t, 14, 22, 14, () => get(t, 14, 21, 14) === t.id('ivy')));
+  for (let i = 0; i < 80; i++) t.botany.tickAt(14, 21, 14, 1);
+  ok('垂下的常春藤由上方藤蔓支撑', get(t, 14, 21, 14) === t.id('ivy'));
+
+  // 5×5 水池：浮萍与睡莲一样向邻近水面铺开
+  const w = makeWorld();
+  for (let dx = 2; dx <= 6; dx++) {
+    for (let dz = 2; dz <= 6; dz++) w.world.setBlock(dx, 20, dz, w.id('water'));
+  }
+  put(w, 4, 21, 4, 'duckweed');
+  ok('浮萍铺满邻近水面', until(w, 4, 21, 4, () => count(w, 'duckweed') > 1, 6000),
+    `${count(w, 'duckweed')} 片`);
+
+  // 沙滩 / 沙漠花卉可以在沙面蔓延（3~7 格范围全部换成沙，保证落点只能是沙）
+  const s = makeWorld();
+  for (let x = 3; x <= 7; x++) {
+    for (let z = 3; z <= 7; z++) {
+      s.world.setBlock(x, 20, z, s.id('sand'));
+      s.world.setBlock(x, 21, z, 0);
+    }
+  }
+  put(s, 5, 21, 5, 'sea_thrift');
+  ok('海石竹在沙面蔓延', until(s, 5, 21, 5, () => count(s, 'sea_thrift') > 1, 6000),
+    `${count(s, 'sea_thrift')} 株`);
+
+  // 封闭石室：荧光苔 / 月光花在暗处扩散，且不会因光照不足枯死
+  for (const [name, tries] of [['glow_moss', 8000], ['moonflower', 8000]]) {
+    const d = makeWorld();
+    for (let x = 1; x <= 7; x++) {
+      for (let z = 7; z <= 13; z++) {
+        d.world.setBlock(x, 24, z, d.id('stone'));
+        const edge = x === 1 || x === 7 || z === 7 || z === 13;
+        for (let y = 21; y <= 23; y++) d.world.setBlock(x, y, z, edge ? d.id('stone') : 0);
+      }
+    }
+    put(d, 4, 21, 10, name);
+    ok(`${name} 在暗处扩散`, until(d, 4, 21, 10, () => count(d, name) > 1, tries),
+      `${count(d, name)} 处，天光 ${d.world.getSkyLight(4, 21, 10)}`);
+  }
+}
+
 // 7) 生态事件可观测
 {
   const t = makeWorld();

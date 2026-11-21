@@ -33,7 +33,7 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **tag 与 Release 成对**：打 tag 的同时创建对应 GitHub Release（标题
   `vX.Y.Z 预发布  <主题>` / `vN 正式版  <主题>`，正文含自上一 tag 的 changelog 与验证情况），
   禁止裸 tag。
-- **方块 id 只追加**：内置方块 id 1..91 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
+- **方块 id 只追加**：内置方块 id 1..119 不能调整或重排，否则旧存档 `edits` 差分指向错误方块。
   新方块只能末位追加且 id 必须 1..255（`Uint8Array` 存储）；新增后同步 `test/terrain-system-check.cjs`。
   插件扩展植物从 id 92 起显式固定（见 `botanyContent.ts`），不要占用内置区间。
 - **地形规则进配置表**：地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗写在

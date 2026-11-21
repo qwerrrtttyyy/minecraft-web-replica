@@ -17,7 +17,7 @@ const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 const W = CS + 2;
 
-const toMeshDef = (d: { id: number; name: string; shape: string; opaque: boolean; cullSame?: boolean; liquid: boolean; transparentPass: boolean; lightEmission: number; tiles: { top: string; bottom: string; side: string }; tint?: boolean }): MeshBlockDef => ({
+const toMeshDef = (d: { id: number; name: string; shape: string; opaque: boolean; cullSame?: boolean; liquid: boolean; transparentPass: boolean; lightEmission: number; tiles: { top: string; bottom: string; side: string }; tint?: boolean; crossHeight?: number }): MeshBlockDef => ({
   id: d.id,
   name: d.name,
   shape: d.shape === 'cross' ? 'cross' : 'cube',
@@ -28,6 +28,7 @@ const toMeshDef = (d: { id: number; name: string; shape: string; opaque: boolean
   lightEmission: d.lightEmission,
   tiles: { top: d.tiles.top, bottom: d.tiles.bottom, side: d.tiles.side },
   tint: d.tint ?? false,
+  crossHeight: d.crossHeight ?? 1,
 });
 
 /** 构建低频配置。revision 由调用方维护，方块/纹理注册变化时必须重建。 */

@@ -34,9 +34,9 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `test:diagnostics` | 运行时诊断 20 组（健康快照 + 异常注入） |
 | `test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
-| `test:terrain-system` | 方块扩充（id 45~91）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 34 组 |
-| `test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 28 组 |
-| `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 29 组 |
+| `test:terrain-system` | 方块扩充（id 45~119）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 42 组 |
+| `test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 / 攀爬 / 发光植物 34 组 |
+| `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 32 组 |
 | `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 43 组 |
 | `test:equipment` | 装备定义表：36 件装备的数值档位 / 盔甲槽位 / 命名约定 / ITEMS 一致性 |
 | `test:smelting` | 熔炉烧炼：配方 / 燃料热值 / 耗尽停止 / 自动续料 / 存档 / 熔炉方块 id |
@@ -93,7 +93,7 @@ src/
 1. **版本双轨单一来源**：`src/core/version.ts` 是唯一来源 —— `VERSION`（`X.Y.Z`）与
    `RELEASE`（`vN`）分开维护。日常迭代只动 `VERSION`；`RELEASE` 仅在发布正式版时推进。
    Git 标签统一带 `v`：正式版 `vN`，历史迭代 `vX.Y.Z`。
-2. **方块 id 只追加**：内置方块 id `1..91` 不能调整或重排，否则旧存档 `edits` 差分指向错方块。
+2. **方块 id 只追加**：内置方块 id `1..119` 不能调整或重排，否则旧存档 `edits` 差分指向错方块。
    新方块只能末位追加，且必须在 `1..255`（`Uint8Array` 存储，超出会被静默截断）。
    新增后同步 `test/terrain-system-check.cjs` 的 id 断言与 `docs/TESTING.md`。
 3. **合成规则进配置表**：配方表在 `src/player/crafting.ts` 的 `CRAFTING_RECIPES`，

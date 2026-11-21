@@ -231,6 +231,8 @@ function flowerPainter(
         p.set(8, y, center);
       }
     }
+    // 右下压暗一层，花瓣与叶片的轮廓更有体积
+    shadeEdges(p, 0.84);
   };
 }
 
@@ -254,6 +256,7 @@ function bushPainter(leafHex: number, lightHex: number, flowerHex: number, flowe
       p.set(x, y, edge);
       if (rng() < 0.6) p.set(x + 1, y, flowerHex);
     }
+    shadeEdges(p, 0.86);
   };
 }
 
@@ -297,6 +300,387 @@ function saplingPainter(leafHex: number, lightHex: number, trunkHex = 0x6b4a2a):
   };
 }
 
+
+/** 右 / 下与透明相邻的像素压暗，给像素小图一层体块阴影（左上受光） */
+const shadeEdges = (p: Px, factor = 0.82) => {
+  const src = new Uint8ClampedArray(p.data);
+  const alphaAt = (x: number, y: number) =>
+    x < 0 || y < 0 || x >= TILE || y >= TILE ? 0 : src[(y * TILE + x) * 4 + 3];
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      const i = (y * TILE + x) * 4;
+      if (src[i + 3] === 0) continue;
+      if (alphaAt(x + 1, y) !== 0 && alphaAt(x, y + 1) !== 0) continue;
+      p.data[i] = src[i] * factor;
+      p.data[i + 1] = src[i + 1] * factor;
+      p.data[i + 2] = src[i + 2] * factor;
+    }
+  }
+};
+
+/** 放射花冠参数：花瓣数、受光 / 背光色、花心与缺刻深度 */
+interface BloomSpec {
+  petal: number;
+  light: number;
+  dark: number;
+  center: number;
+  petals: number;
+  radiusX: number;
+  radiusY: number;
+  top: number;
+  leaf?: number;
+  stem?: number;
+  notch?: number;
+}
+
+/**
+ * 放射花冠：按角度生成花瓣缺刻，左上受光、右下压暗，花心带高光。
+ * 同一套算法换调色板即可画出雏菊 / 郁金香 / 龙胆等不同花型。
+ */
+const bloomPainter = (spec: BloomSpec): Painter => {
+  const { petal, light, dark, center, petals, radiusX, radiusY, top } = spec;
+  const leafHex = spec.leaf ?? 0x4c8f2b;
+  const stemHex = spec.stem ?? 0x3e7a22;
+  const notch = spec.notch ?? 0.7;
+  return (p, rng) => {
+    p.clear();
+    stem(p, 7, top + 4, 15, stemHex);
+    stem(p, 8, top + 5, 15, jitter(stemHex, rng, 8));
+    leaves(p, 7, 12, jitter(leafHex, rng, 6));
+    const cx = 7.5;
+    const cy = top + radiusY - 0.5;
+    for (let y = Math.floor(top - 1); y <= Math.ceil(top + radiusY * 2); y++) {
+      for (let x = 0; x < TILE; x++) {
+        const dx = (x - cx) / radiusX;
+        const dy = (y - cy) / radiusY;
+        const d = dx * dx + dy * dy;
+        if (d > 1) continue;
+        const ang = Math.atan2(dy, dx);
+        const lobe = 0.6 + 0.4 * Math.cos(ang * petals);
+        if (d > 0.3 && lobe < notch) continue;
+        const lit = -dx * 0.7 - dy;
+        let hex = petal;
+        if (d > 0.74) hex = dark;
+        else if (lit > 0.34) hex = light;
+        p.set(x, y, jitter(hex, rng, 7));
+      }
+    }
+    const iy = Math.round(cy);
+    for (let y = iy - 1; y <= iy; y++) for (let x = 7; x <= 8; x++) p.set(x, y, jitter(center, rng, 5));
+    p.set(7, iy - 1, jitter(light, rng, 10));
+    shadeEdges(p, 0.84);
+  };
+};
+
+/** 发光的放射花冠：在花冠周围撒一圈亮色微粒，用于洞穴 / 夜晚植物 */
+const glowingBloomPainter = (spec: BloomSpec, glow: number): Painter => {
+  const base = bloomPainter(spec);
+  return (p, rng) => {
+    base(p, rng);
+    for (let i = 0; i < 9; i++) {
+      p.set(1 + ((rng() * 14) | 0), 1 + ((rng() * 11) | 0), jitter(glow, rng, 12));
+    }
+  };
+};
+
+/** 穗状花序：薰衣草 / 风信子那种沿茎密生小花，wide 控制花穗宽度 */
+const beadSpikePainter = (
+  petal: number, light: number, dark: number, top: number, wide: boolean,
+  stemHex = 0x3e7a22, leafHex = 0x4c8f2b,
+): Painter => (p, rng) => {
+  p.clear();
+  stem(p, 7, top + 3, 15, stemHex);
+  stem(p, 8, top + 5, 15, jitter(stemHex, rng, 8));
+  leaves(p, 7, 12, leafHex);
+  const rows = wide ? 8 : 7;
+  for (let row = 0; row < rows; row++) {
+    const y = top + row;
+    const t = row / rows;
+    const half = wide ? (t < 0.25 ? 1 : t < 0.7 ? 2 : 1) : (t < 0.3 ? 0 : t < 0.72 ? 1 : 0);
+    const shift = row % 2 === 0 ? 0 : 1;
+    for (let dx = -half; dx <= half; dx++) {
+      const edge = Math.abs(dx) === half;
+      p.set(7 + dx + shift, y, jitter(edge ? dark : y === top ? light : petal, rng, 7));
+    }
+    if (row % 2 === 0) p.set(7 + shift, y, jitter(light, rng, 9));
+  }
+  shadeEdges(p, 0.84);
+};
+
+/** 伞形花序：勿忘我 / 野蒜的小碎花，三根花梗各顶一簇 */
+const umbelPainter = (
+  petal: number, light: number, center: number, stemHex = 0x3e7a22,
+): Painter => (p, rng) => {
+  p.clear();
+  stem(p, 7, 6, 15, stemHex);
+  leaves(p, 7, 13, 0x4c8f2b);
+  const tips: [number, number][] = [[4, 4], [8, 3], [11, 5]];
+  for (const [tx, ty] of tips) {
+    const steps = Math.max(Math.abs(tx - 7), Math.abs(ty - 6));
+    for (let s = 0; s <= steps; s++) {
+      p.set(
+        Math.round(7 + ((tx - 7) * s) / steps),
+        Math.round(6 + ((ty - 6) * s) / steps),
+        jitter(stemHex, rng, 6),
+      );
+    }
+    p.set(tx, ty - 1, light);
+    p.set(tx - 1, ty, light);
+    p.set(tx + 1, ty, light);
+    p.set(tx, ty + 1, petal);
+    p.set(tx, ty, center);
+    if (rng() < 0.5) p.set(tx - 1, ty - 1, petal);
+    if (rng() < 0.4) p.set(tx + 1, ty + 1, petal);
+  }
+  shadeEdges(p, 0.86);
+};
+
+/** 毛地黄：沿茎一侧垂挂一串钟形花 */
+const foxglovePainter = (petal: number, light: number, dark: number): Painter => (p, rng) => {
+  p.clear();
+  stem(p, 7, 2, 15, 0x3e7a22);
+  leaves(p, 7, 12, 0x4c8f2b);
+  leaves(p, 7, 9, 0x5aa236);
+  for (let i = 0; i < 5; i++) {
+    const y = 2 + i * 2;
+    const left = i % 2 === 0;
+    const bx = left ? 3 : 8;
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 4; dx++) {
+        const edge = dx === 3 || dy === 1;
+        p.set(bx + dx, y + dy, jitter(edge ? dark : dy === 0 ? light : petal, rng, 6));
+      }
+    }
+    p.set(left ? bx + 3 : bx, y + 1, 0xf6d8e8);
+  }
+  shadeEdges(p, 0.86);
+};
+
+/** 蜀葵：高茎 + 沿轴分布的大轮花 */
+const hollyhockPainter = (petal: number, light: number, dark: number, center: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    stem(p, 7, 1, 15, 0x3f6a24);
+    stem(p, 8, 2, 15, 0x4a7a2a);
+    leaves(p, 7, 13, 0x4f8f2c);
+    leaves(p, 7, 10, 0x5aa236);
+    for (const [bx, by] of [[3, 2], [9, 5], [2, 8]] as const) {
+      for (let y = by; y < by + 3; y++) {
+        for (let x = bx; x < bx + 4; x++) {
+          const edge = x === bx || y === by + 2;
+          p.set(x, y, jitter(edge ? dark : y === by ? light : petal, rng, 7));
+        }
+      }
+      p.set(bx + 1, by + 1, center);
+      p.set(bx + 2, by + 1, center);
+    }
+    shadeEdges(p, 0.86);
+  };
+
+/** 常春藤：蜿蜒藤茎 + 交替的心形叶，适合垂挂成帘 */
+const ivyPainter = (leaf: number, light: number, dark: number): Painter => (p, rng) => {
+  p.clear();
+  let x = 7;
+  for (let y = 0; y < TILE; y++) {
+    p.set(x, y, jitter(y % 5 === 0 ? light : dark, rng, 6));
+    if (rng() < 0.28) x += rng() < 0.5 ? -1 : 1;
+    x = Math.max(2, Math.min(13, x));
+    if (y % 4 === 1) {
+      const side = y % 8 === 1 ? -1 : 1;
+      const lx = x + side * 2;
+      for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, 1], [-1, 1], [1, 1]] as const) {
+        p.set(lx + dx, y + dy, jitter(dx + dy <= 0 ? light : leaf, rng, 7));
+      }
+      p.set(lx, y + 2, jitter(leaf, rng, 6));
+    }
+  }
+  shadeEdges(p, 0.84);
+};
+
+/** 雪滴花：拱形花茎末端垂一枚白色小铃 */
+const snowdropPainter = (petal: number, light: number, sepal: number): Painter => (p, rng) => {
+  p.clear();
+  let x = 7;
+  for (let y = 15; y >= 4; y--) {
+    p.set(x, y, 0x4a7a2a);
+    if (y < 8) x += 1;
+  }
+  for (let y = 2; y <= 5; y++) {
+    const w = y <= 3 ? 1 : 2;
+    for (let dx = -w; dx <= w; dx++) {
+      p.set(x + 1 + dx, y + 1, jitter(dx === -w ? light : petal, rng, 6));
+    }
+  }
+  p.set(x + 1, 2, sepal);
+  p.set(x, 2, sepal);
+  p.set(x + 2, 2, sepal);
+  leaves(p, 7, 12, 0x4c8f2b);
+  shadeEdges(p, 0.9);
+};
+
+/** 番红花：贴地小杯花，紫色花瓣 + 橙色花蕊 */
+const crocusPainter = (petal: number, light: number, dark: number): Painter => (p, rng) => {
+  p.clear();
+  stem(p, 7, 9, 15, 0x4f8f2c);
+  for (const x0 of [3, 11]) {
+    for (let k = 0; k < 6; k++) p.set(x0 + (x0 < 8 ? k * 0.4 : -k * 0.4) | 0, 14 - k, 0x5a9a3a);
+  }
+  for (let y = 5; y <= 11; y++) {
+    const w = y <= 6 ? 0 : y <= 8 ? 1 : 2;
+    for (let x = 7 - w; x <= 8 + w; x++) {
+      const edge = x === 7 - w || x === 8 + w;
+      p.set(x, y, jitter(edge ? dark : y <= 6 ? light : petal, rng, 7));
+    }
+  }
+  p.set(7, 7, 0xf0a030);
+  p.set(8, 7, 0xf0c050);
+  shadeEdges(p, 0.86);
+};
+
+/** 丝兰：放射状硬叶莲座 + 中央高花穗 */
+const yuccaPainter = (leaf: number, light: number, sand: number, bloom: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let i = 0; i < 9; i++) {
+      const tx = 1 + i * 1.75;
+      const steps = 8 + ((rng() * 4) | 0);
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps;
+        const x = Math.round(7.5 + (tx - 7.5) * t);
+        const y = Math.round(15 - t * 9);
+        p.set(x, y, jitter(k >= steps - 1.5 ? light : leaf, rng, 7));
+      }
+    }
+    stem(p, 7, 5, 9, sand);
+    for (let y = 0; y <= 5; y += 2) {
+      const w = y <= 1 ? 2 : 3;
+      for (let x = 7 - w; x <= 8 + w; x++) p.set(x, y, jitter(x === 7 - w ? bloom : 0xf2ead0, rng, 7));
+    }
+    shadeEdges(p, 0.84);
+  };
+
+/** 海石竹：低矮草垫上三团粉色球花 */
+const cushionPainter = (petal: number, light: number, leaf: number): Painter => (p, rng) => {
+  p.clear();
+  for (let x = 1; x <= 14; x++) {
+    const h = 3 + ((rng() * 3) | 0);
+    for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? 0x8fbe57 : leaf, rng, 7));
+  }
+  for (const [cx, cy] of [[4, 8], [8, 6], [11, 9]] as const) {
+    for (let y = cy - 1; y <= cy + 1; y++) {
+      for (let x = cx - 1; x <= cx + 1; x++) {
+        if (rng() < 0.12) continue;
+        p.set(x, y, jitter((x + y) % 3 === 0 ? light : petal, rng, 7));
+      }
+    }
+    p.set(cx, cy - 2, petal);
+  }
+  shadeEdges(p, 0.86);
+};
+
+/** 海滩草：偏黄绿的风吹草叶 + 麦穗状种子 */
+const beachGrassPainter = (blade: number, tip: number, head: number): Painter => (p, rng) => {
+  p.clear();
+  for (let i = 0; i < 6; i++) {
+    const x0 = 2 + i * 2;
+    const h = 7 + ((rng() * 7) | 0);
+    for (let k = 0; k < h; k++) {
+      const y = 15 - k;
+      const x = x0 + Math.round(Math.sin(k * 0.4 + i) * 1.1);
+      p.set(x, y, gray(k >= h - 2 ? tip : blade));
+    }
+    const tx = x0 + Math.round(Math.sin((h - 1) * 0.4 + i) * 1.1);
+    if (i % 2 === 0) for (let d = 0; d < 3; d++) p.set(tx, 14 - h - d, gray(head));
+  }
+};
+
+/** 浮萍：几片小圆叶贴水面漂着，叶心一点深色 */
+const padPainter = (leaf: number, light: number, flower: number): Painter => (p, rng) => {
+  p.clear();
+  for (const [cx, cy] of [[4, 11], [9, 10], [7, 13], [12, 13], [2, 14]] as const) {
+    const r = 2 + (rng() < 0.35 ? 1 : 0);
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        const dx = (x - cx) / (r + 0.4);
+        const dy = (y - cy) / (r + 0.2);
+        if (dx * dx + dy * dy > 1) continue;
+        p.set(x, y, jitter((x + y) % 3 === 0 ? light : leaf, rng, 6));
+      }
+    }
+    p.set(cx, cy, jitter(leaf, rng, 4));
+  }
+  p.set(8, 10, flower);
+  p.set(9, 11, flower);
+  shadeEdges(p, 0.9);
+};
+
+/** 海葵：底座 + 向上放射的触手，触手顶端更亮 */
+const anemonePainter = (tentacle: number, light: number, base: number): Painter => (p, rng) => {
+  p.clear();
+  for (let x = 3; x <= 12; x++) p.set(x, 15, jitter(base, rng, 6));
+  for (let x = 5; x <= 10; x++) p.set(x, 14, jitter(base, rng, 6));
+  for (let i = 0; i < 9; i++) {
+    const ang = -Math.PI / 2 + (i - 4) * 0.3;
+    let x = 7.5;
+    const len = 7 + ((rng() * 4) | 0);
+    for (let k = 0; k < len; k++) {
+      p.set(Math.round(x), Math.round(13 - k), jitter(k > len - 3 ? light : tentacle, rng, 8));
+      x += Math.cos(ang) * 0.9;
+    }
+  }
+  shadeEdges(p, 0.9);
+};
+
+/** 红藻：分叉的红色藻体 */
+const algaePainter = (main: number, dark: number, light: number): Painter => (p, rng) => {
+  p.clear();
+  for (const x0 of [4, 8, 11]) {
+    let x = x0;
+    for (let y = 15; y >= 1; y--) {
+      p.set(x, y, jitter(y % 4 === 0 ? light : main, rng, 6));
+      if (rng() < 0.3) x += rng() < 0.5 ? -1 : 1;
+      if (y % 4 === 2) {
+        p.set(x - 1, y, dark);
+        p.set(x + 1, y, dark);
+      }
+    }
+  }
+  for (let i = 0; i < 6; i++) {
+    const x = 2 + ((rng() * 12) | 0);
+    const y = 3 + ((rng() * 11) | 0);
+    const dir = rng() < 0.5 ? 1 : -1;
+    for (let k = 0; k < 3; k++) p.set(x + k * dir, y - k, jitter(main, rng, 6));
+  }
+  shadeEdges(p, 0.86);
+};
+
+/** 荧光苔：贴地苔垫 + 青色发光孢子 */
+const glowMossPainter = (base: number, light: number, glow: number): Painter => (p, rng) => {
+  p.clear();
+  for (let x = 0; x < TILE; x++) {
+    const h = 3 + ((rng() * 4) | 0);
+    for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? light : base, rng, 8));
+  }
+  for (let i = 0; i < 12; i++) p.set(1 + ((rng() * 14) | 0), 9 + ((rng() * 7) | 0), jitter(glow, rng, 10));
+  shadeEdges(p, 0.9);
+};
+
+/** 荧光蕨：蕨叶 + 沿叶脉的青色光点 */
+const glowFernPainter = (leaf: number, light: number, glow: number): Painter => (p, rng) => {
+  p.clear();
+  for (let i = 0; i < 5; i++) {
+    const x0 = 2 + i * 3;
+    const h = 8 + ((rng() * 7) | 0);
+    for (let k = 0; k < h; k++) {
+      const y = 15 - k;
+      const x = x0 + Math.round(Math.sin(k * 0.5 + i) * 1.2);
+      p.set(x, y, jitter(k === h - 1 ? glow : k % 3 === 0 ? light : leaf, rng, 7));
+      if (k > 2 && k % 2 === 0) p.set(x + 1, y, jitter(leaf, rng, 6));
+    }
+  }
+  for (let i = 0; i < 5; i++) p.set(2 + ((rng() * 12) | 0), 3 + ((rng() * 8) | 0), 0xbfffe0);
+  shadeEdges(p, 0.9);
+};
 
 function builtinPainters(): Record<string, Painter> {
   const dirt: Painter = (p, rng) => {
@@ -1322,6 +1706,69 @@ function builtinPainters(): Record<string, Painter> {
       }
       for (let i = 0; i < 5; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0, 0);
     },
+    // ---- v1.6.0 花海扩充：温带花甸 ----
+    lavender: beadSpikePainter(0x9a6ad0, 0xcaa4f0, 0x6a3f9a, 2, false),
+    buttercup: bloomPainter({
+      petal: 0xf2c92a, light: 0xffe873, dark: 0xc99a18, center: 0xd08a18,
+      petals: 5, radiusX: 3.4, radiusY: 3, top: 7,
+    }),
+    forget_me_not: umbelPainter(0x6a8ae8, 0xa8c4ff, 0xfff0a8),
+    marigold: bloomPainter({
+      petal: 0xe88a1a, light: 0xf8c05a, dark: 0xb85f10, center: 0x8a4a12,
+      petals: 8, radiusX: 4, radiusY: 3.6, top: 5,
+    }),
+    foxglove: foxglovePainter(0xd06aa8, 0xf0a8d0, 0x8f3f72),
+    hollyhock: hollyhockPainter(0xd05a96, 0xf09ac0, 0x9a2f68, 0xffe08a),
+    violet: bloomPainter({
+      petal: 0x7a4ac8, light: 0xa87ae8, dark: 0x4f2a8a, center: 0xf0e08a,
+      petals: 5, radiusX: 3, radiusY: 2.8, top: 7,
+    }),
+    // ---- 林下阴湿 ----
+    wood_anemone: bloomPainter({
+      petal: 0xf2f2ea, light: 0xffffff, dark: 0xc8c8bc, center: 0xf0c840,
+      petals: 6, radiusX: 3.6, radiusY: 3.2, top: 7,
+    }),
+    wild_garlic: umbelPainter(0xf2f5e8, 0xffffff, 0xd8e8c0),
+    hyacinth: beadSpikePainter(0xd06aa8, 0xf0a8d0, 0x8f3f72, 1, true),
+    ivy: ivyPainter(0x35682a, 0x5aa236, 0x244a1c),
+    glow_moss: glowMossPainter(0x3f8f6a, 0x6ad0a8, 0x9ff0d8),
+    // ---- 针叶林 / 高山 ----
+    lingonberry_bush: bushPainter(0x2f5a2a, 0x3f7a34, 0xd03848, 0xf06a70),
+    snowdrop: snowdropPainter(0xf2f5e8, 0xffffff, 0x6aa84a),
+    edelweiss: bloomPainter({
+      petal: 0xe8e8dc, light: 0xf8f8f0, dark: 0xbfbfb0, center: 0xe8c840,
+      petals: 8, radiusX: 4.6, radiusY: 4.2, top: 3,
+    }),
+    snow_lily: bloomPainter({
+      petal: 0xe8f0f8, light: 0xffffff, dark: 0xa8c0d8, center: 0xf0e8a0,
+      petals: 6, radiusX: 4.4, radiusY: 4.6, top: 2,
+    }),
+    crocus: crocusPainter(0x8a5ad0, 0xb08ae8, 0x5a3a9a),
+    gentian: bloomPainter({
+      petal: 0x2a4fc0, light: 0x5a86e8, dark: 0x1a3080, center: 0xc8d8ff,
+      petals: 5, radiusX: 4, radiusY: 3.4, top: 5,
+    }),
+    // ---- 沙漠 / 海岸 ----
+    yucca: yuccaPainter(0x5a8a4a, 0x8fbe6a, 0x8a7a4a, 0xf2ead0),
+    desert_marigold: bloomPainter({
+      petal: 0xe8a020, light: 0xffd260, dark: 0xb06a10, center: 0x8a4a12,
+      petals: 9, radiusX: 4.2, radiusY: 3.8, top: 4, leaf: 0x8a9a6a,
+    }),
+    ghost_flower: glowingBloomPainter({
+      petal: 0xd8c8f0, light: 0xf0e8ff, dark: 0xa088c8, center: 0xc8ffe0,
+      petals: 6, radiusX: 4, radiusY: 3.6, top: 5,
+    }, 0xd6b0ff),
+    beach_grass: beachGrassPainter(0x9aae5a, 0xc8d878, 0xe0d8a0),
+    sea_thrift: cushionPainter(0xe08ab0, 0xf8bcd4, 0x5a8f3a),
+    // ---- 水域 / 洞穴 ----
+    duckweed: padPainter(0x5a9a3a, 0x8fc45e, 0xf0e8a0),
+    sea_anemone: anemonePainter(0xd06aaa, 0xf0a8d0, 0x8a4a6a),
+    red_algae: algaePainter(0xb03a48, 0x7a2534, 0xe06a78),
+    moonflower: glowingBloomPainter({
+      petal: 0xa8d8f0, light: 0xe8f8ff, dark: 0x6a98c0, center: 0xfff6b0,
+      petals: 6, radiusX: 4.2, radiusY: 4, top: 3, leaf: 0x3f7a52, stem: 0x4a6a5a,
+    }, 0xfff0a0),
+    glow_fern: glowFernPainter(0x356822, 0x7aa84a, 0x8ff0d0),
   };
 }
 
@@ -1855,9 +2302,11 @@ export class TextureAtlas {
     const idx: number[] = [];
     if (def.shape === 'cross') {
       const [u0, v0, u1, v1] = this.uv(def.tiles.side);
+      // 与放置后的十字面几何保持一致：手持矮花不会突然变成整格高
+      const ch = Math.max(0.1, Math.min(1, def.crossHeight ?? 1));
       const quads = [
-        [[0.15, 0, 0.15], [0.85, 0, 0.85], [0.85, 1, 0.85], [0.15, 1, 0.15]],
-        [[0.85, 0, 0.15], [0.15, 0, 0.85], [0.15, 1, 0.85], [0.85, 1, 0.15]],
+        [[0.15, 0, 0.15], [0.85, 0, 0.85], [0.85, ch, 0.85], [0.15, ch, 0.15]],
+        [[0.85, 0, 0.15], [0.15, 0, 0.85], [0.15, ch, 0.85], [0.85, ch, 0.15]],
       ];
       for (const q of quads) {
         for (const dir of [1, -1]) {

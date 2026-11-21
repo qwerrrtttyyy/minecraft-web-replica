@@ -13,8 +13,8 @@ import type { PlantTrait } from '../../world/plantTraits';
 import type { PlantRule } from '../../world/plantRules';
 
 export const EXPANSION_PLUGIN_ID = 'core:botany-expansion';
-/** 扩展方块 id 起点：插件固定占用 92~97，内置方块已追加到 109，不能超过 255 */
-export const EXPANSION_FIRST_ID = 92;
+/** 扩展方块 id 起点：内置方块已占用 1~138（v1.6.0 移植植物顺延 111~138），必须末位追加且不超过 255 */
+export const EXPANSION_FIRST_ID = 139;
 /** 单列生成权重累加的上界；插件据此先做一次廉价 roll 过滤再查世界 */
 export const SPAWN_ROLL_CEILING = 0.04;
 
@@ -43,13 +43,13 @@ export interface ExpansionPlant {
 const nectar = { item: 'item:nectar', count: 1 };
 
 /**
- * 6 种新植物（id 92~97）。
+ * 6 种新植物（id 120~125）。
  * 代谢类型沿用 plantTraits.ts 的 solar / hydro / fungal 三分类，
  * 因此自动接入蓄能、开花、根系共享与采集结算，无需改 Botany 的能量模型。
  */
 export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
-    name: 'lavender', label: '薰衣草', id: 92,
+    name: 'thistle', label: '蓟', id: 120,
     trait: { metabolism: 'solar', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     spawn: { plains: 0.008, forest: 0.004 },
     paint: (set) => {
@@ -62,7 +62,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'cattail', label: '香蒲', id: 93,
+    name: 'cattail', label: '香蒲', id: 121,
     trait: { metabolism: 'hydro', bloom: 70, growthCost: 16, shareRadius: 2, sharePower: 10 },
     spawn: { beach: 0.02, plains: 0.012, forest: 0.008 },
     nearWater: true, waterPlant: true,
@@ -73,7 +73,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'glow_mushroom', label: '荧光菇', id: 94,
+    name: 'glow_mushroom', label: '荧光菇', id: 122,
     trait: { metabolism: 'fungal', bloom: 65, growthCost: 14, shareRadius: 3, sharePower: 16, hub: true },
     spawn: { forest: 0.005, taiga: 0.004 },
     lightEmission: 5,
@@ -88,7 +88,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'frost_bloom', label: '霜花', id: 95,
+    name: 'frost_bloom', label: '霜花', id: 123,
     trait: { metabolism: 'solar', bloom: 75, growthCost: 20, shareRadius: 2, sharePower: 10, harvest: nectar },
     spawn: { alpine: 0.012 },
     paint: (set) => {
@@ -99,7 +99,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'ember_fern', label: '余烬蕨', id: 96,
+    name: 'ember_fern', label: '余烬蕨', id: 124,
     trait: { metabolism: 'fungal', bloom: 60, growthCost: 12, shareRadius: 2, sharePower: 10 },
     spawn: { forest: 0.006, taiga: 0.006 },
     paint: (set) => {
@@ -111,7 +111,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
     },
   },
   {
-    name: 'moonlotus', label: '月莲', id: 97,
+    name: 'moonlotus', label: '月莲', id: 125,
     trait: { metabolism: 'hydro', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     spawn: { ocean: 0.006, beach: 0.01 },
     nearWater: true, waterPlant: true,
@@ -180,7 +180,7 @@ export const EXPANSION_RULES: readonly PlantRule[] = [
   {
     id: 'core:botany-expansion:cross-pollination',
     owner: EXPANSION_PLUGIN_ID,
-    plants: ['lavender', 'frost_bloom'],
+    plants: ['thistle', 'frost_bloom'],
     /** 异花传粉：水平相邻存在「另一种非实心植物」时额外蓄能 */
     tick(ctx) {
       if (ctx.rng() > 0.5) return false;

@@ -94,6 +94,20 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
     PLANT_TRAITS.glow_lichen.metabolism === 'fungal');
   ok('发光地衣是真菌网络枢纽、枯灌木不参与能量体系',
     PLANT_TRAITS.glow_lichen.hub === true && !PLANT_TRAITS.dead_bush);
+  ok('v1.6.0 新植物接入代谢分类',
+    PLANT_TRAITS.lavender.metabolism === 'solar' &&
+    PLANT_TRAITS.duckweed.metabolism === 'hydro' &&
+    PLANT_TRAITS.sea_anemone.metabolism === 'hydro' &&
+    PLANT_TRAITS.copper_ore === undefined);
+  ok('洞穴发光植物是菌类枢纽（月光花 / 荧光蕨 / 荧光苔）',
+    PLANT_TRAITS.moonflower.hub === true && PLANT_TRAITS.glow_fern.hub === true &&
+    PLANT_TRAITS.glow_moss.metabolism === 'fungal' &&
+    PLANT_TRAITS.moonflower.metabolism === 'fungal');
+  ok('新花卉 / 越橘丛 / 丝兰都有采集产物',
+    PLANT_TRAITS.hollyhock.hub === true && PLANT_TRAITS.hollyhock.harvest.count === 2 &&
+    PLANT_TRAITS.snow_lily.harvest.item === 'item:nectar' &&
+    PLANT_TRAITS.lingonberry_bush.harvest.item === 'item:sweet_berries' &&
+    PLANT_TRAITS.yucca.bloom > 0);
 }
 
 // 2) 白天蓄能 → 开花事件
