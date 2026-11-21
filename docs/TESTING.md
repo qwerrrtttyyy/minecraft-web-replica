@@ -92,6 +92,9 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   固定种子 / 相机 / 区块集合，换最小系统组并冻结水面与天空相位，同页翻转变量后比对
   帧率 / draw call / 逐通道 mesh 与顶点字节 / 归一化像素签名；自带 12 项有效性闸门
   （含「噪声底必须为零」），失败非零退出。设置与数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
+- **experiment-gameplay**（`npm run test:experiment-gameplay`，**不挂 `verify`**）：玩法/生存机制实验（node 实景）：
+  生存状态机经济与死亡阈值 / 生态随机刻节奏 / 实体攻击+射线 / 确定性掉落 / 脱困解算。
+  脚本 `test/experiment-gameplay.cjs`，设置与实测数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
 - **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
   FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
   Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出

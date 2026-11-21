@@ -40,6 +40,8 @@
     "test:permtable": "node test/permission-table-check.cjs",
     "test:light": "node test/light-check.cjs",
     "test:visual": "node test/visual-check.mjs",
+    "test:experiment": "node test/experiment-3d.mjs",
+    "test:experiment-gameplay": "node test/experiment-gameplay.cjs",
     "build:wasm": "node scripts/build-wasm.mjs",
     "wasm:check": "node scripts/build-wasm.mjs --check",
     "test:wasm": "node test/wasm-check.cjs",

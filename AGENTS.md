@@ -172,3 +172,19 @@ src/
 | [README.md](README.md) | 对外说明、版本沿革、快速开始 |
 
 非官方学习项目，与 Mojang / Microsoft 无关。所有纹理均为代码逐像素绘制，不含任何原版资源。
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues/specs live as GitHub issues via the `gh` CLI (repo `qwerrrtttyyy/minecraft-web-replica`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: one `GLOSSARY.md` + `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.

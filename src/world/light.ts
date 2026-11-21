@@ -33,7 +33,7 @@ export class LightEngine {
   private costCache = new Uint8Array(256).fill(255);
 
   /**
-   * M03：逐帧 BFS 时间预算（ms）。runSky/runBlock 最多运行这段时间后让出，
+   * M03：逐帧 BFS 时间预算（ms）。runQueue（sky / block）最多运行这段时间后让出，
    * 剩余队列留在下一帧继续；避免大规模光照回收（如爆炸后整块区域变暗）
    * 长期独占主线程。skyHead/blockHead 记录已处理位置，支持跨帧续接。
    */
@@ -241,9 +241,13 @@ export class LightEngine {
     return level - cost > nc.sky[idx];
   }
 
-  private runSky(maxMs: number): boolean {
-    const q = this.skyQ;
-    let head = this.skyHead;
+  /**
+   * BFS 队列推进（sky / block 同构）：逐帧最多跑 maxMs，剩余队列留给下一帧续接。
+   * sky 与 block 两套循环此前 90% 相同，唯一差别是取值/写入的空空气坐标均为「本格」。
+   */
+  private runQueue(sky: boolean, maxMs: number): boolean {
+    const q = sky ? this.skyQ : this.blockQ;
+    let head = sky ? this.skyHead : this.blockHead;
     const start = performance.now();
     while (head < q.length) {
       const x = q[head++];
@@ -253,7 +257,8 @@ export class LightEngine {
       if (level <= 1) continue;
       const sc = this.chunkAt(x >> 4, z >> 4);
       if (!sc || !sc.lit) continue;
-      if (sc.sky[sc.idx(x & 15, y, z & 15)] < level) continue;
+      const cur = sky ? sc.sky : sc.block;
+      if (cur[sc.idx(x & 15, y, z & 15)] < level) continue;
       for (const [dx, dy, dz] of DIRS) {
         const nx = x + dx;
         const ny = y + dy;
@@ -265,67 +270,30 @@ export class LightEngine {
         const cost = this.opacity(nc.data[nidx]);
         if (cost >= 16) continue;
         const next = level - cost;
-        if (next <= 0 || next <= nc.sky[nidx]) continue;
-        nc.sky[nidx] = next;
+        const arr = sky ? nc.sky : nc.block;
+        if (next <= 0 || next <= arr[nidx]) continue;
+        arr[nidx] = next;
         this.touched.add(chunkKey(nc.cx, nc.cz));
         q.push(nx, ny, nz, next);
       }
       if (performance.now() - start >= maxMs) break;
     }
-    this.skyHead = head;
+    if (sky) this.skyHead = head;
+    else this.blockHead = head;
     const done = head >= q.length;
     if (done) {
       q.length = 0;
-      this.skyHead = 0;
+      if (sky) this.skyHead = 0;
+      else this.blockHead = 0;
     }
     return done;
   }
 
-  private runBlock(maxMs: number): boolean {
-    const q = this.blockQ;
-    let head = this.blockHead;
-    const start = performance.now();
-    while (head < q.length) {
-      const x = q[head++];
-      const y = q[head++];
-      const z = q[head++];
-      const level = q[head++];
-      if (level <= 1) continue;
-      const sc = this.chunkAt(x >> 4, z >> 4);
-      if (!sc || !sc.lit) continue;
-      if (sc.block[sc.idx(x & 15, y, z & 15)] < level) continue;
-      for (const [dx, dy, dz] of DIRS) {
-        const nx = x + dx;
-        const ny = y + dy;
-        const nz = z + dz;
-        if (ny < 0 || ny >= H) continue;
-        const nc = this.chunkAt(nx >> 4, nz >> 4);
-        if (!nc || !nc.lit) continue;
-        const nidx = nc.idx(nx & 15, ny, nz & 15);
-        const cost = this.opacity(nc.data[nidx]);
-        if (cost >= 16) continue;
-        const next = level - cost;
-        if (next <= 0 || next <= nc.block[nidx]) continue;
-        nc.block[nidx] = next;
-        this.touched.add(chunkKey(nc.cx, nc.cz));
-        q.push(nx, ny, nz, next);
-      }
-      if (performance.now() - start >= maxMs) break;
-    }
-    this.blockHead = head;
-    const done = head >= q.length;
-    if (done) {
-      q.length = 0;
-      this.blockHead = 0;
-    }
-    return done;
-  }
-
-  /** 逐帧推进光照 BFS，每张队列各自不超过 maxMs；返回 true 当两张队列都已排空。
-   *  不能用 `runSky() && runBlock()` 短路：sky 未排完时 block 会整帧饿死。 */
+  /** 逐帧推进光照 BFS：sky 与 block 各自不超过 maxMs；两队列都空才返回 true。
+   *  不能用 `runQueue(true) && runQueue(false)` 短路：sky 未排完时 block 会整帧饿死。 */
   step(maxMs: number): boolean {
-    const skyDone = this.runSky(maxMs);
-    const blockDone = this.runBlock(maxMs);
+    const skyDone = this.runQueue(true, maxMs);
+    const blockDone = this.runQueue(false, maxMs);
     return skyDone && blockDone;
   }
 

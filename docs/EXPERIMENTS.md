@@ -208,3 +208,201 @@ MC_URL=http://localhost:8080/index.html npm run test:experiment  # 换宿主
 - E1 的 44 B 布局已是最小；再压需要把 `aLight` 量化成 1 字节，会牺牲平滑光照的角点精度，
   在 E1 的实测收益（显存 / 带宽）与观感之间不做这个交易。
 - E2 的 MSAA 默认关闭：软件渲染下帧率代价明显，真 GPU 上是否默认开启需要真机数据。
+
+---
+
+## 7. 新一轮受控实验（第 3 轮）
+
+环境说明：本机无可用浏览器（playwright 的 chromium 启动时 SIGBUS，puppeteer 的 chrome 归档
+是损坏的 zip），`npm run test:experiment` 在本环境无法执行 —— 以下是完整的受控实验**设置**
+（假设 / 对照 / 翻转方式 / 判据，同页翻转原则见 §1.1）；执行环境：`npm run build && npm run test:experiment`。
+
+### E4：区块边界光晕接缝的修复尝试
+
+**假设**：区块边界上 `aLight` 的接缝（§6 第一条）来源于角点光照的跨边界采样：一侧区块读到
+的是另一侧已更新而本侧未重网格化的补丁格，手工挖一道光井后边界段的暗纹明显。
+
+**对照**：现状 —— `computeCornerLightInto`（mesher.ts）只对本区块算 9 格补丁；边界上方的两行
+（偏移落在 [0, CS) 外）读的是邻区块当前 `sky/block` 值，`World.setBlock` 改动时才标脏邻区块。
+
+**翻转方式**：`computeCornerLightInto` 的角点采样时，若偏移落在边界外，直接读
+`world.getSkyLight/getBlockLight` 的邻区块位置（同页、仅该变量翻转）。
+
+**判据**：
+- 同页 A→B 像素签名差异在噪声底内（或为 0）；
+- draw calls / programs / 顶点数不变；
+- 截图检查：接缝处暗纹消失。
+不满足即回滚，实验作废。
+
+### E5：aLight 量化为 1 字节
+
+**假设**：`aLight`（2B/顶点）可量化为 1B（取值仍为整数 0~15），在实测收益（显存 / 带宽）
+与观感之间做权衡（§6 第二条前提）。
+
+**对照**：现状 —— `chunkManager.buildGeo` 用 `aLight` 2 字节，E1 实测 44 B/顶点。
+
+**翻转方式**：`mesher.ts` 的 `quadSky/quadBlock` 改为 8 位存储；`chunkManager.buildGeo`
+改为 `new THREE.BufferAttribute(p.lights, 1)`；`test/mesher` 逐顶点等价断言在实验分支放宽为定量等价。
+
+**判据**：
+- `test/mesher` 全绿；
+- 实测 bytesPerVert = 43（E1 实测 44.0，预期 -1B）；
+- 同页 A→B 像素差在量化误差内（实测 ≤ 1 档位），噪声底 B→D = 0。
+
+### E6：云透明度下调（lowerCloudOpacity —— tuning-tweaks.json 待实验项）
+
+**假设**：云材质透明度降低（`sky.ts` L202-205 云 MeshBasicMaterial opacity 0.82 → 约 0.6）
+提升可读性，且在软件渲染下不显著回收帧率（§2 帧率噪声下云未独立报告，真机数据待评）。
+
+**对照**：当前云材质 opacity（`Sky` 的 `this.clouds.material`）。
+
+**翻转方式**：改云材质 opacity，同页 B→C 翻转测量（`npm run test:experiment` 的 main:B→main:C arm）。
+
+**判据**：
+- 像素差 MAD > 0（云可见性变化，达成可读性目标）；
+- 噪声底 B→D = 0（说明差异可信）；
+- fps 无明显下降；若明显下降则记录「可读性换了帧率」的决策点。
+
+### E7：setBlock 跳过脏标记（reduceDirtyOnSetBlock —— tuning-tweaks.json 待实验项）
+
+**假设**：`World.setBlock` 的 `dirty.add`（本块 + 8 邻/对角块，`World.setBlock` L228-238）
+是热路径上的高频 Set 操作；跳过后，ChunkManager 第 0 步「已生成但无网格、无在途 → 重新入队」
+自愈网格，正确性仍成立。
+
+**对照**：现状 —— `setBlock` 每次写记录 1（本块）+ 8（邻/对角）dirty key。
+
+**翻转方式**：移除 `setBlock` 中的 `dirty.add` 调用（保留 `recordEdit` 与 `light.updateBlock`）；
+`npm run test:edits` + `npm run test:logic` 必须全绿。
+
+**判据**：
+- `test:edits` / `test:logic` 全绿；
+- 实景实验：fps 无显著回报；若有（快速在线编辑场景）则记录；
+- 若发现渲染过期（自愈滞后）则回滚翻转。
+
+### E8：网格化 Worker 池扩容（increaseWorkerPool —— tuning-tweaks.json 待实验项）
+
+**假设**：`ChunkManager.decidePoolSize` 默认上限 4（hc-1）在 8+ 核机上可扩；网格吞吐
+（`MAX_DISPATCH_PER_FRAME=6`）可能成为瓶颈，worker 池扩容能提升 fps。
+
+**对照**：现状 —— 默认池 `min(hc - 1, 4)`，`setWorkerPoolSize` 上限 8。
+
+**翻转方式**：本地实验性改为 `Math.min(hc - 1, 8)`；`npm run test:mesher`（网格结构等价）；
+实景实验：fps。
+
+**判据**：
+- `test:mesher` 全绿（网格结构不变）；
+- 实景 fps 有明显提升（≥5%）或无回报；
+- 若 busy 队列排水更差则回滚。
+
+---
+
+## 8. 玩法/生存机制实验（node 实景）
+
+环境说明：本机浏览器不可用，但以下模块全为纯逻辑，`SurvivalState` / `Botany` / `Entity` /
+`rollDrops` / `resolvePenetration` / `World.raycast` 都可直接在 node 跑（compiled snapshot，
+`npm run test:snapshot` 之后即可运行）。脚本：`test/experiment-gameplay.cjs`
+（`npm run test:experiment-gameplay`），不挂 `verify`，运行于 2026-11-21。
+
+### E9：生存状态机经济与死亡阈值
+
+**假设**：饥饿消耗率按 `SurvivalState.tick` 的常量：walk 0.06/s、sprint 0.20/s、mining 0.09/s
+（带宽换算：每 4s 扣 1 点）；饱食回血在 `hunger >= 18 && health < 20` 时 1HP/4s 且附赠
+`exhaustion += 3`；饥饿掉血为 `damage(1, '饥饿')` 每 4s；`damage` 在 iframes（0.32s）内无效。
+
+**对照**：`src/player/survival.ts` — `drain += ctx.sprinting ? 0.2 : 0.06` / `0.09`（mining）；
+`while (exhaustion >= 4) { exhaustion -= 4; hunger = max(0, hunger - 1); }`；
+`if (hunger >= 18 && health < MAX_HEALTH) { regenAcc >= 4 → exhaustion += 3; heal(1); }`；
+`starveAcc >= 4 → damage(1, '饥饿', false)`；`iframes = 0.32`。
+
+**翻转方式**：纯测量（无翻转）；若要翻转：把 `hunger >= 18` 改为更低阈值重跑 E9。
+
+**判据**：
+- 运动消耗：walk rate ∈ [0.008, 0.03]，sprint ∈ [0.028, 0.072]，mining ∈ [0.012, 0.033]；无死亡副作用。
+- 饱食回血：heals ≥ 1，health ∈ [10,16]，hunger ∈ [12,20]。
+- 饥饿掉血：damage=1/4s，死亡（health=0, dead=true）。
+- 伤害免疫：免疫 0.32s 内返回 false。
+
+**原始数据（实测，T=200s/40s）**：
+- walk rate=0.0100/s，sprint rate=0.0500/s，mining rate=0.0200/s，healthLost 0/0/0。
+- regen: heals=3，health=13，hunger=17。
+- starve: damages=5，health=0，dead=true。
+- iframes: d1=true, d2=false, d3=false, d4=true, health=9。
+
+### E10：生态随机刻节奏（Botany.setTickSpeed 0/1/2/3）
+
+**假设**：`setTickSpeed(tier)` → `attempts = round(baseAttempts × scale[tier])`，
+`scale = [0, 0.35, 1, 2.2]`；`update()` 每秒对应 `attempts` 次 `randomAttempt`；tier 0 → 0 次（暂停）。
+
+**对照**：`src/world/botany.ts` — `setTickSpeed` 与 `update` 的 attempts 循环；实验量度
+`world.getBlock` 调用次数（`randomAttempt` 每次恰好 1 次 getBlock）。
+
+**翻转方式**：纯测量；若要翻转：scale 表 [0, 0.35, 1, 2.2] → [0, 0.5, 1, 3.0]，
+tier3/tier2 比例应变为 ≈3.0。
+
+**判据**：
+- tier 0 → 0 calls；
+- tier3/tier2 比例 ∈ [1.85, 2.75]；
+- tier2 > tier1（标准 56 > 慢档 round(56×0.35)=20）。
+
+**原始数据（实测，300 updates × 0.1s/tick）**：
+- c0=0（tier 0），c1=510（tier 1），c2=1450（tier 2），c3=3168（tier 3）
+- ratio = c3/c2 = 2.18（理论 123/56 = 2.196）。
+
+### E11：实体攻击 + 弹道射线
+
+**假设**：僵尸 `attackCooldown = 1.05` → 敌对攻击节奏 ≈ 1/1.05s；`hurt(amount, fromX, fromZ)` 语义：
+`hp = max(0, hp - amount)`，hp→0 时 `dead=true`；`Entity.update` 的 `burnInDay` 在
+`daylight > 0.55` 时每秒扣 `dt*2.2`（实验里用 `daylight=0`）；`World.raycast(origin, dir, maxDist)`
+弹道均值 < 1ms/call。
+
+**对照**：`src/entity/entity.ts` — `hurt` / `update` 的 attack 分支；`src/world/world.ts` — `raycast`。
+
+**翻转方式**：纯测量；可翻转 `attackCooldown 1.05 → 0.525`，预期节奏翻倍。
+
+**判据**：
+- 10s 内攻击次数 ∈ [8, 13]（预期 ≈ 10，≈1/1.1s）；
+- 攻击伤害 = 僵尸 `damage=3`；
+- 弹道命中石墙（hit.x=8，dist=4）；弹道均值 < 1ms。
+
+**原始数据（实测）**：
+- 敌对节奏：hits=10（攻击间隔约 1.1s）。
+- `hurt`：hp=14 → hurt(3,20,10) → hp=11 → hurt(3) → hp=8 → hurt(100) → hp=0, dead → hurt(1) → hp=0；hurtCooldown=0.35。
+- 弹道：hit.x=8, dist=4；0.0067 ms/call。
+
+### E13：脱困解算
+
+**假设**：pos(10.5, 10.5, 10.5) 嵌入石柱（AABB 重叠 3 个 block）→ `resolvePenetration` ≤ 10 轮解算，
+`resolved=true`，位移有界；解算均值 < 1ms。
+
+**对照**：`src/player/unstuck.ts` - `resolvePenetration(pos, width, height, isSolid, maxIterations=10, maxDisplacement=128)`。
+
+**翻转方式**：纯测量。
+
+**判据**：resolved=true，moved=true，iterations ≤ 10，位移 ∈ (0, 4]；解算均值 < 1ms。
+
+**原始数据（实测）**：resolved=true, moved=true, dx=0, dy=0, dz=0.801, iterations=1；
+解算均值 0.1158 ms/call。
+
+### E12：确定性掉落判定
+
+**假设**：僵尸掉落率 ≈ 配表 chance（apple 0.35、iron_ingot 0.15、iron_sword 0.04），5σ 内；
+`rollDrops` 同参数确定、按 source 稳定但分布随 source；`nightOnly` 按 `daylight < 0.3` 生效；
+biome 过滤生效；`min/max` 控制 count ∈ [min,max]。
+
+**对照**：`src/world/drops.ts` - `rollDrops(specs, {seed, source, daylight, biome})`；
+`src/entity/entity.ts` 僵尸 drops 表。
+
+**翻转方式**：纯测量。
+
+**判据**：
+- 掉落率：apple ≈ 0.35、iron_ingot ≈ 0.15、iron_sword ≈ 0.04（5σ 内）；
+- 同参数两次相同，有源变化；
+- nightOnly：daylight=0.1 → 100 掉落；daylight=0.5 → 0；
+- biome：desert → 50；plains → 0；
+- min~max：count ∈ [2,5] 且不全相同。
+
+**原始数据（实测，N=20000）**：
+- apple 0.3534（expected 0.35，|Δ|=0.0034）；iron_ingot 0.1505（0.15）；iron_sword 0.0416（0.04）。
+- 确定性：两次结果相同；不同 source 有分布变化 ✓。
+- nightOnly：0.1→100，0.5→0；biome：desert→50，plains→0。
+- min~max：count=4,2,5,3,5,2（前 6 次）。
