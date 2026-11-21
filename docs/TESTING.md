@@ -28,10 +28,10 @@ npm run verify
 | 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 | ✓ |
+| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118） | ✓ |
 | 15 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
 | 16 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 17 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 | ✓ |
+| 17 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
 | 18 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
 | 19 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
 | 20 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |

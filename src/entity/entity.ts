@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
-import { buildPig, buildSheep, buildZombie, type MobModel } from './models';
+import { buildPig, buildSheep, buildZombie, buildSkeleton, type MobModel } from './models';
 import type { DropSpec } from '../world/blocks';
 import { rollDrops } from '../world/drops';
 
@@ -220,16 +220,21 @@ export class EntityManager {
     this.seed = seed;
     this.registerType({
       id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
-      health: 8, drops: [{ name: 'item:porkchop' }],
+      health: 8, drops: [{ name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 }],
     });
     this.registerType({
       id: 'sheep', label: '羊', width: 0.9, height: 1.15, speed: 1.0, build: buildSheep,
-      health: 8, drops: [{ name: 'white_wool' }],
+      health: 8, drops: [{ name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 }],
     });
     this.registerType({
       id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
       hostile: true, health: 14, damage: 3, attackRange: 1.7, burnInDay: true,
       drops: [{ name: 'item:apple', chance: 0.35 }],
+    });
+    this.registerType({
+      id: 'skeleton', label: '骷髅', width: 0.6, height: 1.9, speed: 1.0, build: buildSkeleton,
+      hostile: true, health: 12, damage: 2, attackRange: 1.7, burnInDay: true,
+      drops: [{ name: 'item:bone_meal', chance: 0.75 }],
     });
   }
 
@@ -314,8 +319,9 @@ export class EntityManager {
 
     const target = opts.survival && night ? 9 : 6;
     if (this.entities.length < target) {
-      const wantZombie = opts.survival && night && zombies < 4 && Math.random() < 0.6;
-      this.trySpawnNear(playerPos, wantZombie ? 'zombie' : undefined);
+      const wantHostile = opts.survival && night && zombies < 4 && Math.random() < 0.6;
+      const hostileType = wantHostile ? (Math.random() < 0.5 ? 'skeleton' : 'zombie') : undefined;
+      this.trySpawnNear(playerPos, hostileType);
     }
   }
 

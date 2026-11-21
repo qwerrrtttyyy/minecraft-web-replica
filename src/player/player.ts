@@ -15,6 +15,7 @@ import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
 import { rollDrops } from '../world/drops';
+import { nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES } from '../world/compost';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -631,6 +632,8 @@ export class Player implements System, PhysicsBody {
 
   /** 右键 / 放置键：手持方块则放置，种子 / 浆果则种植，空手则采集蓄能植物 */
   useSelected() {
+    // 堆肥桶优先：手持可堆肥物投放，或空手收取成熟肥料
+    if (this.tryCompost()) return;
     const stack = this.selectedStack();
     if (!stack) {
       // 空手右键可交互方块（如工作台）：交给上层打开对应界面
@@ -657,6 +660,39 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
+  }
+
+  /** 手持可堆肥物投放 / 空手从成熟桶取肥；返回是否处理了这次右键 */
+  private tryCompost(): boolean {
+    const hit = this.target;
+    if (!hit || !this.survival.isSurvival) return false;
+    const id = this.world.getBlock(hit.x, hit.y, hit.z);
+    const name = this.registry.get(id).name;
+    if (!name.startsWith('composter')) return false;
+    const stack = this.selectedStack();
+    if (!stack) {
+      const harvest = composterHarvest(id);
+      if (!harvest) return false;
+      this.world.setBlock(hit.x, hit.y, hit.z, 110);
+      this.survival.addDrop(harvest, 1);
+      this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
+      this.sound.click(1150);
+      this.swing();
+      return true;
+    }
+    const key = stack.kind === 'item' ? `item:${stack.id}` : (() => {
+      const def = this.registry.get(stack.id as BlockId);
+      return def.name;
+    })();
+    if (!COMPOST_VALUES[key]) return false;
+    const next = composterNext(id, key);
+    if (next === null) return false;
+    if (!this.survival.consume(stack, 1)) return false;
+    this.world.setBlock(hit.x, hit.y, hit.z, next);
+    this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
+    this.sound.place('wood');
+    this.swing();
+    return true;
   }
 
   /**

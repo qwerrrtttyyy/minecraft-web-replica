@@ -16,6 +16,10 @@ const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/
 const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require('./terrain-logic/core/types.js');
 
 const idx = (x, y, z) => (y * CS + z) * CS + x;
+const { levelOf, nextId: composterNext, harvestOf } = require('./terrain-logic/world/compost.js');
+const { EntityManager } = require('./terrain-logic/entity/entity.js');
+const THREE = require('three');
+
 const log = (...a) => console.log(...a);
 let passed = 0;
 function ok(name, cond, extra = '') {
@@ -65,8 +69,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 103 种（v1.4.1 追加 35 种植物，v1.5.1 群系扩充追加 12 种）',
-    all.length === 103, `${all.length}`);
+  ok('内置方块总数 112 种（v1.6 追加 9 个堆肥桶方块）',
+    all.length === 112, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -403,6 +407,31 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   const left2 = chunk(b.gen, 0, 0);
   ok('同 seed 且先生成邻区块时结果仍完全一致',
     Buffer.from(left).equals(Buffer.from(left2)));
+}
+
+// 堆肥桶与肥料来源（P04）
+{
+  const { reg } = make(1);
+  const all = reg.all();
+  ok('方块总数增至 112（新增 9 个堆肥桶方块）', all.length === 112, `${all.length}`);
+  ok('堆肥桶方块 id 110~118 连续且末位追加',
+    reg.byNameGet('composter')?.id === 110 &&
+    reg.byNameGet('composter_7')?.id === 117 &&
+    reg.byNameGet('composter_ready')?.id === 118);
+  ok('堆肥等级编码：空=0 / 满=8',
+    levelOf(reg.byNameGet('composter').id) === 0 &&
+    levelOf(reg.byNameGet('composter_ready').id) === 8);
+  ok('满级拒绝继续填、取肥回到空桶',
+    composterNext(reg.byNameGet('composter_ready').id, 'item:apple') === null &&
+    composterNext(reg.byNameGet('composter').id, 'item:wheat_seeds') === reg.byNameGet('composter_1').id);
+  ok('满级可收取肥料', harvestOf(reg.byNameGet('composter_ready').id) === 'item:fertilizer');
+  ok('堆肥桶掉落自身', reg.byNameGet('composter').drops.some((d) => d.name === 'self'));
+
+  const mobs = new EntityManager({} , new THREE.Scene(), { on() {} }, 1);
+  ok('猪 / 羊掉落肥料、骷髅掉落骨粉',
+    mobs.getType('pig').drops.some((d) => d.name === 'item:fertilizer') &&
+    mobs.getType('sheep').drops.some((d) => d.name === 'item:fertilizer') &&
+    mobs.getType('skeleton').drops.some((d) => d.name === 'item:bone_meal'));
 }
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

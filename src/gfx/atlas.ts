@@ -1417,6 +1417,27 @@ const boneMealPainter: Painter = (p, rng) => {
   for (let i = 0; i < 4; i++) p.set(5 + ((rng() * 6) | 0), 10 + ((rng() * 3) | 0), 0xcfcfc4);
 };
 
+/** 堆肥桶侧面：木条 + 横向铁皮箍 */
+const composterSidePainter: Painter = (p, rng) => {
+  p.clear();
+  for (let x = 0; x < 16; x++) {
+    for (let y = 0; y < 16; y++) p.set(x, y, jitter(0x8a5f33, rng, 12));
+  }
+  for (const y of [3, 12]) for (let x = 0; x < 16; x++) p.set(x, y, 0x5b5b62);
+  for (let x = 2; x <= 13; x += 4) for (let y = 5; y <= 10; y++) p.set(x, y, 0x6b4526);
+};
+
+/** 堆肥桶顶面：木框 + 中间深色土 / 成熟度决定土色 */
+function composterTopPainter(ready: boolean): Painter {
+  return (p, rng) => {
+    p.clear();
+    for (let x = 0; x < 16; x++) for (let y = 0; y < 16; y++) p.set(x, y, 0x6b4526);
+    for (let x = 2; x < 14; x++) for (let y = 2; y < 14; y++) {
+      p.set(x, y, ready ? jitter(0x5fbf52, rng, 12) : jitter(0x4a3420, rng, 14));
+    }
+  };
+}
+
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
     fillNoise(p, rng, hex, 5);
@@ -1459,6 +1480,10 @@ export class TextureAtlas {
     // v1.6：肥料 / 骨粉物品纹理，追加在末尾以保持既有 tile 索引不变
     this.painters.set('fertilizer', fertilizerPainter);
     this.painters.set('bone_meal', boneMealPainter);
+    this.painters.set('composter_side', composterSidePainter);
+    this.painters.set('composter_top', composterTopPainter(false));
+    this.painters.set('composter_ready_top', composterTopPainter(true));
+    this.painters.set('composter_bottom', composterTopPainter(false));
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

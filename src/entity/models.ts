@@ -205,6 +205,61 @@ export function buildSheep(): MobModel {
   };
 }
 /** 僵尸：绿皮、双臂前伸的敌对生物 */
+/** 骷髅：复用僵尸骨架，改白骨配色，手持骨箭 */
+export function buildSkeleton(): MobModel {
+  const group = new THREE.Group();
+  const bone = lambert(0xe4e4d8);
+  const boneDark = lambert(0xb9b9aa);
+  const eyeM = lambert(0x1a1a1a);
+
+  const body = box(0.5, 0.75, 0.25, boneDark);
+  body.position.y = 1.125;
+  // 肋骨纹理：几道白色横条
+  for (let i = 0; i < 3; i++) {
+    const rib = box(0.46, 0.06, 0.27, bone);
+    rib.position.set(0, 0.9 + i * 0.2, 0);
+    group.add(rib);
+  }
+
+  const head = box(0.5, 0.5, 0.5, bone);
+  head.position.y = 1.75;
+  const eyeL = box(0.1, 0.1, 0.02, eyeM);
+  eyeL.position.set(-0.12, 1.8, 0.26);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.12;
+
+  const armMat = [bone, bone, bone, bone, bone, bone];
+  const arms: THREE.Group[] = [];
+  for (const x of [-0.375, 0.375]) {
+    const arm = limb(0.18, 0.75, 0.18, armMat);
+    arm.position.set(x, 1.5, 0);
+    arm.rotation.x = -Math.PI / 2.1;
+    arms.push(arm);
+    group.add(arm);
+  }
+
+  const legMat = [bone, bone, bone, boneDark, bone, bone];
+  const legs: THREE.Group[] = [];
+  for (const x of [-0.125, 0.125]) {
+    const leg = limb(0.2, 0.75, 0.2, legMat);
+    leg.position.set(x, 0.75, 0);
+    legs.push(leg);
+    group.add(leg);
+  }
+
+  group.add(body, head, eyeL, eyeR);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.72 : 0;
+      legs[0].rotation.x = s;
+      legs[1].rotation.x = -s;
+      arms[0].rotation.x = -Math.PI / 2.1 + Math.sin(phase * 0.5) * 0.12;
+      arms[1].rotation.x = -Math.PI / 2.1 - Math.sin(phase * 0.5) * 0.12;
+    },
+  };
+}
+
 export function buildZombie(): MobModel {
   const group = new THREE.Group();
   const skin = lambert(0x6d9c58);

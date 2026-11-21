@@ -374,4 +374,14 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
     drops: [{ name: 'self' }],
   });
+
+  // ---- 堆肥桶（id 110~118，末位追加；等级编码进 block id，借 world.edits 免费持久化） ----
+  for (let i = 0; i <= 7; i++) {
+    cube(i === 0 ? 'composter' : `composter_${i}`, i === 0 ? '堆肥桶' : `堆肥桶 ${i}/7`,
+      { top: 'composter_top', bottom: 'composter_bottom', side: 'composter_side' },
+      { id: 110 + i, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
+  }
+  cube('composter_ready', '堆肥桶（成熟）',
+    { top: 'composter_ready_top', bottom: 'composter_bottom', side: 'composter_side' },
+    { id: 118, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
 }
