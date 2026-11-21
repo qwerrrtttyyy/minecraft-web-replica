@@ -188,6 +188,48 @@ CHECKS = [
         lambda: "test:equipment" in pkg_scripts().get("verify", "")
         and "test:smelting" in pkg_scripts().get("verify", ""),
     ),
+    # ---- 内容体系完善任务卡（C00~C05）----
+    # 阶段 A：谓词只检查关键词是否出现在声明它的任务卡文本中；
+    # 各实现卡会逐项收紧为真实符号检查（C01 已收紧 tuning center / coal torch）。
+    (
+        "tuning center",
+        "内容体系：tuning.ts 导出 BREED_FOODS / DROPS / POPULATION（阶段 B：真实符号）",
+        lambda: all(s in read("src/core/tuning.ts") for s in (
+            "export const BREED_FOODS", "export const DROPS", "export const POPULATION",
+        )),
+    ),
+    (
+        "drop system",
+        "内容体系：dropLogic.ts 含 scatterOffset 且 droppedItem.ts 含 DropManager（阶段 B：真实符号）",
+        lambda: "export function scatterOffset" in read("src/world/dropLogic.ts")
+        and "export class DropManager" in read("src/entity/droppedItem.ts"),
+    ),
+    (
+        "animal breeding",
+        "内容体系：breeding.ts 含 isBreedFood 且 entity.ts 注册三种新被动（阶段 B：真实符号）",
+        lambda: "export function isBreedFood" in read("src/entity/breeding.ts")
+        and all(f"'{n}'" in read("src/entity/entity.ts") for n in ("cow", "chicken", "rabbit")),
+    ),
+    (
+        "coal torch",
+        "内容体系：blocks.ts 掉落 item:coal 且 crafting.ts 产出 torch（阶段 B：真实符号）",
+        lambda: "item:coal" in read("src/world/blocks.ts")
+        and "material: 'torch'" in read("src/player/crafting.ts"),
+    ),
+    (
+        "test:drop",
+        "内容体系：test/drop-check.cjs 存在且 verify 链包含 npm run test:drop",
+        lambda: (ROOT / "test/drop-check.cjs").exists()
+        and "npm run test:drop" in pkg_scripts().get("verify", ""),
+    ),
+    (
+        "任务卡校验器",
+        "validate.py 覆盖植物深化六个契约关键词",
+        lambda: all(k in read("docs/agent/validate.py") for k in (
+            "plant env", "soil nutrient", "plant save schema",
+            "plant drops", "compost bin", "plant rule context",
+        )),
+    ),
 ]
 
 

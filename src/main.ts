@@ -29,6 +29,7 @@ import type { CraftingHost, CraftingMaterial } from './ui/crafting';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
+import { DropManager } from './entity/droppedItem';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
 import { SoundEngine } from './audio/sound';
@@ -213,7 +214,7 @@ async function boot() {
   if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
-  const entities = new EntityManager(world, engine.scene, events, seed);
+  const entities = new EntityManager(world, engine.scene, events, seed, particles);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -232,9 +233,16 @@ async function boot() {
     }
   }
 
+  // 可见掉落物：拾取回写生存背包；几何与材质由 DropManager 内部共享缓存
+  const drops = new DropManager({
+    scene: engine.scene, atlas, seed: world.generator.seed, world, particles, sound,
+    onPickup: (name, count) => survival.addDrop(name, count),
+  });
+
   const input = new Input(engine.renderer.domElement, isMobile);
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
+  player.dropManager = drops;
   const botany = new Botany(world, registry, seed, events, { isMobile });
   player.setBotany(botany);
   // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
@@ -789,14 +797,16 @@ async function boot() {
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
   };
 
-  /** 生物掉落统一进背包 */
-  entities.onDrop = (name, count) => {
-    survival.addDrop(name, count);
+  /** 生物死亡掉落生成可见物；创造模式不产生掉落 */
+  entities.onDrop = (name, count, x, y, z, source) => {
+    if (!survival.isSurvival) return;
+    drops.spawn(name, count, x, y, z, source);
   };
 
   // ---- 状态机 ----
   async function startGame(cont: boolean) {
     if (mode !== 'title') return;
+    drops.clear(); // 掉落物不进存档，开局一律从空开始
     sound.unlock();
     // 指针锁定必须发生在用户手势的同步调用栈里，不能等 await 之后再请求
     input.requestLock();
@@ -860,6 +870,7 @@ async function boot() {
   }
 
   async function newWorld(s?: number, m?: GameMode) {
+    drops.clear();
     sound.unlock();
     await provider.clear();
     // 清空成功后再禁止卸载保存，避免 beforeunload 把旧状态写回去
@@ -977,6 +988,7 @@ async function boot() {
       t.remove();
     }
     falling.clear();
+    drops.clear();
     input.enabled = false;
     input.reset();
     input.exitLock();
@@ -1003,6 +1015,7 @@ async function boot() {
   /** 死亡 → 重生（物品保留） */
   function respawn() {
     const sp = survival.spawn;
+    drops.clear();
     survival.respawn(sp);
     player.teleport(sp.x, sp.y + 0.2, sp.z);
     player.vel.set(0, 0, 0);
@@ -1364,12 +1377,15 @@ async function boot() {
     update: (dt, t) => {
       // 手柄每帧轮询：暂停时也要读 Start 键（processEdges 处理恢复）
       input.pollGamepad(dt);
+      // 掉落物只在 playing 推进 age / 物理 / 拾取；暂停时调用会直接返回
+      drops.update(dt, player.pos, mode === 'playing');
       if (mode === 'playing') {
         player.update(dt);
         entities.update(dt, {
           playerPos: player.pos,
           daylight: sky.daylight,
           playerDead: survival.dead,
+          playing: mode === 'playing',
           hurtPlayer: (amount, cause) => survival.damage(amount, cause),
         });
         entities.maintainPopulation(dt, player.pos, { survival: survival.isSurvival, daylight: sky.daylight });
@@ -1384,6 +1400,7 @@ async function boot() {
           playerPos: player.pos,
           daylight: sky.daylight,
           playerDead: true,
+          playing: false,
           hurtPlayer: () => false,
         });
       }

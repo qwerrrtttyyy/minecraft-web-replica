@@ -62,7 +62,9 @@ const entries = [
   'src/diagnostics/RuntimeDiagnostics.ts',
   'src/entity/models.ts',
   'src/entity/entity.ts',
+  'src/entity/droppedItem.ts',
   'src/entity/falling.ts',
+  'src/world/dropLogic.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');

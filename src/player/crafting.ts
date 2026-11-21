@@ -178,22 +178,15 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { P: '#planks', D: 'dirt' },
     result: { material: 'composter', count: 1 },
   },
-  // v1.7.0 内容植物闭环：棉花压成建材块；荧光孢子 + 木棍做荧光火把（2×2 个人格可放）
-  {
-    id: 'cotton_block',
-    label: '棉花块',
-    pattern: ['CC', 'CC'],
-    key: { C: 'item:cotton' },
-    result: { material: 'cotton_block', count: 1 },
-  },
-  {
-    id: 'glow_torch',
-    label: '荧光火把',
-    pattern: ['G', 'S'],
-    key: { G: 'item:glow_spore', S: 'item:stick' },
-    result: { material: 'glow_torch', count: 2 },
-  },
   ...equipmentRecipes(),
+  {
+    // C01：煤炭 + 木棍 → 4 火把（1×2 竖排，2×2 个人合成格也放得下）
+    id: 'torch_fuel',
+    label: '火把',
+    pattern: ['C', 'S'],
+    key: { C: 'item:coal', S: 'item:stick' },
+    result: { material: 'torch', count: 4 },
+  },
 ];
 
 /** 合成格里的一个材料：方块名或 'item:xxx' */

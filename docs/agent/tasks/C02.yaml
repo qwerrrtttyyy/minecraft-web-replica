@@ -1,0 +1,7 @@
+id: C02
+title: 三种新动物与按权重生成
+description: models.ts 增 buildCow/buildChicken/buildRabbit；EntityManager 注册三种动物；trySpawnNear 改为按 weight 加权抽取（激活 dead code）；cap 约束自然生成。
+touch: { allow: [src/entity/models.ts, src/entity/entity.ts, src/core/tuning.ts, test/terrain-system-check.cjs, docs/TESTING.md], deny: [src/world/mesher.ts] }
+outputs:
+  - animal breeding: 五种被动动物注册完成且生成按权重确定
+  - verify: npm run typecheck && npm run test:snapshot && npm run test:logic 全绿

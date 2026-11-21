@@ -20,8 +20,10 @@ const { levelOf, nextId: composterNext, harvestOf } = require('./terrain-logic/w
 const { EntityManager } = require('./terrain-logic/entity/entity.js');
 const { FallingSystem } = require('./terrain-logic/entity/falling.js');
 const { CRAFTING_RECIPES, matchRecipe } = require('./terrain-logic/player/crafting.js');
-const { PLANT_TRAITS } = require('./terrain-logic/world/plantTraits.js');
 const THREE = require('three');
+
+// C02：复用堆肥桶段落创建的 EntityManager 实例，供新动物注册断言使用
+let mobs;
 
 const log = (...a) => console.log(...a);
 let passed = 0;
@@ -94,8 +96,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 152 种（141 + 内容植物扩充 11）',
-    all.length === 152, `${all.length}`);
+  ok('内置方块总数 141 种（堆肥桶 9 + 群系扩充 12 + 熔炉 1 + 移植植物 28）',
+    all.length === 141, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -520,7 +522,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 152（141 + 内容植物扩充 11）', all.length === 152, `${all.length}`);
+  ok('方块总数增至 141（堆肥桶 9 + 移植植物 28 + 熔炉 1）', all.length === 141, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -534,7 +536,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   ok('满级可收取肥料', harvestOf(reg.byNameGet('composter_ready').id) === 'item:fertilizer');
   ok('堆肥桶掉落自身', reg.byNameGet('composter').drops.some((d) => d.name === 'self'));
 
-  const mobs = new EntityManager({} , new THREE.Scene(), { on() {} }, 1);
+  mobs = new EntityManager({} , new THREE.Scene(), { on() {} }, 1);
   ok('猪 / 羊掉落肥料、骷髅掉落骨粉',
     mobs.getType('pig').drops.some((d) => d.name === 'item:fertilizer') &&
     mobs.getType('sheep').drops.some((d) => d.name === 'item:fertilizer') &&
@@ -602,23 +604,168 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     JSON.stringify(seen));
 }
 
-// 12) v1.7.0 内容植物扩充：末位追加、特性入表、群系有分布
+// C01：煤矿石 → 煤炭闭环（方块总数不变）
+const { reg } = make(1);
+ok('煤矿石掉落煤炭（item:coal，1~2）',
+  reg.byNameGet('coal_ore').drops.length === 1 &&
+  reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
+  reg.byNameGet('coal_ore').drops[0].min === 1 &&
+  reg.byNameGet('coal_ore').drops[0].max === 2);
+ok('方块总数仍为 141', reg.all().length === 141);
+
+// C02：三种新动物 + 按权重生成
+ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']
+  .every((id) => !!mobs.getType(id)));
+ok('新动物掉落名带 item: 前缀',
+  ['cow', 'chicken', 'rabbit'].every((id) =>
+    mobs.getType(id).drops.every((d) => d.name.startsWith('item:'))));
+
+// C02 回归：固化按权重确定性生成，防后续任务改 ANIMALS / pickPassiveType 后静默失守
 {
-  const { reg } = make(1);
-  const NEW_PLANTS = ['cotton_bush', 'rice_plant', 'grape_vine', 'chili_bush', 'lotus',
-    'orchid', 'sage', 'pitcher_plant', 'glow_cordyceps', 'cotton_block', 'glow_torch'];
-  ok('11 个内容植物方块 id 148~158 连续末位追加',
-    NEW_PLANTS.every((n, i) => reg.byNameGet(n)?.id === 148 + i),
-    `${NEW_PLANTS[0]}=${reg.byNameGet(NEW_PLANTS[0])?.id}..${NEW_PLANTS.at(-1)}=${reg.byNameGet(NEW_PLANTS.at(-1))?.id}`);
-  ok('作物与花卉植物全部进入能量特性表',
-    ['cotton_bush', 'rice_plant', 'grape_vine', 'chili_bush', 'lotus', 'orchid', 'sage',
-      'pitcher_plant', 'glow_cordyceps'].every((n) => !!PLANT_TRAITS[n]));
-  ok('发光虫菌自发光且掉落荧光孢子',
-    reg.byNameGet('glow_cordyceps').lightEmission === 6 &&
-    reg.byNameGet('glow_cordyceps').drops.some((d) => d.name === 'item:glow_spore'));
-  ok('荧光火把亮度 12 且棉花块是实心建材',
-    reg.byNameGet('glow_torch').lightEmission === 12 &&
-    reg.byNameGet('cotton_block').solid === true && reg.byNameGet('cotton_block').opaque === true);
+  const pickWorld = {
+    registry: { get: (id) => ({ name: id === 1 ? 'grass' : 'air', liquid: false }) },
+    getBlock: (_x, y) => (y === 40 ? 1 : 0),
+    surfaceHeight: () => 40,
+    isSolidAt: () => false,
+  };
+  const pickEvents = { on() {}, emit() {} };
+  const player = new THREE.Vector3(0, 0, 0);
+  const passive = ['pig', 'sheep', 'cow', 'chicken', 'rabbit'];
+
+  // 走公开 trySpawnNear：草地桩保证每次都命中，抽完立即 despawn 以绕过 cap 但保留生成序号
+  const naturalSequence = (seed, n) => {
+    const m = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, seed);
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      m.trySpawnNear(player);
+      const e = m.entities[m.entities.length - 1];
+      ids.push(e ? e.type.id : null);
+      if (e) m.despawn(e);
+    }
+    return ids;
+  };
+
+  const N = 200;
+  const seqA = naturalSequence(424242, N);
+  const seqB = naturalSequence(424242, N);
+  ok('同 seed + 同生成序号序列：加权抽取完全复现',
+    seqA.length === N && JSON.stringify(seqA) === JSON.stringify(seqB));
+  const seen = new Set(seqA);
+  ok('加权抽取覆盖全部正权重被动动物且无未知 id',
+    passive.every((id) => seen.has(id)) && seqA.every((id) => passive.includes(id)),
+    [...seen].join(','));
+
+  // typeId 覆盖优先，且不消耗 spawnSerial：下一次自然抽取仍是该 seed 的首个结果
+  const fresh = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, 424242);
+  fresh.trySpawnNear(player);
+  const expectedFirst = fresh.entities[0].type.id;
+  const overridden = new EntityManager(pickWorld, new THREE.Scene(), pickEvents, 424242);
+  overridden.trySpawnNear(player, 'zombie');
+  const overrideId = overridden.entities[0] ? overridden.entities[0].type.id : null;
+  overridden.trySpawnNear(player);
+  const afterOverrideId = overridden.entities[1] ? overridden.entities[1].type.id : null;
+  ok('typeId 覆盖优先且不消耗生成序号',
+    overrideId === 'zombie' && afterOverrideId === expectedFirst,
+    `${overrideId} -> ${afterOverrideId} (期望 ${expectedFirst})`);
+}
+
+// C03：繁殖规则（纯函数）+ 喂食 / 求爱 / 幼崽 / 冷却 / 上限接线
+{
+  const { isBreedFood, pickMate, canBreed } = require('./terrain-logic/entity/breeding.js');
+  const { BREED: BREED_TUNING, POPULATION: POP_TUNING } = require('./terrain-logic/core/tuning.js');
+
+  ok('兔子吃蒲公英与所有花朵，不吃煤炭',
+    isBreedFood('rabbit', 'dandelion') && isBreedFood('rabbit', 'poppy') &&
+    !isBreedFood('rabbit', 'item:coal'));
+  ok('牛吃小麦不吃种子',
+    isBreedFood('cow', 'wheat') && !isBreedFood('cow', 'item:wheat_seeds'));
+
+  const breedWorld = {
+    registry: { get: (id) => ({ name: id === 1 ? 'grass' : 'air', liquid: false }) },
+    getBlock: (_x, y) => (y === 40 ? 1 : 0),
+    surfaceHeight: () => 40,
+    isSolidAt: () => false,
+  };
+  const breedEvents = { on() {}, emit() {} };
+  let heartBursts = 0;
+  const particles = { burst: () => { heartBursts++; } };
+  const ectx = (playing) => ({
+    playing,
+    daylight: 1,
+    playerPos: new THREE.Vector3(0, 0, 0),
+    playerDead: true,
+    hurtPlayer: () => false,
+  });
+  const makeMobs = () => new EntityManager(breedWorld, new THREE.Scene(), breedEvents, 99, particles);
+
+  // 纯函数：canBreed 要求双方求爱，pickMate 只在半径内按 id 升序选
+  {
+    const pm = makeMobs();
+    const p1 = pm.spawn('sheep', 2.5, 41.05, 2.5);
+    const p2 = pm.spawn('sheep', 3.5, 41.05, 2.5);
+    pm.spawn('sheep', 8.5, 41.05, 2.5);
+    pm.spawn('cow', 3.5, 41.05, 2.5);
+    const beforeLove = !canBreed(p1, p2);
+    p1.loveTimer = BREED_TUNING.loveDuration;
+    const oneLoving = !canBreed(p1, p2);
+    p2.loveTimer = BREED_TUNING.loveDuration;
+    ok('canBreed 要求双方同类成体且都在求爱且冷却结束',
+      beforeLove && oneLoving && canBreed(p1, p2));
+    ok('pickMate 只在半径内按 id 升序选求爱伙伴',
+      pickMate(p1, pm.entities, BREED_TUNING.mateRadius) === p2 &&
+      pickMate(p1, pm.entities, 0.5) === null);
+    ok('异类不成对', !canBreed(p1, pm.entities[3]));
+  }
+
+  // 喂食 → 求爱 → 幼崽 → 冷却 → 成长
+  {
+    const m = makeMobs();
+    const a = m.spawn('rabbit', 10.5, 41.05, 10.5);
+    const b = m.spawn('rabbit', 12.5, 41.05, 10.5);
+    ok('喂错食物不进入求爱', !m.feed(a, 'item:coal') && a.loveTimer === 0);
+    ok('喂食两种成体进入求爱窗口', m.feed(a, 'dandelion') && m.feed(b, 'poppy') &&
+      a.loveTimer === BREED_TUNING.loveDuration && b.loveTimer === BREED_TUNING.loveDuration);
+    m.update(0.016, ectx(true));
+    const baby = m.entities.find((e) => e.baby);
+    ok('两只求爱成体生成幼崽', !!baby && m.entities.length === 3);
+    ok('双亲进入冷却且求爱结束',
+      a.cooldown === BREED_TUNING.cooldown && b.cooldown === BREED_TUNING.cooldown &&
+      a.loveTimer === 0 && b.loveTimer === 0);
+    ok('冷却中再喂静默拒绝', !m.feed(a, 'dandelion'));
+    ok('求爱期发心形粒子', heartBursts >= 1);
+    if (baby) {
+      ok('幼崽初始缩放为 babyScale',
+        Math.abs(baby.model.group.scale.x - BREED_TUNING.babyScale) < 0.02);
+      baby.hurt(1);
+      const hurtScale = baby.model.group.scale.x;
+      ok('幼崽受击不回到成体尺寸', hurtScale > BREED_TUNING.babyScale && hurtScale < 1,
+        `${hurtScale}`);
+      for (let i = 0; i < 20; i++) baby.update(0.1, breedWorld, ectx(true));
+      ok('闪光消退后幼崽缩放仍为 babyScale',
+        Math.abs(baby.model.group.scale.x - BREED_TUNING.babyScale) < 0.02,
+        `${baby.model.group.scale.x}`);
+      ok('幼崽不可繁殖', !canBreed(baby, a) && !m.feed(baby, 'dandelion'));
+      const ageBefore = baby.age;
+      const cool = a.cooldown;
+      m.update(1, ectx(false));
+      ok('非 playing 不推进繁殖计时', a.cooldown === cool && baby.age === ageBefore);
+      baby.update(BREED_TUNING.growTime, breedWorld, ectx(true));
+      ok('age 达 growTime 后成年', !baby.baby && baby.age >= BREED_TUNING.growTime);
+      ok('成年后缩放回到 1', Math.abs(baby.model.group.scale.x - 1) < 0.02,
+        `${baby.model.group.scale.x}`);
+    }
+  }
+
+  // 全局 cap 满时拒绝繁殖（静默）
+  {
+    const full = makeMobs();
+    while (full.entities.length < POP_TUNING.cap) full.spawn('pig', 5.5, 41.05, 5.5);
+    const f1 = full.entities[0], f2 = full.entities[1];
+    full.feed(f1, 'wheat');
+    full.feed(f2, 'wheat');
+    full.update(0.016, ectx(true));
+    ok('全局 cap 满时拒绝繁殖', full.entities.length === POP_TUNING.cap);
+  }
 }
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

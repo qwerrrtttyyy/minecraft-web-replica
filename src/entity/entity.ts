@@ -2,9 +2,15 @@ import * as THREE from 'three';
 import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
-import { buildPig, buildSheep, buildZombie, buildSkeleton, type MobModel } from './models';
+import {
+  buildPig, buildSheep, buildCow, buildChicken, buildRabbit,
+  buildZombie, buildSkeleton, type MobModel,
+} from './models';
 import type { DropSpec } from '../world/blocks';
-import { rollDrops } from '../world/drops';
+import type { Particles } from '../gfx/particles';
+import { dropHash, rollDrops } from '../world/drops';
+import { ANIMALS, BREED, POPULATION } from '../core/tuning';
+import { canBreed, isBreedFood, pickMate } from './breeding';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -41,6 +47,8 @@ export interface EntityContext {
   /** 0~1 日照强度 */
   daylight: number;
   playerDead: boolean;
+  /** 是否处于游玩态：默认 true；暂停 / 标题时繁殖计时不推进 */
+  playing?: boolean;
 }
 
 let NEXT_ID = 1;
@@ -57,6 +65,14 @@ export class Entity implements PhysicsBody {
   readonly maxHp: number;
   hurtCooldown = 0;
   attackCooldown = 0;
+  /** 出生后秒数；成体初始化为 growTime，幼崽出生时为 0 */
+  age: number = BREED.growTime;
+  /** 求爱窗口剩余秒数（喂食后为 loveDuration） */
+  loveTimer = 0;
+  /** 繁殖冷却剩余秒数 */
+  cooldown = 0;
+  /** 受击闪光剩余秒数：目标缩放 = 体型基准 × 1.14 */
+  private hurtFlash = 0;
   private state: 'idle' | 'walk' = 'idle';
   private timer = 1 + Math.random() * 2;
   private phase = 0;
@@ -79,6 +95,16 @@ export class Entity implements PhysicsBody {
     return !!this.type.hostile;
   }
 
+  /** 幼崽：age 未达 growTime，不能繁殖，整体缩小显示 */
+  get baby() {
+    return this.age < BREED.growTime;
+  }
+
+  /** 当前体型基准：幼崽是 babyScale，成体是 1 */
+  private get scaleBase() {
+    return this.baby ? BREED.babyScale : 1;
+  }
+
   /** 受击：扣血 + 轻微击退 */
   hurt(amount: number, fromX?: number, fromZ?: number) {
     if (this.dead) return;
@@ -93,14 +119,29 @@ export class Entity implements PhysicsBody {
       this.vel.z += (dz / d) * 3.2;
       this.vel.y = Math.max(this.vel.y, 2.6);
     }
-    this.model.group.scale.setScalar(1.14);
+    // 闪光目标按体型基准缩放：写死 1 会让幼崽挨一下就长成成体尺寸
+    this.hurtFlash = this.hurtCooldown;
+    this.model.group.scale.setScalar(this.scaleBase * 1.14);
   }
 
   update(dt: number, world: World, ctx?: EntityContext) {
     this.hurtCooldown = Math.max(0, this.hurtCooldown - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-    if (this.model.group.scale.x > 1) {
-      this.model.group.scale.setScalar(Math.max(1, this.model.group.scale.x - dt * 1.2));
+    this.hurtFlash = Math.max(0, this.hurtFlash - dt);
+    // 繁殖计时只在游玩态推进（标题 / 暂停时 ctx.playing === false）
+    if (ctx?.playing !== false) {
+      this.age += dt;
+      this.loveTimer = Math.max(0, this.loveTimer - dt);
+      this.cooldown = Math.max(0, this.cooldown - dt);
+    }
+    // 受击闪光的目标必须按体型基准缩放：写死 1 会让幼崽挨一下就变大。
+    // 先推进 age 再算目标，成长跨过 growTime 的这一帧缩放就会跟上去。
+    const scaleTarget = this.scaleBase * (this.hurtFlash > 0 ? 1.14 : 1);
+    const scaleNow = this.model.group.scale.x;
+    if (Math.abs(scaleNow - scaleTarget) > 1e-4) {
+      const diff = scaleTarget - scaleNow;
+      const step = Math.sign(diff) * Math.min(Math.abs(diff), dt * 1.2);
+      this.model.group.scale.setScalar(scaleNow + step);
     }
 
     // 白天灼烧（僵尸）：缓慢掉血
@@ -207,17 +248,22 @@ export class EntityManager {
   targetPopulation = 7;
   /** 实验性玩法「生物生成」：false 时不再自动补刷生物（已存在的按距离/日照自然清退） */
   allowSpawn = true;
-  /** 掉落回调，由主装配接到生存背包 */
-  onDrop: ((name: string, count: number) => void) | null = null;
+  /** 掉落回调，由主装配接到可见掉落物管理器（带死亡坐标与来源串） */
+  onDrop: ((name: string, count: number, x: number, y: number, z: number, source: string) => void) | null = null;
   /** 世界种子：掉落判定必须可复现 */
   private readonly seed: number;
   /** 最近一次 update / maintainPopulation 的日照，供 nightOnly 掉落使用 */
   private daylight = 1;
   /** 死亡序号：同一实体多次触发也能得到不同来源标识 */
   private killSerial = 0;
+  /** 自然生成序号：加权类型抽取的确定性来源标识（typeId 覆盖时不递增） */
+  private spawnSerial = 0;
+  /** 求爱心形粒子的节流计时，避免每帧刷屏 */
+  private heartTimer = 0;
 
   constructor(
     private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
+    private particles?: Particles,
   ) {
     this.seed = seed;
     this.registerType({
@@ -233,6 +279,22 @@ export class EntityManager {
         { name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 },
         { name: 'item:leather', chance: 0.3 },
       ],
+    });
+    // 三种新被动动物：数值与掉落取自 tuning.ts 的 ANIMALS，掉落名一律 item: 前缀
+    const cow = ANIMALS.cow;
+    this.registerType({
+      id: 'cow', label: '牛', width: cow.width, height: cow.height, speed: cow.speed,
+      build: buildCow, health: cow.health, weight: cow.weight, drops: cow.drops,
+    });
+    const chicken = ANIMALS.chicken;
+    this.registerType({
+      id: 'chicken', label: '鸡', width: chicken.width, height: chicken.height, speed: chicken.speed,
+      build: buildChicken, health: chicken.health, weight: chicken.weight, drops: chicken.drops,
+    });
+    const rabbit = ANIMALS.rabbit;
+    this.registerType({
+      id: 'rabbit', label: '兔', width: rabbit.width, height: rabbit.height, speed: rabbit.speed,
+      build: buildRabbit, health: rabbit.health, weight: rabbit.weight, drops: rabbit.drops,
     });
     this.registerType({
       id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
@@ -279,19 +341,39 @@ export class EntityManager {
 
   /** 死亡：发事件 + 掉落 */
   private kill(e: Entity) {
+    // 同一个来源串同时驱动掉落判定与散开，保证同种子同序列可复现
+    const source = `e:${e.id}:${this.killSerial++}`;
     const dropped = rollDrops(e.type.drops ?? [], {
       seed: this.seed,
-      source: `e:${e.id}:${this.killSerial++}`,
+      source,
       daylight: this.daylight,
     });
-    for (const d of dropped) this.onDrop?.(d.name, d.count);
+    for (const d of dropped) {
+      this.onDrop?.(d.name, d.count, e.pos.x, e.pos.y, e.pos.z, source);
+    }
     this.events.emit('entity:dead', { type: e.type.id, id: e.id });
     this.despawn(e);
+  }
+
+  /**
+   * 被动动物加权抽取：来源标识来自 spawnSerial，与坐标 / 游荡的 Math.random() 解耦，
+   * 同 seed + 同调用序列必然抽到同一类型。typeId 覆盖时本方法不会被调用，序号也不递增。
+   */
+  private pickPassiveType(): string {
+    const table = Object.entries(ANIMALS) as [string, { weight?: number }][];
+    const total = table.reduce((sum, [, a]) => sum + (a.weight ?? 1), 0);
+    let r = (dropHash(this.seed, 'spawn:' + this.spawnSerial++, 0) / 4294967296) * total;
+    for (const [id, a] of table) {
+      r -= a.weight ?? 1;
+      if (r < 0) return id;
+    }
+    return table[table.length - 1][0];
   }
 
   /** 在玩家附近的草方块上生成生物 */
   trySpawnNear(playerPos: THREE.Vector3, typeId?: string) {
     if (!this.allowSpawn) return false;
+    if (this.entities.length >= POPULATION.cap) return false;
     for (let attempt = 0; attempt < 12; attempt++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = 16 + Math.random() * 22;
@@ -301,12 +383,64 @@ export class EntityManager {
       const top = this.world.getBlock(x, h, z);
       const above = this.world.getBlock(x, h + 1, z);
       if (this.world.registry.get(top).name === 'grass' && above === 0 && h > 31) {
-        const type = typeId ?? (Math.random() < 0.55 ? 'pig' : 'sheep');
+        const type = typeId ?? this.pickPassiveType();
         this.spawn(type, x + 0.5, h + 1.05, z + 0.5);
         return true;
       }
     }
     return false;
+  }
+
+  /** 右键喂食：命中繁殖食物、成体且冷却结束时进入求爱窗口；其余情况静默失败 */
+  feed(e: Entity, material: string): boolean {
+    if (e.hostile || e.baby || e.cooldown > 0 || !isBreedFood(e.type.id, material)) return false;
+    e.loveTimer = BREED.loveDuration;
+    return true;
+  }
+
+  /** 幼崽落点：优先双亲中点，非法则退回父方附近一格（复用 trySpawnNear 的草地判定） */
+  private spawnBaby(a: Entity, b: Entity): boolean {
+    const spots: [number, number][] = [
+      [Math.floor((a.pos.x + b.pos.x) / 2), Math.floor((a.pos.z + b.pos.z) / 2)],
+      [Math.floor(a.pos.x) + 1, Math.floor(a.pos.z)],
+      [Math.floor(a.pos.x) - 1, Math.floor(a.pos.z)],
+      [Math.floor(a.pos.x), Math.floor(a.pos.z) + 1],
+      [Math.floor(a.pos.x), Math.floor(a.pos.z) - 1],
+    ];
+    for (const [x, z] of spots) {
+      const h = this.world.surfaceHeight(x, z);
+      const top = this.world.getBlock(x, h, z);
+      const above = this.world.getBlock(x, h + 1, z);
+      if (this.world.registry.get(top).name !== 'grass' || above !== 0 || h <= 31) continue;
+      const baby = this.spawn(a.type.id, x + 0.5, h + 1.05, z + 0.5);
+      if (!baby) return false;
+      baby.age = 0;
+      baby.model.group.scale.setScalar(BREED.babyScale);
+      return true;
+    }
+    return false;
+  }
+
+  /** 繁殖 tick：求爱双方靠近即生成幼崽并进入冷却；满员与非法落点静默跳过 */
+  private updateBreeding(dt: number, playing: boolean) {
+    if (!playing) return;
+    this.heartTimer -= dt;
+    const courting = this.entities.filter((e) => e.loveTimer > 0 && !e.baby && !e.hostile);
+    if (courting.length && this.heartTimer <= 0) {
+      this.heartTimer = 0.9;
+      for (const e of courting) {
+        this.particles?.burst(e.pos.x, e.pos.y + e.height + 0.45, e.pos.z, [1, 0.45, 0.72], 3, 0.22, 0.9);
+      }
+    }
+    for (const a of courting) {
+      if (a.loveTimer <= 0 || a.cooldown > 0) continue;
+      const mate = pickMate(a, this.entities, BREED.mateRadius);
+      if (!mate || !canBreed(a, mate)) continue;
+      if (this.entities.length >= POPULATION.cap) return; // 全局上限：静默拒绝
+      if (!this.spawnBaby(a, mate)) continue;
+      a.cooldown = mate.cooldown = BREED.cooldown;
+      a.loveTimer = mate.loveTimer = 0;
+    }
   }
 
   update(dt: number, ctx: EntityContext) {
@@ -315,6 +449,7 @@ export class EntityManager {
       e.update(dt, this.world, ctx);
       if (e.dead) this.kill(e);
     }
+    this.updateBreeding(dt, ctx.playing !== false);
   }
 
   /** 维持种群：夜晚在生存模式额外生成僵尸，白天清退 */

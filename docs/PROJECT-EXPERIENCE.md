@@ -12,6 +12,7 @@ npm run build           # 类型检查 + 单文件构建
 npm run test:snapshot   # 从当前 TS 源码生成 CJS 测试快照（必须先跑）
 npm run test:logic && npm run test:light && npm run test:mesher
 npm run test:services && npm run test:diagnostics && npm run test:terrain-system
+npm run test:drop       # 可见掉落物纯逻辑（散开 / 拾取 / 合并 / 入水 / 暂停）
 npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要 Chromium）
 ```
 
@@ -58,11 +59,20 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `api:emit` 要同时盖住 `ctx.events.emit` 与 `api.events.scope` 子通道；manifest 存 / 取
   都要防御性拷贝。`ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
-- **确定性掉落**：掉落判定只能走 `rollDrops()`（`src/world/drops.ts`），禁止在玩家 / 实体掉落路径
+- **确定性掉落（硬规则只管掉落判定）**：掉落判定只能走 `rollDrops()`（`src/world/drops.ts`），可见掉落物
+  的散开 / 加权抽取走 `dropHash(seed, source, index)`（`src/world/dropLogic.ts`），禁止在掉落路径
   再写 `Math.random`；来源标识用 `b:x,y,z` / `e:id:serial` 保证同 seed 可复现。
-- **新纯数据模块编译进快照**：`ecology.ts` / `soil.ts` / `drops.ts` / `compost.ts` 是被
-  `botany.ts` / `blocks.ts` 传递引入的纯模块，tsc 快照会自动包含；新增独立测试入口才需改
-  `scripts/build-test-snapshot.mjs` 的 `entries`。`entity.ts` / `models.ts` 为实体掉落回归显式加入 entries。
+  **范围澄清**：既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属技术债，本轮不动，也不承诺跨会话
+  复现；不要把「禁止新增 `Math.random`」误读成要重构既有 AI / 生成坐标。
+- **图集 tile 只追加**：图集 16×16=256 槽，新 painter 必须注册在全部既有 painter 之后，
+  既有 tile 索引保持不变，否则旧存档 `edits` 指向的方块几何错位。方块 id 同样只追加；
+  本轮不新增方块（煤炭是物品、动物 / 掉落物是实体），总数 141、id 到 147，图集既有索引不变。
+- **新纯数据模块编译进快照**：`ecology.ts` / `soil.ts` / `drops.ts` / `compost.ts` 被
+  `botany.ts` / `blocks.ts` 传递引入，`tuning.ts` / `breeding.ts` 被 `dropLogic.ts` / `entity.ts`
+  传递引入，tsc 快照会自动包含；需要被测试直接 require 的入口才显式加进
+  `scripts/build-test-snapshot.mjs` 的 `entries`——`dropLogic.ts`（纯逻辑、无 three / DOM）
+  与 `droppedItem.ts`（依赖 three，供 `test:drop` 注入暂停回归）已显式登记，和
+  `entity.ts` / `models.ts` 一样。
 - **生态状态存档**：`SaveData.botany` / `dayCount` 是可选字段，旧档缺省必须仍通过 `validateSave`；
   `restoreEcology()` 对坏档逐条丢弃不抛错。堆肥等级不进存档（编码在 block id 里，走 `world.edits`）。
 - **compost:change 必须标脏**：`World.setBlock` 不发 `block:place`，堆肥等级变化必须显式发

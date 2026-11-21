@@ -1769,46 +1769,6 @@ function builtinPainters(): Record<string, Painter> {
       petals: 6, radiusX: 4.2, radiusY: 4, top: 3, leaf: 0x3f7a52, stem: 0x4a6a5a,
     }, 0xfff0a0),
     glow_fern: glowFernPainter(0x356822, 0x7aa84a, 0x8ff0d0),
-    // ---- v1.7.0 内容植物扩充 ----
-    cotton_bush: bushPainter(0x3f6a2f, 0x4f8a3a, 0xe8e8e0, 0xffffff),
-    rice_plant: cropPainter(0x8fae4e, 0xd8c878, 13, true),
-    grape_vine: bushPainter(0x35682a, 0x4f8a3a, 0x8a3ac8, 0xb06ae8),
-    chili_bush: bushPainter(0x3f6a2f, 0x4f8a3a, 0xd03828, 0xf06a4a),
-    lotus: bloomPainter({
-      petal: 0xf0a8c0, light: 0xf8d0dc, dark: 0xc87894, center: 0xf0d878,
-      petals: 7, radiusX: 4.2, radiusY: 3.6, top: 3, leaf: 0x3f7a52, stem: 0x4a6a5a,
-    }),
-    orchid: flowerPainter(0xb06ae8, 0xd8a0f8, 0xf0e060, 'cup'),
-    sage: flowerPainter(0x6a8ac8, 0xa0b8e8, 0xe8e8f0, 'spike', 0x4a7a3a, 4),
-    pitcher_plant: flowerPainter(0x8ac04a, 0xb8e070, 0x8a5a2a, 'bell', 0x4a7a3a, 3),
-    glow_cordyceps: glowingBloomPainter({
-      petal: 0x8fd0a8, light: 0xc0f0d0, dark: 0x5a9a70, center: 0xd8ffe8,
-      petals: 5, radiusX: 3.4, radiusY: 4.4, top: 4, leaf: 0x3f7a52, stem: 0x4a6a5a,
-    }, 0x9ff0d8),
-    cotton_block: ((p, rng) => {
-      fillNoise(p, rng, 0xf0f0e8, 5);
-      // 棉絮团块的柔和阴影，让建材面不至于一片白
-      for (let i = 0; i < 9; i++) {
-        const x = (rng() * 14) | 0;
-        const y = (rng() * 14) | 0;
-        rect(p, x, y, 3, 3, 0xdcd8cc);
-        rect(p, x, y, 2, 2, 0xfafaf4);
-      }
-    }) as Painter,
-    glow_torch: ((p, rng) => {
-      fillNoise(p, rng, 0x4a3a2a, 8);
-      // 中轴木杆 + 顶部荧光孢子团
-      rect(p, 7, 6, 2, 10, 0x6a4a2a);
-      for (let y = 1; y <= 5; y++) {
-        for (let x = 5; x <= 10; x++) {
-          const dx = x - 7.5, dy = y - 3;
-          if (dx * dx + dy * dy * 1.4 > 8) continue;
-          p.set(x, y, jitter(dx * dx + dy * dy > 3 ? 0x6ad0a8 : 0x9ff0d8, rng, 10));
-        }
-      }
-      p.set(7, 3, 0xd8ffe8);
-      p.set(8, 3, 0xd8ffe8);
-    }) as Painter,
   };
 }
 
@@ -1904,6 +1864,95 @@ const boneMealPainter: Painter = (p, rng) => {
   for (let i = 0; i < 4; i++) p.set(5 + ((rng() * 6) | 0), 10 + ((rng() * 3) | 0), 0xcfcfc4);
 };
 
+/** 煤炭：深色矿块 + 冷灰高光 */
+const coalPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      if ((x === 3 || x === 12) && (y === 3 || y === 12)) continue;
+      p.set(x, y, jitter(0x24262c, rng, 12));
+    }
+  }
+  for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10]] as const) {
+    p.set(x, y, 0x4d5058);
+    p.set(x + 1, y, 0x363941);
+  }
+};
+
+/** 皮革：棕色兽皮 + 深色包边 */
+const leatherPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    for (let x = 2; x < 14; x++) {
+      const edge = x === 2 || x === 13 || y === 2 || y === 13;
+      p.set(x, y, jitter(edge ? 0x5d3c21 : 0x9b6839, rng, 9));
+    }
+  }
+  for (let x = 4; x <= 11; x += 3) {
+    p.set(x, 5, 0xbd8a56);
+    p.set(x + 1, 10, 0x754c2c);
+  }
+};
+
+/** 生牛肉：红色肉块 + 白色脂肪纹 */
+const beefPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 3 || y === 12;
+      p.set(x, y, jitter(edge ? 0x8e2d33 : 0xc34a4d, rng, 10));
+    }
+  }
+  for (const [x, y] of [[5, 5], [6, 5], [7, 6], [9, 8], [10, 9]] as const) {
+    p.set(x, y, 0xf0d8cc);
+  }
+};
+
+/** 羽毛：透明底 + 浅灰羽片与羽轴 */
+const featherPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    const cx = 8 + Math.round(Math.sin(y * 0.45) * 1.5);
+    p.set(cx, y, 0xbfc4c9);
+    const w = y < 4 || y > 11 ? 1 : y < 8 ? 2 : 3;
+    for (let d = 1; d <= w; d++) {
+      p.set(cx - d, y - (d >> 1), jitter(0xe0e5e7, rng, 8));
+      p.set(cx + d, y - (d >> 1), jitter(0xe0e5e7, rng, 8));
+    }
+  }
+  p.set(8, 14, 0x9aa0a6);
+};
+
+/** 鸡蛋：米白椭圆 + 高光与底部阴影 */
+const eggPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 2; y < 14; y++) {
+    for (let x = 4; x < 12; x++) {
+      const nx = (x - 8) / 4;
+      const ny = (y - 8) / 6;
+      if (nx * nx + ny * ny <= 1) p.set(x, y, jitter(0xf2e9d5, rng, 5));
+    }
+  }
+  p.set(6, 5, 0xffffff);
+  p.set(7, 4, 0xffffff);
+  p.set(9, 11, 0xd8c7aa);
+  p.set(10, 10, 0xd8c7aa);
+};
+
+/** 兔肉：粉色肉块 + 浅色脂肪纹 */
+const rabbitMeatPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 4; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 4 || y === 12;
+      p.set(x, y, jitter(edge ? 0xb66771 : 0xe08f92, rng, 9));
+    }
+  }
+  for (const [x, y] of [[5, 6], [6, 6], [8, 8], [9, 9], [10, 7]] as const) {
+    p.set(x, y, 0xf6dbd6);
+  }
+};
+
 /** 堆肥桶侧面：木条 + 横向铁皮箍 */
 const composterSidePainter: Painter = (p, rng) => {
   p.clear();
@@ -1971,71 +2020,13 @@ export class TextureAtlas {
     this.painters.set('composter_top', composterTopPainter(false));
     this.painters.set('composter_ready_top', composterTopPainter(true));
     this.painters.set('composter_bottom', composterSidePainter);
-    // v1.7：内容植物产出物品纹理，追加在末尾以保持既有 tile 索引不变
-    this.painters.set('cotton', (p, rng) => {
-      p.clear();
-      // 三团棉絮 + 两粒深色棉籽
-      for (const [cx, cy, r] of [[6, 9, 2.2], [10, 8, 2.4], [8, 12, 2.0]] as const) {
-        for (let y = 0; y < 16; y++) {
-          for (let x = 0; x < 16; x++) {
-            const dx = x - cx, dy = y - cy;
-            if (dx * dx + dy * dy > r * r) continue;
-            p.set(x, y, jitter(dx * dx + dy * dy > 1 ? 0xf0f0e8 : 0xffffff, rng, 4));
-          }
-        }
-      }
-      p.set(7, 9, 0x8a6a3a);
-      p.set(10, 11, 0x8a6a3a);
-    });
-    this.painters.set('rice', (p, rng) => {
-      p.clear();
-      // 一小把稻米粒：米白色椭圆粒叠放
-      for (const [x, y] of [[6, 7], [9, 6], [7, 10], [10, 9], [5, 11], [8, 12], [11, 11]]) {
-        p.set(x, y, jitter(0xf4f0e0, rng, 4));
-        p.set(x + 1, y, jitter(0xe0d8c0, rng, 4));
-      }
-      p.set(7, 8, 0xc0b898);
-      p.set(10, 10, 0xc0b898);
-    });
-    this.painters.set('grapes', (p, rng) => {
-      p.clear();
-      // 紫葡萄串：上宽下窄的三角簇 + 顶部短梗与叶
-      stem(p, 8, 1, 3, 0x4a6a2a);
-      p.set(10, 2, 0x5aa236);
-      for (const [x, y] of [[6, 5], [9, 5], [5, 8], [8, 8], [11, 8], [6, 11], [9, 11], [8, 13]]) {
-        const c = jitter(0x8a3ac8, rng, 12);
-        p.set(x, y, c); p.set(x + 1, y, c);
-        p.set(x, y + 1, jitter(0x6a2a9a, rng, 10));
-      }
-      p.set(6, 5, 0xb06ae8); p.set(9, 5, 0xb06ae8);
-    });
-    this.painters.set('chili', (p, rng) => {
-      p.clear();
-      // 一枚弯月形红辣椒 + 绿蒂
-      for (let y = 4; y <= 13; y++) {
-        const x0 = y < 8 ? 8 : 7 - ((y - 8) >> 1);
-        p.set(x0, y, jitter(0xd03828, rng, 10));
-        p.set(x0 + 1, y, jitter(0xf06a4a, rng, 10));
-        p.set(x0 + 2, y, jitter(0xa82818, rng, 8));
-      }
-      p.set(9, 4, 0x4a7a2a);
-      p.set(10, 3, 0x5a8a3a);
-      p.set(8, 13, 0xf8a080);
-    });
-    this.painters.set('glow_spore', (p, rng) => {
-      p.clear();
-      // 发光孢子团：青绿光斑 + 中心亮点，呼应荧光植物配色
-      for (let y = 3; y <= 13; y++) {
-        for (let x = 3; x <= 12; x++) {
-          const dx = x - 7.5, dy = y - 8;
-          if (dx * dx + dy * dy > 14) continue;
-          const d = dx * dx + dy * dy;
-          p.set(x, y, jitter(d > 7 ? 0x3f8f6a : d > 2.5 ? 0x6ad0a8 : 0x9ff0d8, rng, 10));
-        }
-      }
-      p.set(7, 8, 0xd8ffe8);
-      p.set(8, 8, 0xd8ffe8);
-    });
+    // C01：新物品纹理，全部追加在既有 painter 之后，既有 tile 索引保持不变
+    this.painters.set('coal', coalPainter);
+    this.painters.set('leather', leatherPainter);
+    this.painters.set('beef', beefPainter);
+    this.painters.set('feather', featherPainter);
+    this.painters.set('egg', eggPainter);
+    this.painters.set('rabbit_meat', rabbitMeatPainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

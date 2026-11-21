@@ -231,9 +231,6 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     beach_grass: 0.84, sea_thrift: 0.42,
     duckweed: 0.16, sea_anemone: 0.5, red_algae: 0.62,
     moonflower: 0.6, glow_fern: 0.78,
-    // v1.7.0 内容植物扩充
-    cotton_bush: 0.72, rice_plant: 0.86, grape_vine: 0.95, chili_bush: 0.68,
-    orchid: 0.7, sage: 0.62, pitcher_plant: 0.78,
   };
 
   const plant = (name: string, label: string, drops?: DropSpec[], extra: Partial<BlockInput> = {}) =>
@@ -249,7 +246,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('dandelion', '蒲公英');
 
   // 矿石追加在末尾：不改动已有方块 id，保证旧存档 edits 差分仍指向同一方块
-  cube('coal_ore', '煤矿石', {}, { hardness: 2.5 });
+  cube('coal_ore', '煤矿石', {}, { hardness: 2.5, drops: [{ name: 'item:coal', min: 1, max: 2 }] });
   cube('iron_ore', '铁矿石', {}, { hardness: 3 });
   cube('gold_ore', '金矿石', {}, { hardness: 3 });
   cube('diamond_ore', '钻石矿石', {}, { hardness: 4 });
@@ -487,40 +484,5 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     name: 'glow_fern', label: '荧光蕨', shape: 'cross', solid: false, opaque: false, liquid: false,
     transparentPass: false, lightEmission: 5, hardness: 0, sound: 'plant',
     tiles: { top: 'glow_fern', bottom: 'glow_fern', side: 'glow_fern' }, crossHeight: 0.78,
-  });
-  // ---- v1.7.0 内容植物扩充：作物 / 花卉 / 真菌与合成闭环（id 末位追加） ----
-  // 作物：蓄能后采收，产出可进入合成闭环的新物品
-  plant('cotton_bush', '棉花丛',
-    [{ name: 'self' }, { name: 'item:cotton', chance: 0.85 }]);
-  plant('rice_plant', '稻',
-    [{ name: 'self' }, { name: 'item:rice', chance: 0.8 }]);
-  plant('grape_vine', '葡萄藤',
-    [{ name: 'self' }, { name: 'item:grapes', chance: 0.75 }]);
-  plant('chili_bush', '辣椒丛',
-    [{ name: 'self' }, { name: 'item:chili', chance: 0.8 }]);
-  // 水生花卉：莲花漂在浅水水面（与睡莲同款漂浮方块，不加 waterPlant 入水标志）
-  reg.register({
-    name: 'lotus', label: '莲花', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-    tiles: { top: 'lotus', bottom: 'lotus', side: 'lotus' }, crossHeight: 0.42,
-  });
-  // 群系花卉：与既有花卉同走花蜜循环
-  plant('orchid', '兰花');
-  plant('sage', '山鼠尾草');
-  plant('pitcher_plant', '猪笼草');
-  // 洞穴真菌：采收荧光孢子，是荧光火把的原料
-  reg.register({
-    name: 'glow_cordyceps', label: '发光虫菌', shape: 'cross', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 6, hardness: 0, sound: 'plant',
-    tiles: { top: 'glow_cordyceps', bottom: 'glow_cordyceps', side: 'glow_cordyceps' },
-    crossHeight: 0.62,
-    drops: [{ name: 'self' }, { name: 'item:glow_spore', chance: 0.9 }],
-  });
-  // 合成产物：棉花块（建材）与荧光火把（比火把略暗、耐看的照明）
-  cube('cotton_block', '棉花块', {}, { sound: 'cloth', hardness: 0.4 });
-  reg.register({
-    name: 'glow_torch', label: '荧光火把', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 12, hardness: 0.1, sound: 'wood',
-    tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' }, crossHeight: 0.85,
   });
 }

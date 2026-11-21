@@ -156,22 +156,6 @@ export const PLANT_TRAITS: Readonly<Record<string, PlantTrait>> = {
     metabolism: 'fungal', bloom: 72, growthCost: 16, shareRadius: 3, sharePower: 16, hub: true,
     harvest: { item: 'item:nectar', count: 1 },
   },
-  // v1.7.0 内容植物扩充：作物走太阳能采收，花卉走花蜜循环，真菌走阴暗蓄能
-  cotton_bush: { ...crop, bloom: 78, growthCost: 24, shareRadius: 3, sharePower: 14 },
-  rice_plant: { ...crop, bloom: 76, growthCost: 22, harvest: { item: 'item:rice', count: 2 } },
-  grape_vine: { ...crop, bloom: 80, growthCost: 26, shareRadius: 3, sharePower: 14 },
-  chili_bush: { ...crop, bloom: 74, growthCost: 22 },
-  lotus: {
-    metabolism: 'hydro', bloom: 74, growthCost: 14, shareRadius: 2, sharePower: 12,
-    harvest: { item: 'item:nectar', count: 1 },
-  },
-  orchid: flower,
-  sage: { ...flower, bloom: 72, growthCost: 14, shareRadius: 2, sharePower: 10 },
-  pitcher_plant: { ...flower, bloom: 78, growthCost: 18, shareRadius: 2, sharePower: 12 },
-  glow_cordyceps: {
-    metabolism: 'fungal', bloom: 68, growthCost: 15, shareRadius: 3, sharePower: 14,
-    harvest: { item: 'item:glow_spore', count: 2 },
-  },
 };
 
 export function plantTrait(name: string): PlantTrait | undefined {

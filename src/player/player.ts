@@ -11,6 +11,8 @@ import { PlayerModel } from '../entity/models';
 import type { SoundEngine } from '../audio/sound';
 import type { Particles } from '../gfx/particles';
 import type { EntityManager, Entity } from '../entity/entity';
+import type { DropManager } from '../entity/droppedItem';
+import { isBreedFood } from '../entity/breeding';
 import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
@@ -97,6 +99,8 @@ export class Player implements System, PhysicsBody {
   private botany: Botany | null = null;
   /** 当前日照强度（组装根每帧回填），供 nightOnly 掉落判定使用 */
   daylight = 1;
+  /** 掉落管理器由组装根注入；未注入时 collectDrops 不生成可见掉落物 */
+  dropManager: DropManager | null = null;
   /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
   private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
@@ -621,17 +625,18 @@ export class Player implements System, PhysicsBody {
     }
   }
 
-  /** 生存模式把掉落物放进背包，创造模式忽略（FallingSystem 的植物连带也复用） */
+  /** 生存模式把掉落物生成到世界里（FallingSystem 的植物连带也复用）；创造模式忽略 */
   collectDrops(def: BlockDefinition, x = 0, y = 0, z = 0) {
     if (!this.survival.isSurvival) return;
+    const source = `b:${x},${y},${z}`;
     const dropped = rollDrops(def.drops, {
       seed: this.world.generator.seed,
-      source: `b:${x},${y},${z}`,
+      source,
       daylight: this.daylight,
       biome: this.world.generator.biomeAt?.(x, z) as string | undefined,
     });
     for (const d of dropped) {
-      this.survival.addDrop(d.name === 'self' ? def.name : d.name, d.count);
+      this.dropManager?.spawn(d.name === 'self' ? def.name : d.name, d.count, x, y, z, source);
     }
   }
 
@@ -641,6 +646,8 @@ export class Player implements System, PhysicsBody {
   useSelected() {
     // 堆肥桶优先：手持可堆肥物投放，或空手收取成熟肥料
     if (this.tryCompost()) return;
+    // 喂食：手持繁殖食物对准可繁殖成体；喂错材料静默走原流程
+    if (this.tryFeedEntity()) return;
     const stack = this.selectedStack();
     if (!stack) {
       // 空手右键可交互方块（如工作台）：交给上层打开对应界面
@@ -702,6 +709,26 @@ export class Player implements System, PhysicsBody {
     }
     this.events.emit('compost:change', { x: hit.x, y: hit.y, z: hit.z });
     this.sound.place('wood');
+    this.swing();
+    return true;
+  }
+
+  /**
+   * 右键喂食：手持材料命中 BREED_FOODS[typeId] 且目标是可繁殖成体时，
+   * 消耗 1 个并进入求爱窗口；喂错 / 幼崽 / 冷却中静默返回 false，走原放置 / 进食流程。
+   */
+  private tryFeedEntity(): boolean {
+    if (!this.entityTarget || !this.survival.isSurvival) return false;
+    const target = this.entityTarget.entity;
+    if (target.baby || target.hostile) return false;
+    const stack = this.selectedStack();
+    if (!stack) return false;
+    const material = stack.kind === 'item'
+      ? `item:${stack.id}`
+      : this.registry.get(stack.id as BlockId).name;
+    if (!isBreedFood(target.type.id, material)) return false;
+    if (!this.entities.feed(target, material)) return false;
+    this.survival.consume(stack, 1);
     this.swing();
     return true;
   }

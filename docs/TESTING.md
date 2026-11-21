@@ -21,21 +21,22 @@ npm run verify
 | 4 | `npm run build` | 单文件 `dist/index.html` | — |
 | 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
 | 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
-| 7 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 8 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 9 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
-| 10 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
-| 11 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 12 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 13 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 14 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118） | ✓ |
-| 15 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
-| 16 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 17 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
-| 18 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 19 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 20 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 21 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 7 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
+| 8 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 9 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 10 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
+| 11 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 12 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 13 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 14 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 15 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 141 | ✓ |
+| 16 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
+| 17 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
+| 18 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
+| 19 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
+| 20 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
+| 21 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
+| 22 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -52,13 +53,17 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **logic-check**：生存状态机（掉落 / 消耗 / 进食 / 伤害无敌帧 / 序列化）。
 - **terrain-check**：确定性、生成顺序无关、高度范围、水面与洞穴顶连续、
   矿脉分层、跨区块树冠双向连续、参数开关、性能基准。
+- **drop-check**：可见掉落物纯逻辑——同 seed + source + index 散开可复现、拾取半径与
+  `pickupDelay` 边界、同类合并 / 异类不合并（`item:` 前缀口径）、超时与 `y<0` 消失、
+  入水终端下沉 `-waterSink` 与水平 `exp(-8*dt)` 衰减、出水恢复重力，以及
+  `DropManager.update(dt, pos, false)` 不推进 age（暂停期间掉落物不过期）。
 - **terrain-system**：方块是否末位追加（id 45~91，v1.5.0+ 群系扩充追加 98~109，
   92~97 保留给插件）、`TERRAIN_STAGES` 顺序契约、
   `BIOME_PROFILES` 是否覆盖 11 个群系（原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）
   并驱动地表 / 装饰 / 树种 / 水下植物，以及黏土（浅海床）、灰化土（针叶林地表）、
   仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、新花卉（草甸 / 森林 / 针叶林）、
   白桦 / 云杉 / 金合欢 / 樱花（对应群系）、恶地彩色陶瓦层（`strata`）、沼泥、
-  海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）的生成位置约束。
+  海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）且方块总数仍为 141。
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
@@ -74,7 +79,7 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   生态状态存档 round-trip / 坏档隔离 / 柱状锚点清理。
 - **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量）、有序配方的
   3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
-  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环。
+  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
 - **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
@@ -107,6 +112,14 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 新增自然方块时，优先在 `terrain-system-check.cjs` 里断言「固定种子 + 固定半径内
 一定出现」，并写清生成位置规则（群系 / 深度 / 邻水等），不要把断言放宽成「偶尔出现」。
 
+**确定性范围澄清**：项目的确定性硬规则只约束**掉落判定**——可见掉落物的散开与新动物加权
+抽取走 `dropHash(seed, source, index)`（`src/world/dropLogic.ts`），掉落路径禁止新增
+`Math.random()`。既有实体 AI 的游荡 / 生成坐标 `Math.random()` 属既有技术债，本轮不动，
+也不作为回归断言的目标；`test:drop` 只锁定散开 / 拾取 / 合并 / 入水 / 暂停计时等掉落判定。
+繁殖择偶按实体 id 升序稳定选择，同种子同状态结果一致（`src/entity/breeding.ts`）。
+所有相关数值集中在 `src/core/tuning.ts`，`DropManager`（`src/entity/droppedItem.ts`）负责
+渲染与生命周期；新增纯逻辑入口才需登记 `scripts/build-test-snapshot.mjs` 的 `entries`。
+
 ## 浏览器环境
 
 无 GPU 的 Linux / CI：
@@ -132,3 +145,9 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 4. 修复真实缺陷时补一条能复现该缺陷的回归，而不是只改实现。
 5. 断言输出要带可诊断信息（坐标、种子、实际值），失败时无需加日志重跑。
 6. 不提交 `test/logic`、`test/terrain-logic`、`test/artifacts`、`dist`。
+7. 掉落 / 繁殖判定必须可复现：新增随机性一律走 `dropHash` / `createRng`，不要新增
+   `Math.random()`；确定性硬规则只管掉落判定，既有 AI 游荡 / 生成坐标的 `Math.random()`
+   不在本轮范围。新增掉落规则同时更新 `test:drop`。
+8. 图集新增纹理（含新物品 tile）必须追加在全部既有 painter 之后，既有 tile 索引不变；
+   方块 id 只追加，本轮方块总数仍 141、id 到 147。新增方块 / 纹理后同步更新
+   `test:terrain-system` 的 id / tile 断言与本文。

@@ -310,3 +310,125 @@ export function buildZombie(): MobModel {
     },
   };
 }
+
+/** 牛：白身棕斑、双角与粉鼻 */
+export function buildCow(): MobModel {
+  const group = new THREE.Group();
+  const brown = lambert(0x5b3f2a);
+  const white = lambert(0xe8e2d5);
+  const pink = lambert(0xdca0a0);
+  const body = box(0.8, 0.7, 1.2, white);
+  body.position.y = 0.95;
+  const patch = box(0.82, 0.5, 0.5, brown);
+  patch.position.set(0, 1.0, -0.3);
+  const head = box(0.55, 0.5, 0.5, brown);
+  head.position.set(0, 1.15, 0.78);
+  const muzzle = box(0.36, 0.24, 0.1, pink);
+  muzzle.position.set(0, 1.0, 1.05);
+  const hornL = box(0.1, 0.16, 0.1, white);
+  hornL.position.set(-0.22, 1.45, 0.78);
+  const hornR = hornL.clone();
+  hornR.position.x = 0.22;
+  const eyeM = lambert(0x1a1a1a);
+  const eyeL = box(0.08, 0.08, 0.02, eyeM);
+  eyeL.position.set(-0.16, 1.22, 1.02);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.16;
+  const legs: THREE.Group[] = [];
+  for (const [x, z] of [[-0.26, 0.38], [0.26, 0.38], [-0.26, -0.38], [0.26, -0.38]] as const) {
+    const leg = limb(0.2, 0.6, 0.2, brown);
+    leg.position.set(x, 0.6, z);
+    legs.push(leg);
+    group.add(leg);
+  }
+  group.add(body, patch, head, muzzle, hornL, hornR, eyeL, eyeR);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.6 : 0;
+      legs[0].rotation.x = s;
+      legs[1].rotation.x = -s;
+      legs[2].rotation.x = -s;
+      legs[3].rotation.x = s;
+    },
+  };
+}
+
+/** 鸡：白羽红冠、黄喙与短腿 */
+export function buildChicken(): MobModel {
+  const group = new THREE.Group();
+  const white = lambert(0xf2f0e8);
+  const red = lambert(0xc0392b);
+  const yellow = lambert(0xe8c24b);
+  const eyeM = lambert(0x1a1a1a);
+  const body = box(0.35, 0.35, 0.45, white);
+  body.position.y = 0.35;
+  const head = box(0.26, 0.26, 0.26, white);
+  head.position.set(0, 0.6, 0.18);
+  const beak = box(0.12, 0.08, 0.1, yellow);
+  beak.position.set(0, 0.56, 0.34);
+  const comb = box(0.08, 0.12, 0.18, red);
+  comb.position.set(0, 0.76, 0.14);
+  const wattle = box(0.08, 0.1, 0.06, red);
+  wattle.position.set(0, 0.46, 0.32);
+  const eyeL = box(0.05, 0.05, 0.02, eyeM);
+  eyeL.position.set(-0.09, 0.64, 0.3);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.09;
+  const legs: THREE.Group[] = [];
+  for (const x of [-0.1, 0.1]) {
+    const leg = limb(0.07, 0.28, 0.07, yellow);
+    leg.position.set(x, 0.28, 0);
+    legs.push(leg);
+    group.add(leg);
+  }
+  group.add(body, head, beak, comb, wattle, eyeL, eyeR);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.8 : 0;
+      legs[0].rotation.x = s;
+      legs[1].rotation.x = -s;
+    },
+  };
+}
+
+/** 兔：灰褐毛、长耳与白尾 */
+export function buildRabbit(): MobModel {
+  const group = new THREE.Group();
+  const fur = lambert(0x9c8b7a);
+  const furLight = lambert(0xd9d2c5);
+  const eyeM = lambert(0x1a1a1a);
+  const body = box(0.4, 0.38, 0.55, fur);
+  body.position.y = 0.32;
+  const head = box(0.32, 0.3, 0.3, fur);
+  head.position.set(0, 0.46, 0.34);
+  const earL = box(0.1, 0.34, 0.08, fur);
+  earL.position.set(-0.1, 0.76, 0.3);
+  const earR = box(0.1, 0.34, 0.08, fur);
+  earR.position.set(0.1, 0.76, 0.3);
+  const tail = box(0.16, 0.16, 0.16, furLight);
+  tail.position.set(0, 0.38, -0.34);
+  const eyeL = box(0.06, 0.06, 0.02, eyeM);
+  eyeL.position.set(-0.1, 0.5, 0.5);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.1;
+  const legs: THREE.Group[] = [];
+  for (const [x, z] of [[-0.14, 0.18], [0.14, 0.18], [-0.14, -0.18], [0.14, -0.18]] as const) {
+    const leg = limb(0.12, 0.24, 0.14, fur);
+    leg.position.set(x, 0.24, z);
+    legs.push(leg);
+    group.add(leg);
+  }
+  group.add(body, head, earL, earR, tail, eyeL, eyeR);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.85 : 0;
+      legs[0].rotation.x = s;
+      legs[1].rotation.x = -s;
+      legs[2].rotation.x = -s;
+      legs[3].rotation.x = s;
+    },
+  };
+}
