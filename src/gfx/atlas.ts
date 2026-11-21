@@ -129,7 +129,7 @@ function leavesPainter(tones: number[]): Painter {
         for (let y = 0; y < 4; y++) {
           for (let x = 0; x < 4; x++) {
             const edge = x === 0 || y === 0 || x === 3 || y === 3;
-            if (edge && rng() < 0.2) continue;
+            if (edge && rng() < 0.10) continue;
             p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
           }
         }
@@ -809,7 +809,7 @@ function builtinPainters(): Record<string, Painter> {
           for (let y = 0; y < 4; y++) {
             for (let x = 0; x < 4; x++) {
               const edge = x === 0 || y === 0 || x === 3 || y === 3;
-              if (edge && rng() < 0.18) continue;
+              if (edge && rng() < 0.10) continue;
               p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
             }
           }
