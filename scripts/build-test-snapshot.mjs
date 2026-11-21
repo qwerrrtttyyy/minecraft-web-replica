@@ -68,6 +68,8 @@ const entries = [
   'src/ai/Node.ts',
   'src/ai/Blackboard.ts',
   'src/ai/AIContext.ts',
+  'src/ai/composites.ts',
+  'src/ai/decorators.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
