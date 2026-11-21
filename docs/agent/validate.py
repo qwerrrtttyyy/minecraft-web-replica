@@ -206,9 +206,9 @@ CHECKS = [
     ),
     (
         "animal breeding",
-        "内容体系：animal breeding 关键词落地（阶段 A：卡片文本包含）",
-        lambda: all("animal breeding" in read(f"docs/agent/tasks/{n}.yaml")
-                    for n in ("C00", "C02", "C03")),
+        "内容体系：breeding.ts 含 isBreedFood 且 entity.ts 注册三种新被动（阶段 B：真实符号）",
+        lambda: "export function isBreedFood" in read("src/entity/breeding.ts")
+        and all(f"'{n}'" in read("src/entity/entity.ts") for n in ("cow", "chicken", "rabbit")),
     ),
     (
         "coal torch",

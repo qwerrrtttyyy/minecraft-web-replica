@@ -669,4 +669,101 @@ ok('新动物掉落名带 item: 前缀',
     `${overrideId} -> ${afterOverrideId} (期望 ${expectedFirst})`);
 }
 
+// C03：繁殖规则（纯函数）+ 喂食 / 求爱 / 幼崽 / 冷却 / 上限接线
+{
+  const { isBreedFood, pickMate, canBreed } = require('./terrain-logic/entity/breeding.js');
+  const { BREED: BREED_TUNING, POPULATION: POP_TUNING } = require('./terrain-logic/core/tuning.js');
+
+  ok('兔子吃蒲公英与所有花朵，不吃煤炭',
+    isBreedFood('rabbit', 'dandelion') && isBreedFood('rabbit', 'poppy') &&
+    !isBreedFood('rabbit', 'item:coal'));
+  ok('牛吃小麦不吃种子',
+    isBreedFood('cow', 'wheat') && !isBreedFood('cow', 'item:wheat_seeds'));
+
+  const breedWorld = {
+    registry: { get: (id) => ({ name: id === 1 ? 'grass' : 'air', liquid: false }) },
+    getBlock: (_x, y) => (y === 40 ? 1 : 0),
+    surfaceHeight: () => 40,
+    isSolidAt: () => false,
+  };
+  const breedEvents = { on() {}, emit() {} };
+  let heartBursts = 0;
+  const particles = { burst: () => { heartBursts++; } };
+  const ectx = (playing) => ({
+    playing,
+    daylight: 1,
+    playerPos: new THREE.Vector3(0, 0, 0),
+    playerDead: true,
+    hurtPlayer: () => false,
+  });
+  const makeMobs = () => new EntityManager(breedWorld, new THREE.Scene(), breedEvents, 99, particles);
+
+  // 纯函数：canBreed 要求双方求爱，pickMate 只在半径内按 id 升序选
+  {
+    const pm = makeMobs();
+    const p1 = pm.spawn('sheep', 2.5, 41.05, 2.5);
+    const p2 = pm.spawn('sheep', 3.5, 41.05, 2.5);
+    pm.spawn('sheep', 8.5, 41.05, 2.5);
+    pm.spawn('cow', 3.5, 41.05, 2.5);
+    ok('canBreed 要求双方同类成体且都在求爱且冷却结束',
+      !canBreed(p1, p2) &&
+      !!(p1.loveTimer = BREED_TUNING.loveDuration) && !canBreed(p1, p2) &&
+      !!(p2.loveTimer = BREED_TUNING.loveDuration) && canBreed(p1, p2));
+    ok('pickMate 只在半径内按 id 升序选求爱伙伴',
+      pickMate(p1, pm.entities, BREED_TUNING.mateRadius) === p2 &&
+      pickMate(p1, pm.entities, 0.5) === null);
+    ok('异类不成对', !canBreed(p1, pm.entities[3]));
+  }
+
+  // 喂食 → 求爱 → 幼崽 → 冷却 → 成长
+  {
+    const m = makeMobs();
+    const a = m.spawn('rabbit', 10.5, 41.05, 10.5);
+    const b = m.spawn('rabbit', 12.5, 41.05, 10.5);
+    ok('喂错食物不进入求爱', !m.feed(a, 'item:coal') && a.loveTimer === 0);
+    ok('喂食两种成体进入求爱窗口', m.feed(a, 'dandelion') && m.feed(b, 'poppy') &&
+      a.loveTimer === BREED_TUNING.loveDuration && b.loveTimer === BREED_TUNING.loveDuration);
+    m.update(0.016, ectx(true));
+    const baby = m.entities.find((e) => e.baby);
+    ok('两只求爱成体生成幼崽', !!baby && m.entities.length === 3);
+    ok('双亲进入冷却且求爱结束',
+      a.cooldown === BREED_TUNING.cooldown && b.cooldown === BREED_TUNING.cooldown &&
+      a.loveTimer === 0 && b.loveTimer === 0);
+    ok('冷却中再喂静默拒绝', !m.feed(a, 'dandelion'));
+    ok('求爱期发心形粒子', heartBursts >= 1);
+    if (baby) {
+      ok('幼崽初始缩放为 babyScale',
+        Math.abs(baby.model.group.scale.x - BREED_TUNING.babyScale) < 0.02);
+      baby.hurt(1);
+      const hurtScale = baby.model.group.scale.x;
+      ok('幼崽受击不回到成体尺寸', hurtScale > BREED_TUNING.babyScale && hurtScale < 1,
+        `${hurtScale}`);
+      for (let i = 0; i < 20; i++) baby.update(0.1, breedWorld, ectx(true));
+      ok('闪光消退后幼崽缩放仍为 babyScale',
+        Math.abs(baby.model.group.scale.x - BREED_TUNING.babyScale) < 0.02,
+        `${baby.model.group.scale.x}`);
+      ok('幼崽不可繁殖', !canBreed(baby, a) && !m.feed(baby, 'dandelion'));
+      const ageBefore = baby.age;
+      const cool = a.cooldown;
+      m.update(1, ectx(false));
+      ok('非 playing 不推进繁殖计时', a.cooldown === cool && baby.age === ageBefore);
+      baby.update(BREED_TUNING.growTime, breedWorld, ectx(true));
+      ok('age 达 growTime 后成年', !baby.baby && baby.age >= BREED_TUNING.growTime);
+      ok('成年后缩放回到 1', Math.abs(baby.model.group.scale.x - 1) < 0.02,
+        `${baby.model.group.scale.x}`);
+    }
+  }
+
+  // 全局 cap 满时拒绝繁殖（静默）
+  {
+    const full = makeMobs();
+    while (full.entities.length < POP_TUNING.cap) full.spawn('pig', 5.5, 41.05, 5.5);
+    const f1 = full.entities[0], f2 = full.entities[1];
+    full.feed(f1, 'wheat');
+    full.feed(f2, 'wheat');
+    full.update(0.016, ectx(true));
+    ok('全局 cap 满时拒绝繁殖', full.entities.length === POP_TUNING.cap);
+  }
+}
+
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

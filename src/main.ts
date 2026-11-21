@@ -213,7 +213,7 @@ async function boot() {
   if (!qs.has('greedy')) chunks.greedy = settings.greedy;
   const sky = new Sky(engine.scene, engine.camera, () => chunks.renderDistance, events, isMobile);
   if (saved) sky.dayTime = saved.dayTime ?? 0.32;
-  const entities = new EntityManager(world, engine.scene, events, seed);
+  const entities = new EntityManager(world, engine.scene, events, seed, particles);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -1370,6 +1370,7 @@ async function boot() {
           playerPos: player.pos,
           daylight: sky.daylight,
           playerDead: survival.dead,
+          playing: mode === 'playing',
           hurtPlayer: (amount, cause) => survival.damage(amount, cause),
         });
         entities.maintainPopulation(dt, player.pos, { survival: survival.isSurvival, daylight: sky.daylight });
@@ -1384,6 +1385,7 @@ async function boot() {
           playerPos: player.pos,
           daylight: sky.daylight,
           playerDead: true,
+          playing: false,
           hurtPlayer: () => false,
         });
       }
