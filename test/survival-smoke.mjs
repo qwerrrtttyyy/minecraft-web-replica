@@ -438,8 +438,10 @@ try {
   ok('挖掘进度条可见', barVisible);
   if (brokenId !== 0) brokenId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), mineCell);
   ok('生存模式按住可破坏方块', brokenId === 0, `block=${brokenId}`);
-  // 可见掉落物有 0.4s 游戏时间的拾取延迟，软件渲染下 dt 钳制使游戏时间约为真实的一半，
-  // 固定 sleep 会偶发抢在拾取之前；改为按条件轮询（与上面的破坏等待同一口径）。
+  // 可见掉落物有 1.2 格拾取半径与 0.4s 游戏时间的拾取延迟；石头在正前方 3 格，
+  // 玩家原地不动永远不会拾取。先走到落点，再按条件轮询（软件渲染下游戏时间约
+  // 为真实一半，固定 sleep 会偶发抢在拾取之前）。
+  await page.evaluate((c) => window.__mc.player.teleport(c.x + 0.5, c.y, c.z + 0.5), mineCell);
   const cobbleId = await page.evaluate(() => window.__mc.registry.byNameGet('cobblestone').id);
   const gotCobble = await page.waitForFunction(
     (id) => window.__mc.survival.countKey('b:' + id) >= 1,
