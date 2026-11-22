@@ -27,6 +27,7 @@
     "test:mesher": "node test/mesher-check.cjs",
     "test:mesh-typed-arrays": "npm run test:snapshot && node test/mesh-typed-arrays-check.cjs",
     "test:wasm-choice": "npm run test:snapshot && node test/wasm-backend-choice-check.cjs",
+    "test:wasm-install-decision": "npm run test:snapshot && node test/wasm-install-decision-check.cjs",
     "test:mesher-hotspot": "npm run test:snapshot && node test/mesher-hotspot-check.cjs",
     "test:services": "node test/services-check.cjs",
     "test:diagnostics": "node test/diagnostics-check.cjs",

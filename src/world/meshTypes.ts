@@ -207,7 +207,13 @@ const geoView = (a: GeoArray, used?: number): ArrayLike<number> =>
 export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayBuffer[] } {
   const transfer: ArrayBuffer[] = [];
   const pack = (g: GeoArrays | null): PackedGeo | null => {
-    if (!g || (g.used?.indices ?? g.indices.length) === 0) return null;
+    if (!g) return null;
+    // 只有 typed array 才看 used.indices；普通 number[] 的 length 即已写入数，
+    // 即便调用方误填了 used.indices=0 也不能据此把真实几何当空通道丢掉。
+    const empty = isTypedArray(g.indices)
+      ? (g.used?.indices ?? g.indices.length) === 0
+      : g.indices.length === 0;
+    if (empty) return null;
     const p = new Float32Array(geoView(g.positions, g.used?.positions));
     const u = new Float32Array(geoView(g.uvs, g.used?.uvs));
     const s = new Float32Array(geoView(g.shade, g.used?.shade));

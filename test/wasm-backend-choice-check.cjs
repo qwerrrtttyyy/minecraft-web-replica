@@ -42,6 +42,11 @@ ok('自定义 threshold 0.75：wasmMs=70 < 75 → wasm', () => {
   assert.strictEqual(chooseNoiseBackend({ jsMs: 100, wasmMs: 70, threshold: 0.75 }), 'wasm');
 });
 
+ok('threshold >= 1 视为无效：wasmMs=150 < jsMs×2 也不接管', () => {
+  assert.strictEqual(chooseNoiseBackend({ jsMs: 100, wasmMs: 150, threshold: 2 }), 'js');
+  assert.strictEqual(chooseNoiseBackend({ jsMs: 100, wasmMs: 70, threshold: 1 }), 'js');
+});
+
 ok('非法 / NaN 输入一律回退 js', () => {
   assert.strictEqual(chooseNoiseBackend({ jsMs: NaN, wasmMs: 70 }), 'js');
   assert.strictEqual(chooseNoiseBackend({ jsMs: 100, wasmMs: NaN }), 'js');

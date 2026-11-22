@@ -66,6 +66,12 @@ console.log(`  集合 hash : ${hash}`);
 console.log(`  8 轮平均  : ${msPerChunk.toFixed(3)} ms/区块（${set.length} 块 × ${ROUNDS} 轮）`);
 
 if (record) {
+  process.stderr.write(
+    '\n============================================================\n' +
+    '⚠️  警告：--record 将覆盖 test/mesher-hotspot-baseline.json（含 guard hash 与 msPerChunk）。\n' +
+    '   只有 fixture / 序列化格式有意变更时才应重录；本次运行正在写入新基线。\n' +
+    '============================================================\n\n',
+  );
   const baseline = {
     seed: 2026,
     chunks: set.length,

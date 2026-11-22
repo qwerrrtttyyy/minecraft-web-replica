@@ -108,4 +108,20 @@ console.log('packMesh typed-array 回归（预分配容量不入几何）');
     r.transfer.length === 0);
 }
 
+// 5) 普通 number[] 忽略 used：stale used.indices=0 不得把真实几何当空通道丢掉
+{
+  const geo = plainGeo();
+  geo.used = { indices: 0, positions: 0 };
+  const out = pack(geo);
+  ok('普通数组 + stale used.indices=0 仍打包几何（非 null）', out !== null);
+  if (out) {
+    ok('普通数组 stale used 不影响索引前缀',
+      out.indices.length === VALUES.indices.length &&
+      VALUES.indices.every((v, i) => out.indices[i] === v));
+    ok('普通数组 stale used 不影响顶点前缀',
+      out.positions.length === VALUES.positions.length &&
+      VALUES.positions.every((v, i) => out.positions[i] === v));
+  }
+}
+
 console.log(`\n合计 ${passed} 项全部通过`);

@@ -38,6 +38,7 @@ interface FaceGeom {
   face: FaceDef;
   uAxis: 0 | 1 | 2;
   vAxis: 0 | 1 | 2;
+  /** L 是深度轴：{uAxis, vAxis, dAxis} 恰好划分 {0,1,2}，dimD 由它取尺寸 */
   dAxis: 0 | 1 | 2;
   /** 预解构的法线分量：Greedy 每格都要用法向取邻居，避免重复 destructuring */
   nx: number;

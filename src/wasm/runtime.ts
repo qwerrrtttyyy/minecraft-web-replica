@@ -109,7 +109,8 @@ export function chooseNoiseBackend(input: {
 }): 'js' | 'wasm' {
   const { jsMs, wasmMs, threshold = 0.9 } = input;
   if (!Number.isFinite(jsMs) || !Number.isFinite(wasmMs) || !Number.isFinite(threshold)) return 'js';
-  if (jsMs <= 0 || wasmMs < 0 || threshold <= 0) return 'js';
+  // threshold >= 1 等于允许「不比 JS 快」的 WASM 接管，违背只在实测更快时安装的约定
+  if (jsMs <= 0 || wasmMs < 0 || threshold <= 0 || threshold >= 1) return 'js';
   return wasmMs < jsMs * threshold ? 'wasm' : 'js';
 }
 
@@ -171,12 +172,24 @@ function benchmarkNoiseBackends(mod: WasmKernelModule, perm: Uint8Array): { jsMs
     run(wasm, warmup);
     let jsMs = Infinity, wasmMs = Infinity, jsSink = 0, wasmSink = 0;
     for (let t = 0; t < trials; t++) {
+      // 奇数试跑反转测量顺序：两侧调用组合、坐标与累加仍完全对称，
+      // 但交替先后可抵消机器负载单调漂移带来的系统性偏差。
+      const jsFirst = t % 2 === 0;
+      const first = jsFirst ? js : wasm;
+      const second = jsFirst ? wasm : js;
       const t0 = now();
-      jsSink += run(js, rounds);
-      jsMs = Math.min(jsMs, now() - t0);
+      const firstSink = run(first, rounds);
+      const firstMs = now() - t0;
       const t1 = now();
-      wasmSink += run(wasm, rounds);
-      wasmMs = Math.min(wasmMs, now() - t1);
+      const secondSink = run(second, rounds);
+      const secondMs = now() - t1;
+      if (jsFirst) {
+        jsSink += firstSink; wasmSink += secondSink;
+        jsMs = Math.min(jsMs, firstMs); wasmMs = Math.min(wasmMs, secondMs);
+      } else {
+        wasmSink += firstSink; jsSink += secondSink;
+        wasmMs = Math.min(wasmMs, firstMs); jsMs = Math.min(jsMs, secondMs);
+      }
     }
     // 校验和参与结果判定，防止纯计算循环被 JIT 整体消掉；异常时安全回退 JS
     const checksum = (Math.abs(jsSink) + Math.abs(wasmSink)) | 0;
