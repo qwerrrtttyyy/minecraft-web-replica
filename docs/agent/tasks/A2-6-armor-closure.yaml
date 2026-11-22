@@ -1,0 +1,26 @@
+id: A2-6
+title: core:armor 穿戴闭环（右键穿戴 + 甲槽面板 + 护甲条 + 规则修正 + 按世界存档）
+description: |
+  设计见 docs/superpowers/specs/2026-11-22-armor-tools-closure-design.md §4。依赖 A2-5。
+  右键手持盔甲穿戴（同槽互换、旧甲带耐久退回背包）；甲槽面板经 PanelHost 挂载，点击卸下；
+  HUD 锚点显示护甲条。减伤口径维持每点 4%、上限 80%（决策 3）。
+  只对 attack / explosion 减伤与扣耐久，每槽扣 max(1, floor(原伤害/4))；
+  keepInventory=false 死亡清空甲槽；持久化改走 SaveData.plugins 袋，并一次性迁移旧 ctx.storage('equipment')。
+touch:
+  allow:
+    - src/plugins/builtin/armor.ts
+    - src/plugins/builtin/armorPanel.ts
+    - src/player/equipmentState.ts
+    - test/armor-check.cjs
+    - docs/agent/tasks/A2-6-armor-closure.yaml
+    - docs/TESTING.md
+  deny:
+    - src/main.ts
+    - src/ui/**
+    - src/save/**
+    - src/core/version.ts
+outputs:
+  - armor equip: 右键手持盔甲穿戴、同槽互换、甲槽面板卸下回背包，背包与甲槽之间不丢件不复制
+  - armor survival rules: 仅攻击/爆炸伤害减伤并扣甲耐久，死亡未开 keepInventory 清空甲槽
+  - armor world save: 装备随世界存档（新建/导入/导出正确），旧全局存储一次性迁移
+  - test:armor 扩充覆盖穿戴互换 / 伤害类型过滤 / 死亡清甲 / 串档修复 / 迁移 / 停用零残留

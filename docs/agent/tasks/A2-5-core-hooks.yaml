@@ -1,0 +1,41 @@
+id: A2-5
+title: 护甲/工具闭环的核心通用接口（伤害类型 + 玩家扩展点 + 插件存档袋 + PanelHost）
+description: |
+  设计见 docs/superpowers/specs/2026-11-22-armor-tools-closure-design.md §3。
+  只加与护甲/工具无关的通用接口，核心自身零处理器：
+  survival.damage 第 4 参 DamageKind 并透传进 combat:damage-incoming；
+  新扩展点 player:use-item / player:mining / player:attack（管道）与 player:used-tool（通知）；
+  SaveData.plugins? 插件数据袋 + save:collect / save:restore；
+  PanelHost（暂停菜单面板注册）+ HUD 锚点 + 快捷栏格装饰。
+  决策 1 已确认：允许为通用 UI 接口一次性改动 src/ui/hud.ts 与 src/main.ts，不得夹带护甲/工具业务。
+touch:
+  allow:
+    - src/player/survival.ts
+    - src/player/player.ts
+    - src/entity/**
+    - src/services/plugins/extensions.ts
+    - src/services/plugins/PluginContext.ts
+    - src/services/events/GameEvents.ts
+    - src/services/ui/PanelHost.ts
+    - src/plugins/builtin/deps.ts
+    - src/save/save.ts
+    - src/ui/hud.ts
+    - src/ui/style.ts
+    - src/main.ts
+    - scripts/build-test-snapshot.mjs
+    - test/hooks-check.cjs
+    - test/services-check.cjs
+    - package.json
+    - docs/agent/tasks/A2-5-core-hooks.yaml
+    - docs/TESTING.md
+    - docs/ARCHITECTURE.md
+  deny:
+    - src/world/blocks.ts
+    - src/core/version.ts
+    - src/plugins/builtin/armor.ts
+outputs:
+  - damage kind: survival.damage 接受 DamageKind，攻击/爆炸/摔落/溺水/饥饿调用方补参，管道 payload 含 kind
+  - player hooks: player:use-item / player:mining / player:attack / player:used-tool 四个扩展点落地，无处理器时数值与当前逐项相等
+  - plugin save bag: SaveData.plugins? 可选字段 + save:collect / save:restore，旧档缺省为空且 validateSave 往返
+  - panel host: 插件可注册暂停菜单面板、取 HUD 锚点、装饰快捷栏格，复用现有面板输入状态机
+  - test:hooks: test/hooks-check.cjs 覆盖无插件零差异与存档袋往返，verify 链包含它

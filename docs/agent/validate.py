@@ -325,6 +325,78 @@ CHECKS = [
             "plant drops", "compost bin", "plant rule context",
         )),
     ),
+    # ---- 护甲/工具闭环（A2-5~A2-8 / 1.5.5）----
+    # 阶段 A：谓词只检查关键词出现在声明它的任务卡中；各实现卡落地时收紧为真实符号检查。
+    (
+        "damage kind",
+        "护甲/工具闭环：damage kind（阶段 A：关键词在 A2-5-core-hooks.yaml 中声明）",
+        lambda: "damage kind" in read("docs/agent/tasks/A2-5-core-hooks.yaml"),
+    ),
+    (
+        "player hooks",
+        "护甲/工具闭环：player hooks（阶段 A：关键词在 A2-5-core-hooks.yaml 中声明）",
+        lambda: "player hooks" in read("docs/agent/tasks/A2-5-core-hooks.yaml"),
+    ),
+    (
+        "plugin save bag",
+        "护甲/工具闭环：plugin save bag（阶段 A：关键词在 A2-5-core-hooks.yaml 中声明）",
+        lambda: "plugin save bag" in read("docs/agent/tasks/A2-5-core-hooks.yaml"),
+    ),
+    (
+        "panel host",
+        "护甲/工具闭环：panel host（阶段 A：关键词在 A2-5-core-hooks.yaml 中声明）",
+        lambda: "panel host" in read("docs/agent/tasks/A2-5-core-hooks.yaml"),
+    ),
+    (
+        "test:hooks",
+        "护甲/工具闭环：test:hooks（阶段 A：关键词在 A2-5-core-hooks.yaml 中声明）",
+        lambda: "test:hooks" in read("docs/agent/tasks/A2-5-core-hooks.yaml"),
+    ),
+    (
+        "armor equip",
+        "护甲/工具闭环：armor equip（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor equip" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "armor survival rules",
+        "护甲/工具闭环：armor survival rules（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor survival rules" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "armor world save",
+        "护甲/工具闭环：armor world save（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor world save" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "tool rules",
+        "护甲/工具闭环：tool rules（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool rules" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "tool harvest gate",
+        "护甲/工具闭环：tool harvest gate（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool harvest gate" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "tool durability",
+        "护甲/工具闭环：tool durability（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool durability" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "test:tools",
+        "护甲/工具闭环：test:tools（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "test:tools" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "armor smoke",
+        "护甲/工具闭环：armor smoke（阶段 A：关键词在 A2-8-armor-tools-release.yaml 中声明）",
+        lambda: "armor smoke" in read("docs/agent/tasks/A2-8-armor-tools-release.yaml"),
+    ),
+    (
+        "release 1.5.5",
+        "护甲/工具闭环：release 1.5.5（阶段 A：关键词在 A2-8-armor-tools-release.yaml 中声明）",
+        lambda: "release 1.5.5" in read("docs/agent/tasks/A2-8-armor-tools-release.yaml"),
+    ),
 ]
 
 

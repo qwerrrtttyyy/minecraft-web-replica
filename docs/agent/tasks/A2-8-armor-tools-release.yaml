@@ -1,0 +1,25 @@
+id: A2-8
+title: 护甲/工具闭环浏览器实景 + 文档 + 版本推进 1.5.5
+description: |
+  设计见 docs/superpowers/specs/2026-11-22-armor-tools-closure-design.md §7。依赖 A2-6、A2-7。
+  smoke 增加实景路径；同步 README / CHANGELOG / TESTING / ARCHITECTURE；
+  VERSION 推进到 1.5.5（决策 4，维护者已确认），RELEASE 维持 v1，待联机 M3 后再推进 v2。
+touch:
+  allow:
+    - test/survival-smoke.mjs
+    - src/core/version.ts
+    - package.json
+    - package-lock.json
+    - README.md
+    - CHANGELOG.md
+    - docs/TESTING.md
+    - docs/ARCHITECTURE.md
+    - docs/DESIGN-V2-ARMOR.md
+    - docs/agent/tasks/A2-8-armor-tools-release.yaml
+  deny:
+    - src/world/blocks.ts
+    - src/main.ts
+outputs:
+  - armor smoke: 实景路径——合成铁甲 → 右键穿戴 → 受击伤害下降；木镐挖石头掉圆石、空手不掉
+  - release 1.5.5: VERSION=1.5.5、RELEASE 维持 v1，三处版本一致且 CHANGELOG 有 1.5.5 条目
+  - verify 全绿
