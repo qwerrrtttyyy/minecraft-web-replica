@@ -62,6 +62,7 @@ export interface GameEvents {
   'equipment:broken': { id: string; source: 'held' | 'armor' };
   /** 生存模式：空手右键工作台，请求打开合成界面 */
   'crafting:open': { x: number; y: number; z: number };
+  'furnace:open': { x: number; y: number; z: number };
   /** 合成完成（配方 id / 产物材料 / 数量） */
   'crafting:crafted': { recipe: string; result: string; count: number };
   'game:start': { seed: number };

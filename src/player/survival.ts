@@ -70,6 +70,24 @@ export const ITEMS: Record<string, ItemDefinition> = {
   rose_hips: { name: 'rose_hips', label: '玫瑰果', tile: 'rose_hips' },
   garlic_rice: { name: 'garlic_rice', label: '蒜香米饭', tile: 'garlic_rice', food: 8 },
   rose_tea: { name: 'rose_tea', label: '玫瑰果茶', tile: 'rose_tea', food: 6 },
+  // ---- 矿物→材料→熔炼闭环：原矿 / 锭 / 矿物材料 / 熟肉（数值统一取自 tuning.ts）----
+  raw_iron: { name: 'raw_iron', label: '粗铁', tile: 'raw_iron' },
+  raw_gold: { name: 'raw_gold', label: '粗金', tile: 'raw_gold' },
+  raw_copper: { name: 'raw_copper', label: '粗铜', tile: 'raw_copper' },
+  iron_ingot: { name: 'iron_ingot', label: '铁锭', tile: 'iron_ingot' },
+  gold_ingot: { name: 'gold_ingot', label: '金锭', tile: 'gold_ingot' },
+  copper_ingot: { name: 'copper_ingot', label: '铜锭', tile: 'copper_ingot' },
+  diamond: { name: 'diamond', label: '钻石', tile: 'diamond' },
+  lapis: { name: 'lapis', label: '青金石', tile: 'lapis' },
+  redstone: { name: 'redstone', label: '红石粉', tile: 'redstone' },
+  emerald: { name: 'emerald', label: '绿宝石', tile: 'emerald' },
+  charcoal: { name: 'charcoal', label: '木炭', tile: 'charcoal' },
+  cooked_porkchop: {
+    name: 'cooked_porkchop', label: '熟猪排', tile: 'cooked_porkchop', food: NEW_ITEMS.cooked_porkchop.food,
+  },
+  cooked_beef: {
+    name: 'cooked_beef', label: '熟牛肉', tile: 'cooked_beef', food: NEW_ITEMS.cooked_beef.food,
+  },
   ...EQUIP_ITEMS,
 };
 

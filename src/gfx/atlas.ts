@@ -2132,6 +2132,116 @@ export class TextureAtlas {
     this.painters.set('feather', featherPainter);
     this.painters.set('egg', eggPainter);
     this.painters.set('rabbit_meat', rabbitMeatPainter);
+    // ---- 矿物→材料→熔炼闭环物品纹理：追加在末尾，既有 tile 索引不变 ----
+    // 原矿：不规则的粗矿团块
+    const rawOrePainter = (base: number, dark: number, light: number) =>
+      (p: { clear(): void; set(x: number, y: number, c: number): void }, rng: () => number) => {
+        p.clear();
+        for (let y = 4; y < 13; y++) {
+          for (let x = 3; x < 13; x++) {
+            const dx = x - 8, dy = y - 8;
+            if (dx * dx + dy * dy * 1.6 > 22) continue;
+            p.set(x, y, jitter(base, rng, 14));
+          }
+        }
+        for (const [x, y] of [[5, 6], [9, 5], [7, 9], [10, 10]] as const) {
+          p.set(x, y, light);
+          p.set(x, y + 1, dark);
+        }
+      };
+    this.painters.set('raw_iron', rawOrePainter(0xc79c7c, 0x8a6a52, 0xe8cdb8));
+    this.painters.set('raw_gold', rawOrePainter(0xd9b53c, 0x93722a, 0xf5e37a));
+    this.painters.set('raw_copper', rawOrePainter(0xa85b3d, 0x6e3a26, 0xd88a64));
+    // 锭：平行四边形金属条
+    const ingotPainter = (base: number, dark: number, light: number) =>
+      (p: { clear(): void; set(x: number, y: number, c: number): void }, rng: () => number) => {
+        p.clear();
+        for (let y = 6; y < 11; y++) {
+          const in0 = y - 6, off = 2 - in0;
+          for (let x = 3 + off; x < 13 + off; x++) {
+            p.set(x, y, jitter(x === 3 + off || y === 10 ? dark : base, rng, 8));
+          }
+        }
+        for (let x = 5; x < 11; x++) p.set(x, 7, light);
+        p.set(3, 10, dark); p.set(4, 10, dark);
+      };
+    this.painters.set('iron_ingot', ingotPainter(0xd8bfa8, 0x9c8472, 0xf2e2d4));
+    this.painters.set('gold_ingot', ingotPainter(0xe8c23c, 0xa8871e, 0xf8e88a));
+    this.painters.set('copper_ingot', ingotPainter(0xc46a45, 0x8a4426, 0xe8a37e));
+    // 钻石：青色菱形宝石
+    this.painters.set('diamond', (p, rng) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        const w = y < 8 ? y - 3 : 12 - y;
+        for (let x = 8 - w; x <= 8 + w; x++) {
+          p.set(x, y, jitter(x <= 8 - w + 1 || y > 10 ? 0x2fb8a8 : 0x4aedd9, rng, 10));
+        }
+      }
+      p.set(7, 5, 0xbdf8f0); p.set(8, 5, 0xbdf8f0);
+    });
+    // 青金石：深蓝石块 + 亮蓝斑点
+    this.painters.set('lapis', (p, rng) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        for (let x = 3; x < 13; x++) {
+          if ((x === 3 || x === 12) && (y === 3 || y === 12)) continue;
+          p.set(x, y, jitter(0x1e4bd8, rng, 16));
+        }
+      }
+      for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10], [8, 4]] as const) {
+        p.set(x, y, 0x6a9af0);
+      }
+    });
+    // 红石粉：散落的红色粉末堆
+    this.painters.set('redstone', (p, rng) => {
+      p.clear();
+      for (let i = 0; i < 40; i++) {
+        const x = 3 + ((rng() * 10) | 0);
+        const y = 6 + ((rng() * 7) | 0);
+        p.set(x, y, jitter(0xd41c1c, rng, 18));
+      }
+      for (let x = 5; x < 11; x++) p.set(x, 11, 0x8e1010);
+    });
+    // 绿宝石：绿色长六边形宝石
+    this.painters.set('emerald', (p, rng) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        const w = y < 5 || y > 10 ? 2 : 4;
+        for (let x = 8 - w; x <= 8 + w; x++) {
+          p.set(x, y, jitter(x <= 8 - w + 1 ? 0x0fa84a : 0x17dd62, rng, 10));
+        }
+      }
+      p.set(7, 4, 0xa8f8c8); p.set(7, 5, 0xa8f8c8);
+    });
+    // 木炭：与煤炭同形但带木纹焦痕
+    this.painters.set('charcoal', (p, rng) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        for (let x = 3; x < 13; x++) {
+          if ((x === 3 || x === 12) && (y === 3 || y === 12)) continue;
+          p.set(x, y, jitter(0x1c1a16, rng, 10));
+        }
+      }
+      for (const [x, y] of [[5, 6], [9, 8], [6, 10]] as const) {
+        p.set(x, y, 0x4a3c2c);
+        p.set(x + 1, y, 0x6a563c);
+      }
+    });
+    // 熟肉：棕色肉块 + 深色烤纹
+    const cookedMeatPainter = (p: { clear(): void; set(x: number, y: number, c: number): void }, rng: () => number) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        for (let x = 3; x < 13; x++) {
+          const edge = x === 3 || x === 12 || y === 3 || y === 12;
+          p.set(x, y, jitter(edge ? 0x5c3818 : 0x9c6430, rng, 10));
+        }
+      }
+      for (const [x, y] of [[5, 5], [6, 5], [9, 8], [10, 9], [7, 10]] as const) {
+        p.set(x, y, 0x6a4420);
+      }
+    };
+    this.painters.set('cooked_porkchop', cookedMeatPainter);
+    this.painters.set('cooked_beef', cookedMeatPainter);
     // v1.7：重点株特化产物纹理，追加在末尾以保持既有 tile 索引不变
     this.painters.set('garlic', (p, rng) => {
       p.clear();

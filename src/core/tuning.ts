@@ -95,4 +95,20 @@ export const NEW_ITEMS: Record<string, { food?: number }> = {
   feather: {},
   egg: { food: 3 },
   rabbit_meat: { food: 5 },
+  // ---- 矿物→材料→熔炼闭环（原版忠实向）----
+  // 原矿由对应矿石方块掉落，需入熔炉烧炼成锭；锭 / 矿物材料均不可食
+  raw_iron: {},
+  raw_gold: {},
+  raw_copper: {},
+  iron_ingot: {},
+  gold_ingot: {},
+  copper_ingot: {},
+  diamond: {},
+  lapis: {},
+  redstone: {},
+  emerald: {},
+  charcoal: {},
+  // 熟肉比生肉高 2 点饥饿（原版：生猪排 6→熟猪排 8，生牛肉 7→熟牛肉 8）
+  cooked_porkchop: { food: 8 },
+  cooked_beef: { food: 8 },
 };

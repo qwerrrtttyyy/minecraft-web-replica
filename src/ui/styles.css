@@ -817,3 +817,30 @@ img { image-rendering: pixelated; }
 .landscape-mode .help-panel { max-height: 94vh; }
 .landscape-mode .title-inner { padding-top: 2vh; }
 .landscape-mode .mc-logo { font-size: clamp(30px, 9vh, 60px); }
+
+/* ---- 熔炉烧炼界面（复用合成面板骨架，只补三槽 / 火焰 / 箭头样式） ---- */
+.furnace-body { display: flex; align-items: center; gap: 14px; justify-content: center; }
+.furnace-column { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.furnace-slot { width: 48px; height: 48px; position: relative; }
+.furnace-flame {
+  width: 22px; height: 22px; position: relative;
+  background: linear-gradient(#3a3a3a, #3a3a3a) no-repeat;
+  clip-path: polygon(50% 0, 80% 35%, 100% 70%, 78% 100%, 22% 100%, 0 70%, 20% 35%);
+  overflow: hidden;
+}
+.furnace-flame::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(#ff9a3c, #ffd23c);
+  transform-origin: bottom;
+  transform: scaleY(var(--burn, 0));
+}
+.furnace-arrow {
+  width: 64px; height: 14px; position: relative; color: #8a8a8a;
+  font-size: 13px; line-height: 14px; text-align: center;
+  background: linear-gradient(#555, #555) no-repeat center / 100% 3px;
+}
+.furnace-arrow::after {
+  content: ''; position: absolute; left: 0; top: 0; height: 100%; width: calc(var(--progress, 0) * 100%);
+  background: linear-gradient(#e8e8e8, #e8e8e8) no-repeat center / 100% 3px;
+}
+.furnace-out-row { display: flex; justify-content: center; margin-top: 10px; }

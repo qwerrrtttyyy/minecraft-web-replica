@@ -249,10 +249,11 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('dandelion', '蒲公英');
 
   // 矿石追加在末尾：不改动已有方块 id，保证旧存档 edits 差分仍指向同一方块
+  // 掉落为原版模式：煤 / 钻石 / 绿宝石 / 青金石 / 红石直接掉物品，铁 / 金 / 铜掉原矿（需熔炼成锭）
   cube('coal_ore', '煤矿石', {}, { hardness: 2.5, drops: [{ name: 'item:coal', min: 1, max: 2 }] });
-  cube('iron_ore', '铁矿石', {}, { hardness: 3 });
-  cube('gold_ore', '金矿石', {}, { hardness: 3 });
-  cube('diamond_ore', '钻石矿石', {}, { hardness: 4 });
+  cube('iron_ore', '铁矿石', {}, { hardness: 3, drops: [{ name: 'item:raw_iron' }] });
+  cube('gold_ore', '金矿石', {}, { hardness: 3, drops: [{ name: 'item:raw_gold' }] });
+  cube('diamond_ore', '钻石矿石', {}, { hardness: 4, drops: [{ name: 'item:diamond' }] });
 
   // ---- 追加方块（id 27 起，末位追加，旧存档差分保持有效） ----
   // 光源方块：火把（地面十字面）与南瓜灯（完整方块）
@@ -290,10 +291,10 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
 
   // ---- v1.4.0 方块扩充（id 45 起，仍为末位追加，旧存档差分保持有效） ----
   // 矿石：与既有矿脉一起由地形阶段配置生成（绿宝石仅高山）
-  cube('copper_ore', '铜矿石', {}, { hardness: 2.5 });
-  cube('emerald_ore', '绿宝石矿石', {}, { hardness: 3 });
-  cube('lapis_ore', '青金石矿石', {}, { hardness: 2.6 });
-  cube('redstone_ore', '红石矿石', {}, { hardness: 2.4 });
+  cube('copper_ore', '铜矿石', {}, { hardness: 2.5, drops: [{ name: 'item:raw_copper' }] });
+  cube('emerald_ore', '绿宝石矿石', {}, { hardness: 3, drops: [{ name: 'item:emerald' }] });
+  cube('lapis_ore', '青金石矿石', {}, { hardness: 2.6, drops: [{ name: 'item:lapis', min: 4, max: 9 }] });
+  cube('redstone_ore', '红石矿石', {}, { hardness: 2.4, drops: [{ name: 'item:redstone', min: 4, max: 5 }] });
   // 地表 / 建材
   cube('clay', '黏土', {}, { sound: 'dirt', hardness: 0.6 });
   cube('podzol', '灰化土', { top: 'podzol_top', bottom: 'dirt', side: 'podzol_side' },

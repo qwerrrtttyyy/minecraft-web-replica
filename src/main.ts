@@ -20,6 +20,8 @@ import { Particles } from './gfx/particles';
 import { BlockHighlight } from './gfx/highlight';
 import { Player, type HotbarState } from './player/player';
 import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
+import { Smelting } from './player/smelting';
+import { FurnacePanel } from './ui/furnace';
 import {
   inventoryKeyToMaterial,
   materialToStack,
@@ -157,14 +159,22 @@ async function boot() {
   }
   // 设置以本地全局配置为准（设置页自动保存，换世界不丢）；
   // 旧存档里的 settings 仅作为「本机从未保存过设置」时的兜底。
+  // 移动端默认值收敛一处：首次进入（loadOptions fallback）与重置选项共用，防默认值漂移
+  const mobileDefaults = () => ({
+    renderDistance: isMobile ? 3 : 5,
+    autoJump: isMobile,
+    // 移动端默认横屏：宽屏 HUD 布局 + 尝试锁定横向（桌面默认关，设置里可切换）。
+    // landscapeMode 走本地设置持久化（loadOptions 内部读取），不从存档 settings 取。
+    landscapeMode: isMobile,
+  });
   const settings: Options = loadOptions({
+    ...mobileDefaults(),
     sound: saved?.settings?.sound ?? true,
-    renderDistance: saved?.settings?.renderDistance ?? (isMobile ? 3 : 5),
+    renderDistance: saved?.settings?.renderDistance ?? mobileDefaults().renderDistance,
     sensitivity: saved?.settings?.sensitivity ?? 1,
     fov: saved?.settings?.fov ?? 72,
     volume: saved?.settings?.volume ?? 50,
     invertY: saved?.settings?.invertY ?? false,
-    autoJump: isMobile,
   });
   sound.setEnabled(settings.sound);
   plugins.setExperimental(settings.experimental);
@@ -197,6 +207,13 @@ async function boot() {
   // ---- 世界 ----
   const world = new World(registry, new DefaultGenerator(seed, registry), events, extensions);
   if (saved) world.loadEdits(saved.edits);
+  // 熔炉方块实体：载入存档时恢复各炉的槽位与燃烧 / 进度状态；
+  // 跳过坐标上已不是熔炉的条目（edits 可能已把该方块改掉），避免幽灵炉继续 tick
+  const smelting = new Smelting();
+  if (saved?.furnaces) {
+    smelting.restore(saved.furnaces.cells.filter((f) =>
+      registry.get(world.getBlock(f.pos[0], f.pos[1], f.pos[2])).name === 'furnace'));
+  }
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
   // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
   const workersParam = qs.get('workers');
@@ -354,6 +371,7 @@ async function boot() {
     settings: { ...settings },
     dayCount: sky.dayCount,
     botany: botany.serializeEcology(),
+    furnaces: { v: 1, cells: smelting.serialize() },
     savedAt: Date.now(),
   });
   const saveNow = () => {
@@ -677,7 +695,8 @@ async function boot() {
     },
     onImportOptions: (json) => importOptions(json),
     onResetOptions: () => {
-      Object.assign(settings, normalizeOptions({}, { renderDistance: isMobile ? 3 : 5, autoJump: isMobile }));
+      // 重置必须与首次进入的默认值一致：移动端渲染距离更近、默认开自动跳跃、默认横屏
+      Object.assign(settings, normalizeOptions({}, mobileDefaults()));
       applyAllSettings();
       persistOptions(settings);
       hud.syncOptions(settings);
@@ -863,6 +882,94 @@ async function boot() {
 
   // 空手右键工作台方块 → 打开合成界面
   events.on('crafting:open', () => openCrafting('game'));
+
+  // ---- 熔炉烧炼界面：右键熔炉打开，暂停态与合成界面同款 ----
+  let furnaceTarget: { x: number; y: number; z: number } | null = null;
+  let furnaceReturn: 'game' | 'menu' = 'game';
+  const furnacePanel = new FurnacePanel({
+    cell: () =>
+      furnaceTarget ? smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z)
+        : { input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 },
+    getMaterials: () => {
+      const out: { material: string; count: number }[] = [];
+      for (const [key, count] of survival.inventory) {
+        if (count <= 0) continue;
+        if (key.startsWith('i:')) out.push({ material: `i:${key.slice(2)}`, count });
+        else {
+          const def = registry.get(Number(key.slice(2)));
+          if (def && def.name) out.push({ material: def.name, count });
+        }
+      }
+      return out;
+    },
+    put: (material) => {
+      if (!furnaceTarget) return false;
+      const { x, y, z } = furnaceTarget;
+      if (material.startsWith('i:')) {
+        const name = material.slice(2);
+        const stack: Stack = { kind: 'item', id: name };
+        return smelting.putInput(survival, x, y, z, name, 1, stack) > 0 ||
+          smelting.putFuelFrom(survival, x, y, z, name, 1, stack) > 0;
+      }
+      const def = registry.byNameGet(material);
+      if (!def) return false;
+      const stack: Stack = { kind: 'block', id: def.id };
+      return smelting.putInput(survival, x, y, z, material, 1, stack) > 0 ||
+        smelting.putFuelFrom(survival, x, y, z, material, 1, stack) > 0;
+    },
+    returnSlot: (slot) => {
+      if (!furnaceTarget) return;
+      const cell = smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
+      const s = cell[slot];
+      if (!s) return;
+      if (s.material.startsWith('b:')) survival.addBlock(Number(s.material.slice(2)), s.count);
+      else survival.addItem(s.material, s.count);
+      cell[slot] = null;
+    },
+    collect: () => {
+      if (furnaceTarget) smelting.takeOutput(survival, furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
+    },
+    onClose: () => closeFurnace(),
+  }, atlas, registry);
+  uiRoot.appendChild(furnacePanel.root);
+
+  function openFurnace(p: { x: number; y: number; z: number }) {
+    if (!survival.isSurvival) return;
+    furnaceReturn = 'game';
+    furnaceTarget = p;
+    if (mode === 'playing') {
+      mode = 'paused';
+      input.enabled = false;
+      input.reset();
+      input.exitLock();
+      events.emit('game:pause', { paused: true });
+    }
+    hud.showMenu(false);
+    furnacePanel.show();
+    markDirty();
+  }
+
+  function closeFurnace() {
+    furnacePanel.hide();
+    const target = furnaceTarget;
+    furnaceTarget = null;
+    if (target) markDirty(); // 关界面时槽位变动落盘
+    if (furnaceReturn === 'menu') hud.showMenu(true);
+    else resumeGame();
+  }
+
+  events.on('furnace:open', (p) => openFurnace(p));
+
+  // 熔炉被挖掉（玩家破坏 / 爆炸统一走 block:break）→ 释放方块实体并把三槽内容掉出
+  events.on('block:break', ({ x, y, z, block }) => {
+    if (registry.get(block).name !== 'furnace') return;
+    const [input, fuel, output] = smelting.take(x, y, z);
+    for (const s of [input, fuel, output]) {
+      if (!s) continue;
+      const name = s.material.startsWith('b:') ? s.material.slice(2) : `item:${s.material}`;
+      drops.spawn(name, s.count, x + 0.5, y + 0.5, z + 0.5, 'furnace');
+    }
+  });
   const cycleCamera = () => {
     player.cycleCamera();
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
@@ -1467,6 +1574,9 @@ async function boot() {
           if (tnt.done) tntList.splice(tntList.indexOf(tnt), 1);
         }
         falling.update(dt);
+        // 熔炉随游戏推进：燃烧 / 进度 / 产出（暂停时不推进，与昼夜同规则）
+        smelting.tick(dt);
+        furnacePanel.refresh();
       } else if (mode === 'title') {
         cinematic(t);
         entities.update(dt, {

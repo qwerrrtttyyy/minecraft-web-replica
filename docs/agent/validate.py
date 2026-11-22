@@ -253,6 +253,36 @@ CHECKS = [
         lambda: "test:equipment" in pkg_scripts().get("verify", "")
         and "test:smelting" in pkg_scripts().get("verify", ""),
     ),
+    # ---- A2-4 矿物→材料→熔炼闭环 + 熔炉方块实体 ----
+    (
+        "矿石掉落为原版模式",
+        "矿石掉落 raw_iron / raw_gold / raw_copper / diamond，且 diamond 物品已定义",
+        lambda: all(s in read("src/world/blocks.ts") for s in ("item:raw_iron", "item:raw_gold", "item:raw_copper", "item:diamond"))
+        and "'diamond'" in read("src/player/survival.ts"),
+    ),
+    (
+        "smelting.ts 导出 SMELT_RECIPES",
+        "烧炼模块导出配方表 / 燃料表 / putFuelFrom，燃料表含煤 8 / 木板 1.5 / 木棍 0.5",
+        lambda: all(s in read("src/player/smelting.ts") for s in ("SMELT_RECIPES", "FUEL_UNITS", "putFuelFrom"))
+        and "coal: 8" in read("src/player/smelting.ts") and "1.5" in read("src/player/smelting.ts"),
+    ),
+    (
+        "SaveData.furnaces?",
+        "存档含可选 furnaces 字段与 isFurnaceSave 校验，test:smelting 进 verify 链",
+        lambda: "furnaces?" in read("src/save/save.ts") and "isFurnaceSave" in read("src/save/save.ts")
+        and "test:smelting" in pkg_scripts().get("verify", ""),
+    ),
+    (
+        "右键熔炉发 furnace:open",
+        "player.ts 发 furnace:open 且 FurnacePanel 已接线到 main.ts",
+        lambda: "furnace:open" in read("src/player/player.ts")
+        and "new FurnacePanel" in read("src/main.ts") and "'furnace:open'" in read("src/services/events/GameEvents.ts"),
+    ),
+    (
+        "test:smelting 独立回归通过",
+        "smelting-check.cjs 存在且覆盖 putFuelFrom",
+        lambda: (ROOT / "test/smelting-check.cjs").exists() and "putFuelFrom" in read("test/smelting-check.cjs"),
+    ),
     # ---- 内容体系完善任务卡（C00~C05）----
     # 阶段 A：谓词只检查关键词是否出现在声明它的任务卡文本中；
     # 各实现卡会逐项收紧为真实符号检查（C01 已收紧 tuning center / coal torch）。

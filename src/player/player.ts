@@ -741,9 +741,16 @@ export class Player implements System, PhysicsBody {
     const hit = this.target;
     if (!hit || !this.survival.isSurvival) return false;
     const def = this.registry.get(hit.block);
-    if (def.name !== INTERACTIVE_BLOCK) return false;
-    this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
-    return true;
+    if (def.name === INTERACTIVE_BLOCK) {
+      this.events.emit('crafting:open', { x: hit.x, y: hit.y, z: hit.z });
+      return true;
+    }
+    // 熔炉：右键打开烧炼界面
+    if (def.name === 'furnace') {
+      this.events.emit('furnace:open', { x: hit.x, y: hit.y, z: hit.z });
+      return true;
+    }
+    return false;
   }
 
   /** 空手右键蓄能植物：采集花蜜 / 额外作物，植物保留并消耗能量 */

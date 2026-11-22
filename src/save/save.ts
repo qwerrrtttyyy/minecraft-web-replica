@@ -3,6 +3,7 @@ import {
   MAX_BREATH, MAX_HEALTH, MAX_HUNGER,
   type Stack, type SurvivalSave,
 } from '../player/survival';
+import { isKnownMaterial } from '../player/smelting';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -38,7 +39,23 @@ export interface SaveData {
     plants: [number, number, number, number, number, 0 | 1][];
     soil: [number, number, number, number][];
   };
+  /** 熔炉方块实体快照（旧档缺省即无运行中的熔炉） */
+  furnaces?: {
+    v: 1;
+    cells: FurnaceSaveData[];
+  };
   savedAt: number;
+}
+
+/** 单台熔炉的存档形态：三槽 + 燃烧 / 进度秒数（进度取整到 0.01s） */
+export interface FurnaceSaveData {
+  pos: [number, number, number];
+  input: [string, number] | null;
+  fuel: [string, number] | null;
+  output: [string, number] | null;
+  burn: number;
+  burnMax: number;
+  progress: number;
 }
 
 /** 旧版（v1）存档：快捷栏是纯方块 id 数组，没有生存状态 */
@@ -109,6 +126,33 @@ const isBotanySave = (v: unknown): boolean => {
   return true;
 };
 
+/** 熔炉存档校验：结构严格但字段可选，旧档缺省即跳过 */
+const isFurnaceSave = (v: unknown): boolean => {
+  if (!v || typeof v !== 'object') return false;
+  const f = v as Record<string, unknown>;
+  if (f.v !== 1 || !Array.isArray(f.cells)) return false;
+  const slotOk = (s: unknown): boolean => {
+    if (s === null) return true;
+    if (!Array.isArray(s) || s.length !== 2) return false;
+    return (typeof s[0] === 'string' && s[0].length > 0 && s[0].length <= 64) &&
+      intIn(s[1], 1, 999) && isKnownMaterial(s[0]);
+  };
+  for (const c of f.cells) {
+    if (!c || typeof c !== 'object') return false;
+    const cell = c as Record<string, unknown>;
+    if (!Array.isArray(cell.pos) || cell.pos.length !== 3 ||
+        !cell.pos.every((n) => Number.isInteger(n))) return false;
+    const y = (cell.pos as number[])[1];
+    if (y < 0 || y > WORLD_HEIGHT) return false;
+    if (!slotOk(cell.input) || !slotOk(cell.fuel) || !slotOk(cell.output)) return false;
+    const burn = cell.burn, burnMax = cell.burnMax, progress = cell.progress;
+    if (!finite(burn) || (burn as number) < 0) return false;
+    if (!finite(burnMax) || (burnMax as number) < 0) return false;
+    if (!finite(progress) || (progress as number) < 0 || (progress as number) > 60) return false;
+  }
+  return true;
+};
+
 /**
  * 全量存档 schema 校验（v1.2.0）。
  *
@@ -153,6 +197,8 @@ export function validateSave(data: unknown): data is SaveData {
   // v1.6 生态字段为可选，旧档缺省仍通过
   if (d.dayCount !== undefined && (!intIn(d.dayCount, 0, Number.MAX_SAFE_INTEGER))) return false;
   if (d.botany !== undefined && !isBotanySave(d.botany)) return false;
+  // 熔炉字段为可选，旧档缺省仍通过
+  if (d.furnaces !== undefined && !isFurnaceSave(d.furnaces)) return false;
   return finite(d.savedAt);
 }
 

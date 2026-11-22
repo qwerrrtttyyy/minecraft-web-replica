@@ -1,0 +1,31 @@
+id: A2-4
+title: 矿物→材料→熔炼闭环 + 熔炉方块实体
+description: |
+  内容更新卡（替代 2026-11-21 content-system-design 中"熔炉本轮占位不动"的决定）：
+  矿石掉落改原版模式（铁/金/铜掉原矿，钻石/绿宝石/青金石/红石直掉物品），
+  新增矿物系物品与熟肉；熔炼系统 smelting.ts（配方表 / 燃料表 / tick 状态机，
+  putFuelFrom 统一校验 / 扣背包 / 加燃料）；熔炉存档走 SaveData 可选 furnaces? 字段
+  （仿 botany 先例，旧档兼容）；右键熔炉打开专用烧炼界面。
+touch:
+  allow:
+    - src/core/tuning.ts
+    - src/player/survival.ts
+    - src/player/smelting.ts
+    - src/player/player.ts
+    - src/world/blocks.ts
+    - src/gfx/atlas.ts
+    - src/save/save.ts
+    - src/services/events/GameEvents.ts
+    - src/ui/furnace.ts
+    - src/ui/styles.css
+    - src/main.ts
+    - test/smelting-check.cjs
+    - package.json
+    - docs/agent/tasks/A2-4-furnace.yaml
+  deny: []
+outputs:
+  - 矿石掉落为原版模式：raw_iron / raw_gold / raw_copper 需烧炼成锭，diamond 有来源
+  - smelting.ts 导出 SMELT_RECIPES / FUEL_UNITS / putFuelFrom，每件 10s，煤/木炭 8 件、木板/原木 1.5、木棍 0.5
+  - SaveData.furnaces? 可选字段带 isFurnaceSave 校验，旧档缺省跳过
+  - 右键熔炉发 furnace:open，FurnacePanel 三槽 + 火焰 / 箭头进度
+  - test:smelting 独立回归通过；verify 链含 test:equipment 与 test:smelting；validate.py 熔炉断言转绿
