@@ -93,27 +93,57 @@ export interface MeshSnapshot {
 }
 
 /**
+ * 收集期的几何数组：普通 number[]（逐面收集）或预分配 typed array（去 GC 路径）。
+ * 两者都能被 packMesh 直接消费；typed array 的多余容量由 GeoArrays.used 标出。
+ */
+export type GeoArray = number[] | Float32Array | Uint32Array;
+
+/**
  * 收集期的动态数组几何（顶点打包后的布局，每顶点 11 个 float）：
  * position(3) + uv(2) + shade(1) + light(2) + tile(2) + flags(1) = 44 字节。
  * 旧布局每顶点 15 个 float（60 字节），其中 color 三分量同值、tile 的 du/dv 全图集一致，
  * 纯冗余 —— 详见 docs/EXPERIMENTS.md 实验 E1。
  */
 export interface GeoArrays {
-  positions: number[];
+  positions: GeoArray;
   /** 局部 UV：普通面 0..1，合并面 0..w / 0..h（shader 内 fract 平铺） */
-  uvs: number[];
+  uvs: GeoArray;
   /** 每顶点明暗（面定向 × AO，0~1）：RGB 三通道同值，只需 1 个分量 */
-  shade: number[];
+  shade: GeoArray;
   /** 每顶点天空光 / 方块光（0~1），shader 据此叠加昼夜与方块光源 */
-  lights: number[];
+  lights: GeoArray;
   /** 每顶点图集 tile 起点 u0,v0；tile 尺寸全图集一致，走 shader uniform */
-  tile: number[];
+  tile: GeoArray;
   /** 每顶点开关：0 普通、1 群系染色、2 自发光（不受光照与染色影响） */
-  tints: number[];
+  tints: GeoArray;
   /** 每顶点风摆权重（0~1）：普通方块为 0，十字面植物由底部 0 渐变到顶部（= 植物高度） */
-  sways: number[];
-  indices: number[];
+  sways: GeoArray;
+  indices: number[] | Uint32Array;
+  /**
+   * 预分配 typed array 时各分量的「已写入元素数」。
+   * typed array 的 length 等于容量（可能远大于实际写入数），必须靠 used 才知道
+   * 哪些元素是真实几何；未声明的分量按整个数组打包。
+   * 普通 number[] 的 length 即已写入数，不需要填写 used（填了也忽略）。
+   */
+  used?: {
+    positions?: number;
+    uvs?: number;
+    shade?: number;
+    lights?: number;
+    tile?: number;
+    tints?: number;
+    sways?: number;
+    indices?: number;
+  };
 }
+
+/**
+ * 收集期专用的窄类型：所有分量仍是普通 number[]，因此可 .push。
+ * 结构上可从 MutableGeoArrays 赋值给 GeoArrays；packMesh 接受更宽的 GeoArrays。
+ */
+export type MutableGeoArrays = {
+  [K in Exclude<keyof GeoArrays, 'used'>]: number[];
+};
 
 export interface ChunkMeshData {
   opaque: GeoArrays | null;
@@ -122,6 +152,11 @@ export interface ChunkMeshData {
   transparent: GeoArrays | null;
   water: GeoArrays | null;
 }
+
+/** 同上：meshChunk 内部收集时四通道都是 MutableGeoArrays，返回时按 ChunkMeshData 兼容 */
+export type MutableChunkMeshData = {
+  [K in keyof ChunkMeshData]: MutableGeoArrays | null;
+};
 
 /** 可转移的紧凑几何（Worker 回传 / 主线程同步路径统一使用） */
 export interface PackedGeo {
@@ -158,19 +193,29 @@ export type MeshChannel = keyof PackedMesh;
 
 export const MESH_CHANNELS: MeshChannel[] = ['opaque', 'emissive', 'transparent', 'water'];
 
+/** typed array 类型守卫：避免 any，同时保留 subarray 方法 */
+const isTypedArray = (a: GeoArray): a is Float32Array | Uint32Array => ArrayBuffer.isView(a);
+
+/**
+ * 取「已写入前缀」：typed array 按 used 做 subarray（未声明则取整数组），
+ * 普通 number[] 的 length 就是已写入数，原样返回。
+ */
+const geoView = (a: GeoArray, used?: number): ArrayLike<number> =>
+  isTypedArray(a) ? (used === undefined ? a : a.subarray(0, used)) : a;
+
 /** 把动态数组打包为 Transferable 视图；transfer 数组仅在 Worker 回传时需要 */
 export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayBuffer[] } {
   const transfer: ArrayBuffer[] = [];
   const pack = (g: GeoArrays | null): PackedGeo | null => {
-    if (!g || g.indices.length === 0) return null;
-    const p = new Float32Array(g.positions);
-    const u = new Float32Array(g.uvs);
-    const s = new Float32Array(g.shade);
-    const l = new Float32Array(g.lights);
-    const t = new Float32Array(g.tile);
-    const tn = new Float32Array(g.tints);
-    const sw = new Float32Array(g.sways);
-    const i = new Uint32Array(g.indices);
+    if (!g || (g.used?.indices ?? g.indices.length) === 0) return null;
+    const p = new Float32Array(geoView(g.positions, g.used?.positions));
+    const u = new Float32Array(geoView(g.uvs, g.used?.uvs));
+    const s = new Float32Array(geoView(g.shade, g.used?.shade));
+    const l = new Float32Array(geoView(g.lights, g.used?.lights));
+    const t = new Float32Array(geoView(g.tile, g.used?.tile));
+    const tn = new Float32Array(geoView(g.tints, g.used?.tints));
+    const sw = new Float32Array(geoView(g.sways, g.used?.sways));
+    const i = new Uint32Array(geoView(g.indices, g.used?.indices));
     transfer.push(p.buffer, u.buffer, s.buffer, l.buffer, t.buffer, tn.buffer, sw.buffer, i.buffer);
     return { positions: p, uvs: u, shade: s, lights: l, tile: t, tints: tn, sways: sw, indices: i };
   };
