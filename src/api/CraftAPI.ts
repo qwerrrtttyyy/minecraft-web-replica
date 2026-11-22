@@ -201,6 +201,10 @@ export interface CraftAPI {
     setMode(m: GameMode): void;
     health(): number;
     hunger(): number;
+    /** 饱和度（0~20），进食缓冲，先于 hunger 被消耗 */
+    saturation(): number;
+    /** 温暖值（0~100），由 WarmthSystem 驱动 */
+    warmth(): number;
     breath(): number;
     damage(amount: number, cause?: string): boolean;
     heal(amount: number): void;
@@ -413,6 +417,8 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       setMode: (m) => d.setMode(m),
       health: () => d.survival.health,
       hunger: () => d.survival.hunger,
+      saturation: () => d.survival.saturation,
+      warmth: () => d.survival.warmth,
       breath: () => d.survival.breath,
       damage: (n, cause) => d.survival.damage(n, cause ?? 'API'),
       heal: (n) => d.survival.heal(n),

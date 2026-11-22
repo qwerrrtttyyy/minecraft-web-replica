@@ -341,7 +341,9 @@ export class SurvivalState {
     let drain = 0;
     if (ctx.mining) drain += 0.09;
     if (ctx.moving) drain += ctx.sprinting ? 0.2 : 0.06;
-    this.exhaustion += drain * dt;
+    // 温暖达标时消耗降低（PR5 轻量温暖增益）：同样动作积累的 exhaustion 更少
+    const exhaustionScale = this.warmth >= WARMTH.regenThreshold ? WARMTH.exhaustionScale : 1;
+    this.exhaustion += drain * exhaustionScale * dt;
     while (this.exhaustion >= 4) {
       this.exhaustion -= 4;
       // 饱和度优先充当缓冲：先扣 saturation，耗尽后才扣 hunger。

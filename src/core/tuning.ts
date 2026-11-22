@@ -197,7 +197,9 @@ export const FLAMMABLE: Record<string, number> = {
  * - scanTick：扫描 / 蔓延 / 寿命节拍（秒）；
  * - maxPerTick：每拍最多处理的火源数，避免单帧卡顿；
  * - damageInterval：玩家 / 实体灼烧伤害间隔（秒）；
- * - damage：每次灼烧伤害。
+ * - damage：每次灼烧伤害；
+ * - particleBudget：每拍粒子预算（火星 + 烟雾合计），超限跳过，避免火势大时粒子爆炸；
+ * - sparkChance / smokeChance：每拍每个热源发射火星 / 烟雾的概率。
  */
 export const FIRE = {
   lifetime: 18,
@@ -207,6 +209,9 @@ export const FIRE = {
   maxPerTick: 48,
   damageInterval: 0.5,
   damage: 1,
+  particleBudget: 24,
+  sparkChance: 0.3,
+  smokeChance: 0.5,
 } as const;
 
 /**
@@ -215,7 +220,8 @@ export const FIRE = {
  * - rise / fall：每秒向目标值靠近的比例系数（指数逼近）；
  * - regenThreshold：温暖值达到该值时回血饥饿门槛降低；
  * - regenHunger：温暖时的回血饥饿门槛；
- * - coldHunger：常温（未达阈值）时的回血饥饿门槛。
+ * - coldHunger：常温（未达阈值）时的回血饥饿门槛；
+ * - exhaustionScale：温暖达标时饥饿消耗（exhaustion）的缩放系数（< 1 表示消耗降低）。
  *
  * 只做「靠近热源更暖」的轻量增益，不含体温 / 冻伤 / 寒冷伤害 / 天气联动。
  */
@@ -226,4 +232,5 @@ export const WARMTH = {
   regenThreshold: 50,
   regenHunger: 14,
   coldHunger: 18,
+  exhaustionScale: 0.8,
 } as const;

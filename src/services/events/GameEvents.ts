@@ -19,8 +19,8 @@ export interface GameEvents {
   'block:ignite': { x: number; y: number; z: number };
   /** 火焰引燃一个新方块（PR3 火焰蔓延） */
   'fire:ignite': { x: number; y: number; z: number };
-  /** 火焰熄灭（寿命到期 / 失去支撑） */
-  'fire:extinguish': { x: number; y: number; z: number; cause: 'lifetime' | 'unsupported' };
+  /** 火焰熄灭（寿命到期 / 失去支撑 / 遇水） */
+  'fire:extinguish': { x: number; y: number; z: number; cause: 'lifetime' | 'unsupported' | 'water' };
   /** 生态随机刻改变了方块（生长 / 蔓延 / 枯萎 / 成熟 / 采集），供存档与插件观测 */
   'plant:grow': {
     x: number; y: number; z: number; block: BlockId;

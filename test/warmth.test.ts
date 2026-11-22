@@ -18,6 +18,7 @@ const registry = {
 } as unknown as BlockRegistry;
 
 const idle = { moving: false, sprinting: false, mining: false, underwater: false };
+const sprint = { moving: true, sprinting: true, mining: false, underwater: false };
 const mk = () => new SurvivalState(new EventBus(), registry);
 
 describe('warmthTarget', () => {
@@ -134,6 +135,29 @@ describe('温暖回血门槛', () => {
     base.hunger = 18;
     base.saturation = 10;
     expect(run(base, 50).length).toBeGreaterThan(0);
+  });
+});
+
+describe('温暖消耗增益', () => {
+  /** 同样疾跑动作下，饥饿首次掉点所需的 tick 数（exhaustion 累积更慢 → 更晚掉点） */
+  const firstHungerDropTick = (warmth: number) => {
+    const s = mk();
+    s.hunger = MAX_HUNGER;
+    s.saturation = 0; // 不让饱和度当缓冲，直接观察 hunger 掉落
+    s.setWarmth(warmth);
+    for (let i = 1; i <= 600; i++) {
+      s.tick(0.1, sprint);
+      if (s.hunger < MAX_HUNGER) return i;
+    }
+    return -1;
+  };
+
+  it('warmth 达标时同样动作的 exhaustion 积累更少（掉饥饿更晚）', () => {
+    const warm = firstHungerDropTick(WARMTH.regenThreshold);      // 50 → scale 0.8
+    const cold = firstHungerDropTick(WARMTH.regenThreshold - 1);  // 49 → scale 1
+    expect(warm).toBeGreaterThan(0);
+    expect(cold).toBeGreaterThan(0);
+    expect(warm).toBeGreaterThan(cold);
   });
 });
 

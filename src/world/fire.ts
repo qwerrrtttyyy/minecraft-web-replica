@@ -15,6 +15,8 @@ import { FIRE, FLAMMABLE } from '../core/tuning';
  *   1) 邻格本身可燃（实心方块 / 十字面植物）→ 直接引燃该格（烧尽）；
  *   2) 邻格是空气且下方是实心可燃方块 → 引燃该空气格。
  * 伤害：玩家 / 实体脚下方块是火 / 营火时，每 damageInterval 秒造成 damage 点伤害。
+ * 水灭：火焰自身格或 6 邻存在液体方块（水）时立即熄灭；营火是火源，不参与水灭火判定。
+ * 粒子：每拍每个热源按概率发射火星 / 烟雾，合计受 particleBudget 约束。
  *
  * 火焰是运行时状态：点燃 / 熄灭走 setBlock(..., record=false)，不写玩家编辑差分，
  * 避免污染存档（读档后火焰熄灭）。
@@ -200,7 +202,13 @@ export class FireSystem implements System {
         this.tracked.delete(key);
         continue;
       }
-      if (id === this.campfireId) continue; // 营火永久不熄
+      // 营火是火源：永久不熄，也不参与水灭火判定
+      if (id === this.campfireId) continue;
+      // 火焰自身格或 6 邻有水（液体方块）→ 立即熄灭
+      if (this.hasAdjacentLiquid(e.x, e.y, e.z)) {
+        this.extinguish(e.x, e.y, e.z, 'water');
+        continue;
+      }
       e.age += FIRE.scanTick;
       if (e.age >= e.life) {
         this.extinguish(e.x, e.y, e.z, 'lifetime');
@@ -228,11 +236,20 @@ export class FireSystem implements System {
       }
     }
 
-    // 4) 火源粒子氛围（每拍每热源约 0.5 概率）
+    // 4) 火源粒子氛围：火星（暖色、小概率）+ 烟雾（灰色、更慢、更长寿命，从火焰上方飘出）。
+    //    每拍粒子调用合计受 particleBudget 约束，避免火势大时粒子爆炸。
     if (this.particles.enabled) {
+      let budget = FIRE.particleBudget;
       for (const e of this.tracked.values()) {
-        if (this.rng() < 0.5) {
+        if (budget <= 0) break;
+        if (this.rng() < FIRE.sparkChance) {
           this.particles.burst(e.x + 0.5, e.y + 0.6, e.z + 0.5, [1, 0.55, 0.15], 1, 0.25, 0.8);
+          budget--;
+        }
+        if (budget <= 0) break;
+        if (this.rng() < FIRE.smokeChance) {
+          this.particles.burst(e.x + 0.5, e.y + 0.9, e.z + 0.5, [0.32, 0.32, 0.32], 1, 0.15, 0.3, 2.5);
+          budget--;
         }
       }
     }
@@ -293,8 +310,18 @@ export class FireSystem implements System {
     this.events.emit('fire:ignite', { x, y, z });
   }
 
-  /** 熄灭火焰（寿命到期 / 失去支撑），营火不会走到这里 */
-  private extinguish(x: number, y: number, z: number, cause: 'lifetime' | 'unsupported'): void {
+  /** 火焰自身格或 6 邻是否存在液体方块（水灭火判定，只对 fire 调用） */
+  private hasAdjacentLiquid(x: number, y: number, z: number): boolean {
+    if (this.registry.get(this.world.getBlock(x, y, z)).liquid) return true;
+    for (const [dx, dy, dz] of DIRS) {
+      const id = this.world.getBlock(x + dx, y + dy, z + dz);
+      if (id !== AIR && this.registry.get(id).liquid) return true;
+    }
+    return false;
+  }
+
+  /** 熄灭火焰（寿命到期 / 失去支撑 / 遇水），营火不会走到这里 */
+  private extinguish(x: number, y: number, z: number, cause: 'lifetime' | 'unsupported' | 'water'): void {
     const key = blockKey(x, y, z);
     if (this.world.getBlock(x, y, z) === this.fireId) {
       this.world.setBlock(x, y, z, AIR, false);

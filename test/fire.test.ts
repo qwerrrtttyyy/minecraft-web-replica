@@ -9,6 +9,8 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 
 import { FireSystem, isFireNear, scanHeatSources } from '../src/world/fire';
+// 与本地方块 id 常量 FIRE(168) 区分，别名导入火焰数值中心
+import { FIRE as FIRE_CFG } from '../src/core/tuning';
 import type { World } from '../src/world/world';
 import type { BlockRegistry } from '../src/world/blocks';
 import type { EventService } from '../src/services/events';
@@ -19,12 +21,13 @@ const STONE = 1;
 const GRASS = 2;
 const OAK_LOG = 3;
 const TALL_GRASS = 4;
+const WATER = 5;
 const CAMPFIRE = 165;
 const FIRE = 168;
 
 const NAMES: Record<number, string> = {
   [AIR]: 'air', [STONE]: 'stone', [GRASS]: 'grass', [OAK_LOG]: 'oak_log',
-  [TALL_GRASS]: 'tall_grass',
+  [TALL_GRASS]: 'tall_grass', [WATER]: 'water',
   [CAMPFIRE]: 'campfire', [FIRE]: 'fire',
 };
 const IDS: Record<string, number> = Object.fromEntries(
@@ -38,7 +41,7 @@ const SOLID: Record<number, boolean> = {
 
 function makeRegistry(): BlockRegistry {
   return {
-    get: (id: number) => ({ id, name: NAMES[id] ?? 'air', solid: SOLID[id] ?? false }),
+    get: (id: number) => ({ id, name: NAMES[id] ?? 'air', solid: SOLID[id] ?? false, liquid: id === WATER }),
     byNameGet: (name: string) => (name in IDS ? { id: IDS[name] } : undefined),
     isSolid: (id: number) => SOLID[id] ?? false,
   } as unknown as BlockRegistry;
@@ -196,6 +199,71 @@ describe('火焰系统', () => {
     sys.update(0.25, POS);
 
     expect(w.getBlock(0, 1, 0)).toBe(AIR);
+  });
+
+  it('火焰邻水（6 邻液体方块）立即熄灭，事件 cause 为 water', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 0, 0, GRASS);
+    w.setBlock(0, 1, 0, FIRE);
+    w.setBlock(1, 1, 0, WATER); // 右侧邻格是水
+    const { sys, events } = makeSystem(w, () => 0);
+
+    sys.update(0.25, POS);
+
+    expect(w.getBlock(0, 1, 0)).toBe(AIR);
+    const ev = events.calls.find((c) => c.type === 'fire:extinguish');
+    expect(ev?.payload).toMatchObject({ cause: 'water' });
+  });
+
+  it('营火邻水不熄灭（营火不参与水灭火判定）', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 1, 0, CAMPFIRE);
+    w.setBlock(1, 1, 0, WATER);
+    const { sys, events } = makeSystem(w, () => 0);
+
+    sys.update(0.25, POS);
+    sys.update(0.25, POS);
+
+    expect(w.getBlock(0, 1, 0)).toBe(CAMPFIRE);
+    expect(events.calls.some((c) => c.type === 'fire:extinguish')).toBe(false);
+  });
+
+  it('有热源时发射粒子（火星 + 烟雾）', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 1, 0, CAMPFIRE);
+    const { sys, particles } = makeSystem(w, () => 0);
+
+    sys.update(0.25, POS);
+
+    expect(particles.burst).toHaveBeenCalled();
+  });
+
+  it('粒子预算生效：多次 tick 的发射次数不超过 预算×拍数', () => {
+    const w = new FakeWorld();
+    // 放 40 个热源，远超每拍预算，验证上限
+    for (let i = 0; i < 40; i++) {
+      const x = (i % 7) - 3;
+      const z = Math.floor(i / 7) - 2;
+      w.setBlock(x, 1, z, CAMPFIRE);
+    }
+    const { sys, particles } = makeSystem(w, () => 0);
+    const ticks = 5;
+    for (let i = 0; i < ticks; i++) sys.update(0.25, POS);
+
+    const burstMock = vi.mocked(particles.burst);
+    expect(burstMock.mock.calls.length).toBeGreaterThan(0);
+    expect(burstMock.mock.calls.length).toBeLessThanOrEqual(FIRE_CFG.particleBudget * ticks);
+  });
+
+  it('particles.enabled=false 时不发射粒子', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 1, 0, CAMPFIRE);
+    const { sys, particles } = makeSystem(w, () => 0);
+    (particles as { enabled: boolean }).enabled = false;
+
+    sys.update(0.25, POS);
+
+    expect(particles.burst).not.toHaveBeenCalled();
   });
 
   it('enabled=false 不蔓延，已有火焰仍按寿命熄灭', () => {

@@ -1638,7 +1638,7 @@ async function boot() {
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
-        ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  温暖 ${Math.round(survival.warmth)}/100  背包 ${survival.inventory.size} 种`
+        ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  饱和度 ${Math.ceil(survival.saturation)}/${MAX_HUNGER}  温暖 ${Math.round(survival.warmth)}/100  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
       `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
