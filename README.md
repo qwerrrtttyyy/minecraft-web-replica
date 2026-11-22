@@ -53,7 +53,7 @@
 **v1.5.1 渲染通道与顶点布局整理（第 2 轮 3D 优化）**：三个改动都做成了**受控实验**（假设 / 对照 / 翻转 / 判据，
 原始数据与复现步骤见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)）：
 
-- **顶点属性打包**：每顶点 60 B → **44 B**（`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)），显存与带宽下降，画面零差异。
+- **顶点属性打包**：每顶点 60 B → **48 B 基线**（`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)，并加入 `aSway`），显存与带宽下降，画面零差异；T3 起 aLight 两分量压进 1 个位域 float，进一步到 **44 B 生效档**（`VERTEX_BYTES_QUANTIZED`，0~15 无损，见 `src/world/meshTypes.ts`）。
 - **抗锯齿分档** `?aa=off|msaa|ssaa`：MSAA 在创建 GL 上下文时开启硬件抗锯齿，SSAA 走像素比 ×1.5 超采样；默认关闭。
 - **自发光并入不透明通道**：萤石 / 南瓜灯 / 火把改用 `aTint=2` 复用不透明材质，shader 跳过光照与染色。
   draw call 64 → 47、emissive mesh 49 → 0，**几何缓冲逐字节相同、15552 个像素采样零差异**；
@@ -353,7 +353,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 增量更新 | `World.setBlock` 同步更新光照并标记受影响区块，Greedy 只重算脏区块 |
 | 网格契约 | `MeshSnapshot` / `MeshSource` 增加 `sky` / `block`，Worker 侧不访问 `World` 也能取光 |
 | Greedy | mask key 加入天空光 / 方块光档位：光照不同的面不合并，避免插值把「火把照亮的三格」拉成整面亮 |
-| Shader | 顶点属性 `aShade`（面定向 × AO）+ `aLight = (sky, block)` + `aTileOrigin` + `aTint`（0 普通 / 1 群系染色 / 2 自发光），每顶点 44 B；亮度 `max(sky × daylight, block)`，最低 0.07 保留轮廓；夜间天空光偏蓝，日出 / 日落按太阳色染色 |
+| Shader | 顶点属性 `aShade`（面定向 × AO）+ `aLight`（sky/block 各 0~15 打包为 1 float，shader 用 `floor/mod` 解码）+ `aTileOrigin` + `aTint`（0 普通 / 1 群系染色 / 2 自发光）+ `aSway`，每顶点 **44 B**（T1 基线 48 B，见 `meshTypes.ts`）；亮度 `max(sky × daylight, block)`，最低 0.07 保留轮廓；夜间天空光偏蓝，日出 / 日落按太阳色染色 |
 | 自发光 | 萤石 / 南瓜灯 / 火把（十字面）复用不透明通道，`aTint=2` 让 shader 跳过光照与染色、只保留面定向 × AO 明暗，不增加 draw call；`?emerge=0` 可切回并入前的独立 emissive 通道作对照 |
 | 手持物 | 按眼睛所在格的天空光 / 方块光着色，进洞后会随火把变亮 |
 | 出生点 | 优先露天、非沙滩 / 沙漠 / 海洋的陆地，避免一睁眼被树冠糊脸 |
@@ -485,7 +485,7 @@ CraftAPI.botany.unregisterRules('me:my-pack'); // 停用插件时整体注销
 
 `Botany` 只在内置规则全部未命中时按方块 id 兜底分派插件规则，因此扩展不会
 改变任何既有生态行为。内置插件 `core:botany-expansion` 就是用这套接口注册了
-6 种植物（id 92~97）与 4 条规则（含雨天补能演示），并订阅 `chunk:generated` 按群系补种。
+10 种植物（id 159~168，含攀墙藤 / 缢丝花 / 风信草 / 日晷花）与 8 条规则（含雨天补能与昼夜分相），并订阅 `chunk:generated` 按群系补种。
 控制台可用 `CraftAPI.plugins.disable('core:botany-expansion')` 验证停用后规则立即失效。
 
 ## 扩展 API（为未来预留的接口）

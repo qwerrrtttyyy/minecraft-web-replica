@@ -368,11 +368,15 @@ v1.5.1 把光照也改成逐顶点：**每个角点取「空气侧」相邻 4 �
 第 2 轮 3D 优化的三个改动都以**受控实验**的形式落地（设置 / 原始数据 / 判据见
 [EXPERIMENTS.md](EXPERIMENTS.md)），这里只记结论与实现要点。
 
-**顶点布局打包（E1）**：每顶点 60 B → 44 B。
+**顶点布局打包（E1）**：每顶点 60 B → **48 B 基线**（T1 统一口径，`VERTEX_BYTES`）→ **44 B 生效档**（T3 的 aLight 位域量化，`VERTEX_BYTES_QUANTIZED`）。
 
-| 旧 | 新 |
-| --- | --- |
-| `position(3) + uv(2) + color(3) + aLight(2) + aTileRect(4)` = 14 float / 60 B | `position(3) + uv(2) + aShade(1) + aLight(2) + aTileOrigin(2) + aTint(1)` = 11 float / 44 B |
+| 阶段 | 布局 | 每顶点 |
+| --- | --- | --- |
+| 旧 | `position(3) + uv(2) + color(3) + aLight(2) + aTileRect(4)` | 14 float / 60 B |
+| T1 基线 | `position(3) + uv(2) + aShade(1) + aLight(2) + aTileOrigin(2) + aTint(1) + aSway(1)` | 12 float / 48 B |
+| T3 生效 | 同上，但 `aLight(2)` → `aLight(1)`（sky/block 各 0~15 打包为一个 float） | 11 float / 44 B |
+
+两档字节数均由 `src/world/meshTypes.ts` 的常量派生，禁止在测试或文档里写死 12 / 44 / 48。
 
 - `color` 三分量同值（面定向 × AO），单分量 `aShade` 即可，shader 侧用 `vec3(vShade)`。
 - 图集 tile 只需存**起点** `aTileOrigin(2)`，尺寸由新 uniform `uTileSize` 提供；
@@ -413,7 +417,8 @@ v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发
 > 注：逐面基线从 11,526 涨到 12,507，是平滑光照把一部分面从「合并面」退回「逐面」所致
 > （面覆盖集合本身不变，只是 quad 组织方式变了）。
 
-顶点布局与渲染通道的收益不在这张表里：v1.5.1 把每顶点从 60 B 压到 **44 B**（-26.7%），
+顶点布局与渲染通道的收益不在这张表里：v1.5.1 把每顶点从 60 B 压到 **48 B 基线**（-20%，
+旧文档写 44 B 是并入 `aSway` 前的口径），T3 再把 aLight 位域量化到 **44 B 生效档**；
 自发光并入不透明通道把 draw call 从 64 降到 47，两者都不改变着色（见 §8.3.2 与
 [EXPERIMENTS.md](EXPERIMENTS.md)）。
 

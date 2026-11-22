@@ -1,9 +1,15 @@
 import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
-import { FACES, AO_LEVELS, type FaceDef } from './faces';
+import { AO_LEVELS, FACES, type FaceDef } from './faces';
 import {
-  AIR_MESH_DEF, ZERO_UV,
-  type GeoArrays, type ChunkMeshData, type MeshBlockDef,
-  type MeshSource, type MeshStats, type UVRect,
+  AIR_MESH_DEF,
+  type ChunkMeshData,
+  type GeoArrays,
+  type MeshBlockDef,
+  type MeshSource,
+  type MeshStats,
+  packLightLevels,
+  type UVRect,
+  ZERO_UV,
 } from './meshTypes';
 
 /**
@@ -29,7 +35,16 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], sways: [], indices: [] });
+const newGeo = (): GeoArrays => ({
+  positions: [],
+  uvs: [],
+  shade: [],
+  lights: [],
+  tile: [],
+  tints: [],
+  sways: [],
+  indices: [],
+});
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -63,7 +78,10 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
   const vAxis = (c3[0] !== c0[0] ? 0 : c3[1] !== c0[1] ? 1 : 2) as 0 | 1 | 2;
   const dAxis = face.axis;
   return {
-    face, uAxis, vAxis, dAxis,
+    face,
+    uAxis,
+    vAxis,
+    dAxis,
     uDir: c1[uAxis] - c0[uAxis],
     vDir: c3[vAxis] - c0[vAxis],
     dimU: axisDim(uAxis),
@@ -131,7 +149,10 @@ const quadBlock = new Float32Array(4);
 
 /** 把同一个光照值填满 4 个顶点（合并面 / 交叉面片用） */
 const fillUniform = (arr: Float32Array, v: number) => {
-  arr[0] = v; arr[1] = v; arr[2] = v; arr[3] = v;
+  arr[0] = v;
+  arr[1] = v;
+  arr[2] = v;
+  arr[3] = v;
 };
 
 /**
@@ -140,8 +161,11 @@ const fillUniform = (arr: Float32Array, v: number) => {
  */
 function computeAOInto(
   src: MeshSource,
-  bx: number, by: number, bz: number,
-  face: FaceDef, def: MeshBlockDef,
+  bx: number,
+  by: number,
+  bz: number,
+  face: FaceDef,
+  def: MeshBlockDef,
   out: Int32Array,
 ): Int32Array {
   const useAO = !def.transparentPass && !def.liquid;
@@ -153,17 +177,30 @@ function computeAOInto(
   const cz = bz + nz;
   for (let i = 0; i < 4; i++) {
     const c = face.corners[i];
-    if (!useAO) { out[i] = 3; continue; }
+    if (!useAO) {
+      out[i] = 3;
+      continue;
+    }
     const o1 = c[t1] === 0 ? -1 : 1;
     const o2 = c[t2] === 0 ? -1 : 1;
     // p1：切向 t1；p2：切向 t2；pc：两个切向都偏移
-    let x1 = cx, y1 = cy, z1 = cz;
-    if (t1 === 0) x1 += o1; else y1 += o1;
-    let x2 = cx, y2 = cy, z2 = cz;
-    if (t2 === 1) y2 += o2; else z2 += o2;
-    let xc = cx, yc = cy, zc = cz;
-    if (t1 === 0) xc += o1; else yc += o1;
-    if (t2 === 1) yc += o2; else zc += o2;
+    let x1 = cx,
+      y1 = cy,
+      z1 = cz;
+    if (t1 === 0) x1 += o1;
+    else y1 += o1;
+    let x2 = cx,
+      y2 = cy,
+      z2 = cz;
+    if (t2 === 1) y2 += o2;
+    else z2 += o2;
+    let xc = cx,
+      yc = cy,
+      zc = cz;
+    if (t1 === 0) xc += o1;
+    else yc += o1;
+    if (t2 === 1) yc += o2;
+    else zc += o2;
     const s1 = src.isOpaque(src.getId(x1, y1, z1)) ? 1 : 0;
     const s2 = src.isOpaque(src.getId(x2, y2, z2)) ? 1 : 0;
     const cc = src.isOpaque(src.getId(xc, yc, zc)) ? 1 : 0;
@@ -189,9 +226,12 @@ function computeAOInto(
  */
 function computeCornerLightInto(
   src: MeshSource,
-  bx: number, by: number, bz: number,
+  bx: number,
+  by: number,
+  bz: number,
   face: FaceDef,
-  outSky: Int32Array, outBlock: Int32Array,
+  outSky: Int32Array,
+  outBlock: Int32Array,
 ): void {
   const ax = face.axis;
   const t1 = ax === 0 ? 1 : 0;
@@ -205,12 +245,31 @@ function computeCornerLightInto(
   for (let p1 = -1; p1 <= 1; p1++) {
     for (let p2 = -1; p2 <= 1; p2++) {
       let x: number, y: number, z: number;
-      if (ax === 0) { x = gx; y = gy + p1; z = gz + p2; }
-      else if (ax === 1) { x = gx + p1; y = gy; z = gz + p2; }
-      else { x = gx + p1; y = gy + p2; z = gz; }
+      if (ax === 0) {
+        x = gx;
+        y = gy + p1;
+        z = gz + p2;
+      } else if (ax === 1) {
+        x = gx + p1;
+        y = gy;
+        z = gz + p2;
+      } else {
+        x = gx + p1;
+        y = gy + p2;
+        z = gz;
+      }
       const i = (p1 + 1) * 3 + (p2 + 1);
-      patchSky[i] = src.getSkyLight(x, y, z);
-      patchBlock[i] = src.getBlockLight(x, y, z);
+      // E4：越出本区块的采样点走可选回调拿真实邻块光照；开关关闭或回调缺失时
+      // 完全走原路径，保证默认行为与快照契约逐值不变。
+      const outside = x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE;
+      // 直接以 src.crossChunkLight(...) 形式调用，保留方法内部的 this 绑定
+      const useCross = outside && src.boundaryLightFix && src.crossChunkLight !== undefined;
+      patchSky[i] = useCross
+        ? src.crossChunkLight!(x, y, z, 'sky')
+        : src.getSkyLight(x, y, z);
+      patchBlock[i] = useCross
+        ? src.crossChunkLight!(x, y, z, 'block')
+        : src.getBlockLight(x, y, z);
     }
   }
   // 4 个角点各取补丁的 2×2
@@ -233,7 +292,10 @@ const tileFor = (def: MeshBlockDef, face: FaceDef) =>
 export function meshChunk(src: MeshSource): MeshOutput {
   const started = typeof performance !== 'undefined' ? performance.now() : 0;
   const out: MeshOutput = {
-    opaque: null, emissive: null, transparent: null, water: null,
+    opaque: null,
+    emissive: null,
+    transparent: null,
+    water: null,
     stats: { quads: 0, vertices: 0, merged: 0, ms: 0 },
   };
 
@@ -260,7 +322,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；flags 为顶点开关（0/1/2） */
-  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, lightSky: Float32Array, lightBlock: Float32Array, flags: number) => {
+  const pushQuad = (
+    g: GeoArrays,
+    tile: UVRect,
+    flip: boolean,
+    lightSky: Float32Array,
+    lightBlock: Float32Array,
+    flags: number,
+  ) => {
     const base = g.positions.length / 3;
     // tile 尺寸全图集一致，走 shader uniform；顶点只带 tile 起点
     const u0 = tile[0];
@@ -277,8 +346,9 @@ export function meshChunk(src: MeshSource): MeshOutput {
       U.push(qu[i], qv[i]);
       T.push(u0, v0);
       S.push(qb[i]);
-      // 逐顶点光照：平滑光照下 4 个角点亮度各不相同
-      L.push(lightSky[i], lightBlock[i]);
+      // T3 位域量化：sky/block 各 0~15 整数打包进 1 个 float，
+      // 每顶点省 4 B（48→44），精度无损；解码在 chunkManager 的 shader 侧。
+      L.push(packLightLevels(lightSky[i], lightBlock[i]));
       N.push(flags);
       SW.push(qs[i]);
     }
@@ -295,8 +365,11 @@ export function meshChunk(src: MeshSource): MeshOutput {
    * （Greedy 路径已经算过，避免同一面算两遍）。
    */
   const emitFace = (
-    bx: number, by: number, bz: number,
-    def: MeshBlockDef, face: FaceDef,
+    bx: number,
+    by: number,
+    bz: number,
+    def: MeshBlockDef,
+    face: FaceDef,
     precomputedAO?: Int32Array,
     precomputedSky?: Int32Array,
     precomputedBlock?: Int32Array,
@@ -330,7 +403,13 @@ export function meshChunk(src: MeshSource): MeshOutput {
     pushQuad(g, tile, flip, quadSky, quadBlock, flagsFor(def));
   };
 
-  /** 交叉面片（草丛 / 花）：两片，每片正反各一次 */
+  /**
+   * 交叉面片（草丛 / 花）：两片，每片正反各一次。
+   *
+   * T5 建模增量：aSway 在每片底部顶点为 0、顶部顶点为 height，
+   * 攀墙藤 / 风信草 / 日晷花等十字面植物因此天然获得「底部固定、顶部摆动」的
+   * 高度渐变；相位由 shader 按世界坐标计算，无需新增 shader 通道。
+   */
   const emitCross = (bx: number, by: number, bz: number, def: MeshBlockDef) => {
     const g = passFor(def);
     const tile = src.uv(def.tiles.side);
@@ -340,44 +419,107 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const flags = flagsFor(def);
     // 植物高度：贴图仍是 16px，几何按群系高度压缩/拉伸，矮花不再顶满整格
     const height = Math.max(0.1, Math.min(1, def.crossHeight ?? 1));
-    const x0 = bx + 0.15, x1 = bx + 0.85;
-    const z0 = bz + 0.15, z1 = bz + 0.85;
-    const y0 = by, y1 = by + height;
+    const x0 = bx + 0.15,
+      x1 = bx + 0.85;
+    const z0 = bz + 0.15,
+      z1 = bz + 0.85;
+    const y0 = by,
+      y1 = by + height;
 
     // 面 A（正面）
-    qx[0] = x0; qy[0] = y0; qz[0] = z0;
-    qx[1] = x1; qy[1] = y0; qz[1] = z1;
-    qx[2] = x1; qy[2] = y1; qz[2] = z1;
-    qx[3] = x0; qy[3] = y1; qz[3] = z0;
-    qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
+    qx[0] = x0;
+    qy[0] = y0;
+    qz[0] = z0;
+    qx[1] = x1;
+    qy[1] = y0;
+    qz[1] = z1;
+    qx[2] = x1;
+    qy[2] = y1;
+    qz[2] = z1;
+    qx[3] = x0;
+    qy[3] = y1;
+    qz[3] = z0;
+    qu.set(CROSS_U);
+    qv.set(CROSS_V);
+    qb.set(CROSS_B);
+    qs[0] = 0;
+    qs[1] = 0;
+    qs[2] = height;
+    qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 A（反面：顶点反序 + UV 反序，亮度保持原顺序）
-    qx[0] = x0; qy[0] = y1; qz[0] = z0;
-    qx[1] = x1; qy[1] = y1; qz[1] = z1;
-    qx[2] = x1; qy[2] = y0; qz[2] = z1;
-    qx[3] = x0; qy[3] = y0; qz[3] = z0;
-    qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
-    qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
+    qx[0] = x0;
+    qy[0] = y1;
+    qz[0] = z0;
+    qx[1] = x1;
+    qy[1] = y1;
+    qz[1] = z1;
+    qx[2] = x1;
+    qy[2] = y0;
+    qz[2] = z1;
+    qx[3] = x0;
+    qy[3] = y0;
+    qz[3] = z0;
+    qu[0] = 0;
+    qu[1] = cu(1);
+    qu[2] = cu(1);
+    qu[3] = 0;
+    qv[0] = cu(1);
+    qv[1] = cu(1);
+    qv[2] = 0;
+    qv[3] = 0;
+    qs[0] = height;
+    qs[1] = height;
+    qs[2] = 0;
+    qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
 
     // 面 B（正面）
-    qx[0] = x1; qy[0] = y0; qz[0] = z0;
-    qx[1] = x0; qy[1] = y0; qz[1] = z1;
-    qx[2] = x0; qy[2] = y1; qz[2] = z1;
-    qx[3] = x1; qy[3] = y1; qz[3] = z0;
-    qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
+    qx[0] = x1;
+    qy[0] = y0;
+    qz[0] = z0;
+    qx[1] = x0;
+    qy[1] = y0;
+    qz[1] = z1;
+    qx[2] = x0;
+    qy[2] = y1;
+    qz[2] = z1;
+    qx[3] = x1;
+    qy[3] = y1;
+    qz[3] = z0;
+    qu.set(CROSS_U);
+    qv.set(CROSS_V);
+    qb.set(CROSS_B);
+    qs[0] = 0;
+    qs[1] = 0;
+    qs[2] = height;
+    qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 B（反面）
-    qx[0] = x1; qy[0] = y1; qz[0] = z0;
-    qx[1] = x0; qy[1] = y1; qz[1] = z1;
-    qx[2] = x0; qy[2] = y0; qz[2] = z1;
-    qx[3] = x1; qy[3] = y0; qz[3] = z0;
-    qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
-    qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
+    qx[0] = x1;
+    qy[0] = y1;
+    qz[0] = z0;
+    qx[1] = x0;
+    qy[1] = y1;
+    qz[1] = z1;
+    qx[2] = x0;
+    qy[2] = y0;
+    qz[2] = z1;
+    qx[3] = x1;
+    qy[3] = y0;
+    qz[3] = z0;
+    qu[0] = 0;
+    qu[1] = cu(1);
+    qu[2] = cu(1);
+    qu[3] = 0;
+    qv[0] = cu(1);
+    qv[1] = cu(1);
+    qv[2] = 0;
+    qv[3] = 0;
+    qs[0] = height;
+    qs[1] = height;
+    qs[2] = 0;
+    qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
   };
 
@@ -386,7 +528,10 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const id = src.getId(bx, by, bz);
     if (id === 0) return;
     const def = src.def(id);
-    if (def.shape === 'cross') { emitCross(bx, by, bz, def); return; }
+    if (def.shape === 'cross') {
+      emitCross(bx, by, bz, def);
+      return;
+    }
     for (let fi = 0; fi < FACES.length; fi++) {
       const face = FACES[fi];
       const [nx, ny, nz] = face.normal;
@@ -397,9 +542,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   if (!src.greedy) {
-    for (let y = 0; y < H; y++)
-      for (let lz = 0; lz < CS; lz++)
-        for (let lx = 0; lx < CS; lx++) emitBlock(lx, y, lz);
+    for (let y = 0; y < H; y++) for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) emitBlock(lx, y, lz);
     out.stats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
     return out;
   }
@@ -454,9 +597,17 @@ export function meshChunk(src: MeshSource): MeshOutput {
           computeCornerLightInto(src, b[0], b[1], b[2], face, cornerSky, cornerBlock);
           // AO 四角不全等 → 保持逐面输出，避免合并后亮度渐变被拉伸
           // 角点光照四角不全等同理：合并面只能带一份光，拉伸会把渐变抹平
-          if (ao[0] !== ao[1] || ao[0] !== ao[2] || ao[0] !== ao[3] ||
-            cornerSky[0] !== cornerSky[1] || cornerSky[0] !== cornerSky[2] || cornerSky[0] !== cornerSky[3] ||
-            cornerBlock[0] !== cornerBlock[1] || cornerBlock[0] !== cornerBlock[2] || cornerBlock[0] !== cornerBlock[3]) {
+          if (
+            ao[0] !== ao[1] ||
+            ao[0] !== ao[2] ||
+            ao[0] !== ao[3] ||
+            cornerSky[0] !== cornerSky[1] ||
+            cornerSky[0] !== cornerSky[2] ||
+            cornerSky[0] !== cornerSky[3] ||
+            cornerBlock[0] !== cornerBlock[1] ||
+            cornerBlock[0] !== cornerBlock[2] ||
+            cornerBlock[0] !== cornerBlock[3]
+          ) {
             emitFace(b[0], b[1], b[2], def, face, ao, cornerSky, cornerBlock);
             continue;
           }
@@ -475,9 +626,12 @@ export function meshChunk(src: MeshSource): MeshOutput {
 
       // 贪心：先横向扩 w，再纵向扩 h（要求整行 key 一致）
       for (let V = 0; V < dimV; V++) {
-        for (let U = 0; U < dimU;) {
+        for (let U = 0; U < dimU; ) {
           const key = mask[V * dimU + U];
-          if (key === 0) { U++; continue; }
+          if (key === 0) {
+            U++;
+            continue;
+          }
           let w = 1;
           while (U + w < dimU && mask[V * dimU + U + w] === key) w++;
           let h = 1;
@@ -485,8 +639,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
             for (let i = 0; i < w; i++) if (mask[(V + h) * dimU + U + i] !== key) break grow;
             h++;
           }
-          for (let j = 0; j < h; j++)
-            for (let i = 0; i < w; i++) mask[(V + j) * dimU + U + i] = 0;
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) mask[(V + j) * dimU + U + i] = 0;
 
           const k = key - 1;
           const id = k & 255;
@@ -501,8 +654,10 @@ export function meshChunk(src: MeshSource): MeshOutput {
           base[0] = b0[0] + origin[0];
           base[1] = b0[1] + origin[1];
           base[2] = b0[2] + origin[2];
-          duV[0] = duV[1] = duV[2] = 0; duV[uAxis] = uDir;
-          dvV[0] = dvV[1] = dvV[2] = 0; dvV[vAxis] = vDir;
+          duV[0] = duV[1] = duV[2] = 0;
+          duV[uAxis] = uDir;
+          dvV[0] = dvV[1] = dvV[2] = 0;
+          dvV[vAxis] = vDir;
           const bright = face.shade * AO_LEVELS[ao];
           const flags = flagsFor(def);
           for (let i = 0; i < 4; i++) {

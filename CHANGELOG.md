@@ -187,9 +187,10 @@
 
 #### 新增
 
-- **顶点属性打包**：每顶点 60 B → **44 B**。`colors`(3) + `aTileRect`(4) 收成
+- **顶点属性打包**：每顶点 60 B → **48 B 基线**（当时记作 44 B，为并入 `aSway` 前的旧口径；
+  统一后的口径见 `src/world/meshTypes.ts`）。`colors`(3) + `aTileRect`(4) 收成
   `aShade`(1) + `aTileOrigin`(2)，tile 尺寸改由 uniform `uTileSize` 提供。
-  显存与带宽下降，着色完全不变。
+  显存与带宽下降，着色完全不变。T3 起 aLight 位域量化进一步到 44 B 生效档。
 - **抗锯齿分档** `?aa=off|msaa|ssaa`（默认 `off`）：`msaa` 在创建 GL 上下文时打开硬件抗锯齿，
   `ssaa` 按 `SSAA_SCALE = 1.5` 超采样（受 `MAX_PIXEL_RATIO` 封顶）。二者都可在运行时切换
   （`setQuality` / `applyPixelRatio` 同一套路径）。

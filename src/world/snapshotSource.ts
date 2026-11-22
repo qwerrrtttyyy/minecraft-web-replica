@@ -89,4 +89,26 @@ export class SnapshotMeshSource implements MeshSource {
   get mergeEmissive(): boolean {
     return this.config.mergeEmissive;
   }
+
+  get boundaryLightFix(): boolean {
+    return this.config.boundaryLightFix;
+  }
+
+  /**
+   * E4 Worker 侧：只从 1 格 halo 快照取真实邻块光照，越界坐标 clamp 到 halo 边缘。
+   * 不 import World / three，保持 Worker bundle 与数据/渲染解耦（硬规则 6）。
+   */
+  crossChunkLight(lx: number, y: number, lz: number, channel: 'sky' | 'block'): number {
+    const cx = Math.max(-1, Math.min(CHUNK_SIZE, lx));
+    const cz = Math.max(-1, Math.min(CHUNK_SIZE, lz));
+    const W = SW;
+    const idx = (y * W + cz + 1) * W + cx + 1;
+    if (channel === 'sky') {
+      if (y >= WORLD_HEIGHT) return 15;
+      if (y < 0) return 0;
+      return this.snapshot.sky[idx];
+    }
+    if (y < 0 || y >= WORLD_HEIGHT) return 0;
+    return this.snapshot.block[idx];
+  }
 }

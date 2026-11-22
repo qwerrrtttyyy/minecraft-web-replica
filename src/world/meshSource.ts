@@ -38,6 +38,7 @@ export function buildMeshConfig(
   greedy: boolean,
   revision: number,
   mergeEmissive = true,
+  boundaryLightFix = false,
 ): MeshConfig {
   const defs: (MeshBlockDef | null)[] = [null];
   for (const d of registry.all()) {
@@ -63,6 +64,7 @@ export function buildMeshConfig(
     bedrockId: registry.byNameGet('bedrock')?.id ?? 3,
     greedy,
     mergeEmissive,
+    boundaryLightFix,
     revision,
   };
 }
@@ -196,5 +198,18 @@ export class WorldMeshSource implements MeshSource {
 
   get mergeEmissive(): boolean {
     return this.config.mergeEmissive;
+  }
+
+  get boundaryLightFix(): boolean {
+    return this.config.boundaryLightFix;
+  }
+
+  /** E4 主线程侧：直接读活 World 的真实邻块光照（本来就是精确值） */
+  crossChunkLight(lx: number, y: number, lz: number, channel: 'sky' | 'block'): number {
+    const x = this.x0 + lx;
+    const z = this.z0 + lz;
+    return channel === 'sky'
+      ? this.world.getSkyLight(x, y, z)
+      : this.world.getBlockLight(x, y, z);
   }
 }

@@ -1,23 +1,25 @@
-import type { EventService, AnyEventHandler } from '../events/EventService';
-import type { EventChannel, EventChannelOptions } from '../events/EventChannel';
-import type { GameEvents } from '../events/GameEvents';
-import type { Disposable, ServiceContainer } from '../ServiceContainer';
 import type { CraftAPI } from '../../api/CraftAPI';
 import { PLUGIN_API_VERSION, UNSPECIFIED_PLUGIN_VERSION } from '../../core/version';
-import { parseDependency, satisfies } from './semver';
+import type { EventChannel, EventChannelOptions } from '../events/EventChannel';
+import type { AnyEventHandler, EventService } from '../events/EventService';
+import type { GameEvents } from '../events/GameEvents';
+import type { Disposable, ServiceContainer } from '../ServiceContainer';
+import { activateHostCarrier, activateModuleCarrier } from './carriers';
+import type { CarrierHost, CarrierInfo, WasmBytes } from './carriers/types';
+import { ExtensionRegistry } from './extensions';
 import { loadPluginDefinition } from './loader';
 import {
-  createPluginStorage, defaultPluginStorageProvider,
-  type PluginStorageProvider,
-} from './storage';
-import type {
-  PluginContext, PluginDefinition, PluginManifest, PluginPermission,
-  PluginRecord, PluginState, PluginStats,
+  PLUGIN_PERMISSIONS,
+  type PluginContext,
+  type PluginDefinition,
+  type PluginManifest,
+  type PluginPermission,
+  type PluginRecord,
+  type PluginState,
+  type PluginStats,
 } from './PluginContext';
-import { ExtensionRegistry } from './extensions';
-import { PLUGIN_PERMISSIONS } from './PluginContext';
-import type { CarrierHost, CarrierInfo, WasmBytes } from './carriers/types';
-import { activateModuleCarrier, activateHostCarrier } from './carriers';
+import { parseDependency, satisfies } from './semver';
+import { createPluginStorage, defaultPluginStorageProvider, type PluginStorageProvider } from './storage';
 
 interface InternalRecord {
   def: PluginDefinition;
@@ -73,7 +75,10 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
     ['save', 'setProvider'],
   ],
   'blocks:register': [['registerBlock'], ['registerTile'], ['registerEntity'], ['setGenerator']],
-  'time:write': [['time', 'set'], ['time', 'setDayLength']],
+  'time:write': [
+    ['time', 'set'],
+    ['time', 'setDayLength'],
+  ],
   // H14：settings 实际 17 个写入口此前只拦 4 个（可改线程数 / 关自动保存 /
   // importOptions 一键改全部设置）；input.setBinding 可改键位，一并列入。
   'settings:write': [
@@ -109,7 +114,13 @@ const WRITE_CAPABILITIES: Record<PluginPermission, readonly string[][]> = {
     ['botany', 'unregisterRules'],
   ],
   'api:emit': [['emit']],
-  'wasm:use': [['wasm', 'call'], ['wasm', 'callModule'], ['wasm', 'registerModule'], ['wasm', 'unregisterModule'], ['wasm', 'setEnabled']],
+  'wasm:use': [
+    ['wasm', 'call'],
+    ['wasm', 'callModule'],
+    ['wasm', 'registerModule'],
+    ['wasm', 'unregisterModule'],
+    ['wasm', 'setEnabled'],
+  ],
   'events:subscribe': [['on'], ['off']],
 };
 
@@ -138,8 +149,12 @@ function copyObject(src: object): Record<string, unknown> {
       const d = Object.getOwnPropertyDescriptor(o, key)!;
       if (d.get || d.set) {
         Object.defineProperty(out, key, {
-          get() { return d.get!.call(src); },
-          set(v) { d.set?.call(src, v); },
+          get() {
+            return d.get!.call(src);
+          },
+          set(v) {
+            d.set?.call(src, v);
+          },
           enumerable: true,
         });
       } else if (typeof d.value === 'function') {
@@ -160,40 +175,84 @@ function copyObject(src: object): Record<string, unknown> {
  * 的不变式校验，把 deny 桩换成真方法时抛 TypeError。
  */
 const API_TOP_LEVEL = [
-  'version', 'release', 'registerBlock', 'registerTile', 'registerEntity', 'setGenerator',
-  'on', 'off', 'emit',
+  'version',
+  'release',
+  'registerBlock',
+  'registerTile',
+  'registerEntity',
+  'setGenerator',
+  'on',
+  'off',
+  'emit',
 ] as const;
 
 const API_NAMESPACES: Readonly<Record<string, readonly string[]>> = {
   events: ['scope', 'stats', 'onAny', 'waitFor'],
   plugins: [
-    'register', 'enable', 'disable', 'unload', 'list', 'get', 'reload', 'enableAll',
-    'stats', 'install', 'findByCapability',
+    'register',
+    'enable',
+    'disable',
+    'unload',
+    'list',
+    'get',
+    'reload',
+    'enableAll',
+    'stats',
+    'install',
+    'findByCapability',
   ],
   wasm: [
-    'status', 'stats', 'benchmark', 'setEnabled', 'listModules', 'call', 'callModule',
-    'registerModule', 'unregisterModule',
+    'status',
+    'stats',
+    'benchmark',
+    'setEnabled',
+    'listModules',
+    'call',
+    'callModule',
+    'registerModule',
+    'unregisterModule',
   ],
   extensions: ['points', 'stats', 'has', 'list'],
   botany: ['registerPlant', 'unregisterPlant', 'registerRule', 'unregisterRules', 'listRules', 'stats'],
   diagnostics: ['run', 'last'],
-  world: [
-    'seed', 'getBlock', 'setBlock', 'decorate', 'surfaceHeight', 'biomeAt', 'terrain', 'raycast',
-  ],
+  world: ['seed', 'getBlock', 'setBlock', 'decorate', 'surfaceHeight', 'biomeAt', 'terrain', 'raycast'],
   player: ['position', 'teleport', 'setFly', 'setCamera', 'break', 'place', 'selectedBlock'],
   time: ['get', 'set', 'setDayLength', 'text'],
   entities: ['spawn', 'list'],
   tnt: ['ignite'],
   save: ['export', 'import', 'setProvider', 'exportFile', 'importFile'],
   settings: [
-    'renderDistance', 'sensitivity', 'fov', 'sound', 'volume', 'invertY', 'quality',
-    'particles', 'viewBob', 'autoJump', 'touchSensitivity', 'debugOverlay', 'greedy',
-    'mesherThreads', 'autosaveInterval', 'exportOptions', 'importOptions',
+    'renderDistance',
+    'sensitivity',
+    'fov',
+    'sound',
+    'volume',
+    'invertY',
+    'quality',
+    'particles',
+    'viewBob',
+    'autoJump',
+    'touchSensitivity',
+    'debugOverlay',
+    'greedy',
+    'mesherThreads',
+    'autosaveInterval',
+    'exportOptions',
+    'importOptions',
   ],
   input: ['getBinding', 'setBinding', 'resetBindings', 'gamepadConnected'],
   survival: [
-    'mode', 'setMode', 'health', 'hunger', 'breath', 'damage', 'heal', 'give', 'count',
-    'inventory', 'respawn',
+    'mode',
+    'setMode',
+    'health',
+    'hunger',
+    'breath',
+    'damage',
+    'heal',
+    'give',
+    'count',
+    'inventory',
+    'respawn',
   ],
   // 不透明门面：整段复制（见 OPAQUE_NAMESPACES）
   blocks: [],
@@ -221,11 +280,7 @@ function pickAllowed(src: Record<string, unknown>, keys: readonly string[]): Rec
  * - `api.events.scope(ns)` 返回通道的子通道，同样随插件销毁；
  * - `api.events.waitFor / onAny` 也归属通道，避免绕过通道作用域。
  */
-export function scopeAPI(
-  base: CraftAPI,
-  permissions: PluginPermission[] = [],
-  channel?: EventChannel,
-): CraftAPI {
+export function scopeAPI(base: CraftAPI, permissions: PluginPermission[] = [], channel?: EventChannel): CraftAPI {
   const perms = new Set(permissions);
   const baseCopy = copyObject(base) as Record<string, unknown>;
   const rec: Record<string, unknown> = pickAllowed(baseCopy, API_TOP_LEVEL);
@@ -237,10 +292,7 @@ export function scopeAPI(
     rec[ns] = OPAQUE_NAMESPACES.has(ns) ? copied : pickAllowed(copied, keys);
   }
 
-  for (const [permission, paths] of Object.entries(WRITE_CAPABILITIES) as [
-    PluginPermission,
-    readonly string[][],
-  ][]) {
+  for (const [permission, paths] of Object.entries(WRITE_CAPABILITIES) as [PluginPermission, readonly string[][]][]) {
     if (perms.has(permission)) continue;
     for (const path of paths) denyPath(rec, path, permission);
   }
@@ -266,13 +318,10 @@ export function scopeAPI(
   const baseEvents = base.events;
   api.events = {
     scope: (ns: string, options?: EventChannelOptions): EventChannel =>
-      channel
-        ? channel.fork(ns)
-        : baseEvents.scope(ns, { ...options, canEmit }),
+      channel ? channel.fork(ns) : baseEvents.scope(ns, { ...options, canEmit }),
     stats: () => baseEvents.stats(),
     onAny: (fn: AnyEventHandler) => (channel ? channel.onAny(fn) : baseEvents.onAny(fn)),
-    waitFor: (type, timeoutMs) =>
-      channel ? channel.waitFor(type, timeoutMs) : baseEvents.waitFor(type, timeoutMs),
+    waitFor: (type, timeoutMs) => (channel ? channel.waitFor(type, timeoutMs) : baseEvents.waitFor(type, timeoutMs)),
   };
   if (channel) {
     api.on = (<K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void) =>
@@ -292,29 +341,30 @@ export function scopeAPI(
 }
 
 const CAPABILITY_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,63}$/i;
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
+const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** 注册期的 manifest 静态校验：错误在组装阶段暴露，不拖到 enable */
 function validateManifest(manifest: PluginManifest, apiVersion: string): void {
   if (manifest.apiVersion !== undefined && !satisfies(apiVersion, manifest.apiVersion)) {
-    throw new Error(
-      `[plugins] ${manifest.id} 要求插件 API ${manifest.apiVersion}，当前引擎为 ${apiVersion}`,
-    );
+    throw new Error(`[plugins] ${manifest.id} 要求插件 API ${manifest.apiVersion}，当前引擎为 ${apiVersion}`);
   }
   if (manifest.priority !== undefined && !Number.isFinite(manifest.priority)) {
     throw new Error(`[plugins] ${manifest.id} priority 必须是有限数值`);
   }
-  if (manifest.timeoutMs !== undefined &&
-      (!Number.isInteger(manifest.timeoutMs) || manifest.timeoutMs < 50 || manifest.timeoutMs > 120_000)) {
+  if (
+    manifest.timeoutMs !== undefined &&
+    (!Number.isInteger(manifest.timeoutMs) || manifest.timeoutMs < 50 || manifest.timeoutMs > 120_000)
+  ) {
     throw new Error(`[plugins] ${manifest.id} timeoutMs 必须是 50~120000 的整数`);
   }
   if (manifest.config !== undefined && !isPlainObject(manifest.config)) {
     throw new Error(`[plugins] ${manifest.id} config 必须是普通对象`);
   }
   if (manifest.capabilities !== undefined) {
-    if (!Array.isArray(manifest.capabilities) ||
-        manifest.capabilities.some((c) => typeof c !== 'string' || !CAPABILITY_PATTERN.test(c))) {
+    if (
+      !Array.isArray(manifest.capabilities) ||
+      manifest.capabilities.some((c) => typeof c !== 'string' || !CAPABILITY_PATTERN.test(c))
+    ) {
       throw new Error(`[plugins] ${manifest.id} capabilities 必须是合法标识符数组`);
     }
   }
@@ -342,16 +392,31 @@ function withSetupTimeout<T>(work: T | Promise<T>, ms: number, id: string): Prom
   const promise = Promise.resolve(work) as Promise<T>;
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      void promise.then((r) => {
-        if (typeof r === 'function') {
-          try { (r as () => void)(); } catch { /* 迟到 teardown 失败不影响主流程 */ }
-        }
-      }, () => { /* setup 自身失败，无需额外清理 */ });
+      void promise.then(
+        (r) => {
+          if (typeof r === 'function') {
+            try {
+              (r as () => void)();
+            } catch {
+              /* 迟到 teardown 失败不影响主流程 */
+            }
+          }
+        },
+        () => {
+          /* setup 自身失败，无需额外清理 */
+        },
+      );
       reject(new PluginTimeoutError(id, ms));
     }, ms);
     void promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
     );
   });
 }
@@ -411,11 +476,17 @@ export class PluginService implements Disposable {
   }
 
   /** 供组装根 / 测试取得本服务使用的扩展注册表（与容器令牌同实例） */
-  getExtensions(): ExtensionRegistry { return this.extensions; }
+  getExtensions(): ExtensionRegistry {
+    return this.extensions;
+  }
 
   /** 实验性内容开关：关闭后新启用的 WASM 载体插件会被隔离为 failed；已启用的不受影响 */
-  setExperimental(v: boolean): void { this.experimental = v; }
-  getExperimental(): boolean { return this.experimental; }
+  setExperimental(v: boolean): void {
+    this.experimental = v;
+  }
+  getExperimental(): boolean {
+    return this.experimental;
+  }
 
   private snapshot(r: InternalRecord): PluginRecord {
     return {
@@ -423,7 +494,9 @@ export class PluginService implements Disposable {
         ...r.def.manifest,
         permissions: r.def.manifest.permissions ? [...r.def.manifest.permissions] : undefined,
         dependencies: r.def.manifest.dependencies ? [...r.def.manifest.dependencies] : undefined,
-        optionalDependencies: r.def.manifest.optionalDependencies ? [...r.def.manifest.optionalDependencies] : undefined,
+        optionalDependencies: r.def.manifest.optionalDependencies
+          ? [...r.def.manifest.optionalDependencies]
+          : undefined,
         capabilities: r.def.manifest.capabilities ? [...r.def.manifest.capabilities] : undefined,
       },
       state: r.state,
@@ -462,8 +535,12 @@ export class PluginService implements Disposable {
     const unknown = perms.filter((p: string) => !(PLUGIN_PERMISSIONS as readonly string[]).includes(p));
     if (unknown.length > 0) throw new Error(`[plugins] ${id} 声明了未知权限：${unknown.join(', ')}`);
     const rec: InternalRecord = {
-      def, state: 'registered', teardown: [], epoch: 0,
-      warnings: [], registry: new Map<string, unknown>(),
+      def,
+      state: 'registered',
+      teardown: [],
+      epoch: 0,
+      warnings: [],
+      registry: new Map<string, unknown>(),
     };
     this.records.set(id, rec);
     this.events.emit('plugin:registered', { id });
@@ -584,7 +661,10 @@ export class PluginService implements Disposable {
         storage,
         log: (...args: unknown[]) => console.log(`[plugin:${id}]`, ...args),
         onDispose: (fn) => rec.teardown.push(fn),
-        provide: <T>(name: string, value: T): T => { rec.registry.set(name, value); return value; },
+        provide: <T>(name: string, value: T): T => {
+          rec.registry.set(name, value);
+          return value;
+        },
         require: <T>(name: string): T => {
           if (!rec.registry.has(name)) throw new Error(`[plugin:${id}] 插件私有服务未注册: ${name}`);
           return rec.registry.get(name) as T;
@@ -608,9 +688,10 @@ export class PluginService implements Disposable {
         if (def.carrier.kind.startsWith('wasm:') && !this.experimental) {
           throw new Error(`[plugins] ${id} 使用实验性 WASM 载体，请在设置页开启「实验性内容」`);
         }
-        const activation = def.carrier.kind === 'wasm:module'
-          ? activateModuleCarrier(def.carrier, ctx, bridge)
-          : activateHostCarrier(def.carrier as import('./carriers/types').WasmHostCarrier, ctx, bridge);
+        const activation =
+          def.carrier.kind === 'wasm:module'
+            ? activateModuleCarrier(def.carrier, ctx, bridge)
+            : activateHostCarrier(def.carrier as import('./carriers/types').WasmHostCarrier, ctx, bridge);
         rec.teardown.push(activation.teardown);
         rec.carrier = activation.info;
       } else {
@@ -627,7 +708,9 @@ export class PluginService implements Disposable {
       }
       if (typeof result === 'function') rec.teardown.push(result);
       // 扩展点归属清理：任何载体停用都撤销本插件注册的全部扩展点
-      rec.teardown.push(() => { this.extensions.unregisterOwner(id); });
+      rec.teardown.push(() => {
+        this.extensions.unregisterOwner(id);
+      });
       rec.state = 'enabled';
       rec.error = undefined;
       rec.durationMs = Date.now() - startedAt;
@@ -667,7 +750,10 @@ export class PluginService implements Disposable {
     for (const r of this.records.values()) {
       if (r.def.manifest.id === id || r.state !== 'enabled') continue;
       for (const spec of r.def.manifest.dependencies ?? []) {
-        if (parseDependency(spec)?.id === id) { out.push(r.def.manifest.id); break; }
+        if (parseDependency(spec)?.id === id) {
+          out.push(r.def.manifest.id);
+          break;
+        }
       }
     }
     return out;

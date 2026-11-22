@@ -1,6 +1,6 @@
 import { mulberry32 } from '../core/types';
 import { Blackboard } from './Blackboard';
-import { TickContext } from './Node';
+import type { TickContext } from './Node';
 
 /** 把 (worldSeed, entityId, label) 混成一个 32 位种子，供 mulberry32 使用。 */
 export function hashSeed(worldSeed: number, entityId: number, label: string): number {
@@ -39,8 +39,8 @@ export function makeTickContext(opts: {
     playerDead: false,
     rng,
     events: { emit: () => undefined },
-    api: undefined,
+    api: {},
     blackboard,
     dt: 0,
-  } as TickContext;
+  };
 }

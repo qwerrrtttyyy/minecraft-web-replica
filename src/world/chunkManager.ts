@@ -1,18 +1,24 @@
 import * as THREE from 'three';
-import MeshWorker from './mesh.worker?worker&inline';
-import { createWorkerPool } from './workerPool';
 import { CHUNK_SIZE, chunkKey, type System } from '../core/types';
-import type { EventService } from '../services/events';
-import type { World } from './world';
 import type { TextureAtlas } from '../gfx/atlas';
+import type { EventService } from '../services/events';
+import MeshWorker from './mesh.worker?worker&inline';
 import { meshChunk } from './mesher';
 import { buildMeshConfig, buildMeshSnapshot, WorldMeshSource } from './meshSource';
-import { installTiledAtlas } from './tiledAtlas';
 import {
-  MESH_CHANNELS, packMesh,
-  type MeshConfig, type MeshStats, type PackedGeo, type PackedMesh,
+  ACTIVE_LIGHT_FLOATS,
+  MESH_CHANNELS,
+  type MeshConfig,
+  type MeshStats,
+  type PackedGeo,
+  type PackedMesh,
+  packMesh,
+  planDrain,
   type WorkerResponse,
 } from './meshTypes';
+import { installTiledAtlas } from './tiledAtlas';
+import { createWorkerPool } from './workerPool';
+import type { World } from './world';
 
 interface ChunkMeshes {
   opaque?: THREE.Mesh;
@@ -34,8 +40,41 @@ const GEN_BUDGET_MS = 4;
 const MAX_DISPATCH_PER_FRAME = 6;
 /** dirty + 在途任务积压上限：超过后暂停生成，优先消化网格队列 */
 export const BACKLOG_LIMIT = 24;
+/** 每帧最多收割多少条 Worker 回传（默认 4，可经 options / setDrainLimit 覆盖） */
+export const DEFAULT_DRAIN_LIMIT = 4;
 /** initialLoad 等待 Worker 的兜底超时（ms），超时自动降级主线程 */
 const LOAD_TIMEOUT_MS = 15000;
+
+/**
+ * 一遍扫描顶点求 AABB，再以「中点 + 半对角线 + 余量」构造保守包围球。
+ *
+ * 相比 three 的 computeBoundingSphere（两遍扫描 + 多次分配），这里只走一遍 position 数组；
+ * 又比固定 16×16×80 区块球紧得多，避免球过大导致视锥剔除失效、draw call 反增
+ * （E12 实测固定球 renderMs 0.37 → 0.45，已据此改进）。
+ * AABB 半对角线必包含全部顶点，因此不会让可见物消失；球挂在几何上，配置重建随几何自然失效。
+ */
+const cachedSphereFromPositions = (positions: Float32Array): THREE.Sphere => {
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i],
+      y = positions[i + 1],
+      z = positions[i + 2];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+  const radius = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2 + 1e-3;
+  return new THREE.Sphere(center, radius);
+};
 
 export interface ChunkManagerOptions {
   /** 强制主线程同步网格化（对照基准 / 调试 / file:// 回退） */
@@ -46,18 +85,31 @@ export interface ChunkManagerOptions {
   mergeEmissive?: boolean;
   /** 网格化 Worker 池大小覆盖（默认按 navigator.hardwareConcurrency 推断，?workers=N 传入） */
   workers?: number;
+  /** 每帧最多收割多少条 Worker 回传（默认 4，0/负数按 1 处理） */
+  drainLimit?: number;
   /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
   camera?: THREE.Camera;
 }
 
-const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
+type GeoPass = 'opaque' | 'emissive' | 'transparent' | 'water';
+type SphereMode = 'cached' | 'exact';
+
+/**
+ * 把 Worker 回传的紧凑几何装配为 BufferGeometry（仅主线程调用）。
+ *
+ * T3 两项优化都集中在这里：
+ * - aLight 由 2 个 float 变为 1 个位域 float（见 ACTIVE_LIGHT_FLOATS）；
+ * - 不透明 / 自发光通道使用保守包围球常量，不再逐顶点 computeBoundingSphere；
+ *   透明 / 水通道保留精确球体，因为它们参与距离排序，不能改变中心点。
+ */
+const buildGeo = (p: PackedGeo, pass: GeoPass, sphereMode: SphereMode): THREE.BufferGeometry => {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(p.uvs, 2));
   // 每顶点明暗（面定向 × AO）：RGB 三通道同值，单分量即可
   g.setAttribute('aShade', new THREE.BufferAttribute(p.shade, 1));
-  // 每顶点天空光 / 方块光，shader 与昼夜系数、太阳色一起决定最终亮度
-  g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
+  // 每顶点天空光 / 方块光：T3 起为 1 个打包 float，shader 用 floor/mod 解码
+  g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, ACTIVE_LIGHT_FLOATS));
   // 每个顶点的图集 tile 起点，shader 用 fract(局部UV) × uTileSize 平铺
   g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
   // 每个顶点的开关：0 普通 / 1 群系染色 / 2 自发光（不受光照与染色影响）
@@ -65,7 +117,12 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   // 每个顶点的风摆权重（0~1）：底部 0 / 顶部随植物高度，只对十字面植物生效
   g.setAttribute('aSway', new THREE.BufferAttribute(p.sways, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
-  g.computeBoundingSphere();
+  if (pass === 'transparent' || pass === 'water' || sphereMode === 'exact') {
+    g.computeBoundingSphere();
+  } else {
+    // 保守球：每个新几何独立一份，配置重建时随几何一起失效，不存在跨 revision 的陈旧缓存
+    g.boundingSphere = cachedSphereFromPositions(p.positions);
+  }
   return g;
 };
 
@@ -120,26 +177,55 @@ vec3 foliageTint(vec2 wxz) {
  * 与 v1.5.1 的独立 emissive 通道行为一致，用于 E3 的 A/B 对照。
  */
 function injectLegacyEmissive(shader: ChunkShader) {
-  shader.vertexShader = 'attribute float aShade;\nvarying float vShade;\n' + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvShade = aShade;',
-  );
-  shader.fragmentShader = 'varying float vShade;\n' + shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.rgb *= vShade;',
-  );
+  shader.vertexShader =
+    'attribute float aShade;\nvarying float vShade;\n' +
+    shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvShade = aShade;');
+  shader.fragmentShader =
+    'varying float vShade;\n' +
+    shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n\tdiffuseColor.rgb *= vShade;',
+    );
 }
 
-function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
+/**
+ * 注入烘焙光照 + 群系染色。
+ *
+ * T3 两项画面侧优化：
+ * 1. aLight 现在是 1 个打包 float：sky = floor(v/16)/15，block = mod(v,16)/15。
+ *    编码在 mesher（Worker 共用），解码放在顶点着色器，插值仍是逐顶点的平滑光照。
+ * 2. 植被染色改为「逐顶点降频」（perVertexFoliage=true，默认）：
+ *    原实现每像素调用 foliageTint 两次 foliageNoise = 8 次 hash；
+ *    现在同样的 GLSL 只在顶点执行，片元只做插值。噪声波长（~83 / ~18 格）远大于
+ *    单个 quad，差异在 E10 的像素判据内；设为 false 可回到逐像素路径做同页 A/B。
+ */
+function injectLight(
+  shader: ChunkShader,
+  daylight: { value: number },
+  sunTint: { value: THREE.Color },
+  perVertexFoliage: boolean,
+) {
   shader.uniforms.uDaylight = daylight;
   shader.uniforms.uSunTint = sunTint;
-  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
-  );
-  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    `#include <color_fragment>
+  const vertexFoliage = perVertexFoliage ? `varying vec3 vFolTint;\n${FOLIAGE_GLSL}` : '';
+  const vertexBegin =
+    '#include <begin_vertex>' +
+    '\n\tvLight = vec2(floor(aLight / 16.0) / 15.0, mod(aLight, 16.0) / 15.0);' +
+    '\n\tvTint = aTint;\n\tvShade = aShade;' +
+    '\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;' +
+    (perVertexFoliage ? '\n\tvFolTint = foliageTint(vFolPos.xz);' : '');
+  shader.vertexShader =
+    'attribute float aLight;\nattribute float aTint;\nattribute float aShade;\n' +
+    'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n' +
+    vertexFoliage +
+    shader.vertexShader.replace('#include <begin_vertex>', vertexBegin);
+  const fragmentPrefix =
+    'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\n' +
+    'varying vec3 vFolPos;\n' +
+    (perVertexFoliage ? 'varying vec3 vFolTint;\n' : '') +
+    'uniform float uDaylight;\nuniform vec3 uSunTint;\n' +
+    (perVertexFoliage ? '' : FOLIAGE_GLSL);
+  const fragmentPatch = `#include <color_fragment>
     // 顶点开关：1 = 群系染色，2 = 自发光（等价于旧的独立 emissive 材质）
     float unlit = step(1.5, vTint);
     // 植被掩膜：必须在光照染色之前采样饱和度，否则天空/太阳色会把灰度误判成彩色
@@ -147,7 +233,7 @@ function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: 
     float folMn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
     float folMask = (1.0 - unlit) * step(0.5, vTint)
       * (1.0 - smoothstep(0.10, 0.22, folMx > 0.0 ? (folMx - folMn) / folMx : 0.0));
-    vec3 folTint = foliageTint(vFolPos.xz);
+    vec3 folTint = ${perVertexFoliage ? 'vFolTint' : 'foliageTint(vFolPos.xz)'};
     float skyPart = vLight.x * uDaylight;
     float lit = max(skyPart, vLight.y);
     float blockLit = smoothstep(0.0, 0.08, vLight.y - skyPart);
@@ -155,8 +241,8 @@ function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: 
     vec3 lightTint = mix(skyTint * uSunTint, vec3(1.0), blockLit);
     // 自发光不参与光照，但保留面定向 × AO 的明暗（与旧 emissive 通道的观感一致）
     diffuseColor.rgb *= mix(vShade * (0.07 + 0.93 * lit) * lightTint, vec3(vShade), unlit);
-    diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
-  );
+    diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`;
+  shader.fragmentShader = fragmentPrefix + shader.fragmentShader.replace('#include <color_fragment>', fragmentPatch);
 }
 
 /**
@@ -166,16 +252,18 @@ function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: 
  */
 function injectSway(shader: ChunkShader, time: { value: number }) {
   shader.uniforms.uSwayTime = time;
-  shader.vertexShader = 'attribute float aSway;\nuniform float uSwayTime;\n' + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    `#include <begin_vertex>
+  shader.vertexShader =
+    'attribute float aSway;\nuniform float uSwayTime;\n' +
+    shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
     if (aSway > 0.0) {
       vec3 swayPos = (modelMatrix * vec4(position, 1.0)).xyz;
       float phase = swayPos.x * 0.63 + swayPos.z * 0.71;
       transformed.x += sin(uSwayTime * 1.35 + phase) * aSway * 0.055;
       transformed.z += cos(uSwayTime * 1.12 + phase * 1.27) * aSway * 0.038;
     }`,
-  );
+    );
 }
 
 /**
@@ -197,13 +285,16 @@ export class ChunkManager implements System {
     opaque: THREE.MeshBasicMaterial;
     /** 仅 ?emerge=0 对照路径使用 */
     emissive: THREE.MeshBasicMaterial;
-    transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial;
+    transparent: THREE.MeshBasicMaterial;
+    water: THREE.MeshBasicMaterial;
   };
   /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
   readonly lightUniform = { value: 1 };
   /** 太阳颜色，日出/日落时给天空光染色 */
   readonly sunTint = { value: new THREE.Color(1, 1, 1) };
   private waterTime = { value: 0 };
+  /** B2 水面片元 uv 扰动幅度（0 = 关闭，相位与顶点微波共用 uTime/waterTime） */
+  private waterRipple = { value: 0 };
   private meshes = new Map<string, ChunkMeshes>();
   private centerX = 0;
   private centerZ = 0;
@@ -221,12 +312,22 @@ export class ChunkManager implements System {
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
   private mergeEmissiveOption: boolean;
+  /** E4 边界光开关：变更走 invalidateConfig + postConfig + ACK 链路 */
+  private boundaryLightFixOption = false;
   private config: MeshConfig | null = null;
   private configRevision = 0;
   private generation = 0;
   private inFlight = new Map<string, InFlight>();
   private pendingResults: WorkerResponse[] = [];
   private totals: MeshStats & { chunks: number } = { quads: 0, vertices: 0, merged: 0, ms: 0, chunks: 0 };
+  /** T3 限流：单帧收割上限（config-ack 不占配额） */
+  private drainLimit = DEFAULT_DRAIN_LIMIT;
+  /** T3 收割统计，供 E11 实验读数与诊断面板使用 */
+  private drainCounters = { frames: 0, messages: 0, maxPerFrame: 0 };
+  /** T3 植被染色档：true 逐顶点（默认），false 逐像素（E10 对照） */
+  private foliagePerVertex = true;
+  /** T3 包围球档：cached 保守球（默认），exact 逐顶点计算（E12 对照） */
+  private sphereMode: SphereMode = 'cached';
 
   // ---- 透明通道按几何距离排序（解决玻璃/水叠加穿帮） ----
   private camera: THREE.Camera | null = null;
@@ -253,14 +354,18 @@ export class ChunkManager implements System {
     this.greedyOption = options.greedy ?? true;
     this.mergeEmissiveOption = options.mergeEmissive ?? true;
     this.camera = options.camera ?? null;
+    this.drainLimit = Math.max(1, Math.floor(options.drainLimit ?? DEFAULT_DRAIN_LIMIT));
     this.materials = {
       // 明暗走 aShade 单分量，不再需要 vertexColors
       opaque: new THREE.MeshBasicMaterial({ map: atlas.texture, alphaTest: 0.5 }),
       // 仅在对照路径（?emerge=0）下被使用；默认路径不自发光几何，不会编译出 program
       emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, alphaTest: 0.5 }),
       transparent: new THREE.MeshBasicMaterial({
-        map: atlas.texture, transparent: true, opacity: 0.8,
-        depthWrite: false, side: THREE.DoubleSide,
+        map: atlas.texture,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       }),
       water: new THREE.MeshBasicMaterial({
         map: atlas.texture, transparent: true, opacity: 0.78,
@@ -270,21 +375,37 @@ export class ChunkManager implements System {
     };
     // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
     for (const mat of [this.materials.opaque, this.materials.transparent]) {
-      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint);
+      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint, this.foliagePerVertex);
     }
-    // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）
+    // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）。
+    // B2 片元 uv 波纹只改 uv，不叠加第二套时间源：相位仍由 uTime=waterTime 驱动，
+    // 冻结场景下 waterTime=0，A/B/D 三档的相位完全相同，噪声底保持 0。
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
-      injectLight(shader, this.lightUniform, this.sunTint);
-      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
+      shader.uniforms.uRippleAmp = this.waterRipple;
+      injectLight(shader, this.lightUniform, this.sunTint, this.foliagePerVertex);
+      shader.vertexShader =
+        'uniform float uTime;\nvarying vec3 vRippleWorld;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
         vec3 wPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        // 片元 uv 波纹的世界坐标相位（与 uTime 共用，冻结时归零）
+        vRippleWorld = wPos;
         // N4：把波动夹紧到 ±0.02，水面顶点不再越过方块边界形成细蓝边 / 与岩石近共面闪烁。
         // 动画节奏、透明度与高光保持不变（Q5）。
         float wave = sin(wPos.x * 0.9 + uTime * 1.7) * 0.028 + cos(wPos.z * 1.1 + uTime * 1.3) * 0.028;
         transformed.y += clamp(wave, -0.02, 0.02);`,
-      );
+        );
+      shader.fragmentShader =
+        'uniform float uTime;\nuniform float uRippleAmp;\nvarying vec3 vRippleWorld;\n' +
+        `vec2 rippleUv(vec2 uv0) {
+          vec2 shift = vec2(
+            sin(vRippleWorld.x * 3.1 + uTime * 2.0),
+            cos(vRippleWorld.z * 2.7 + uTime * 1.7)
+          ) * uRippleAmp;
+          return uv0 + shift;
+        }\n` + shader.fragmentShader;
     };
     // 对照路径的旧 emissive 通道：只乘面明暗，不参与光照
     if (!this.mergeEmissiveOption) {
@@ -299,14 +420,20 @@ export class ChunkManager implements System {
         injectSway(shader, this.waterTime);
       };
     }
-    // 各通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）
-    for (const ch of MESH_CHANNELS) installTiledAtlas(this.materials[ch]);
+    // 各通道统一安装图集平铺（会串联 water 已有的 onBeforeCompile）；
+    // 水面把采样 uv 换成 rippleUv(vMapUv)，其余通道保持原表达式不变。
+    for (const ch of MESH_CHANNELS) {
+      installTiledAtlas(this.materials[ch], ch === 'water' ? 'rippleUv(vMapUv)' : 'vMapUv');
+    }
 
     if (options.forceMainThread) {
       this.mode = 'main';
     } else {
       this.spawnWorkers(ChunkManager.decidePoolSize(options.workers));
     }
+    // E14 实测波纹生效（全局 MAD=0.151）且性能无显著劣化，默认开启保守幅度；
+    // 相位共用 waterTime，冻结场景归零，不影响任何同页 A/B 的噪声底。
+    this.setWaterRipple(0.01);
     this.getConfig(); // 建立低频配置并向所有 Worker 下发
   }
 
@@ -321,7 +448,9 @@ export class ChunkManager implements System {
     }
     this.mode = 'worker';
     for (const w of pool.workers) {
-      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        this.pendingResults.push(e.data);
+      };
       w.onerror = (e) => {
         console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
         this.fallbackToMain();
@@ -334,7 +463,13 @@ export class ChunkManager implements System {
 
   /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
   private teardownWorkers(): void {
-    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    for (const w of this.workers) {
+      try {
+        w.terminate();
+      } catch {
+        /* 已销毁 */
+      }
+    }
     this.workers = [];
     this.busy = [];
     this.workerConfig = [];
@@ -376,30 +511,135 @@ export class ChunkManager implements System {
   }
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
-  get meshCount() { return this.meshes.size; }
-  get isLoading() { return this.loading; }
-  get mesherMode(): 'worker' | 'main' { return this.mode; }
-  get workerCount(): number { return this.workers.length; }
-  get inFlightCount() { return this.inFlight.size; }
-  get meshStats() { return { ...this.totals }; }
+  get meshCount() {
+    return this.meshes.size;
+  }
+  get isLoading() {
+    return this.loading;
+  }
+  get mesherMode(): 'worker' | 'main' {
+    return this.mode;
+  }
+  get workerCount(): number {
+    return this.workers.length;
+  }
+  get inFlightCount() {
+    return this.inFlight.size;
+  }
+  get meshStats() {
+    return { ...this.totals };
+  }
   /** 运行时诊断：所有 Worker 是否都已确认当前配置 */
   get configReady(): boolean {
     if (this.config === null) return false;
     if (this.mode === 'main') return true;
-    return this.workers.length > 0 &&
-      this.workers.every((_, i) => this.workerConfig[i] === this.configRevision);
+    return this.workers.length > 0 && this.workers.every((_, i) => this.workerConfig[i] === this.configRevision);
   }
-  get configRevisionValue(): number { return this.configRevision; }
+  get configRevisionValue(): number {
+    return this.configRevision;
+  }
   /** 运行时诊断：该区块是否已有网格 / 是否在途 */
-  hasMesh(cx: number, cz: number): boolean { return this.meshes.has(chunkKey(cx, cz)); }
-  hasInFlight(cx: number, cz: number): boolean { return this.inFlight.has(chunkKey(cx, cz)); }
+  hasMesh(cx: number, cz: number): boolean {
+    return this.meshes.has(chunkKey(cx, cz));
+  }
+  hasInFlight(cx: number, cz: number): boolean {
+    return this.inFlight.has(chunkKey(cx, cz));
+  }
   /** 透明/水通道的当前排序结果（按几何中心到相机距离远→近），用于调试与自动化断言 */
   get transparentOrder() {
     return this.transparentOrderCache.map((e) => ({ ...e }));
   }
   /** 每个 Worker 当前在途任务数（诊断用） */
-  get workerBusy(): number[] { return [...this.busy]; }
-  get greedy() { return this.getConfig().greedy; }
+  get workerBusy(): number[] {
+    return [...this.busy];
+  }
+  /** 当前每帧收割上限（E11 读数） */
+  get drainLimitValue(): number {
+    return this.drainLimit;
+  }
+  /** 收割统计快照（E11 读数）：帧数 / 累计消息 / 单帧峰值 */
+  get drainCountersSnapshot(): { frames: number; messages: number; maxPerFrame: number } {
+    return { ...this.drainCounters };
+  }
+  /** 当前待收割队列长度（E11 观察饥饿用） */
+  get pendingResultCount(): number {
+    return this.pendingResults.length;
+  }
+  /** 当前植被染色档（E10 读数） */
+  get foliagePerVertexEnabled(): boolean {
+    return this.foliagePerVertex;
+  }
+  /** 当前包围球档（E12 读数） */
+  get sphereModeValue(): SphereMode {
+    return this.sphereMode;
+  }
+  /** 当前水面波纹幅度（E14 读数） */
+  get waterRippleValue(): number {
+    return this.waterRipple.value;
+  }
+  /** 当前 E4 边界光档位（E16 读数） */
+  get boundaryLightFixEnabled(): boolean {
+    return this.boundaryLightFixOption;
+  }
+
+  /** 运行期调整每帧收割上限；至少 1，防止误配 0 造成永久饥饿 */
+  setDrainLimit(limit: number): void {
+    this.drainLimit = Math.max(1, Math.floor(Number.isFinite(limit) ? limit : DEFAULT_DRAIN_LIMIT));
+  }
+
+  /**
+   * 切换群系染色计算档位并触发材质重编译（同页 A/B 用）。
+   * 只改 shader，不改几何，因此场景一致性闸门仍然成立。
+   */
+  setFoliagePerVertex(enabled: boolean): void {
+    if (this.foliagePerVertex === enabled) return;
+    this.foliagePerVertex = enabled;
+    for (const mat of [this.materials.opaque, this.materials.transparent, this.materials.water]) {
+      mat.needsUpdate = true;
+    }
+  }
+
+  /**
+   * 切换包围球档位。exact 档重算已有不透明网格的球体，cached 档换回保守球；
+   * 透明 / 水通道始终精确，不受影响（距离排序依赖其中心点）。
+   */
+  setSphereMode(mode: SphereMode): void {
+    if (this.sphereMode === mode) return;
+    this.sphereMode = mode;
+    for (const entry of this.meshes.values()) {
+      for (const mesh of [entry.opaque, entry.emissive]) {
+        if (!mesh) continue;
+        if (mode === 'exact') mesh.geometry.computeBoundingSphere();
+        else {
+          mesh.geometry.boundingSphere = cachedSphereFromPositions(
+            mesh.geometry.attributes.position.array as Float32Array,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * B2 开关：设置水面片元 uv 扰动幅度。0 = 关闭（默认），幅度变化只写 uniform，
+   * 不触发材质重编译；相位仍由 waterTime 提供，冻结时归零。
+   */
+  setWaterRipple(amp: number): void {
+    this.waterRipple.value = Number.isFinite(amp) ? Math.max(0, Math.min(0.05, amp)) : 0;
+  }
+
+  /**
+   * E4 开关：越界角点采样改走 MeshSource.crossChunkLight。
+   * 配置变更必须经既有 invalidateConfig() 重建 + postConfig() 下发 + ACK 链路。
+   */
+  setBoundaryLightFix(enabled: boolean): void {
+    if (this.boundaryLightFixOption === enabled) return;
+    this.boundaryLightFixOption = enabled;
+    this.invalidateConfig();
+  }
+
+  get greedy() {
+    return this.getConfig().greedy;
+  }
   set greedy(v: boolean) {
     if (this.greedyOption === v) return;
     this.greedyOption = v;
@@ -423,7 +663,12 @@ export class ChunkManager implements System {
   private getConfig(): MeshConfig {
     if (!this.config) {
       this.config = buildMeshConfig(
-        this.world.registry, this.atlas, this.greedyOption, this.configRevision, this.mergeEmissiveOption,
+        this.world.registry,
+        this.atlas,
+        this.greedyOption,
+        this.configRevision,
+        this.mergeEmissiveOption,
+        this.boundaryLightFixOption,
       );
       this.postConfig();
     }
@@ -489,7 +734,9 @@ export class ChunkManager implements System {
     if (existing) return existing.promise;
     const generation = ++this.generation;
     let resolve!: () => void;
-    const promise = new Promise<void>((r) => { resolve = r; });
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
     this.inFlight.set(key, { generation, promise, resolve });
 
     if (this.mode === 'main') {
@@ -517,18 +764,25 @@ export class ChunkManager implements System {
     return promise;
   }
 
-  /** 收割 Worker 回传：丢弃过期代次与已卸载区块 */
+  /**
+   * 收割 Worker 回传：每帧至多处理 drainLimit 条，避免单帧尖峰。
+   *
+   * - config-ack 由 planDrain 抽出且不占配额，配置确认不会被结果队列饿死；
+   * - 未处理条目保留在队首，下一帧继续取前 N 条，任何区块都不会永久饥饿；
+   * - 每条回传（含过期代次）仍然回退 busy，保留 v1.3.2 的修复语义；
+   * - BACKLOG_LIMIT=24 的背压判定完全不动。
+   */
   private drainResults(): void {
     if (this.pendingResults.length === 0) return;
-    // 交换空数组替代 splice(0)：省掉每帧一次 O(n) 元素拷贝与临时数组分配
-    const batch = this.pendingResults;
-    this.pendingResults = [];
-    for (const msg of batch) {
-      // 配置回执不占派发计数，先处理并跳过
-      if (msg.type === 'config-ack') {
-        if (this.workerConfig[msg.wid] !== undefined) this.workerConfig[msg.wid] = msg.revision;
-        continue;
-      }
+    const plan = planDrain(this.pendingResults, this.drainLimit);
+    this.pendingResults = plan.rest;
+    for (const msg of plan.acks) {
+      if (this.workerConfig[msg.wid] !== undefined) this.workerConfig[msg.wid] = msg.revision;
+    }
+    this.drainCounters.frames++;
+    this.drainCounters.messages += plan.batch.length;
+    this.drainCounters.maxPerFrame = Math.max(this.drainCounters.maxPerFrame, plan.batch.length);
+    for (const msg of plan.batch) {
       // 每条回传消息都对应一次派发计数：无论结果是否过期都要回退，
       // 否则「区块卸载后旧结果晚到」会让 busy 计数永久偏高（v1.3.2 修复）。
       if (msg.wid != null && this.busy[msg.wid] > 0) this.busy[msg.wid]--;
@@ -573,9 +827,9 @@ export class ChunkManager implements System {
   private applyPacked(key: string, cx: number, cz: number, data: PackedMesh): void {
     const old = this.meshes.get(key);
     if (old) this.disposeMeshes(old);
-    const make = (geo: PackedGeo | null, mat: THREE.Material, order: number): THREE.Mesh | undefined => {
+    const make = (geo: PackedGeo | null, mat: THREE.Material, order: number, pass: GeoPass): THREE.Mesh | undefined => {
       if (!geo || geo.indices.length === 0) return undefined;
-      const mesh = new THREE.Mesh(buildGeo(geo), mat);
+      const mesh = new THREE.Mesh(buildGeo(geo, pass, this.sphereMode), mat);
       mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
       mesh.renderOrder = order;
       mesh.matrixAutoUpdate = false;
@@ -584,13 +838,11 @@ export class ChunkManager implements System {
       return mesh;
     };
     const entry: ChunkMeshes = {
-      opaque: make(data.opaque, this.materials.opaque, 0),
+      opaque: make(data.opaque, this.materials.opaque, 0, 'opaque'),
       // 对照路径的独立 emissive 通道；默认路径 data.emissive 恒为 null
-      emissive: this.mergeEmissiveOption
-        ? undefined
-        : make(data.emissive, this.materials.emissive, 1),
-      transparent: make(data.transparent, this.materials.transparent, 2),
-      water: make(data.water, this.materials.water, 2),
+      emissive: this.mergeEmissiveOption ? undefined : make(data.emissive, this.materials.emissive, 1, 'emissive'),
+      transparent: make(data.transparent, this.materials.transparent, 2, 'transparent'),
+      water: make(data.water, this.materials.water, 2, 'water'),
     };
     this.meshes.set(key, entry);
     this.sortDirty = true;
@@ -620,7 +872,7 @@ export class ChunkManager implements System {
         items.push({ key, pass, mesh, dist: this.sortTmp.distanceTo(cam) });
       }
     }
-    items.sort((a, b) => (b.dist - a.dist) || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
+    items.sort((a, b) => b.dist - a.dist || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
     this.transparentOrderCache = items.map((it, i) => {
       const order = 10 + i;
       it.mesh.renderOrder = order;
@@ -697,8 +949,7 @@ export class ChunkManager implements System {
         }
         list.push([x, z]);
       }
-      list.sort((a, b) =>
-        (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
+      list.sort((a, b) => (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
       let dispatched = 0;
       for (const [x, z] of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME) break;
@@ -718,7 +969,10 @@ export class ChunkManager implements System {
     for (const [key, chunk] of this.world.chunks) {
       if (Math.abs(chunk.cx - cx) <= limit && Math.abs(chunk.cz - cz) <= limit) continue;
       const rec = this.inFlight.get(key);
-      if (rec) { this.inFlight.delete(key); rec.resolve(); }
+      if (rec) {
+        this.inFlight.delete(key);
+        rec.resolve();
+      }
       const m = this.meshes.get(key);
       if (m) {
         this.disposeMeshes(m);
@@ -756,7 +1010,7 @@ export class ChunkManager implements System {
         const [dx, dz] = list[i];
         this.world.ensureChunk(cx + dx, cz + dz);
         if (i % 3 === 2) {
-          onProgress?.((i + 1) / list.length * 0.5);
+          onProgress?.(((i + 1) / list.length) * 0.5);
           await new Promise((r) => setTimeout(r, 0));
         }
       }

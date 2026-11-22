@@ -1,4 +1,5 @@
-import { Blackboard } from './Blackboard';
+import type { Blackboard } from './Blackboard';
+import type { AIApiView, GameEventSink, Vec3Like } from './types';
 
 /** 行为树节点执行状态。 */
 export enum NodeStatus {
@@ -11,7 +12,7 @@ export enum NodeStatus {
 export interface TickContext {
   entity: Readonly<{
     id: number;
-    pos: { x: number; y: number; z: number };
+    pos: Vec3Like;
     type: { id: string };
   }>;
   world: Readonly<{
@@ -19,15 +20,15 @@ export interface TickContext {
     isSolidAt(x: number, y: number, z: number): boolean;
     surfaceHeight(x: number, z: number): number;
   }>;
-  playerPos: { x: number; y: number; z: number };
+  playerPos: Vec3Like;
   /** 0~1 日照强度 */
   daylight: number;
   playerDead: boolean;
   /** 0~1 确定性随机，底层 mulberry32(hash(worldSeed, entityId, label)) */
   rng: (label?: string) => number;
-  events: { emit<K extends string>(type: K, payload: unknown): void };
+  events: GameEventSink;
   /** 按权限裁剪的 CraftAPI 视图，副作用节点经此发送 */
-  api: unknown;
+  api: AIApiView;
   blackboard: Blackboard;
   dt: number;
 }

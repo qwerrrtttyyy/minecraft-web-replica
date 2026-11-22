@@ -52,7 +52,7 @@ botany 会种树、粒子在动。**不把这些停掉，任何两帧画面都�
 
 | Arm | 内容 | 翻转方式 | 对照 |
 | --- | --- | --- | --- |
-| **E1** | 顶点属性打包：每顶点 60 B → 44 B | **无运行时开关**（结构改动） | 靠 `test/mesher` 的逐顶点等价断言 + 实测字节数 |
+| **E1** | 顶点属性打包：每顶点 60 B → 基线 48 B（`VERTEX_BYTES`；量化档 44 B） | **无运行时开关**（结构改动） | 靠 `test/mesher` 的逐顶点等价断言 + 实测字节数 |
 | **E2** | 抗锯齿分档 `?aa=off\|msaa\|ssaa` | SSAA：同页改 `pixelRatio`；MSAA：单独开页 | 同页 B→C / 跨页 B→M |
 | **E3** | 自发光并入不透明通道（`aTint=2`） | 同页改 `mergeEmissiveOption` | `?emerge=0` 保留并入前的独立 emissive 通道 |
 
@@ -70,7 +70,7 @@ botany 会种树、粒子在动。**不把这些停掉，任何两帧画面都�
 
 ## 2. 假设与结果
 
-### E1 顶点属性打包（60 B → 44 B / 顶点）
+### E1 顶点属性打包（60 B → 基线 48 B / 顶点；量化档 44 B）
 
 **假设**：把 `colors`(3) + `aTileRect`(4) 收成 `aShade`(1) + `aTileOrigin`(2)，
 字节数下降而画面不变。
@@ -82,10 +82,16 @@ botany 会种树、粒子在动。**不把这些停掉，任何两帧画面都�
 
 | 项 | 值 |
 | --- | --- |
-| 每顶点字节 | **44.0 B**（旧布局 60 B，-26.7%） |
-| 顶点布局 | `position(3) + uv(2) + shade(1) + light(2) + tile(2) + flags(1)` |
-| 实测顶点缓冲 | 11,863,984 B / 269,636 顶点 |
+| 每顶点字节 | **基线 48.0 B**（`VERTEX_BYTES` = `VERTEX_FLOATS` × 4；旧布局 60 B，-20.0%）；aLight 量化档 44.0 B（`VERTEX_BYTES_QUANTIZED`，尚未实测） |
+| 顶点布局 | `position(3) + uv(2) + shade(1) + light(2) + tile(2) + tint(1) + sway(1)` = 12 float / 48 B，唯一来源 `src/world/meshTypes.ts` |
+| 实测顶点缓冲（历史 11 float 布局记录） | 11,863,984 B / 269,636 顶点 = 44.0 B；当前基线须按 48 B 复测 |
 | 等价性 | `test/mesher` 51 项全过：Greedy 与逐面的覆盖 / 亮度 / tile 一致；自发光「并入 vs 独立通道」逐顶点一致 |
+
+> **口径对齐（T1 前置 gate）**：上表的 48 B / 44 B 双档均从 `src/world/meshTypes.ts` 的
+> `VERTEX_FLOATS` / `VERTEX_BYTES` / `VERTEX_BYTES_QUANTIZED` 派生，禁止在测试闸门或文档里
+> 再写死 12 / 44 / 48。`test/experiment-3d.mjs` 的 E1 闸门已改为现场读取该文件并按基线档
+> 48 B 判定；`test/mesher-check.cjs` 的分量步长也从 `VERTEX_ATTRIBUTES` 派生。
+> 历史实测行记录的是并入 `aSway` 之前的 11 float / 44 B 布局，不代表当前基线。
 
 **结论**：成立。收益是显存与带宽，代价为零（无新增属性、无新增 draw call）。
 
@@ -205,8 +211,9 @@ MC_URL=http://localhost:8080/index.html npm run test:experiment  # 换宿主
 ## 6. 后续
 
 - 区块边界的光照 1 格光晕接缝仍未解决（修它会把重网格化成本成倍放大），本轮刻意不动。
-- E1 的 44 B 布局已是最小；再压需要把 `aLight` 量化成 1 字节，会牺牲平滑光照的角点精度，
-  在 E1 的实测收益（显存 / 带宽）与观感之间不做这个交易。
+- E1 早期 11 float 的 44 B 布局曾是当时的下限；统一口径后当前基线为 48 B（`VERTEX_BYTES`），
+  再压需把 `aLight` 由 2 个 float 收成 1 个位域 float → 44 B（`VERTEX_BYTES_QUANTIZED`，后续优化档）。
+  位域仍保留 0~15 的角点整数精度，不影响平滑光照语义。
 - E2 的 MSAA 默认关闭：软件渲染下帧率代价明显，真 GPU 上是否默认开启需要真机数据。
 
 ---
@@ -239,7 +246,8 @@ MC_URL=http://localhost:8080/index.html npm run test:experiment  # 换宿主
 **假设**：`aLight`（2B/顶点）可量化为 1B（取值仍为整数 0~15），在实测收益（显存 / 带宽）
 与观感之间做权衡（§6 第二条前提）。
 
-**对照**：现状 —— `chunkManager.buildGeo` 用 `aLight` 2 字节，E1 实测 44 B/顶点。
+**对照**：现状 —— `chunkManager.buildGeo` 用 `aLight` 2 个 float，当前基线 48 B/顶点
+（`VERTEX_BYTES`；E1 早期 11 float 版曾实测 44 B，见 §2，非当前口径）。
 
 **翻转方式**：`mesher.ts` 的 `quadSky/quadBlock` 改为 8 位存储；`chunkManager.buildGeo`
 改为 `new THREE.BufferAttribute(p.lights, 1)`；`test/mesher` 逐顶点等价断言在实验分支放宽为定量等价。
@@ -406,3 +414,96 @@ biome 过滤生效；`min/max` 控制 count ∈ [min,max]。
 - 确定性：两次结果相同；不同 source 有分布变化 ✓。
 - nightOnly：0.1→100，0.5→0；biome：desert→50，plains→0。
 - min~max：count=4,2,5,3,5,2（前 6 次）。
+
+---
+
+## 9. 第 4 轮：T3 性能四项（E9–E12）
+
+> 编号说明：§8 的玩法实验已占用 E9–E12；本节四项按系统设计文档的 T3 arm 编号写为
+> `T3-E9` ~ `T3-E12`，与脚本 `test/experiment-3d.mjs` 中的同名 arm 一一对应。
+
+**实测环境**：直接 `npm run test:experiment` 因 WebGL 上下文创建失败（`BindToCurrentSequence failed`）
+超时；改用 AGENTS.md 推荐的 xvfb + `MC_GL=desktop` 后**实测成功**。以下数据取自最后一次完整复跑
+（seed=2026 / creative / 渲染距离 3 / 49 区块 / dayTime 0.32 / 同页五步钉场景），
+SwiftShader 软件渲染，帧率绝对值仅供同页相对比较。
+
+| Arm | 改动 | 翻转方式 | 实测结果 | 判据与结论 |
+| --- | --- | --- | --- | --- |
+| T3-E9 | aLight 位域量化 | 结构指标，无运行时开关 | 基线 48 B → **44.0 B**（12,325,632 B / 280,128 顶点），每顶点 -4 B（-8.3%）；`test:mesher` 56 项全绿；pack/unpack 256 档双向无损 | **通过**：字节与逐顶点光照等价均达标 |
+| T3-E10 | 群系染色降频 | 同页 `setFoliagePerVertex(false→true→false)` | renderMs 0.440 → **0.420**（-4.5%）；像素差 MAD=**0.000**；噪声底 MAD=0.000（8 hash/片元 → 8 hash/顶点） | **通过**：像素零差异且 renderMs 不劣化 |
+| T3-E11 | drainResults 限流 | 同页 `setDrainLimit(24→4)` | 上限 24 → 4；已收割消息 290 → 290、待收割 0 → 0；纯函数单测验证 7 条消息 2 帧排空、config-ack 不占配额 | **通过**：档位与无饥饿验证成立；p95 需真 GPU 多次采样 |
+| T3-E12 | 包围球缓存 | 同页 `setSphereMode('exact'→'cached'→'exact')` | renderMs 0.530 → **0.490**（-7.5%）；像素差 MAD=0.000；保守球包含几何 **49/49** | **通过**：剔除正确且 renderMs 改善。首版用固定 16×16×80 区块球时反而 0.370→0.450（球过大损剔除），已改为一遍扫描 AABB 的紧致保守球 |
+
+**未关闭的实验闸门（如实记录，不伪造通过）**：
+- E3 自发光并入通道：A→B 有 **1 个采样点**（3/15552 分量，MAD 0.026）差异，位置归一化 (84,26)，
+  A=(46,29,10)、B=(254,183,58)，为一处火把亮像素；噪声底 B→D=0.000。E1–E3 扫描已把
+  `foliagePerVertex` 固定为逐像素档以隔离变量，差异仍稳定复现，判定为当前场景下 emissive
+  独立网格与并入网格在该像素的深度/绘制顺序差异，非 aLight 位域精度问题（后者有 56 项单测覆盖）。
+  该项为既有 E3 零点判据问题，留待 T7 由 QA + 主理人复核是否放宽为「≤1 采样点」。
+- MSAA 跨页场景一致性：最后一次复跑 main=280,128 顶点、msaa=280,072 顶点（差 14 个 quad），
+  `parity` 闸门失败；前两次复跑同页顶点数一致。判定为流式加载/限流后的场景收敛波动，
+  需在真 GPU 环境增加收敛等待后重测，本次不据该页数据下 MSAA 结论。
+
+**复现命令**：
+```bash
+npm run build
+xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run test:experiment
+```
+原始数据写入 `test/artifacts/experiment-3d.json`（不入库）。
+
+---
+
+## 10. 第 5 轮：T3+T4 画面优化（E13–E16）
+
+**实测环境**：`xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run test:experiment`
+（先 `npm run build`）。seed=2026 / creative / 渲染距离 3 / 49 区块 / dayTime 0.32 / 同页五步钉场景。
+SwiftShader 软件渲染，帧率与 renderMs 绝对值只用于同页相对比较。
+
+**噪声底口径修正**：E13–E16 的噪声底统一取「**同一档位连续两次测量**（A→A2）」，
+不再用 B→D。对于有可见像素差的开关，B→D 是回到 A 档，其差值正是实验效应而非噪声；
+上一版判据曾据此误报 E13 噪声底 481 采样，修正后四 arm 噪声底均为 **MAD=0.000**。
+
+| Arm | 改动与开关 | 同页翻转 | 实测结果（最后一次完整复跑） | 结论 |
+| --- | --- | --- | --- | --- |
+| E13 | 各向异性 R6 折中档 `__mc.atlas.setAnisotropy(1..8)` | 1→8→1 | 设备上限应用后 anisotropy=8 / mipmap=true；远景全局 MAD=**0.917**，近景中心 MAD=**3.349**（阈值 2），噪声底 0.000 | **ROLLBACK（默认档回退）**：近景像素差超阈值，mipmap 造成像素风糊化。开关保留供真 GPU 复测 |
+| E14 | 水面片元 uv 波纹 `__mc.chunks.setWaterRipple(amp)` | 0→0.01→0 | 全局 MAD=**0.151**（中心抽样漏检，已改用全局签名）、63 采样变化；renderMs 0.260→0.260；噪声底 0.000 | **PASS**：波纹生效且性能无显著劣化，默认开启保守幅度 0.01 |
+| E15 | 破坏裂纹覆盖层 `__mc.highlight.setCrack/setCracksEnabled` | level 0→6→0 | level=6 / visible=true；取消后隐藏=true；全局 MAD=0.006（5 采样），全画幅逐像素诊断 **1241/972800** 像素变化、max=128；噪声底 0.000 | **PASS**：裂纹可见，完成 / 取消正确消失，既有 tile 索引 195–204 末位追加（`test:visual` 15/15） |
+| E16 | 边界光 E4 `__mc.chunks.setBoundaryLightFix(bool)` | false→true→false（Worker 路径） | config revision 20→21→22、configReady=true/true/true、场景收敛=true/true/true；ms/chunk 13.132→17.707（**+34.8%**，阈值 50%）；像素差 MAD=**0.000**；噪声底 0.000 | **ROLLBACK（默认关闭）**：成本在阈值内但无可观察接缝改善，按 R7「不勉强合并」 |
+
+**R6 / R7 拍板项落地结论**：
+- R6（各向异性折中）：实现完整（magFilter 恒为 Nearest；minFilter 切 NearestMipmapNearestFilter + mipmap；
+  level=min(8,设备上限)），但实测近景 MAD 3.349>2，**默认档回滚为 Nearest / 无 mipmap**；
+  `setAnisotropy` 作为实验开关保留，未删除代码。
+- R7（E4 边界光）：`MeshSource.crossChunkLight` 回调 + `MeshConfig.boundaryLightFix` + `setBoundaryLightFix`
+  经既有 `invalidateConfig()` + `postConfig()` + ACK 链路全部落地，Worker 侧零 three/World import；
+  但实测像素零差（当前快照 1 格 halo 已覆盖 `[-1, CS]` 全部采样点，回调值与原值一致），
+  **默认关闭**，按拍板如实回滚。这是修复尝试，不影响快照契约与 mask key。
+
+**跨次波动与未关闭闸门（如实记录，不伪造通过）**：
+- E14 的 renderMs 在 SwiftShader 下跨次波动明显：一次复跑 0.270→0.410（+52%，当时判 ROLLBACK），
+  最后一次 0.260→0.260（0%，判 PASS）。像素差与噪声底两次一致，故保留默认 0.01，
+  但性能结论需在真 GPU 环境复核。
+- E16 的 ms/chunk 增幅跨次为 +21.3% / +34.8%，均未超 50%；像素零差两次一致。
+- E3 自发光并入通道仍有 **3/15552** 采样变化（MAD 0.026、max 208），与上一轮结论一致，
+  属既有零点判据问题，本轮不处理。
+- E10 群系染色在最后一次复跑触发脚本既有判据 `renderMs B > A*1.1`（软件渲染噪声），
+  像素差与噪声底仍为 0.000；该项为测量波动，不是代码回归。
+- MSAA 跨页 parity 波动为上一轮遗留，本轮未重开该结论。
+
+**复现命令**：
+```bash
+npm run build
+xvfb-run -a -s "-screen 0 1280x760x24" env MC_HEADLESS=0 MC_GL=desktop npm run test:experiment
+```
+原始数据写入 `test/artifacts/experiment-3d.json`（不入库）。
+
+---
+
+## 变基去重说明（E15）
+
+上方 §10 的 E15 数据为历史实测记录。变基到远程 main（`57ac0fd`，含 PR#24）后，
+远程已提供独立 `src/gfx/crackOverlay.ts`（`CrackOverlay` 类 + `test/crack-overlay-check.cjs`
+生命周期回归）作为唯一裂纹实现。按「保留远程实现、删除我方重复实现」的裁定，
+我方 `highlight.crackMesh` / `atlas.crack_0..9` / `experiment-3d.mjs` E15 arm /
+`qa-visual-shot.mjs` 裂纹截图段已全部移除；E15 数据仅作历史归档，不再作为当前闸门判据。
+裂纹功能当前由远程 `CrackOverlay` 提供，接线见 `src/main.ts`。

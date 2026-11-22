@@ -1,19 +1,20 @@
-import type { PluginDefinition } from '../../services/plugins';
 import { CHUNK_SIZE } from '../../core/types';
+import type { PluginDefinition } from '../../services/plugins';
 import {
   EXPANSION_PLANT_COUNT,
-  EXPANSION_PLUGIN_ID,
   EXPANSION_PLANTS,
-  EXPANSION_RULES, SPAWN_ROLL_CEILING,
+  EXPANSION_PLUGIN_ID,
+  EXPANSION_RULES,
   expansionBlockInput,
   planSpawn,
+  SPAWN_ROLL_CEILING,
   spawnHash,
 } from './botanyContent';
 
 /**
  * 内置插件：植物生态扩展包（v1.4.3）。
  *
- * 这是「插件驱动扩展」的示范：6 种植物、3 条生态规则、自然生成钩子
+ * 这是「插件驱动扩展」的示范：10 种植物、8 条生态规则、自然生成钩子
  * 全部通过公开 API 注册，核心代码只提供一个兜底分派点，没有为任何
  * 新植物加一条 if 分支。
  *
@@ -37,7 +38,7 @@ export const botanyExpansionPlugin: PluginDefinition = {
   manifest: {
     id: EXPANSION_PLUGIN_ID,
     version: '1.0.0',
-    description: '6 种植物 + 3 条生态规则 + 按群系自然生成，全部经 botany 扩展点注册',
+    description: '10 种植物 + 8 条生态规则 + 按群系自然生成，全部经 botany 扩展点注册',
     permissions: ['blocks:register', 'botany:register', 'world:write'],
   },
   setup(ctx) {
@@ -77,12 +78,12 @@ export const botanyExpansionPlugin: PluginDefinition = {
           // 水生植物可以占据水格（与内置海草 / 海带一致），其余只落空气格
           if (current !== 0 && !api.blocks.get(current).liquid) continue;
 
-          const nearWater = waterId !== 0 && (
-            api.world.getBlock(x - 1, y, z) === waterId ||
-            api.world.getBlock(x + 1, y, z) === waterId ||
-            api.world.getBlock(x, y, z - 1) === waterId ||
-            api.world.getBlock(x, y, z + 1) === waterId
-          );
+          const nearWater =
+            waterId !== 0 &&
+            (api.world.getBlock(x - 1, y, z) === waterId ||
+              api.world.getBlock(x + 1, y, z) === waterId ||
+              api.world.getBlock(x, y, z - 1) === waterId ||
+              api.world.getBlock(x, y, z + 1) === waterId);
           const name = planSpawn(biome, roll, nearWater);
           if (!name) continue;
 

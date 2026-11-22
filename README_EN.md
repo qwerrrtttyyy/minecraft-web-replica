@@ -31,7 +31,7 @@ physics & collision, entity AI, touch support, save system and an extension API.
 **controlled experiment** (hypothesis / control / flip / verdict, raw data and reproduction steps in
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
 
-- **Packed vertex layout** — 60 B → **44 B** per vertex (`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)). Less VRAM and bandwidth, pixel-identical output.
+- **Packed vertex layout** — 60 B → **48 B baseline** (`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2), plus `aSway`) → **44 B active tier** since T3 (aLight sky/block packed into one float, lossless 0–15). Less VRAM and bandwidth, pixel-identical output.
 - **Anti-aliasing tiers** — `?aa=off|msaa|ssaa`. MSAA is enabled when the GL context is created; SSAA renders at 1.5× pixel ratio. Off by default.
 - **Emissive blocks merged into the opaque channel** — glowstone / jack o'lantern / torches reuse the opaque material with `aTint=2`, and the shader skips lighting and foliage tint for them. Draw calls 64 → 47 and emissive meshes 49 → 0 with **byte-identical geometry buffers and zero pixel difference** across 15,552 samples. `?emerge=0` restores the pre-merge separate emissive channel as a control.
 

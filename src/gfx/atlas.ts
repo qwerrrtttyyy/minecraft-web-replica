@@ -2058,6 +2058,10 @@ export class TextureAtlas {
   private canvas: HTMLCanvasElement;
   private tileCache = new Map<string, HTMLCanvasElement>();
   private avgCache = new Map<string, [number, number, number]>();
+  /** 设备支持的最大各向异性等级，由 main 注入 renderer.capabilities 后生效 */
+  private maxAnisotropy = 1;
+  /** 当前请求的等级（1 = 关闭折中档，>1 = 开启 R6 折中档） */
+  private anisotropyLevel = 1;
 
   constructor() {
     const builtins = builtinPainters();
@@ -2364,6 +2368,51 @@ export class TextureAtlas {
 
   hasTile(name: string) {
     return this.painters.has(name);
+  }
+
+  /** tile 索引（测试用于核对既有索引与裂纹末位追加契约；不存在返回 -1） */
+  tileIndex(name: string): number {
+    return this.indices.get(name) ?? -1;
+  }
+
+  /** 注入设备能力上限（main 初始化时调用一次），避免图集层依赖 renderer。 */
+  setMaxAnisotropy(max: number): void {
+    const safe = Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 1;
+    if (this.maxAnisotropy === safe) return;
+    this.maxAnisotropy = safe;
+    this.applyAnisotropy();
+  }
+
+  /**
+   * R6 折中档开关：level<=1 回到像素风原状（Nearest / 无 mipmap）；
+   * level>1 时 magFilter 仍为 Nearest（放大锐利不变），仅缩小路径切到
+   * NearestMipmapNearestFilter + generateMipmaps，让各向异性在远景生效。
+   * 实际上限 = min(8, 设备上限)，不因请求 16 而超设备能力。
+   */
+  setAnisotropy(level: number): void {
+    const requested = Number.isFinite(level) ? Math.floor(level) : 1;
+    const target = Math.max(1, Math.min(8, this.maxAnisotropy, requested));
+    if (this.anisotropyLevel === target) return;
+    this.anisotropyLevel = target;
+    this.applyAnisotropy();
+  }
+
+  private applyAnisotropy(): void {
+    const enabled = this.anisotropyLevel > 1;
+    this.texture.anisotropy = this.anisotropyLevel;
+    this.texture.minFilter = enabled ? THREE.NearestMipmapNearestFilter : THREE.NearestFilter;
+    this.texture.generateMipmaps = enabled;
+    this.texture.needsUpdate = true;
+  }
+
+  /** 当前各向异性等级（E13 读数） */
+  get anisotropyValue(): number {
+    return this.texture.anisotropy;
+  }
+
+  /** 当前是否处于 R6 折中档（E13 读数） */
+  get mipmapEnabled(): boolean {
+    return this.texture.generateMipmaps;
   }
 
   /** 带半像素内缩的 UV，防止图集渗色 */

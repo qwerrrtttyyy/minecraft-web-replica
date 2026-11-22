@@ -440,7 +440,7 @@ export class EntityManager {
   despawn(e: Entity) {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
-    this.aiService?.detach?.(e as any);
+    this.aiService?.detach?.(e);
     this.scene.remove(e.model.group);
     // 模型材质/几何是每个实例新建的，离场时必须释放，否则反复刷新种群会持续泄漏 GPU 资源
     disposeModel(e.model.group);

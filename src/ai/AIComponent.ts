@@ -1,12 +1,20 @@
 import { Blackboard } from './Blackboard';
-import { BehaviorTree } from './BehaviorTree';
-import { NodeStatus, TickContext } from './Node';
+import type { BehaviorTree } from './BehaviorTree';
+import type { NodeStatus, TickContext } from './Node';
+import type { Vec3Like } from './types';
 
-/** 运行时实体标识（仅 AI 系统使用，不依赖 three / Entity 类）。 */
+/**
+ * 运行时实体标识（仅 AI 系统使用，不依赖 three / Entity 类）。
+ * 可选字段由 AIService 在 attach / update 时读写，实体类无需实现任何接口声明即可满足结构约束。
+ */
 export interface EntityLike {
   id: number;
-  pos: { x: number; y: number; z: number };
+  pos: Vec3Like;
   type: { id: string };
+  aiComponent?: AIComponent;
+  hp?: number;
+  maxHp?: number;
+  onGround?: boolean;
 }
 
 /** 挂在实体上的 AI 运行时：行为树 + 黑板 + 启停开关。 */
@@ -23,7 +31,7 @@ export class AIComponent {
     this.seed = seed;
   }
 
-  tick(dt: number, ctx: TickContext): NodeStatus {
+  tick(_dt: number, ctx: TickContext): NodeStatus {
     return this.tree.tick(ctx);
   }
 }

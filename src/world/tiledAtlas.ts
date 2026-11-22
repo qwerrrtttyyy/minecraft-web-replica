@@ -23,9 +23,9 @@ const FRAG_PREAMBLE = `varying vec2 vTileOrigin;
 uniform vec2 uTileSize;
 `;
 
-const TILED_MAP_FRAGMENT = `
+const tiledMapFragment = (uvExpr: string) => `
 #ifdef USE_MAP
-  vec2 tiledUv = vTileOrigin + fract(vMapUv) * uTileSize;
+  vec2 tiledUv = vTileOrigin + fract(${uvExpr}) * uTileSize;
   vec4 sampledDiffuseColor = texture2D( map, tiledUv );
   #ifdef DECODE_VIDEO_TEXTURE
     sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
@@ -38,7 +38,7 @@ const TILED_MAP_FRAGMENT = `
  * 安装到材质上。会保留并串联已有的 onBeforeCompile（水面波动动画也用它），
  * 每个材质用独立 cache key，避免 water 与 opaque 复用同一编译结果。
  */
-export function installTiledAtlas(mat: THREE.Material): void {
+export function installTiledAtlas(mat: THREE.Material, uvExpr = 'vMapUv'): void {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev.call(mat, shader, renderer);
@@ -49,7 +49,7 @@ export function installTiledAtlas(mat: THREE.Material): void {
     );
     shader.fragmentShader = FRAG_PREAMBLE + shader.fragmentShader.replace(
       '#include <map_fragment>',
-      TILED_MAP_FRAGMENT,
+      tiledMapFragment(uvExpr),
     );
   };
   // three 默认以 onBeforeCompile.toString() 作为 cache key；此处按材质实例区分，

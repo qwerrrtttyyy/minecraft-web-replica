@@ -420,4 +420,67 @@ ok('zombie 远距离追击：player 在 10 格内 → moving=true',
     return c.blackboard.get('moving') === true;
   })());
 
+// ---- 11. 类型重构 T1/T2：对象 config 与历史位置参数双形态构造逐值等价 ----
+const sig = (value) => JSON.stringify(value);
+const pick = (node, keys) => keys.map((key) => node[key]);
+
+ok('双形态 CanSeePlayer 等价',
+  new CanSeePlayer({ maxDist: 10 }).maxDist === new CanSeePlayer(10).maxDist);
+ok('双形态 DistanceLt 等价',
+  sig(pick(new DistanceLt({ target: 'blackboard', dist: 8, blackboardKey: 't' }), ['target', 'dist', 'blackboardKey']))
+  === sig(pick(new DistanceLt('blackboard', 8, 't'), ['target', 'dist', 'blackboardKey'])));
+ok('双形态 HealthPctLt 等价',
+  new HealthPctLt({ pct: 0.25 }).pct === new HealthPctLt(0.25).pct);
+ok('双形态 IsInWater 等价',
+  sig(new IsInWater({ liquidBlockIds: [9, 10] }).liquidBlockIds)
+  === sig(new IsInWater([9, 10]).liquidBlockIds));
+ok('双形态 BlackboardEq 等价',
+  sig(pick(new BlackboardEq({ key: 'mode', value: 'chase' }), ['key', 'value']))
+  === sig(pick(new BlackboardEq('mode', 'chase'), ['key', 'value'])));
+ok('双形态 CanReach 等价',
+  sig(pick(new CanReach({ x: 1, y: 2, z: 3 }), ['x', 'y', 'z']))
+  === sig(pick(new CanReach(1, 2, 3), ['x', 'y', 'z'])));
+ok('双形态 ChasePlayer tick 状态与黑板逐值一致',
+  (() => {
+    const a = actionCtx();
+    const b = actionCtx();
+    const sa = new ChasePlayer({ speed: 1, stopDist: 4 }).tick(a.c);
+    const sb = new ChasePlayer(1, 4).tick(b.c);
+    return sa === sb
+      && sig(a.c.blackboard.get('moving')) === sig(b.c.blackboard.get('moving'))
+      && sig(a.c.blackboard.get('moveSpeed')) === sig(b.c.blackboard.get('moveSpeed'))
+      && sig(a.c.blackboard.get('moveYaw')) === sig(b.c.blackboard.get('moveYaw'));
+  })());
+ok('双形态 Wander 配置逐值一致',
+  sig(pick(new Wander({ speed: 1, idleMin: 1, idleMax: 2, walkMin: 3, walkMax: 4 }),
+    ['speed', 'idleMin', 'idleMax', 'walkMin', 'walkMax']))
+  === sig(pick(new Wander(1, 1, 2, 3, 4), ['speed', 'idleMin', 'idleMax', 'walkMin', 'walkMax'])));
+ok('双形态 Wait 等价',
+  new Wait({ seconds: 0.1 }).seconds === new Wait(0.1).seconds);
+ok('双形态 SpawnEntity 等价',
+  (() => {
+    const a = actionCtx();
+    const b = actionCtx();
+    const sa = new SpawnEntity({ typeId: 'pig', offset: { x: 1, y: 2, z: 3 }, chance: 1 }).tick(a.c);
+    const sb = new SpawnEntity('pig', { x: 1, y: 2, z: 3 }, 1).tick(b.c);
+    return sa === sb && sig(a.api.spawned) === sig(b.api.spawned);
+  })());
+ok('双形态 BreakBlock / PlaceBlock / PlaySound / EmitEvent 副作用逐值一致',
+  (() => {
+    const a = actionCtx();
+    const b = actionCtx();
+    new BreakBlock({ x: 2, y: 3, z: 4 }).tick(a.c);
+    new PlaceBlock({ x: 2, y: 3, z: 4, blockId: 1 }).tick(a.c);
+    new PlaySound({ sound: 'step', volume: 1 }).tick(a.c);
+    new EmitEvent({ event: 'test:event', payload: { a: 1 } }).tick(a.c);
+    new BreakBlock(2, 3, 4).tick(b.c);
+    new PlaceBlock(2, 3, 4, 1).tick(b.c);
+    new PlaySound('step', 1).tick(b.c);
+    new EmitEvent('test:event', { a: 1 }).tick(b.c);
+    return sig(a.api.broken) === sig(b.api.broken)
+      && sig(a.api.placed) === sig(b.api.placed)
+      && sig(a.api.played) === sig(b.api.played)
+      && sig(a.events.emitted) === sig(b.events.emitted);
+  })());
+
 console.log(`\n全部 ${passed} 条断言通过`);

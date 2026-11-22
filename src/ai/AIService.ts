@@ -1,8 +1,9 @@
 import { mulberry32 } from '../core/types';
 import { hashSeed } from './AIContext';
 import { BehaviorTree } from './BehaviorTree';
-import { AIComponent, EntityLike } from './AIComponent';
-import { NodeStatus, TickContext } from './Node';
+import { AIComponent, type EntityLike } from './AIComponent';
+import type { TickContext } from './Node';
+import { isAIApiView, type BehaviorTreeJSON, type GameEventSink } from './types';
 
 /** AI 服务：批量更新所有 AIComponent，支持分帧预算、启停与热重载。 */
 export class AIService {
@@ -18,15 +19,17 @@ export class AIService {
       isSolidAt(x: number, y: number, z: number): boolean;
       surfaceHeight(x: number, z: number): number;
     },
-    private readonly events: { emit: (...args: any[]) => void },
+    private readonly events: GameEventSink,
     private api: unknown,
     private readonly seed: number,
   ) {}
 
-  setApi(api: unknown): void { this.api = api; }
+  setApi(api: unknown): void {
+    this.api = api;
+  }
 
   /** 注册某种生物的行为树 JSON 配置。 */
-  registerType(typeId: string, json: { root: any }): void {
+  registerType(typeId: string, json: BehaviorTreeJSON): void {
     this.trees.set(typeId, BehaviorTree.fromJSON(json));
   }
 
@@ -36,27 +39,32 @@ export class AIService {
     if (!tree) return;
     const comp = new AIComponent(entity, tree, this.seed);
     this.components.set(entity, comp);
-    (entity as any).aiComponent = comp;
+    entity.aiComponent = comp;
   }
 
   /** 从实体上卸载 AI。 */
   detach(entity: EntityLike): void {
     this.components.delete(entity);
-    (entity as any).aiComponent = undefined;
+    entity.aiComponent = undefined;
   }
 
   private frameCtx: { playerPos: { x: number; y: number; z: number }; daylight: number; playerDead: boolean } = {
-    playerPos: { x: 0, y: 0, z: 0 }, daylight: 1, playerDead: false,
+    playerPos: { x: 0, y: 0, z: 0 },
+    daylight: 1,
+    playerDead: false,
   };
 
   /** 每帧调用：分帧更新所有启用的 AIComponent。 */
-  update(dt: number, frameCtx?: { playerPos: { x: number; y: number; z: number }; daylight: number; playerDead: boolean }): void {
+  update(
+    dt: number,
+    frameCtx?: { playerPos: { x: number; y: number; z: number }; daylight: number; playerDead: boolean },
+  ): void {
     if (frameCtx) this.frameCtx = frameCtx;
     if (!this.enabled) return;
     const start = Date.now();
     for (const comp of this.components.values()) {
       if (!comp.enabled) continue;
-      const e = comp.entity as any;
+      const e = comp.entity;
       comp.blackboard.set('onGround', e.onGround === true);
       if (typeof e.hp === 'number') comp.blackboard.set('hp', e.hp);
       if (typeof e.maxHp === 'number') comp.blackboard.set('maxHp', e.maxHp);
@@ -77,17 +85,22 @@ export class AIService {
       playerDead: this.frameCtx.playerDead,
       rng,
       events: this.events,
-      api: this.api,
+      // api 由外部以 unknown 注入；守卫后只暴露已声明的副作用方法，未声明时降级为空视图
+      api: isAIApiView(this.api) ? this.api : {},
       blackboard: comp.blackboard,
       dt,
-    } as TickContext;
+    };
   }
 
-  enable(): void { this.enabled = true; }
-  disable(): void { this.enabled = false; }
+  enable(): void {
+    this.enabled = true;
+  }
+  disable(): void {
+    this.enabled = false;
+  }
 
   /** 热重载某种生物的行为树 JSON（不影响运行中实例的运行时状态，新 tick 应用新配置）。 */
-  reloadConfig(typeId: string, json: { root: any }): void {
+  reloadConfig(typeId: string, json: BehaviorTreeJSON): void {
     this.trees.set(typeId, BehaviorTree.fromJSON(json));
   }
 

@@ -1,6 +1,74 @@
 import type { BlockId } from '../core/types';
 
 /**
+ * 顶点字节口径 —— 全项目唯一来源（T1 前置 gate）。
+ *
+ * 在统一之前，仓库里同时存在「注释 11 float / 44 B」与「实际 12 float / 48 B」两套说法，
+ * 实验闸门按 44 B 判定，导致 E1 必然误判失败。这里把两档口径收敛为常量：
+ * 任何引用方（buildGeo / experiment / mesher 断言 / 文档）都从这里派生，不得再写死 12 / 44 / 48。
+ *
+ * 布局恒等式：各 attribute 分量之和 === VERTEX_FLOATS（基线）。
+ * T3 起 aLight 的 sky/block 两分量各取 0~15 整数，打包进一个 float 的高/低 4 位；
+ * 每顶点少 1 个 float，即 VERTEX_BYTES → VERTEX_BYTES_QUANTIZED（48 B → 44 B）。
+ * 基线常量保留为历史对照口径，实际生效档由 ACTIVE_LIGHT_FLOATS 派生。
+ */
+export const VERTEX_FLOATS = 12 as const;
+/** T1 基线：12 float × 4 B = 48 B（aLight 两个 float），仅作历史对照 */
+export const VERTEX_BYTES = VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+/** aLight 位域量化档：11 float / 44 B，T3 起为实际生效档 */
+export const VERTEX_BYTES_QUANTIZED = VERTEX_BYTES - Float32Array.BYTES_PER_ELEMENT;
+
+/** T1 基线 attribute 布局（aLight 占 2 个 float），供对照与恒等式校验 */
+export const VERTEX_ATTRIBUTES = {
+  position: 3,
+  uv: 2,
+  aShade: 1,
+  aLight: 2,
+  aTileOrigin: 2,
+  aTint: 1,
+  aSway: 1,
+} as const;
+
+/**
+ * 当前生效的 aLight 分量数（T3 起恒为 1）。
+ * mesher 与 Worker 共用同一份打包代码，因此不存在「按档位切两套算法」的分支。
+ */
+export const ACTIVE_LIGHT_FLOATS = 1 as const;
+
+/** 当前生效的 attribute 布局：把基线的 aLight=2 替换为量化档的 1 */
+export const VERTEX_ATTRIBUTES_ACTIVE = {
+  ...VERTEX_ATTRIBUTES,
+  aLight: ACTIVE_LIGHT_FLOATS,
+} as const;
+
+/** 当前生效的每顶点 float 数与字节数（11 / 44），由布局对象推导，不写死 11 / 44 */
+export const VERTEX_FLOATS_ACTIVE = VERTEX_FLOATS - VERTEX_ATTRIBUTES.aLight + VERTEX_ATTRIBUTES_ACTIVE.aLight;
+export const VERTEX_BYTES_ACTIVE = VERTEX_FLOATS_ACTIVE * Float32Array.BYTES_PER_ELEMENT;
+
+/** 光照等级档数：sky / block 各 0~15，共 16 档 */
+export const LIGHT_LEVELS = 16 as const;
+
+/**
+ * 把归一化到 0~1 的 sky/block 光照打包为一个 float（整数 0~255）。
+ *
+ * 编码：packed = skyLevel * 16 + blockLevel。
+ * sky/block 在 mesher 里本就是 0~15 的整数（角点 4 格均值四舍五入），
+ * 因此位域编码**无损**；Float32 可精确表示 0~255 的整数。
+ * shader 侧用 floor(packed / 16) 与 mod(packed, 16) 解码后除以 15 还原 0~1。
+ */
+export function packLightLevels(sky01: number, block01: number): number {
+  const sky = Math.max(0, Math.min(LIGHT_LEVELS - 1, Math.round(sky01 * (LIGHT_LEVELS - 1))));
+  const block = Math.max(0, Math.min(LIGHT_LEVELS - 1, Math.round(block01 * (LIGHT_LEVELS - 1))));
+  return sky * LIGHT_LEVELS + block;
+}
+
+/** packLightLevels 的逆运算，供测试与调试解码；返回 0~15 的整数档位 */
+export function unpackLight(packed: number): [number, number] {
+  const v = Math.round(packed);
+  return [Math.floor(v / LIGHT_LEVELS), v % LIGHT_LEVELS];
+}
+
+/**
  * 网格数据契约（主线程 / Worker 共享）。
  *
  * v1.2.0 的 meshChunk 直接依赖 World + TextureAtlas + BlockRegistry 三个活对象，
@@ -30,9 +98,17 @@ export interface MeshBlockDef {
 }
 
 export const AIR_MESH_DEF: MeshBlockDef = {
-  id: 0, name: 'air', shape: 'cube', opaque: false, cullSame: false,
-  liquid: false, transparentPass: false, lightEmission: 0,
-  tiles: { top: '', bottom: '', side: '' }, tint: false, crossHeight: 1,
+  id: 0,
+  name: 'air',
+  shape: 'cube',
+  opaque: false,
+  cullSame: false,
+  liquid: false,
+  transparentPass: false,
+  lightEmission: 0,
+  tiles: { top: '', bottom: '', side: '' },
+  tint: false,
+  crossHeight: 1,
 };
 
 export const ZERO_UV: UVRect = [0, 0, 0, 0];
@@ -54,6 +130,11 @@ export interface MeshConfig {
    * false = 保留独立的 emissive 通道，仅作为实验对照（?emerge=0），默认 true。
    */
   mergeEmissive: boolean;
+  /**
+   * E4 边界光修复：越出本区块的角点采样优先走 MeshSource.crossChunkLight。
+   * false = 现状（halo 边界即止）；变更经 invalidateConfig + ACK 下发。
+   */
+  boundaryLightFix: boolean;
   /** 配置版本，用于诊断与缓存失效 */
   revision: number;
 }
@@ -76,6 +157,14 @@ export interface MeshSource {
   readonly greedy: boolean;
   /** 自发光是否并入不透明通道（与 MeshConfig.mergeEmissive 同步） */
   readonly mergeEmissive: boolean;
+  /** E4 开关（与 MeshConfig.boundaryLightFix 同步） */
+  readonly boundaryLightFix: boolean;
+  /**
+   * E4 可选回调：角点采样越出本区块 [0, CS-1] 时取真实邻块光照。
+   * 坐标为**区块局部坐标**（与 getSkyLight/getBlockLight 同口径），由各 source 自行换算世界坐标。
+   * Worker 侧 SnapshotMeshSource 只用 1 格 halo 快照实现，绝不 import World / three。
+   */
+  crossChunkLight?(lx: number, y: number, lz: number, channel: 'sky' | 'block'): number;
 }
 
 /** 单区块方块数据快照：1 格 halo，索引 ((y*W + lz+1)*W + lx+1)，W = CS+2 */
@@ -93,10 +182,14 @@ export interface MeshSnapshot {
 }
 
 /**
- * 收集期的动态数组几何（顶点打包后的布局，每顶点 11 个 float）：
- * position(3) + uv(2) + shade(1) + light(2) + tile(2) + flags(1) = 44 字节。
- * 旧布局每顶点 15 个 float（60 字节），其中 color 三分量同值、tile 的 du/dv 全图集一致，
- * 纯冗余 —— 详见 docs/EXPERIMENTS.md 实验 E1。
+ * 收集期的动态数组几何（顶点打包后的布局）。
+ *
+ * 当前基线为 VERTEX_FLOATS 个 float / VERTEX_BYTES 字节：
+ * position(3) + uv(2) + shade(1) + light(2) + tile(2) + tint(1) + sway(1)。
+ * aLight 量化档把 light 由 2 个 float 合并为 1 个位域 float，变为
+ * VERTEX_BYTES_QUANTIZED 字节（见 src/world/meshTypes.ts 顶部常量）。
+ * 更早的布局每顶点 15 个 float（60 字节），其中 color 三分量同值、tile 的 du/dv
+ * 全图集一致，纯冗余 —— 详见 docs/EXPERIMENTS.md 实验 E1。
  */
 export interface GeoArrays {
   positions: number[];
@@ -104,7 +197,12 @@ export interface GeoArrays {
   uvs: number[];
   /** 每顶点明暗（面定向 × AO，0~1）：RGB 三通道同值，只需 1 个分量 */
   shade: number[];
-  /** 每顶点天空光 / 方块光（0~1），shader 据此叠加昼夜与方块光源 */
+  /**
+   * 每顶点天空光 / 方块光（0~1），shader 据此叠加昼夜与方块光源。
+   * 基线档写 2 个 float（sky, block）；量化档（T3）把两分量各取 0~15 整数，
+   * 打包进 1 个 float 的高/低 4 位，shader 用 mod/floor 解码，档位数与布局见
+   * VERTEX_ATTRIBUTES.aLight 与 VERTEX_BYTES_QUANTIZED。
+   */
   lights: number[];
   /** 每顶点图集 tile 起点 u0,v0；tile 尺寸全图集一致，走 shader uniform */
   tile: number[];
@@ -176,8 +274,10 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
   };
   return {
     mesh: {
-      opaque: pack(d.opaque), emissive: pack(d.emissive),
-      transparent: pack(d.transparent), water: pack(d.water),
+      opaque: pack(d.opaque),
+      emissive: pack(d.emissive),
+      transparent: pack(d.transparent),
+      water: pack(d.water),
     },
     transfer,
   };
@@ -196,9 +296,7 @@ export interface MeshRequest {
   wid: number;
 }
 
-export type WorkerRequest =
-  | { type: 'config'; config: MeshConfig; wid: number }
-  | MeshRequest;
+export type WorkerRequest = { type: 'config'; config: MeshConfig; wid: number } | MeshRequest;
 
 export interface MeshResult {
   type: 'result';
@@ -216,3 +314,35 @@ export type WorkerResponse =
   | MeshResult
   | { type: 'config-ack'; wid: number; revision: number }
   | { type: 'error'; wid: number; cx: number; cz: number; generation: number; message: string };
+
+/** 非 config-ack 的 Worker 回传（结果 / 错误），含 cx/cz/generation */
+export type ChunkWorkerMessage = Exclude<WorkerResponse, { type: 'config-ack' }>;
+/** config-ack 单独抽出后，类型上也不再污染结果处理分支 */
+export type ConfigAckMessage = Extract<WorkerResponse, { type: 'config-ack' }>;
+
+/** 单帧收割计划（纯数据，可脱离 three 单测） */
+export interface DrainPlan {
+  /** 配置回执：不占配额，总是优先处理 */
+  acks: ConfigAckMessage[];
+  /** 本帧最多处理的回传消息（默认 4 条） */
+  batch: ChunkWorkerMessage[];
+  /** 未处理条目，下一帧仍从队首开始，保证无区块永久饥饿 */
+  rest: ChunkWorkerMessage[];
+}
+
+/**
+ * 制定单帧收割计划：config-ack 优先且不占配额，其余消息按入队顺序取前 limit 条。
+ *
+ * 纯函数，不碰 busy / inFlight 等可变状态；主线程按计划顺序处理，
+ * 过期代次的 busy 回退逻辑保持不变。limit 至少为 1，避免配置为 0 时永久不消费。
+ */
+export function planDrain(messages: readonly WorkerResponse[], limit: number): DrainPlan {
+  const acks: ConfigAckMessage[] = [];
+  const rest: ChunkWorkerMessage[] = [];
+  for (const msg of messages) {
+    if (msg.type === 'config-ack') acks.push(msg);
+    else rest.push(msg);
+  }
+  const take = Math.max(1, Math.floor(limit));
+  return { acks, batch: rest.slice(0, take), rest: rest.slice(take) };
+}

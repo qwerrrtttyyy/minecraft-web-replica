@@ -91,6 +91,11 @@ async function boot() {
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
   const atlas = new TextureAtlas();
+  // R6 折中档能力注入：图集层不依赖 renderer，设备上限只用于实验开关的 clamp。
+  // 本机 E13 实测近景 MAD=3.349（阈值 2），mipmap 造成像素风糊化；
+  // 按主理人拍板「近景糊化即回滚」，默认档保持 mag/min 均 Nearest、不生成 mipmap。
+  // 开关 setAnisotropy(1..8) 仍保留在 __mc.atlas 上供后续真 GPU 复测。
+  atlas.setMaxAnisotropy(engine.renderer.capabilities.getMaxAnisotropy());
   const sound = new SoundEngine();
   const isMobile = engine.isMobile;
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
@@ -249,10 +254,10 @@ async function boot() {
   // 篮球复用实体系统的 spawn / raycast / despawn（disposeModel 自动释放 GPU 资源）
   registerBasketball(entities, buildBasketball);
   // 注册 4 种内置生物行为树（A08：行为与 v1.4.9 等价）
-  aiService.registerType('pig', pigBehavior as any);
-  aiService.registerType('sheep', sheepBehavior as any);
-  aiService.registerType('zombie', zombieBehavior as any);
-  aiService.registerType('skeleton', skeletonBehavior as any);
+  aiService.registerType('pig', pigBehavior);
+  aiService.registerType('sheep', sheepBehavior);
+  aiService.registerType('zombie', zombieBehavior);
+  aiService.registerType('skeleton', skeletonBehavior);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -1761,7 +1766,7 @@ async function boot() {
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
-    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
+    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival, highlight,
     botany, falling,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
