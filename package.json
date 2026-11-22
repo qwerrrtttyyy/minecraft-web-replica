@@ -25,6 +25,8 @@
     "test:ai:vitest": "vitest run test/ai.test.ts",
     "test:armor": "node test/armor-check.cjs",
     "test:mesher": "node test/mesher-check.cjs",
+    "test:mesh-typed-arrays": "npm run test:snapshot && node test/mesh-typed-arrays-check.cjs",
+    "test:wasm-choice": "npm run test:snapshot && node test/wasm-backend-choice-check.cjs",
     "test:mesher-hotspot": "npm run test:snapshot && node test/mesher-hotspot-check.cjs",
     "test:services": "node test/services-check.cjs",
     "test:diagnostics": "node test/diagnostics-check.cjs",

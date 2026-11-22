@@ -65,6 +65,11 @@ export interface DiagnosticSnapshot {
     abi: number;
     fallbackCount: number;
     selfCheckMismatches?: number;
+    /** v1.5.4：实际生效的噪声后端；旧快照缺字段时跳过相关检查 */
+    backend?: 'js' | 'wasm' | 'pending';
+    /** v1.5.4：自适应对称基准耗时（毫秒）；旧快照缺字段时跳过 */
+    benchJsMs?: number;
+    benchWasmMs?: number;
   };
 }
 
@@ -211,6 +216,18 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
     check('wasm.selfcheck',
       (w.selfCheckMismatches ?? 0) === 0 || w.status !== 'ready',
       `WASM 自检存在 ${w.selfCheckMismatches} 处不一致却仍处于 ready`, 'warn');
+    // 新字段可选：旧快照缺字段时跳过，不误报
+    if (w.backend !== undefined) {
+      check('wasm.backend',
+        w.backend === 'js' || w.backend === 'wasm' || w.backend === 'pending',
+        `WASM 后端取值非法：${w.backend}`);
+    }
+    if (w.benchJsMs !== undefined && w.benchWasmMs !== undefined) {
+      check('wasm.bench',
+        finite(w.benchJsMs) && w.benchJsMs >= 0 &&
+        finite(w.benchWasmMs) && w.benchWasmMs >= 0,
+        `WASM 基准耗时非法：js=${w.benchJsMs} wasm=${w.benchWasmMs}`);
+    }
   }
 
   // ---- 实体 / 存档 ----

@@ -196,10 +196,12 @@ async function boot() {
   };
   applyVanillaUI(settings.vanillaUI);
 
-  // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭）----
-  // 必须在 DefaultGenerator 构造前完成自检与后端安装；失败自动回退纯 JS。
+  // ---- 实验性内容：WASM 内核（默认关闭；?wasm=0 强制关闭，?wasm=force 强制安装）----
+  // 必须在 DefaultGenerator 构造前完成自检与基准决策；失败自动回退纯 JS。
+  // 参数优先级由 WasmRuntime 统一解析（0 > force > 实验性设置 > 自适应）。
   const wasm = new WasmRuntime({
-    enabled: settings.experimental && qs.get('wasm') !== '0',
+    enabled: settings.experimental,
+    wasmParam: qs.get('wasm'),
     onReady: (e) => events.emit('wasm:ready', e),
     onFallback: (e) => events.emit('wasm:fallback', e),
   });
@@ -209,7 +211,8 @@ async function boot() {
   const setExperimental = (v: boolean) => {
     settings.experimental = v;
     persistOptions(settings);
-    wasm.setEnabled(v && qs.get('wasm') !== '0');
+    // off/force 优先级由运行时结合 wasmParam 统一解析，其余走自适应
+    wasm.setEnabled(v);
     plugins.setExperimental(v);
     hud.toast(v ? '已进入实验性内容：WASM 内核已启用' : '实验性内容已关闭：回到纯 JS 内核');
   };
@@ -879,8 +882,8 @@ async function boot() {
     if (!debugOn) hud.setDebug(null);
     chunks.greedy = settings.greedy;
     applyMesherThreads(settings.mesherThreads);
-    // 实验性内容：导入 / 重置也必须推到 WASM 内核与插件载体
-    wasm.setEnabled(settings.experimental && qs.get('wasm') !== '0');
+    // 实验性内容：导入 / 重置也必须推到 WASM 内核与插件载体（优先级由运行时解析）
+    wasm.setEnabled(settings.experimental);
     plugins.setExperimental(settings.experimental);
     applyLandscapeMode(settings.landscapeMode, false);
     // 实验性玩法：启动 / 重置 / 导入时统一推送到各子系统
@@ -1342,6 +1345,9 @@ async function boot() {
           abi: ws.abi,
           fallbackCount: ws.fallbacks,
           selfCheckMismatches: ws.selfCheckMismatches,
+          backend: ws.backend,
+          benchJsMs: ws.benchJsMs,
+          benchWasmMs: ws.benchWasmMs,
         };
       })(),
       events: {
@@ -1763,7 +1769,7 @@ async function boot() {
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
     botany, falling,
-    services: container, events, plugins, api,
+    services: container, events, plugins, api, wasm,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
     openCrafting, closeCrafting,
