@@ -9,7 +9,7 @@
  * 二者互不覆盖：一个正式版 vN 可以覆盖多个 X.Y.Z 迭代。Git 标签统一带 v 前缀：
  * 迭代标签 `vX.Y.Z`（v1.3.0 / v1.3.1），正式版标签 `vN`（v1 / v2）。
  */
-export const VERSION = '1.5.4-alpha.1';
+export const VERSION = '1.5.4-alpha.2';
 export const RELEASE = 'v1';
 export const ENGINE_NAME = 'Minecraft TS';
 
