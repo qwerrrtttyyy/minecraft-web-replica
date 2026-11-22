@@ -875,7 +875,7 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.landscapeRow);
-    exp.appendChild(h('div', 'menu-note', '默认关闭。WASM 开关启用计算内核与插件三载体；「我的世界 UI 还原」把 HUD 整体切换为原版 Java 版风格；「横屏模式」锁定设备横向并启用宽屏 HUD，不支持锁定的浏览器会提示手动旋转。均即时生效。'));
+    exp.appendChild(h('div', 'menu-note', 'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」默认关闭，开启后把 HUD 切换为原版 Java 版风格；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。'));
 
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');
