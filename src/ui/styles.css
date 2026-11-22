@@ -108,6 +108,19 @@ img { image-rendering: pixelated; }
   padding: 16px;
 }
 
+/* ============ 插件面板 / HUD 锚点（PanelHost） ============ */
+.plugin-panel {
+  width: min(600px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.hud-anchor-row {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  width: 100%; pointer-events: none;
+}
+.hud-anchor:empty { display: none; }
+
 /* ============ 合成 ============ */
 .crafting-panel {
   width: min(600px, 94vw);

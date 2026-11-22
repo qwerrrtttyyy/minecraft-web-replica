@@ -12,15 +12,18 @@ touch:
   allow:
     - src/player/survival.ts
     - src/player/player.ts
+    - src/player/playerHooks.ts
     - src/entity/**
     - src/services/plugins/extensions.ts
     - src/services/plugins/PluginContext.ts
+    - src/services/plugins/saveBag.ts
+    - src/services/index.ts
     - src/services/events/GameEvents.ts
     - src/services/ui/PanelHost.ts
     - src/plugins/builtin/deps.ts
     - src/save/save.ts
     - src/ui/hud.ts
-    - src/ui/style.ts
+    - src/ui/styles.css
     - src/main.ts
     - scripts/build-test-snapshot.mjs
     - test/hooks-check.cjs
@@ -29,6 +32,7 @@ touch:
     - docs/agent/tasks/A2-5-core-hooks.yaml
     - docs/TESTING.md
     - docs/ARCHITECTURE.md
+    - docs/agent/validate.py
   deny:
     - src/world/blocks.ts
     - src/core/version.ts

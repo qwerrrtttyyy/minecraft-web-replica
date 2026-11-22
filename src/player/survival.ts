@@ -1,6 +1,6 @@
 import { NEW_ITEMS } from '../core/tuning';
 import type { EventService } from '../services/events';
-import { EXTENSION_POINTS } from '../services/plugins/extensions';
+import { EXTENSION_POINTS, type DamageKind } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
 import type { BlockRegistry } from '../world/blocks';
 import { EQUIPMENT } from './equipment';
@@ -222,7 +222,7 @@ export class SurvivalState {
 
   // ---------- 生命 ----------
 
-  damage(amount: number, cause = '未知', useIframes = true) {
+  damage(amount: number, cause = '未知', useIframes = true, kind: DamageKind = 'other') {
     if (!this.isSurvival || this.dead || amount <= 0) return false;
     if (useIframes) {
       if (this.iframes > 0) return false;
@@ -233,12 +233,13 @@ export class SurvivalState {
       const { payload } = this.extensions.reduce(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING, {
         amount,
         source: cause,
+        kind,
       });
       amount = Math.max(0, payload.amount);
       if (amount <= 0) return false;
     }
     this.health = Math.max(0, this.health - amount);
-    this.events.emit('survival:damage', { amount, health: this.health, cause });
+    this.events.emit('survival:damage', { amount, health: this.health, cause, kind });
     if (this.health <= 0) this.die(cause);
     return true;
   }
@@ -309,7 +310,7 @@ export class SurvivalState {
         this.drownAcc += dt;
         if (this.drownAcc >= 1) {
           this.drownAcc = 0;
-          this.damage(2, '溺水', false);
+          this.damage(2, '溺水', false, 'drown');
         }
       }
     } else {
@@ -343,7 +344,7 @@ export class SurvivalState {
       this.starveAcc += dt;
       if (this.starveAcc >= 4) {
         this.starveAcc = 0;
-        this.damage(1, '饥饿', false);
+        this.damage(1, '饥饿', false, 'starve');
       }
     } else {
       this.starveAcc = 0;
