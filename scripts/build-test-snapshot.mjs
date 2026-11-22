@@ -67,6 +67,7 @@ const entries = [
   'src/entity/droppedItem.ts',
   'src/entity/falling.ts',
   'src/world/dropLogic.ts',
+  'src/world/fire.ts',
   'src/ai/Node.ts',
   'src/ai/Blackboard.ts',
   'src/ai/AIContext.ts',

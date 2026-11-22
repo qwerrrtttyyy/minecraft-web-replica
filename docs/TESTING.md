@@ -1,4 +1,4 @@
-# 测试体系（v1.4.9）
+# 测试体系（v1.5.4）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -13,31 +13,38 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| # | 命令 | 内容 | 依赖快照 |
-|---|---|---|---|
-| 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
-| 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 4 | `npm run build` | 单文件 `dist/index.html` | — |
-| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
-| 7 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
-| 8 | `npm run test:ai` | 实体 AI：NodeStatus/Blackboard/TickContext 确定性 RNG、复合节点与装饰器、条件/动作节点、BehaviorTree JSON 编译、AIService 生命周期、4 种生物行为树冒烟回归 | ✓ |
-| 9 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 10 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 11 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
-| 12 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
-| 13 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 14 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 15 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 16 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 152（141 基线 + 内容植物扩充 11） | ✓ |
-| 17 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
-| 18 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 19 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
-| 19 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 20 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 21 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 22 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 2 | `npm run test:permtable` | 权限表与 `CraftAPI` 写入口一致性机械校验 | — |
+| 3 | `npm run wasm:check` | 内联 WASM 二进制完整性（构建产物校验） | — |
+| 4 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
+| 5 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
+| 6 | `npm run build` | 单文件 `dist/index.html` | — |
+| 7 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 8 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
+| 9 | `npm run test:ai:vitest` | 实体 AI Vitest：NodeStatus / Blackboard / TickContext 确定性 RNG、复合节点与装饰器、BehaviorTree JSON 编译、AIService 生命周期 | — |
+| 10 | `npm run test:wasm` | WASM 层：ABI 与导出契约 / 逐位等价 / 运行时生命周期 / 权限裁剪 | ✓ |
+| 11 | `npm run test:plugin-v2` | 插件体系 v2：semver / manifest / 依赖 / 热重载 / 上下文 / 权限裁剪 | ✓ |
+| 12 | `npm run test:plugin-carrier` | 插件载体：js / wasm:module / wasm:host + ABI 校验 / 事件桥接 | ✓ |
+| 13 | `npm run test:review-fixes` | 代码审查修复回归（M/L 项，纯逻辑） | ✓ |
+| 14 | `npm run test:logic:vitest` | 生存状态机 + 地形基础 Vitest | — |
+| 15 | `npm run test:vitest` | Vitest 全量：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting | — |
+| 16 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 17 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
+| 18 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 59 项（含可选生态 / 熔炉字段与坏档隔离） | ✓ |
+| 19 | `npm run test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 20 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 21 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 22 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 23 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 165~168，总数 156）+ 阶段管线 + 11 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 繁殖与植物特性 90 组 | ✓ |
+| 24 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
+| 25 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 34 组 | ✓ |
+| 26 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 54 组 | ✓ |
+| 27 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
+| 28 | `npm run test:crafting:vitest` | 合成系统 Vitest | — |
+| 29 | `npm run test:equipment` | 装备（武器 / 工具 / 护甲）回归 | ✓ |
+| 30 | `npm run test:smelting` | 远端熔炉烧炼 35 项 | ✓ |
+| 31 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端）114 项 | — |
+| 32 | `npm run test:options` | 设置页与选项持久化 / 行为回归 67 项 | — |
+| 33 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
 
 ## 快照机制
 
@@ -58,13 +65,14 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   `pickupDelay` 边界、同类合并 / 异类不合并（`item:` 前缀口径）、超时与 `y<0` 消失、
   入水终端下沉 `-waterSink` 与水平 `exp(-8*dt)` 衰减、出水恢复重力，以及
   `DropManager.update(dt, pos, false)` 不推进 age（暂停期间掉落物不过期）。
-- **terrain-system**：方块是否末位追加（id 45~91，v1.5.0+ 群系扩充追加 98~109，
-  92~97 保留给插件）、`TERRAIN_STAGES` 顺序契约、
-  `BIOME_PROFILES` 是否覆盖 11 个群系（原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）
-  并驱动地表 / 装饰 / 树种 / 水下植物，以及黏土（浅海床）、灰化土（针叶林地表）、
-  仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、新花卉（草甸 / 森林 / 针叶林）、
-  白桦 / 云杉 / 金合欢 / 樱花（对应群系）、恶地彩色陶瓦层（`strata`）、沼泥、
-  海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）且方块总数为 152（原 141 基线 + 内容植物扩充 11）。
+- **terrain-system**：方块是否末位追加（id 45~147，92~97 保留给插件；火光地基
+  165~168）、`TERRAIN_STAGES` 顺序契约、`BIOME_PROFILES` 是否覆盖 11 个群系
+  （原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）并驱动地表 / 装饰 / 树种 / 水下植物，
+  以及黏土（浅海床）、灰化土（针叶林地表）、仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、
+  新花卉（草甸 / 森林 / 针叶林）、白桦 / 云杉 / 金合欢 / 樱花（对应群系）、
+  恶地彩色陶瓦层（`strata`）、沼泥、海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）
+  的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）、35 种植物 id 57~91、
+  28 种花 id 120~147，且方块总数为 156（141 基线 + 内容植物扩充 11 + 火光地基 4）。
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
@@ -81,8 +89,13 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量）、有序配方的
   3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
   2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成。
+- **smelting-check**：远端熔炉烧炼纯逻辑 35 项（配方 / 燃料表 / `putFuelFrom` 统一校验 /
+  扣背包 / 加燃料 / tick 状态机 / `serialize` 往返），已挂入 `verify`。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
+- **vitest**：直接消费 `src` TS 源码的 Vitest 全量（`fire` / `warmth` / `campfire` /
+  `survival-saturation` / `ai` / `logic` / `terrain` / `crafting`），不依赖 CJS 快照，
+  已挂入 `verify`。
 - **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
   manifest 防篡改）、级联停用、存档校验。
 - **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含
@@ -138,6 +151,19 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 - 断言必须用 `waitForFunction` / 条件轮询等待世界收敛，禁止固定长 sleep。
 - 截图与 `results.json` 写入 `test/artifacts/`（已 gitignore）。
 
+**环境限制（触控合成 / 方向锁定）**：`test:smoke` 与 `test:options` 在缺少触控合成
+（Chromium `touchscreen.touchStart/Move/End`）或 `screen.orientation.lock` 支持的机器上
+可能失败，属环境限制而非回归。已知受影响断言：
+
+- `test:smoke`（预期 114 项）：`摇杆可推动玩家`、`移动端长按挖掘按钮可破坏`、`右侧拖动可转视角`；
+- `test:options`（预期 67 项）：`横屏模式`相关 6 项（选项行 / 即时生效 / 旋转提示 /
+  退出遮罩 / 跨会话恢复 / 重置回退）。
+
+预期计数以脚本实际输出为准（`合计 N 项，失败 M 项` / `设置页测试：X/Y 通过`）。
+
+另：`npm run test:perf`（火焰开 / 关的 `FireSystem` tick 成本回归守卫，依赖 `test:snapshot` 产物）
+已插入 `verify` 链的 `test:snapshot` 之后。
+
 ## 新增测试的硬规则
 
 1. 纯逻辑优先：能放进 Node 的规则不要放进浏览器组。
@@ -153,5 +179,6 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
    `Math.random()`；确定性硬规则只管掉落判定，既有 AI 游荡 / 生成坐标的 `Math.random()`
    不在本轮范围。新增掉落规则同时更新 `test:drop`。
 8. 图集新增纹理（含新物品 tile）必须追加在全部既有 painter 之后，既有 tile 索引不变；
-   方块 id 只追加，内容体系本轮不新增方块；合并后总数为 152（原 141 基线 + 内容植物扩充 11，内置 id 到 158）。新增方块 / 纹理后同步更新
+   方块 id 只追加，内容体系本轮不新增方块；合并后总数为 156（原 141 基线 + 内容植物扩充 11
+   + 火光地基 4，内置 id 到 158，火光地基 165~168）。新增方块 / 纹理后同步更新
    `test:terrain-system` 的 id / tile 断言与本文。
