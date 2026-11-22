@@ -396,7 +396,8 @@ async function boot() {
     dayCount: sky.dayCount,
     botany: botany.serializeEcology(),
     furnaces: { v: 1, cells: smelting.serialize() },
-    plugins: collectPluginData(),
+    // 标题界面尚未进入世界，数据袋未 load：沿用已读入存档的插件数据，避免导出丢失
+    plugins: mode === 'title' ? saved?.plugins : collectPluginData(),
     savedAt: Date.now(),
   });
   const saveNow = () => {
