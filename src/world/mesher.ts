@@ -2,7 +2,7 @@ import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
 import { FACES, AO_LEVELS, type FaceDef } from './faces';
 import {
   AIR_MESH_DEF, ZERO_UV,
-  type GeoArrays, type ChunkMeshData, type MeshBlockDef,
+  type MutableGeoArrays, type MutableChunkMeshData, type ChunkMeshData, type MeshBlockDef,
   type MeshSource, type MeshStats, type UVRect,
 } from './meshTypes';
 
@@ -29,7 +29,7 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): GeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], sways: [], indices: [] });
+const newGeo = (): MutableGeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], sways: [], indices: [] });
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -232,6 +232,10 @@ const tileFor = (def: MeshBlockDef, face: FaceDef) =>
 
 export function meshChunk(src: MeshSource): MeshOutput {
   const started = typeof performance !== 'undefined' ? performance.now() : 0;
+  // 收集期用窄类型（分量可 .push）；返回时按 MeshOutput 暴露，契约不变。
+  const mutable: MutableChunkMeshData = {
+    opaque: null, emissive: null, transparent: null, water: null,
+  };
   const out: MeshOutput = {
     opaque: null, emissive: null, transparent: null, water: null,
     stats: { quads: 0, vertices: 0, merged: 0, ms: 0 },
@@ -242,25 +246,34 @@ export function meshChunk(src: MeshSource): MeshOutput {
    * 用 aTint=2 告诉 shader 跳过光照，省下一份材质、一次 draw call 与一次几何。
    * mergeEmissive=false（?emerge=0）保留 v1.5.1 的独立 emissive 通道，仅作实验对照。
    */
-  const passFor = (def: MeshBlockDef): GeoArrays => {
+  const passFor = (def: MeshBlockDef): MutableGeoArrays => {
     if (def.lightEmission > 0 && !src.mergeEmissive) {
-      out.emissive ??= newGeo();
-      return out.emissive;
+      mutable.emissive ??= newGeo();
+      return mutable.emissive;
     }
     if (def.liquid) {
-      out.water ??= newGeo();
-      return out.water;
+      mutable.water ??= newGeo();
+      return mutable.water;
     }
     if (def.transparentPass) {
-      out.transparent ??= newGeo();
-      return out.transparent;
+      mutable.transparent ??= newGeo();
+      return mutable.transparent;
     }
-    out.opaque ??= newGeo();
-    return out.opaque;
+    mutable.opaque ??= newGeo();
+    return mutable.opaque;
+  };
+
+  /** 收集完成后把通道引用挂到对外契约上（类型放宽但运行时同一对象） */
+  const publish = (): MeshOutput => {
+    out.opaque = mutable.opaque;
+    out.emissive = mutable.emissive;
+    out.transparent = mutable.transparent;
+    out.water = mutable.water;
+    return out;
   };
 
   /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；flags 为顶点开关（0/1/2） */
-  const pushQuad = (g: GeoArrays, tile: UVRect, flip: boolean, lightSky: Float32Array, lightBlock: Float32Array, flags: number) => {
+  const pushQuad = (g: MutableGeoArrays, tile: UVRect, flip: boolean, lightSky: Float32Array, lightBlock: Float32Array, flags: number) => {
     const base = g.positions.length / 3;
     // tile 尺寸全图集一致，走 shader uniform；顶点只带 tile 起点
     const u0 = tile[0];
@@ -401,7 +414,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
       for (let lz = 0; lz < CS; lz++)
         for (let lx = 0; lx < CS; lx++) emitBlock(lx, y, lz);
     out.stats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
-    return out;
+    return publish();
   }
 
   // ---- Greedy 路径 ----
@@ -525,7 +538,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     }
   }
   out.stats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
-  return out;
+  return publish();
 }
 
 export { AIR_MESH_DEF, ZERO_UV };
