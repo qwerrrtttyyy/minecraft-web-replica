@@ -83,6 +83,11 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成。
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
+- **test:mesher-hotspot**（`npm run test:mesher-hotspot`，**不挂 `verify`**）：生产路径输出护栏。
+  脚本先跑 `test:snapshot`，再用 seed 2026 的 24 区块（`SnapshotMeshSource` + Greedy 默认配置）
+  对打包后的四通道几何做 SHA-256，与 `test/mesher-hotspot-baseline.json` 比较；任何 quad 顺序或
+  顶点属性变化都会 FAIL（哈希漂移），同时打印 8 轮预热后的 ms/区块供性能对照。
+  `--record` 只在故意修改 fixture 时重记基线，不可用于让优化「过门禁」。
 - **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
   manifest 防篡改）、级联停用、存档校验。
 - **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含

@@ -39,6 +39,10 @@ interface FaceGeom {
   uAxis: 0 | 1 | 2;
   vAxis: 0 | 1 | 2;
   dAxis: 0 | 1 | 2;
+  /** 预解构的法线分量：Greedy 每格都要用法向取邻居，避免重复 destructuring */
+  nx: number;
+  ny: number;
+  nz: number;
   uDir: number;
   vDir: number;
   dimU: number;
@@ -62,8 +66,9 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
   const uAxis = (c1[0] !== c0[0] ? 0 : c1[1] !== c0[1] ? 1 : 2) as 0 | 1 | 2;
   const vAxis = (c3[0] !== c0[0] ? 0 : c3[1] !== c0[1] ? 1 : 2) as 0 | 1 | 2;
   const dAxis = face.axis;
+  const [nx, ny, nz] = face.normal;
   return {
-    face, uAxis, vAxis, dAxis,
+    face, uAxis, vAxis, dAxis, nx, ny, nz,
     uDir: c1[uAxis] - c0[uAxis],
     vDir: c3[vAxis] - c0[vAxis],
     dimU: axisDim(uAxis),
@@ -238,6 +243,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   /**
+   * 可选来源可信度查询提升到入口：每个可见面都要问一次，
+   * 把可选链与属性读取从内层循环移到整块只做一次。缺省来源恒为可信。
+   */
+  // 注意：isKnown 是源对象上的方法（SnapshotMeshSource 会读 this.snapshot），
+  // 必须在入口 bind 一次；直接取出裸函数再调用会丢掉 this。
+  const isKnown = src.isKnown ? src.isKnown.bind(src) : () => true;
+
+  /**
    * 通道分配。默认把自发光并进不透明通道：它不需要光照 / 染色，
    * 用 aTint=2 告诉 shader 跳过光照，省下一份材质、一次 draw call 与一次几何。
    * mergeEmissive=false（?emerge=0）保留 v1.5.1 的独立 emissive 通道，仅作实验对照。
@@ -387,11 +400,11 @@ export function meshChunk(src: MeshSource): MeshOutput {
     if (id === 0) return;
     const def = src.def(id);
     if (def.shape === 'cross') { emitCross(bx, by, bz, def); return; }
-    for (let fi = 0; fi < FACES.length; fi++) {
-      const face = FACES[fi];
-      const [nx, ny, nz] = face.normal;
-      const nid = src.getId(bx + nx, by + ny, bz + nz);
-      if (!faceVisible(def, src.def(nid), src.isKnown?.(bx + nx, by + ny, bz + nz) ?? true)) continue;
+    for (let fi = 0; fi < FACE_GEOMS.length; fi++) {
+      const fg = FACE_GEOMS[fi];
+      const face = fg.face;
+      const nid = src.getId(bx + fg.nx, by + fg.ny, bz + fg.nz);
+      if (!faceVisible(def, src.def(nid), isKnown(bx + fg.nx, by + fg.ny, bz + fg.nz) ?? true)) continue;
       emitFace(bx, by, bz, def, face);
     }
   };
@@ -420,44 +433,44 @@ export function meshChunk(src: MeshSource): MeshOutput {
   //    key = (blockId | ao<<8) + 1，0 表示该格无可见/可合并面。
   //    同一 face 下 tile 与 shade 完全由 (blockId, face) 决定，无需进 key。
   let mask = new Int32Array(1);
-  // 扫描期复用的坐标/向量缓冲：单区块约 12 万次格子访问，避免每次分配数组
-  const bb: [number, number, number] = [0, 0, 0];
-  const base: [number, number, number] = [0, 0, 0];
-  const duV: [number, number, number] = [0, 0, 0];
-  const dvV: [number, number, number] = [0, 0, 0];
   for (const fg of FACE_GEOMS) {
-    const { face, uAxis, vAxis, dAxis, uDir, vDir, dimU, dimV, dimD, origin } = fg;
-    const [nx, ny, nz] = face.normal;
+    const { face, uAxis, vAxis, uDir, vDir, dimU, dimV, dimD, origin, nx, ny, nz } = fg;
     const stride = dimU * dimV;
+    const lastU = dimU - 1;
+    const lastV = dimV - 1;
+    const [ox, oy, oz] = origin;
+    // 面内切线向量只与面有关：原实现在每个合并 quad 上清零并写 duV/dvV 数组，
+    // 这里提到 face 级常量标量，顶点循环直接读标量。
+    const duX = uAxis === 0 ? uDir : 0, duY = uAxis === 1 ? uDir : 0, duZ = uAxis === 2 ? uDir : 0;
+    const dvX = vAxis === 0 ? vDir : 0, dvY = vAxis === 1 ? vDir : 0, dvZ = vAxis === 2 ? vDir : 0;
     if (mask.length < stride) mask = new Int32Array(stride);
-
-    const blockAt = (U: number, V: number, L: number): [number, number, number] => {
-      bb[uAxis] = uDir > 0 ? U : dimU - 1 - U;
-      bb[vAxis] = vDir > 0 ? V : dimV - 1 - V;
-      bb[dAxis] = L;
-      return bb;
-    };
 
     for (let L = 0; L < dimD; L++) {
       mask.fill(0, 0, stride);
       for (let V = 0; V < dimV; V++) {
+        const bv = vDir > 0 ? V : lastV - V;
         for (let U = 0; U < dimU; U++) {
-          const b = blockAt(U, V, L);
-          const id = src.getId(b[0], b[1], b[2]);
+          const bu = uDir > 0 ? U : lastU - U;
+          // 原 blockAt() 每次写入并返回可变 bb 数组；这里按轴的分支在 face 级不变量上，
+          // 坐标收敛为局部标量，后续 getId / AO / 光照全部只读 bx/by/bz。
+          const bx = uAxis === 0 ? bu : vAxis === 0 ? bv : L;
+          const by = uAxis === 1 ? bu : vAxis === 1 ? bv : L;
+          const bz = uAxis === 2 ? bu : vAxis === 2 ? bv : L;
+          const id = src.getId(bx, by, bz);
           if (id === 0) continue;
           const def = src.def(id);
           if (!isPlainCube(def)) continue;
-          const nid = src.getId(b[0] + nx, b[1] + ny, b[2] + nz);
-          if (!faceVisible(def, src.def(nid), src.isKnown?.(b[0] + nx, b[1] + ny, b[2] + nz) ?? true)) continue;
-          const ao = computeAOInto(src, b[0], b[1], b[2], face, def, aoCheck);
+          const nid = src.getId(bx + nx, by + ny, bz + nz);
+          if (!faceVisible(def, src.def(nid), isKnown(bx + nx, by + ny, bz + nz) ?? true)) continue;
+          const ao = computeAOInto(src, bx, by, bz, face, def, aoCheck);
           // 角点光照（平滑光照）：4 个角点各取空气侧 4 格均值
-          computeCornerLightInto(src, b[0], b[1], b[2], face, cornerSky, cornerBlock);
+          computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);
           // AO 四角不全等 → 保持逐面输出，避免合并后亮度渐变被拉伸
           // 角点光照四角不全等同理：合并面只能带一份光，拉伸会把渐变抹平
           if (ao[0] !== ao[1] || ao[0] !== ao[2] || ao[0] !== ao[3] ||
             cornerSky[0] !== cornerSky[1] || cornerSky[0] !== cornerSky[2] || cornerSky[0] !== cornerSky[3] ||
             cornerBlock[0] !== cornerBlock[1] || cornerBlock[0] !== cornerBlock[2] || cornerBlock[0] !== cornerBlock[3]) {
-            emitFace(b[0], b[1], b[2], def, face, ao, cornerSky, cornerBlock);
+            emitFace(bx, by, bz, def, face, ao, cornerSky, cornerBlock);
             continue;
           }
           // 光照不一致的面不合并：合并后 GPU 会在整个 quad 上插值同一份光，
@@ -497,21 +510,22 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const def = src.def(id);
           const tile = src.uv(tileFor(def, face));
           const g = passFor(def);
-          const b0 = blockAt(U, V, L);
-          base[0] = b0[0] + origin[0];
-          base[1] = b0[1] + origin[1];
-          base[2] = b0[2] + origin[2];
-          duV[0] = duV[1] = duV[2] = 0; duV[uAxis] = uDir;
-          dvV[0] = dvV[1] = dvV[2] = 0; dvV[vAxis] = vDir;
+          // 与扫描路径同一套轴映射；合并 quad 的原点直接落到标量上
+          const bu = uDir > 0 ? U : lastU - U;
+          const bv = vDir > 0 ? V : lastV - V;
+          const bx = uAxis === 0 ? bu : vAxis === 0 ? bv : L;
+          const by = uAxis === 1 ? bu : vAxis === 1 ? bv : L;
+          const bz = uAxis === 2 ? bu : vAxis === 2 ? bv : L;
+          const baseX = bx + ox, baseY = by + oy, baseZ = bz + oz;
           const bright = face.shade * AO_LEVELS[ao];
           const flags = flagsFor(def);
           for (let i = 0; i < 4; i++) {
             const c = face.corners[i];
             const ww = c[3] * w;
             const hh = c[4] * h;
-            qx[i] = base[0] + duV[0] * ww + dvV[0] * hh;
-            qy[i] = base[1] + duV[1] * ww + dvV[1] * hh;
-            qz[i] = base[2] + duV[2] * ww + dvV[2] * hh;
+            qx[i] = baseX + duX * ww + dvX * hh;
+            qy[i] = baseY + duY * ww + dvY * hh;
+            qz[i] = baseZ + duZ * ww + dvZ * hh;
             qu[i] = cu(ww);
             qv[i] = cu(hh);
             qb[i] = bright;

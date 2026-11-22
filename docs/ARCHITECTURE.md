@@ -398,6 +398,27 @@ v1.5.1 把光照也改成逐顶点：**每个角点取「空气侧」相邻 4 �
 - 实测：draw call 64 → 47、emissive mesh 49 → 0、program 数不变，
   顶点缓冲与索引缓冲**逐字节相同**，15552 个归一化像素采样**零差异**。
 
+### 8.3.3 Greedy 内层循环标量化（v1.5.4-alpha.2）
+
+Greedy 扫描每区块约 12 万次格子访问，热路径上的临时对象与重复解构会累积成本：
+
+- `FACE_GEOMS` 在模块初始化时一次算出 `uAxis / vAxis / dAxis`、面内切线方向、
+  面法线分量 `nx / ny / nz` 与原点，扫描期不再 destructuring `face.normal`。
+- `blockAt()` 写入并返回可变数组 `bb` 的做法改为 `U/V/L → bx/by/bz` 局部标量；
+  合并 quad 的 `base / duV / dvV` 数组也改成 face 级标量或 quad 级标量。
+- `src.isKnown?.()` 在 `meshChunk` 入口 `bind` 一次后复用。注意它是实例方法
+  （`SnapshotMeshSource.isKnown` 会读 `this.snapshot`），裸取函数会丢 `this`。
+- AO、角点光照、mask key、`emitFace` 的数学与分支一字未改。
+
+输出由 `npm run test:mesher-hotspot`（**不挂 `verify`**）的 SHA-256 护栏锁定：
+seed 2026 的 24 区块生产路径（`SnapshotMeshSource` + Greedy 默认配置），
+quad 顺序或任一顶点属性变化即 FAIL。
+
+曾尝试把 A 段（特殊方块全量扫描）并入 B 段并用 `Uint8Array` 去重：几何属性多重集未变，
+但 quad 发射顺序改变（连带 fixture 懒分配的 UV slot 与绝对顶点索引），集合 hash 漂移，
+已按「逐字节一致优先」回滚。本机受控 A/B（同进程、ABBA 交替）实测加速比约 1.0×，
+未达 1.5× 目标；连移除整段 A 扫描的对照也只有约 1.08×，故保留语义等价的标量化版本。
+
 ### 8.4 性能取舍（实测）
 
 | 指标 | 逐面 | Greedy |
