@@ -490,6 +490,7 @@ function quadsOf(g) {
   const rockQ1 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockKnown)).opaque);
   const rockQ2 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockMissing)).opaque);
   ok('非液体路径不受 known 位图影响', rockQ1 === 6 && rockQ2 === 6, `${rockQ1} → ${rockQ2}`);
+}
 
 // 7) 火光地基：slab / candle 的盒几何保真（bounds 缩放 + 面剔除 + tile 映射）
 {
