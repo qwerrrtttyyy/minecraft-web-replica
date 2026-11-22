@@ -18,3 +18,22 @@ touch:
 outputs:
   - mesher verify: verify:node 全绿；完整 verify 在 test:smoke 处 exit 1 已记录（本机无可用浏览器）
   - mesher baseline: 性能数据与 p95 待验证目标已写入本线文档
+
+# ---- 执行 evidence（2026-11-22）----
+evidence:
+  hash: 816ba4ba6eb4c6a5b0ef381077fe4ab191fa7e2d1e3154537998bfdbd8e8a5eb
+  baselineMsPerChunk: 142.56067588541666
+  optimizedMsPerChunk: 20.505
+  speedupMultiplier: 6.95
+  targetMsPerChunk: 95.04
+  targetMet: true
+  commands:
+    - "npm run verify:node → exit 0（全绿）"
+    - "npm run verify → exit 1（test:smoke：/usr/bin/chromium-browser requires the chromium snap to be installed）"
+    - "npm run test:mesher → 61 项通过，exit 0"
+    - "npm run test:mobile → 通过，exit 0"
+    - "node test/mesher-hotspot-check.cjs → hash 一致，exit 0"
+  p95ToVerify: "p95<33ms @ 默认移动设置（需有浏览器环境验证，非门）"
+  notes:
+    - "B.3（合并两次全量扫描）未实施：会改变特殊方块发射顺序，破坏逐字节一致；B.1+B.2 已超额达成 1.5× 目标"
+    - "WASM 噪声后端 / 诊断 / ?wasm= / C 内核全程未触碰"

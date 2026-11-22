@@ -6,5 +6,26 @@
   "greedy": true,
   "mergeEmissive": true,
   "hash": "816ba4ba6eb4c6a5b0ef381077fe4ab191fa7e2d1e3154537998bfdbd8e8a5eb",
-  "msPerChunk": 142.56067588541666
+  "msPerChunk": 142.56067588541666,
+  "optimized": {
+    "msPerChunk": 20.505,
+    "speedupMultiplier": 6.95,
+    "hash": "816ba4ba6eb4c6a5b0ef381077fe4ab191fa7e2d1e3154537998bfdbd8e8a5eb",
+    "hashUnchanged": true,
+    "targetMsPerChunk": 95.04,
+    "targetMet": true,
+    "note": "B.1+B.2（FACE_GEOMS 预存法线 / isKnown 提升 / blockAt 标量化 / 合并 quad 向量标量）；B.3 合并两次扫描未实施（会改变特殊方块发射顺序，破坏逐字节一致；目标已超额达成）"
+  },
+  "toVerify": {
+    "p95Ms": 33,
+    "settings": "默认移动设置",
+    "status": "TO-VERIFY",
+    "note": "需有可用浏览器的环境验证；本机无浏览器，p95<33ms 记录为目标而非门"
+  },
+  "verification": {
+    "verify:node": "exit 0（全绿）",
+    "verify": "exit 1，卡在 test:smoke：'Command /usr/bin/chromium-browser requires the chromium snap to be installed'（本机无可用浏览器，环境阻塞）",
+    "test:mesher": "61 项通过，exit 0",
+    "test:mobile": "通过，exit 0"
+  }
 }
