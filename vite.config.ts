@@ -1,6 +1,19 @@
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { VitePWA } from 'vite-plugin-pwa';
+
+const indexHtmlPath = fileURLToPath(new URL('./dist/index.html', import.meta.url));
+/** 单文件产物的内容哈希：作为 SW precache revision，内容一变就触发 SW 更新。 */
+const htmlRevision = () => {
+  try {
+    return createHash('sha256').update(readFileSync(indexHtmlPath)).digest('hex').slice(0, 16);
+  } catch {
+    return 'bootstrap';
+  }
+};
 
 // 构建产物为单文件 HTML，可直接双击在浏览器打开。
 // PWA 插件额外产出独立 manifest / Service Worker / 图标：
@@ -17,9 +30,15 @@ export default defineConfig({
       injectRegister: false,
       manifest: false, // 手写 manifest 到 public，路径更可控（相对 base: './'）
       workbox: {
-        // 避免 SW 生成阶段 terser 挂起（部分 Node 版本下 renderChunk Promise 不收敛）；
-        // 开发模式仅关闭压缩，功能与缓存策略不变
+        // development 模式绕开 workbox terser 在部分 Node 版本上的 renderChunk 挂起，
+        // 但该模式会把 precache 的 revision 置为 null → 浏览器永远认为 SW 没更新，
+        // 老用户被旧 index.html 永久缓存（新功能看不到）。这里按构建产物内容哈希
+        // 显式给 index.html 一个 revision，内容一变 SW 就更新、缓存自然失效。
         mode: 'development',
+        manifestTransforms: [(entries) => ({
+          manifest: entries.map((e) => (e.url === 'index.html' ? { ...e, revision: htmlRevision() } : e)),
+          warnings: [],
+        })],
         // 单文件构建：只有 index.html 需要缓存（JS/CSS 已内联其中）
         globPatterns: ['**/*.{html,png,webmanifest}'],
         maximumFileSizeToCacheInBytes: 100_000_000, // 内联后的 HTML 体积较大
