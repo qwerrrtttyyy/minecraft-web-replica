@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BALL } from './basketball';
 
 /**
  * 角色与生物模型：原版风格的盒装模型 + 程序化皮肤纹理。
@@ -429,6 +430,41 @@ export function buildRabbit(): MobModel {
       legs[1].rotation.x = -s;
       legs[2].rotation.x = -s;
       legs[3].rotation.x = s;
+    },
+  };
+}
+
+/** 篮球：橙色低多边形球体 + 程序化像素分格线，零外部资源 */
+export function buildBasketball(): MobModel {
+  const group = new THREE.Group();
+  const tex = faceTexture((ctx) => {
+    ctx.fillStyle = '#d2691e';
+    ctx.fillRect(0, 0, 8, 8);
+    // 明暗斑块保留像素颗粒感
+    ctx.fillStyle = '#b95a1a';
+    ctx.fillRect(0, 0, 3, 2);
+    ctx.fillRect(5, 5, 3, 2);
+    ctx.fillStyle = '#e48335';
+    ctx.fillRect(1, 3, 2, 2);
+    ctx.fillRect(5, 1, 2, 1);
+    // 深色分格线：一条经线 + 一条纬线
+    ctx.fillStyle = '#2b1408';
+    ctx.fillRect(3, 0, 1, 8);
+    ctx.fillRect(0, 3, 8, 1);
+    // 四角弧缝（阶梯像素），让球面辨识为篮球而非橙色球
+    ctx.fillRect(1, 1, 1, 1); ctx.fillRect(2, 2, 1, 1);
+    ctx.fillRect(5, 5, 1, 1); ctx.fillRect(6, 6, 1, 1);
+    ctx.fillRect(6, 1, 1, 1); ctx.fillRect(5, 2, 1, 1);
+    ctx.fillRect(1, 6, 1, 1); ctx.fillRect(2, 5, 1, 1);
+  });
+  const mat = new THREE.MeshLambertMaterial({ map: tex });
+  // 球体位于 group 原点；group 渲染时整体上移一个半径（见 Entity.updateBounce）
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL.RADIUS, 12, 8), mat);
+  group.add(ball);
+  return {
+    group,
+    animate() {
+      // 滚动由 updateBounce 直接旋转 group，球体无需逐帧待机动画
     },
   };
 }

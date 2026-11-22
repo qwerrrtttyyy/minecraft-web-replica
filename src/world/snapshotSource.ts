@@ -35,6 +35,22 @@ export class SnapshotMeshSource implements MeshSource {
     return this.snapshot.data[((y * W) + iz) * W + ix];
   }
 
+  /**
+   * N4：越界 halo / 缺失邻居的 data 恒为 0，必须能让液体面区分它和真实空气。
+   * y 越界是确定的基岩/空气边界，不是来源未知，返回 true 保持原有几何。
+   * 旧快照没有 known 字段时按全已知兼容（缺省契约）。
+   */
+  isKnown(lx: number, y: number, lz: number): boolean {
+    if (y < 0 || y >= WORLD_HEIGHT) return true;
+    const known = this.snapshot.known;
+    if (!known) return true;
+    const W = SW;
+    const ix = lx + 1;
+    const iz = lz + 1;
+    if (ix < 0 || ix >= W || iz < 0 || iz >= W) return false;
+    return known[((y * W) + iz) * W + ix] === 1;
+  }
+
   def(id: number): MeshBlockDef {
     return this.config.defs[id] ?? AIR_MESH_DEF;
   }

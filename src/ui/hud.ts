@@ -64,7 +64,7 @@ export interface HUDOptions {
   onBlockGravity: (v: boolean) => void;
   /** 实验性玩法：透明通道距离排序 */
   onSortTransparent: (v: boolean) => void;
-  /** 实验性内容开关：我的世界 UI 还原（原版 Java 版风格 HUD） */
+  /** 原版界面风格开关（默认开启，设置页「视频」分组） */
   onVanillaUI: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
@@ -225,6 +225,8 @@ export class HUD {
   hudHidden = false;
   private itemNameTimer = 0;
   private toastTimer = 0;
+  /** N5：自动保存提示单一定时器，连续触发不堆叠 */
+  private savedNoteTimer = 0;
   private pips: HTMLElement[] = [];
   private lastStats = { health: -1, hunger: -1, breath: -1, mode: '' as string };
   private selectedMode: GameMode = 'survival';
@@ -481,7 +483,7 @@ export class HUD {
     this.gameHud.appendChild(hotbarWrap);
 
     this.hintEl = h('div', 'hint-bar',
-      this.opts.isMobile ? '' : '左键按住破坏 · 右键放置/进食 · 滚轮/1-9切换 · 中键取样 · E方块库 · F5视角 · F3调试');
+      this.opts.isMobile ? '' : '左键按住破坏/拍球 · 右键放置/进食/投掷 · 滚轮/1-9切换 · 中键取样 · E方块库 · F5视角 · F3调试');
     this.gameHud.appendChild(this.hintEl);
 
     this.toastEl = h('div', 'toast');
@@ -599,7 +601,8 @@ export class HUD {
   noteSaved(time: string) {
     this.saveNote.textContent = `已自动保存 ${time}`;
     this.saveNote.classList.add('show');
-    window.setTimeout(() => this.saveNote.classList.remove('show'), 2500);
+    window.clearTimeout(this.savedNoteTimer);
+    this.savedNoteTimer = window.setTimeout(() => this.saveNote.classList.remove('show'), 2500);
   }
 
   toggleHudHidden() {
@@ -648,6 +651,7 @@ export class HUD {
   }
 
   setMining(state: MiningState | null) {
+    // N3：裂痕阶段与目标键由 main 帧循环交给 CrackOverlay，HUD 只维护弱化后的辅助绿条
     if (!state) {
       this.miningBar.style.display = 'none';
       return;
@@ -832,6 +836,12 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     video.appendChild(this.viewBobRow);
+    this.vanillaUIRow = this.optionRow('原版界面风格', () => {
+      this.opts.onVanillaUI(!this.opts.getOptions().vanillaUI);
+      this.syncOptions(this.opts.getOptions());
+    });
+    video.appendChild(this.vanillaUIRow);
+    video.appendChild(h('div', 'menu-note', '默认开启：原版 Java 版按钮、字体与快捷栏风格，即时生效。'));
 
     // ---- 控制 ----
     const ctrl = group('控制');
@@ -865,17 +875,13 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.experimentalRow);
-    this.vanillaUIRow = this.optionRow('我的世界 UI 还原', () => {
-      this.opts.onVanillaUI(!this.opts.getOptions().vanillaUI);
-      this.syncOptions(this.opts.getOptions());
-    });
-    exp.appendChild(this.vanillaUIRow);
+    // 横屏模式（远端 v1.5.3 既有功能）：锁定设备横向并启用宽屏 HUD
     this.landscapeRow = this.optionRow('横屏模式', () => {
       this.opts.onLandscapeMode(!this.opts.getOptions().landscapeMode);
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.landscapeRow);
-    exp.appendChild(h('div', 'menu-note', 'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」默认关闭，开启后把 HUD 切换为原版 Java 版风格；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。'));
+    exp.appendChild(h('div', 'menu-note', 'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」开关已移至「视频」分组（默认开启，开启后把 HUD 切换为原版 Java 版风格）；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。'));
 
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');

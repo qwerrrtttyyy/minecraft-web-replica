@@ -81,6 +81,8 @@ function buildSnapshot(read, cx, cz) {
   const data = new Uint8Array(W * H * W);
   const sky = new Uint8Array(W * H * W);
   const block = new Uint8Array(W * H * W);
+  // N4：buildSnapshot 的邻域全部来自真实生成的区块，因此全部标记为已知
+  const known = new Uint8Array(W * H * W).fill(1);
   const x0 = cx * CS;
   const z0 = cz * CS;
   for (let lz = -1; lz <= CS; lz++)
@@ -92,8 +94,22 @@ function buildSnapshot(read, cx, cz) {
         sky[i] = fakeSky(x0 + lx, y, z0 + lz);
         block[i] = fakeBlock(x0 + lx, y, z0 + lz);
       }
-  return { cx, cz, data, sky, block };
+  return { cx, cz, data, sky, block, known };
 }
+
+/** N4：合成快照——blocks 为 [lx,y,lz,id]，missing 为来源未知的 [lx,y,lz] */
+function syntheticSnapshot(blocks, missing) {
+  const data = new Uint8Array(W * H * W);
+  const sky = new Uint8Array(W * H * W).fill(15);
+  const block = new Uint8Array(W * H * W);
+  const known = new Uint8Array(W * H * W).fill(1);
+  const at = (lx, y, lz) => ((y * W) + (lz + 1)) * W + (lx + 1);
+  for (const [lx, y, lz, id] of blocks) data[at(lx, y, lz)] = id;
+  for (const [lx, y, lz] of missing) known[at(lx, y, lz)] = 0;
+  return { cx: 0, cz: 0, data, sky, block, known };
+}
+
+const quadCount = (geo) => (geo && geo.positions.length ? geo.positions.length / 12 : 0);
 
 /** 测试用世界坐标光照：大部分区域一致，稀疏暗格用来验证「光照不同不合并」 */
 const fakeSky = (x, y, z) => (y > 32 && x % 5 === 0 && z % 5 === 0 ? 4 : 15);
@@ -376,7 +392,107 @@ function quadsOf(g) {
     `${viaMerge.length} 个 quad`);
 }
 
-// 6) 汇总基准
+// 6) N4 回归：halo 来源未知时，液体面不朝缺失侧生成；非液体路径逐字节不受影响
+{
+  const reg = new BlockRegistry();
+  registerBuiltinBlocks(reg);
+  const cfg = makeConfig(reg, false);
+  const waterId = reg.byNameGet('water').id;
+  const stoneId = reg.byNameGet('stone').id;
+  const y = 40, lx = CS - 1, lz = 8;
+  const haloMissing = [[CS, y, lz]]; // +X 方向的 1 格 halo（区块外第一格）
+
+  /**
+   * QA 强化：只数 quad 总数无法证明「消失的是朝未知侧的那一面」——若实现误删顶面，
+   * 总数同样是 5。这里提取每个水面的 (轴|朝向|平面) 做集合差集，把实验 E 真正固化。
+   */
+  const waterFaces = (mesh) => {
+    const g = mesh.water;
+    const set = new Set();
+    if (!g || !g.positions.length) return set;
+    for (let q = 0; q < g.positions.length / 12; q++) {
+      const p = [];
+      for (let i = 0; i < 4; i++) p.push([
+        g.positions[q * 12 + i * 3],
+        g.positions[q * 12 + i * 3 + 1],
+        g.positions[q * 12 + i * 3 + 2],
+      ]);
+      const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+      const e2 = [p[3][0] - p[0][0], p[3][1] - p[0][1], p[3][2] - p[0][2]];
+      const n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+      ];
+      const abs = n.map(Math.abs);
+      let axis = 0;
+      if (abs[1] > abs[axis]) axis = 1;
+      if (abs[2] > abs[axis]) axis = 2;
+      set.add(`${'xyz'[axis]}${n[axis] >= 0 ? '+' : '-'}@${Math.round(p[0][axis])}`);
+    }
+    return set;
+  };
+
+  const airKnown = syntheticSnapshot([[lx, y, lz, waterId]], []);
+  const airMissing = syntheticSnapshot([[lx, y, lz, waterId]], haloMissing);
+  const meshKnown = meshChunk(new SnapshotMeshSource(cfg, airKnown));
+  const meshMissing = meshChunk(new SnapshotMeshSource(cfg, airMissing));
+  const qKnown = quadCount(meshKnown.water);
+  const qMissing = quadCount(meshMissing.water);
+  ok('已知空气邻居时单水块输出 6 面', qKnown === 6, `quad=${qKnown}`);
+  ok('halo 缺失时水面不朝缺失侧生成', qMissing === 5, `quad=${qMissing}（预期 6-1）`);
+
+  const facesKnown = waterFaces(meshKnown);
+  const facesMissing = waterFaces(meshMissing);
+  const gone = [...facesKnown].filter((k) => !facesMissing.has(k));
+  const added = [...facesMissing].filter((k) => !facesKnown.has(k));
+  ok('实验E：仅剔除朝未知侧(+X)的水面，其余五面逐面不变',
+    gone.length === 1 && gone[0] === `x+@${CS}` && added.length === 0,
+    `消失=${gone.join('/')} 新增=${added.join('/')}`);
+
+  // 生产默认走 greedy（水是非 plain cube，经特殊方块逐面路径）；两处调用点必须都传 isKnown
+  const cfgGreedy = makeConfig(reg, true);
+  const gKnown = quadCount(meshChunk(new SnapshotMeshSource(cfgGreedy, airKnown)).water);
+  const gMissingMesh = meshChunk(new SnapshotMeshSource(cfgGreedy, airMissing));
+  const gGone = [...facesKnown].filter((k) => !waterFaces(gMissingMesh).has(k));
+  ok('Greedy 生产路径同样只剔除未知侧水面',
+    gKnown === 6 && quadCount(gMissingMesh.water) === 5 && gGone.length === 1 && gGone[0] === `x+@${CS}`,
+    `quad=${gKnown}→${quadCount(gMissingMesh.water)} 消失=${gGone.join('/')}`);
+
+  // 实验C：已知下方石头时，只剔除朝下的水面（证明非边界方向的液体规则未回归）
+  const underStone = syntheticSnapshot([[lx, y, lz, waterId], [lx, y - 1, lz, stoneId]], []);
+  const fC = waterFaces(meshChunk(new SnapshotMeshSource(cfg, underStone)));
+  ok('实验C：已知下方石头只剔除朝下水面',
+    fC.size === 5 && !fC.has(`y-@${y}`) && fC.has(`y+@${y + 1}`),
+    `faces=${[...fC].sort().join('/')}`);
+
+  // 水-水内部面沿用 liquid 分支剔除，不受 known 改动影响（两块共 10 面）
+  const waterPair = syntheticSnapshot([[lx - 1, y, lz, waterId], [lx, y, lz, waterId]], []);
+  ok('水-水相邻内部面仍被剔除',
+    quadCount(meshChunk(new SnapshotMeshSource(cfg, waterPair)).water) === 10);
+
+  // y 越界是确定的基岩/空气边界而非来源未知：SnapshotMeshSource.isKnown 返回 true
+  const topWater = syntheticSnapshot([[lx, H - 1, lz, waterId]], []);
+  const fTop = waterFaces(meshChunk(new SnapshotMeshSource(cfg, topWater)));
+  ok('世界顶部水面的越界邻居视为已知，顶面不消失',
+    fTop.size === 6 && fTop.has(`y+@${H}`), `faces=${[...fTop].sort().join('/')}`);
+
+  // 邻居确实存在实心石头时同样剔除以避免共面；来源未知时保守剔除结果一致
+  const stoneKnown = syntheticSnapshot([[lx, y, lz, waterId], [CS, y, lz, stoneId]], []);
+  const stoneMissing = syntheticSnapshot([[lx, y, lz, waterId], [CS, y, lz, stoneId]], haloMissing);
+  ok('已知石头邻居时水面剔除', quadCount(meshChunk(new SnapshotMeshSource(cfg, stoneKnown)).water) === 5);
+  ok('未知侧即便残留石头数据也保守剔除',
+    quadCount(meshChunk(new SnapshotMeshSource(cfg, stoneMissing)).water) === 5);
+
+  // 非液体面可见性不得受 known 影响：石头在 +X 未知侧仍照常生成 6 面
+  const rockKnown = syntheticSnapshot([[lx, y, lz, stoneId]], []);
+  const rockMissing = syntheticSnapshot([[lx, y, lz, stoneId]], haloMissing);
+  const rockQ1 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockKnown)).opaque);
+  const rockQ2 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockMissing)).opaque);
+  ok('非液体路径不受 known 位图影响', rockQ1 === 6 && rockQ2 === 6, `${rockQ1} → ${rockQ2}`);
+}
+
+// 7) 汇总基准
 const drop = (1 - total.greedy / total.legacy) * 100;
 // 平滑光照 + 新群系后总体收益从约 33% 收敛到 29%，仍显著；阈值下调到 27% 留出波动余量。
 ok('总体 quad 减少 ≥ 27%', drop >= 27, `${total.legacy} → ${total.greedy}（-${drop.toFixed(1)}%）`);

@@ -80,6 +80,8 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
   // 未生成邻居按露天处理（与 World.getSkyLight 一致），避免世界边缘发黑
   const sky = new Uint8Array(W * H * W).fill(15);
   const block = new Uint8Array(W * H * W);
+  // N4：区分「已知空气」与「邻居未生成时的空气占位」，供液体面保守剔除使用
+  const known = new Uint8Array(W * H * W);
   const chunk = world.getChunk(cx, cz);
 
   // 3×3 邻居一次取齐；缺失 / 未生成的区块在快照里保持 0（等价于 getBlock 返回空气）
@@ -91,15 +93,20 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
     }
   }
 
-  const copy = (dst: Uint8Array, arr: (c: Chunk) => Uint8Array) => {
+  const copy = (dst: Uint8Array, arr: (c: Chunk) => Uint8Array, trackKnown = false) => {
+    // 只在写 data 时同步记录来源可信度；缺失邻居保持 0，不被当作已知空气
+    const mark = (i: number) => { if (trackKnown) known[i] = 1; };
     // 中心区：每行 16 字节连续
     if (chunk) {
       const src = arr(chunk);
+      const centerKnown = chunk.generated;
       for (let y = 0; y < H; y++) {
         const srcRow = y * CS * CS;
         for (let lz = 0; lz < CS; lz++) {
           const s = srcRow + lz * CS;
-          dst.set(src.subarray(s, s + CS), (y * W + lz + 1) * W + 1);
+          const d = (y * W + lz + 1) * W + 1;
+          dst.set(src.subarray(s, s + CS), d);
+          if (trackKnown && centerKnown) known.fill(1, d, d + CS);
         }
       }
     }
@@ -122,27 +129,27 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
       // 邻居行：北侧 local z = CS-1，南侧 local z = 0
       const nRow = yRow + (CS - 1) * CS;
       const sRow = yRow;
-      if (north) dst[nBase] = north[nRow + CS - 1];
-      if (northMid) dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1);
-      if (northE) dst[nBase + CS + 1] = northE[nRow];
-      if (south) dst[sBase] = south[sRow + CS - 1];
-      if (southMid) dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1);
-      if (southE) dst[sBase + CS + 1] = southE[sRow];
+      if (north) { dst[nBase] = north[nRow + CS - 1]; mark(nBase); }
+      if (northMid) { dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1); if (trackKnown) known.fill(1, nBase + 1, nBase + 1 + CS); }
+      if (northE) { dst[nBase + CS + 1] = northE[nRow]; mark(nBase + CS + 1); }
+      if (south) { dst[sBase] = south[sRow + CS - 1]; mark(sBase); }
+      if (southMid) { dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1); if (trackKnown) known.fill(1, sBase + 1, sBase + 1 + CS); }
+      if (southE) { dst[sBase + CS + 1] = southE[sRow]; mark(sBase + CS + 1); }
 
       // 西 / 东两列
       for (let lz = 0; lz < CS; lz++) {
         const d = dRow + (lz + 1) * W;
         const s = yRow + lz * CS;
-        if (midW) dst[d] = midW[s + CS - 1];
-        if (midE) dst[d + CS + 1] = midE[s];
+        if (midW) { dst[d] = midW[s + CS - 1]; mark(d); }
+        if (midE) { dst[d + CS + 1] = midE[s]; mark(d + CS + 1); }
       }
     }
   };
 
-  copy(data, (c) => c.data);
+  copy(data, (c) => c.data, true);
   copy(sky, (c) => c.sky);
   copy(block, (c) => c.block);
-  return { cx, cz, data, sky, block };
+  return { cx, cz, data, sky, block, known };
 }
 
 /** 主线程同步路径（Worker 不可用时的降级，也用于基准对照） */
@@ -172,6 +179,11 @@ export class WorldMeshSource implements MeshSource {
 
   getBlockLight(lx: number, y: number, lz: number): number {
     return this.world.getBlockLight(this.x0 + lx, y, this.z0 + lz);
+  }
+
+  /** 直接读活世界，不存在「快照来源未知」的情况 */
+  isKnown(_lx: number, _y: number, _lz: number): boolean {
+    return true;
   }
 
   uv(tile: string): UVRect {

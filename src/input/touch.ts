@@ -19,24 +19,24 @@ export class TouchControls {
     this.root = document.createElement('div');
     this.root.className = 'touch-ui';
     this.root.innerHTML = `
-      <div class="joy-zone" data-role="joy">
-        <div class="joy-base"><div class="joy-knob"></div></div>
+      <div class="joy-zone joy-zone--pe" data-role="joy">
+        <div class="joy-base joy-base--pe"><div class="joy-knob joy-knob--pe"></div></div>
       </div>
       <div class="touch-buttons">
-        <button class="tbtn tbtn-fly" data-role="fly" aria-label="切换飞行">
-          <svg viewBox="0 0 24 24"><path d="M3 14l7-2 4-7 2 1-2 6 5 2-1 2-6-1-3 4-2-1 1-4-4 1z" fill="currentColor"/></svg>
+        <button class="tbtn tbtn--pe tbtn-fly" data-role="fly" data-icon="fly" aria-label="切换飞行">
+          <svg viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M3 13h4v-2h4V8h3v3h4v2h3v2h-6v3h-3v-3H9v3H6v-3H3z" fill="currentColor"/></svg>
         </button>
-        <button class="tbtn tbtn-down" data-role="sneak" aria-label="下降/潜行">
-          <svg viewBox="0 0 24 24"><path d="M12 16l-6-6h12z" fill="currentColor"/></svg>
+        <button class="tbtn tbtn--pe tbtn-down" data-role="sneak" data-icon="down" aria-label="下降/潜行">
+          <svg viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M11 3h2v10h4l-5 7-5-7h4z" fill="currentColor"/></svg>
         </button>
-        <button class="tbtn tbtn-break" data-role="break" aria-label="破坏方块">
-          <svg viewBox="0 0 24 24"><path d="M14 3l7 7-2 2-1.5-1.5-8 8L4 20l1.5-5.5 8-8L12 5z" fill="currentColor"/></svg>
+        <button class="tbtn tbtn--pe tbtn-break" data-role="break" data-icon="break" aria-label="破坏方块">
+          <svg viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M4 4h4v2h4v2h4V6h4V4h4v7h-3v2h-2v2h-2v2h-2v-2h-2v-2H8v-2H5v-2H4z" fill="currentColor"/></svg>
         </button>
-        <button class="tbtn tbtn-place" data-role="place" aria-label="放置方块">
-          <svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+        <button class="tbtn tbtn--pe tbtn-place" data-role="place" data-icon="place" aria-label="放置方块">
+          <svg viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M9 3h6v2h3v14h-3v2H9v-2H6V5h3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 5l6 4 6-4M12 9v12" stroke="currentColor" stroke-width="2" fill="none"/></svg>
         </button>
-        <button class="tbtn tbtn-jump" data-role="jump" aria-label="跳跃">
-          <svg viewBox="0 0 24 24"><path d="M12 5l7 8h-4v6h-6v-6H5z" fill="currentColor"/></svg>
+        <button class="tbtn tbtn--pe tbtn-jump" data-role="jump" data-icon="jump" aria-label="跳跃">
+          <svg viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M11 3h2v6h3l-4 5-4-5h3zM6 12h3v7h6v-7h3v10H6z" fill="currentColor"/></svg>
         </button>
       </div>`;
     uiRoot.appendChild(this.root);
@@ -160,14 +160,15 @@ export class TouchControls {
     this.root.style.display = v ? '' : 'none';
   }
 
-  /** 放置键的语义：手持方块=放置，手持食物=进食，空手=禁用 */
-  setUseMode(mode: 'block' | 'item' | 'none') {
+  /** 放置键的语义：手持方块=放置，手持食物=进食，手持篮球=投掷，空手=禁用 */
+  setUseMode(mode: 'block' | 'item' | 'throw' | 'none') {
     const btn = this.root.querySelector('[data-role="place"]') as HTMLElement;
-    const icon = mode === 'item'
-      ? '<path d="M12 21c-4 0-7-3.2-7-7 0-4.3 4.6-7.6 7-9.6 2.4 2 7 5.3 7 9.6 0 3.8-3 7-7 7z" fill="currentColor"/><path d="M12 4c.6-1.4 2-2.4 3.6-2.4" stroke="currentColor" stroke-width="2" fill="none"/>'
-      : '<path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/>';
+    const throwIcon = '<path d="M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="2"/>';
+    const itemIcon = '<path d="M12 21c-4 0-7-3.2-7-7 0-4.3 4.6-7.6 7-9.6 2.4 2 7 5.3 7 9.6 0 3.8-3 7-7 7z" fill="currentColor"/><path d="M12 4c.6-1.4 2-2.4 3.6-2.4" stroke="currentColor" stroke-width="2" fill="none"/>';
+    const blockIcon = '<path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/>';
+    const icon = mode === 'throw' ? throwIcon : mode === 'item' ? itemIcon : blockIcon;
     btn.querySelector('svg')!.innerHTML = icon;
-    btn.setAttribute('aria-label', mode === 'item' ? '进食' : '放置方块');
+    btn.setAttribute('aria-label', mode === 'throw' ? '投掷篮球' : mode === 'item' ? '进食' : '放置方块');
     btn.classList.toggle('disabled', mode === 'none');
     btn.style.opacity = mode === 'none' ? '0.35' : '';
   }

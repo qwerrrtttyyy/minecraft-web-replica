@@ -43,3 +43,17 @@ export function mulberry32(seed: number): () => number {
 
 export const chunkKey = (cx: number, cz: number) => `${cx},${cz}`;
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
+
+/** N3：挖掘裂痕阶段数（0 = 无裂纹，1..9 逐层加深，与原版一致） */
+export const CRACK_STAGES = 10;
+export type CrackStage = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/**
+ * 把浮点挖掘进度量化为裂痕阶段。
+ * 纯函数（无 DOM / three 依赖），既给渲染层用，也给低帧率逻辑回归用；
+ * progress 天然单调，dt 钳制只会改变推进速度，不会让阶段回退。
+ */
+export const quantizeCrackStage = (progress: number): CrackStage => {
+  const raw = progress >= 1 ? CRACK_STAGES - 1 : Math.floor(progress * CRACK_STAGES);
+  return Math.max(0, Math.min(CRACK_STAGES - 1, raw)) as CrackStage;
+};

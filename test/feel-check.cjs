@@ -17,6 +17,7 @@ global.localStorage = dom.window.localStorage;
 global.addEventListener = dom.window.addEventListener.bind(dom.window);
 
 const { Input } = require('./terrain-logic/input/input.js');
+const { CRACK_STAGES, quantizeCrackStage } = require('./terrain-logic/core/types.js');
 
 const log = (...a) => console.log(...a);
 let passed = 0;
@@ -76,6 +77,60 @@ log('手感回归（跳跃输入缓冲）');
   key('keyup', 'Space');
   input.reset();
   ok('reset 后缓冲清空', input.sampleJump(1050) === false);
+}
+
+// 6) N3 裂痕阶段量化：低帧率 / dt 钳制下单调推进，不在每帧改阶段
+log('\n手感回归（N3 挖掘裂痕阶段）');
+{
+  ok('裂痕阶段数为 10（0 无裂纹 + 1..9）', CRACK_STAGES === 10);
+  ok('progress=0 对应无裂纹', quantizeCrackStage(0) === 0);
+  ok('progress=1 对应满裂纹', quantizeCrackStage(1) === 9);
+  ok('边界：负数钳制为 0，>1 钳制为 9',
+    quantizeCrackStage(-0.01) === 0 && quantizeCrackStage(1.5) === 9);
+  ok('阶段边界精确值（0.0999→0 / 0.1→1 / 0.9→9）',
+    quantizeCrackStage(0.0999) === 0 && quantizeCrackStage(0.1) === 1 && quantizeCrackStage(0.9) === 9);
+  {
+    let denseMono = true;
+    let prevDense = -1;
+    for (let i = 0; i <= 1000; i++) {
+      const s = quantizeCrackStage(i / 1000);
+      if (s < prevDense) denseMono = false;
+      prevDense = s;
+    }
+    ok('0..1 密集采样严格单调不回退', denseMono);
+  }
+
+  const distinct = new Set();
+  for (let i = 0; i <= 100; i++) distinct.add(quantizeCrackStage(i / 100));
+  ok('10 个阶段都可达到（肉眼可区分）', distinct.size === 10, `distinct=${distinct.size}`);
+
+  // 15fps + dt 钳制 0.25s / mineTime=1.6s：每帧约 +0.156，阶段不得回退
+  let prev = -1;
+  let backward = 0;
+  let changes = 0;
+  for (let frame = 0; frame < 120; frame++) {
+    const progress = Math.min(1, (frame * (1 / 15)) / 1.6);
+    const stage = quantizeCrackStage(progress);
+    if (stage < prev) backward++;
+    if (stage !== prev) changes++;
+    prev = stage;
+  }
+  ok('低帧率下阶段单调不回退', backward === 0, `backward=${backward}`);
+  ok('阶段切换次数有限（不逐帧抖动）', changes <= CRACK_STAGES, `changes=${changes}`);
+
+  // 60fps 同样单调，且相同 progress 永远得到相同阶段（无随机抖动）
+  let prev60 = -1;
+  let monotonic60 = true;
+  for (let frame = 0; frame < 400; frame++) {
+    const stage = quantizeCrackStage(Math.min(1, frame / 240));
+    if (stage < prev60) monotonic60 = false;
+    prev60 = stage;
+  }
+  ok('60fps 阶段单调且无闪烁', monotonic60);
+  const sampleA = quantizeCrackStage(0.55);
+  const sampleB = quantizeCrackStage(0.55 + Number.EPSILON);
+  ok('量化为纯函数（同输入同输出）',
+    sampleA === quantizeCrackStage(0.55) && sampleA === sampleB && sampleA === 5);
 }
 
 log(`\nPASS 手感回归：${passed} 组断言全部通过`);

@@ -41,6 +41,8 @@ for (const def of Object.values(EQUIPMENT)) {
 
 export const ITEMS: Record<string, ItemDefinition> = {
   apple: { name: 'apple', label: '苹果', tile: 'apple', food: 4 },
+  /** 世界内可拍打 / 投掷的篮球：创造模式靠 consume 恒 true 天然无限取用 */
+  basketball: { name: 'basketball', label: '篮球', tile: 'basketball' },
   porkchop: { name: 'porkchop', label: '生猪排', tile: 'porkchop', food: 6 },
   wheat_seeds: { name: 'wheat_seeds', label: '小麦种子', tile: 'wheat_seeds', plant: 'wheat_seedling' },
   sweet_berries: {

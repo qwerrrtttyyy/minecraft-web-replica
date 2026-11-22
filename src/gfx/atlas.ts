@@ -717,6 +717,27 @@ function builtinPainters(): Record<string, Painter> {
     }
   };
   return {
+    basketball: (p, rng) => {
+      // 橙色底 + 深色经纬分格线：与 3D 球模型共用同一套像素语言，零外部资源
+      fillNoise(p, rng, 0xd2691e, 8);
+      blob(p, rng, 0xb8551a, 6, 3);
+      blob(p, rng, 0xe88a3c, 5, 2);
+      for (let i = 0; i < TILE; i++) {
+        p.set(7, i, 0x2b1408);
+        p.set(8, i, 0x2b1408);
+        p.set(i, 7, 0x2b1408);
+        p.set(i, 8, 0x2b1408);
+      }
+      // 四角弧缝（像素阶梯）
+      for (let i = 0; i < 4; i++) {
+        p.set(2 + i, 2 + i, 0x2b1408);
+        p.set(13 - i, 2 + i, 0x2b1408);
+        p.set(2 + i, 13 - i, 0x2b1408);
+        p.set(13 - i, 13 - i, 0x2b1408);
+      }
+      rect(p, 3, 3, 2, 2, 0xf2a35c); // 左上高光
+      shadeEdges(p, 0.86);
+    },
     grass_top: (p, rng) => {
       // 灰度画：群系色由 shader 按世界坐标噪声调制（chunkManager.injectLight）
       fillNoise(p, rng, gray(0x7ba848), 10);

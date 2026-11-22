@@ -67,6 +67,11 @@ export interface MeshSource {
   getSkyLight(lx: number, y: number, lz: number): number;
   /** 方块光 0~15 */
   getBlockLight(lx: number, y: number, lz: number): number;
+  /**
+   * 该坐标的数据来源是否可信（可选，缺省视为 true）。
+   * 液体面在邻居来源未知时保守不生成，避免 halo 缺失被当作空气而产生虚假水面。
+   */
+  isKnown?(lx: number, y: number, lz: number): boolean;
   uv(tile: string): UVRect;
   readonly greedy: boolean;
   /** 自发光是否并入不透明通道（与 MeshConfig.mergeEmissive 同步） */
@@ -80,6 +85,11 @@ export interface MeshSnapshot {
   data: Uint8Array;
   sky: Uint8Array;
   block: Uint8Array;
+  /**
+   * 1 = 该 halo 格来自真实已生成区块；0 = 邻居缺失，data 里的 0 只是空气占位。
+   * 与 data 同尺寸同索引。旧调用方缺此字段时 SnapshotMeshSource 按全已知兼容。
+   */
+  known: Uint8Array;
 }
 
 /**
