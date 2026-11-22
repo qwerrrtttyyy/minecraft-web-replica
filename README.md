@@ -32,7 +32,9 @@
 物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
 离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.5.3（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.5.4-alpha.1（双轨版本号，规则见下方「版本规范」）
+
+**v1.5.4-alpha.1 篮球物理与移动端原版体验（预发布，PR #24）**：世界内可拍可投的篮球（弹跳 / 滚动物理、走近拾取、程序化模型与音效，创造模式无限取用）；`vanillaUI` 默认开启的 Java 1.20 风格按钮与布局、PE 风格圆角方形触控按键与方形底盘摇杆；PWA 横屏锁定 + 竖屏引导兜底、10 阶段程序化挖掘裂纹覆盖层；修复区块边界水面穿透、背包 / 快捷栏点击穿透与自动保存提示遮挡快捷栏。
 
 **v1.5.3 实体 AI 系统（行为树）**：新增数据驱动行为树 AI 系统（`src/ai/`），节点只依赖 `TickContext` 接口，不 import three / World / DOM；支持 Selector/Sequence/Parallel/RandomSelector 复合节点、Inverter/Repeater/UntilFail/UntilSuccess 装饰器、条件与动作节点库、BehaviorTree JSON 编译与 NodeRegistry。`AIService` 每帧批量更新（2ms 分帧预算），实体 spawn/despawn 时 attach/detach AIComponent。内置猪/羊/僵尸/骷髅迁移到行为树 JSON，行为与 v1.4.9 等价。新增 `test:ai`（53 项断言）并挂进 `verify` 链；确定性 RNG 走 `mulberry32(hash(worldSeed, entityId, label))`。
 
