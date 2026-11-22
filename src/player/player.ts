@@ -17,6 +17,7 @@ import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
 import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
 import { rollDrops } from '../world/drops';
+import { BALL } from '../entity/basketball';
 import {
   COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
 } from '../world/compost';
@@ -30,6 +31,10 @@ export interface HotbarState {
 export interface MiningState {
   progress: number;
   block: BlockDefinition;
+  /** N3：由 progress 量化的 0~9 裂痕阶段，渲染层直接用它切换纹理 */
+  stage: number;
+  /** N3：目标方块键，换块即清旧裂纹 */
+  targetKey: string;
 }
 
 const EYE = 1.62;
@@ -82,6 +87,8 @@ export class Player implements System, PhysicsBody {
   private breakTimer = 0;
   private placeTimer = 0;
   private attackTimer = 0;
+  /** 篮球拍打节流，避免按住左键连拍到失控 */
+  private patTimer = 0;
   private mineKey = '';
   private mineTime = 0.2;
   private lastTapBreakAt = 0;
@@ -439,10 +446,13 @@ export class Player implements System, PhysicsBody {
     this.breakTimer -= dt;
     this.placeTimer -= dt;
     this.attackTimer -= dt;
+    this.patTimer -= dt;
     this.eatTimer -= dt;
 
     if (this.entityTarget && input.breaking) {
-      this.attack(this.entityTarget);
+      // 命中篮球优先拍打（主理人拍板）：拍球覆盖攻击，且绝不破坏准星后的方块
+      if (this.entityTarget.entity.type.id === 'basketball') this.patBasketball(this.entityTarget);
+      else this.attack(this.entityTarget);
     } else if (input.breaking) {
       if (this.survival.isSurvival) this.mineTick(dt);
       else if (this.breakTimer <= 0) {
@@ -547,6 +557,19 @@ export class Player implements System, PhysicsBody {
     const now = performance.now();
     if (now - this.lastTapBreakAt < 250) return;
     this.lastTapBreakAt = now;
+
+    // 触屏轻点是独立边沿路径，不经过 update 的 entityTarget：这里重算准星命中，
+    // 命中篮球则拍球而非破坏方块（主理人拍板：触屏拍打纳入本期）
+    this.eyePosition(this.tmpEye);
+    this.viewDirection(this.tmpDir);
+    const eHit = this.entities.raycast(this.tmpEye, this.tmpDir, ENTITY_REACH);
+    const blockHit = this.world.raycast(this.tmpEye, this.tmpDir, REACH);
+    if (eHit && eHit.entity.type.id === 'basketball' &&
+      eHit.dist < Math.min(blockHit ? blockHit.dist : 999, ENTITY_REACH)) {
+      this.patBasketball(eHit);
+      return;
+    }
+
     if (!this.survival.isSurvival) {
       this.breakBlock();
       return;
@@ -656,6 +679,11 @@ export class Player implements System, PhysicsBody {
       return;
     }
     if (stack.kind === 'item') {
+      // 手持篮球右键 = 投掷，优先级高于默认放置 / 进食（R6）
+      if (stack.id === 'basketball') {
+        this.throwBasketball(stack);
+        return;
+      }
       const item = this.selectedItem();
       // 肥料 / 骨粉：对着目标格补充土壤养分（骨粉还额外给植物能量）
       if (stack.id === 'fertilizer' || stack.id === 'bone_meal') {
@@ -841,7 +869,52 @@ export class Player implements System, PhysicsBody {
     this.sound.eat();
   }
 
-  // ---------- 攻击 ----------
+  // ---------- 攻击 / 篮球互动 ----------
+
+  /** 手持篮球右键：沿视线投出可弹跳的篮球（创造无限 / 生存消耗） */
+  private throwBasketball(stack: Stack): void {
+    if (this.survival.isSurvival && !this.survival.has(stack, 1)) return;
+    this.eyePosition(this.tmpEye);
+    this.viewDirection(this.tmpDir);
+    // 生成点略前移，避免出生瞬间嵌进玩家自己或身后的墙
+    const x = this.tmpEye.x + this.tmpDir.x * 0.7;
+    const y = this.tmpEye.y + this.tmpDir.y * 0.7 - 0.35;
+    const z = this.tmpEye.z + this.tmpDir.z * 0.7;
+    const ball = this.entities.spawn('basketball', x, y, z);
+    if (!ball) return;
+    ball.vel.set(
+      this.tmpDir.x * BALL.THROW_SPEED,
+      this.tmpDir.y * BALL.THROW_SPEED + BALL.THROW_LIFT,
+      this.tmpDir.z * BALL.THROW_SPEED,
+    );
+    ball.pickupCooldown = BALL.PICKUP_COOLDOWN;
+    this.survival.consume(stack, 1); // 创造恒 true 不扣，生存扣 1
+    this.sound.throwBall();
+    this.swing();
+    this.events.emit('basketball:throw', { id: ball.id, x, y, z });
+  }
+
+  /** 左键 / 触屏轻点命中篮球：拍球取代攻击，给一个朝视线 + 向上的冲量 */
+  private patBasketball(target: { entity: Entity; dist: number }): void {
+    if (this.patTimer > 0) return;
+    this.patTimer = BALL.PAT_COOLDOWN;
+    const ball = target.entity;
+    this.viewDirection(this.tmpDir);
+    // 保留少量原水平速度叠加拍打冲量，运动中的球也能顺势拍走
+    ball.vel.x = ball.vel.x * 0.3 + this.tmpDir.x * BALL.PAT_SPEED;
+    ball.vel.z = ball.vel.z * 0.3 + this.tmpDir.z * BALL.PAT_SPEED;
+    ball.vel.y = Math.max(ball.vel.y, 0) + BALL.PAT_LIFT;
+    // 拍完短暂延长冷却，避免球刚停稳就被玩家自己捡回
+    ball.pickupCooldown = Math.max(ball.pickupCooldown, BALL.PICKUP_COOLDOWN * 0.35);
+    this.swing();
+    this.sound.hit();
+    this.particles.burst(ball.pos.x, ball.pos.y + 0.35, ball.pos.z,
+      [0.92, 0.45, 0.12], 10, 0.18, 2.4);
+    this.shake(0.05);
+    this.events.emit('basketball:slap', {
+      id: ball.id, x: ball.pos.x, y: ball.pos.y, z: ball.pos.z,
+    });
+  }
 
   attack(target: { entity: Entity; dist: number }) {
     if (this.attackTimer > 0) return;

@@ -3,7 +3,7 @@ import './ui/vanilla-ui.css';
 import * as THREE from 'three';
 import { Engine } from './core/engine';
 import { VERSION, RELEASE } from './core/version';
-import { clamp, type BlockId, type GameMode } from './core/types';
+import { blockKey, clamp, type BlockId, type GameMode } from './core/types';
 import {
   loadOptions, normalizeOptions, persistOptions, qualityScale,
   type MesherThreads, type Options, type QualityMode, type RandomTickSpeed,
@@ -18,6 +18,7 @@ import { ChunkManager } from './world/chunkManager';
 import { Sky } from './gfx/sky';
 import { Particles } from './gfx/particles';
 import { BlockHighlight } from './gfx/highlight';
+import { CrackOverlay, quantizeCrackStage } from './gfx/crackOverlay';
 import { Player, type HotbarState } from './player/player';
 import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
 import { Smelting } from './player/smelting';
@@ -34,10 +35,13 @@ import { EntityManager } from './entity/entity';
 import { AIService } from './ai/AIService';
 import { pigBehavior, sheepBehavior, zombieBehavior, skeletonBehavior } from './ai/behaviors';
 import { DropManager } from './entity/droppedItem';
+import { buildBasketball } from './entity/models';
+import { canPickup, registerBasketball } from './entity/basketball';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
 import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
+import { createOrientationGate } from './ui/orientationGate';
 import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
 import {
   createDefaultSaveProvider, downloadSave, loadSaveResult, normalizeSave, pickSaveFile,
@@ -69,6 +73,8 @@ async function boot() {
   const uiRoot = document.createElement('div');
   uiRoot.id = 'ui';
   document.body.appendChild(uiRoot);
+  // N1：PWA 靠 manifest 锁横屏；普通浏览器竖屏用遮罩引导 + 「仍要游玩」兜底
+  createOrientationGate(document.body);
 
   // 调试 / 基准参数必须在创建渲染器之前解析：MSAA 只能在上下文创建时决定
   const qs = new URLSearchParams(location.search);
@@ -90,8 +96,12 @@ async function boot() {
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
 
   const idOf = (n: string) => registry.byNameGet(n)!.id;
-  const creativeSlots = ['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'oak_leaves', 'glass', 'torch']
-    .map((n) => ({ kind: 'block' as const, id: idOf(n) }));
+  // 创造栏固定 9 格（HUD 只渲染 9 格）：8 个常用方块 + 篮球物品
+  const creativeSlots: Stack[] = [
+    ...['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'glass', 'torch']
+      .map((n) => ({ kind: 'block' as const, id: idOf(n) })),
+    { kind: 'item', id: 'basketball' },
+  ];
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
 
   // ---- 存档 ----
@@ -236,6 +246,8 @@ async function boot() {
   const entities = new EntityManager(world, engine.scene, events, seed, particles);
   const aiService = new AIService(world, events, undefined, seed);
   entities.setAIService(aiService);
+  // 篮球复用实体系统的 spawn / raycast / despawn（disposeModel 自动释放 GPU 资源）
+  registerBasketball(entities, buildBasketball);
   // 注册 4 种内置生物行为树（A08：行为与 v1.4.9 等价）
   aiService.registerType('pig', pigBehavior as any);
   aiService.registerType('sheep', sheepBehavior as any);
@@ -325,6 +337,8 @@ async function boot() {
 
   const tntList: PrimedTnt[] = [];
   const highlight = new BlockHighlight(engine.scene);
+  // N3：单 Mesh 裂痕覆盖层，跟随准星目标方块
+  const crackOverlay = new CrackOverlay(engine.scene);
   let mode: Mode = 'title';
   // 开发者设置「显示调试信息」：常显 F3 面板
   let debugOn = settings.debugOverlay;
@@ -981,6 +995,13 @@ async function boot() {
     drops.spawn(name, count, x, y, z, source);
   };
 
+  // 篮球落地反馈由事件解耦：实体层只发事件，音效与粒子在这里订阅
+  events.on('basketball:bounce', ({ x, y, z, strength }) => {
+    sound.bounce(strength);
+    particles.burst(x, y + 0.1, z, [0.92, 0.45, 0.12],
+      Math.min(8, 2 + Math.floor(strength / 4)), 0.16, 1.6);
+  });
+
   // ---- 状态机 ----
   async function startGame(cont: boolean) {
     if (mode !== 'title') return;
@@ -1261,7 +1282,9 @@ async function boot() {
   /** 移动端“放置”键的语义跟随手持物 */
   function syncUseMode() {
     const s = player.selectedStack();
-    touch?.setUseMode(!s ? 'none' : s.kind === 'item' ? 'item' : 'block');
+    touch?.setUseMode(!s ? 'none'
+      : s.kind === 'item' && s.id === 'basketball' ? 'throw'
+        : s.kind === 'item' ? 'item' : 'block');
   }
 
   // ---- 运行时诊断组：只读快照 / API / F3 面板共用同一套检查 ----
@@ -1568,6 +1591,21 @@ async function boot() {
           playing: mode === 'playing',
           hurtPlayer: (amount, cause) => survival.damage(amount, cause),
         });
+        // 篮球走近自动拾取（无地面掉落物系统的降级方案，Q3）
+        for (const e of [...entities.entities]) {
+          if (e.type.id !== 'basketball') continue;
+          const dx = e.pos.x - player.pos.x;
+          const dz = e.pos.z - player.pos.z;
+          const dy = e.pos.y - player.pos.y;
+          const speed = Math.hypot(e.vel.x, e.vel.y, e.vel.z);
+          if (!canPickup(Math.hypot(dx, dz), dy, speed, e.pickupCooldown)) continue;
+          const { x, y, z } = e.pos;
+          entities.despawn(e);
+          survival.addItem('basketball', 1);
+          sound.pickup();
+          hud.toast('篮球已收回');
+          events.emit('basketball:pickup', { x, y, z });
+        }
         entities.maintainPopulation(dt, player.pos, { survival: survival.isSurvival, daylight: sky.daylight });
         for (const tnt of [...tntList]) {
           tnt.update(dt);
@@ -1629,9 +1667,19 @@ async function boot() {
       sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
         hud.setSurvival(survival);
-        hud.setMining(mode === 'playing' && player.miningProgress !== null && player.miningBlock
-          ? { progress: player.miningProgress, block: player.miningBlock }
-          : null);
+        const mining = mode === 'playing' && player.miningProgress !== null && player.miningBlock
+          ? {
+            progress: player.miningProgress,
+            block: player.miningBlock,
+            stage: quantizeCrackStage(player.miningProgress),
+            targetKey: blockKey(hlTarget?.x ?? 0, hlTarget?.y ?? 0, hlTarget?.z ?? 0),
+          }
+          : null;
+        hud.setMining(mining);
+        // 目标丢失 / 换块 / 松开挖掘时当帧清除，阶段变化才换 UV
+        crackOverlay.set(mining && hlTarget ? hlTarget : null, mining?.stage ?? 0);
+      } else {
+        crackOverlay.set(null, 0);
       }
       if (mode === 'playing') {
         saveAcc += dt;

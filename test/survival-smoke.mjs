@@ -296,6 +296,18 @@ try {
     open: window.__mc.hud.paletteOpen,
     menu: window.__mc.hud.menuOpen,
   }));
+  // 真实指针点击（而非 DOM.click()）验证调色板条目的 pointer-events 通路
+  const slotsBeforePaletteAssign = await page.evaluate(() => JSON.stringify(window.__mc.player.hotbar.slots));
+  await page.click('.palette-cell');
+  await sleep(150);
+  ok('创造/生存方块库条目可真实点击放入快捷栏',
+    await page.$eval('.toast', (el) => el.textContent.includes('已放入快捷栏')));
+  await page.evaluate((snapshot) => {
+    const mc = window.__mc;
+    mc.player.hotbar.slots = JSON.parse(snapshot);
+    mc.player.setHeldStack(mc.player.hotbar.slots[mc.player.hotbar.index]);
+    mc.hud.updateHotbar();
+  }, slotsBeforePaletteAssign);
   await page.evaluate(() => document.querySelector('.palette-close').click());
   await sleep(150);
   const afterPaletteClose = await page.evaluate(() => ({
@@ -308,6 +320,7 @@ try {
     afterPaletteClose.mode === 'paused' && afterPaletteClose.menu && !afterPaletteClose.palette,
     JSON.stringify({ paletteFromMenu, afterPaletteClose }));
   await page.evaluate(() => window.__mc.resumeGame());
+
   await sleep(200);
 
   ok('生命/饥饿 HUD 可见', await page.$eval('.stats-wrap', (el) => el.style.display !== 'none' && el.offsetParent !== null));
@@ -317,6 +330,44 @@ try {
   ok('新手补给苹果在背包', await page.evaluate(() => window.__mc.survival.countKey('i:apple') === 2));
   ok('手持物品为苹果（扁平精灵）', await page.evaluate(() => window.__mc.player.selectedStack()?.kind === 'item'));
   ok('快捷栏渲染物品数量', (await page.$eval('.hotbar-slot .slot-count', (el) => el.textContent)) === '2');
+
+  // ---- BugFix：快捷栏槽位（div）必须可命中，且不能让全屏 HUD 吞掉 canvas 点击 ----
+  const slotHit = await page.evaluate(() => {
+    const slot = document.querySelectorAll('.hotbar-slot')[3];
+    const r = slot.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      pointer: getComputedStyle(slot).pointerEvents,
+      hud: getComputedStyle(document.querySelector('.game-hud')).pointerEvents,
+      hotbar: getComputedStyle(document.querySelector('.hotbar')).pointerEvents,
+      hit: !!hit && (hit === slot || slot.contains(hit)),
+      center: document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.tagName ?? null,
+    };
+  });
+  ok('快捷栏槽位 pointer-events:auto 且命中自身',
+    slotHit.pointer === 'auto' && slotHit.hit && slotHit.hud === 'none' && slotHit.hotbar === 'none',
+    JSON.stringify(slotHit));
+  ok('游戏画面中心仍命中 canvas（HUD 未吞掉点击）', slotHit.center === 'CANVAS', String(slotHit.center));
+
+  const slotBefore = await page.evaluate(() => window.__mc.player.hotbar.index);
+  await page.evaluate(() => {
+    const slot = document.querySelectorAll('.hotbar-slot')[3];
+    slot.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse' }));
+  });
+  await sleep(120);
+  ok('点击快捷栏槽位可切换手持物品', await page.evaluate(() => window.__mc.player.hotbar.index === 3));
+
+  await page.keyboard.press('Digit7');
+  await sleep(120);
+  ok('数字键 1-9 仍可切槽', await page.evaluate(() => window.__mc.player.hotbar.index === 6));
+  await page.evaluate(() => {
+    document.querySelector('#app canvas').dispatchEvent(new WheelEvent('wheel', {
+      deltaY: -120, bubbles: true, cancelable: true,
+    }));
+  });
+  await sleep(120);
+  ok('滚轮仍可切槽', await page.evaluate(() => window.__mc.player.hotbar.index === 5));
+  await page.evaluate((i) => window.__mc.selectSlot(i), slotBefore);
 
   // 移动
   const p0 = await page.evaluate(() => ({ ...window.__mc.player.pos }));
@@ -644,6 +695,26 @@ try {
     ok('合成产出 4 橡木木板', craft.planks === 4, `count=${craft.planks}`);
     ok('原木被消耗', craft.logs === 0, `count=${craft.logs}`);
 
+    // 真实指针点击背包条目 / 合成格（不是 DOM.click()），覆盖「背包点不动」的另一种解释
+    const chipPos = await page.evaluate(() => {
+      const el = document.querySelector('.crafting-chip');
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(chipPos.x, chipPos.y);
+    await sleep(150);
+    ok('合成背包条目真实点击可放入格子',
+      (await page.$$eval('.crafting-cell img', (e) => e.length)) === 1);
+    const cellPos = await page.evaluate(() => {
+      const el = document.querySelector('.crafting-cell');
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(cellPos.x, cellPos.y);
+    await sleep(150);
+    ok('合成格真实点击可退回背包',
+      (await page.$$eval('.crafting-cell img', (e) => e.length)) === 0);
+
     // 关闭界面，剩余材料应退回背包
     await page.click('.crafting-close');
     await sleep(200);
@@ -756,6 +827,17 @@ try {
 
   await startGame(mpage);
 
+  // N1：竖屏粗指针会显示旋转引导遮罩。真实玩家需先点「仍要游玩」才能操作 HUD，
+  // 冒烟测试沿用同一路径（直接触摸会被遮罩拦截，这是预期行为而非输入回归）。
+  const gateShown = await mpage.evaluate(() => {
+    const gate = document.getElementById('rotate-gate');
+    return !!gate && !gate.hidden;
+  });
+  if (gateShown) await mpage.click('.rotate-gate-play');
+  ok('N1 竖屏引导可点「仍要游玩」进入',
+    await mpage.evaluate(() => document.getElementById('rotate-gate')?.hidden === true),
+    `shown=${gateShown}`);
+
   ok('触控层显示', await mpage.$eval('.touch-ui', (el) => el.style.display !== 'none'));
   ok('虚拟摇杆存在', await mpage.$eval('.joy-zone', (el) => el.offsetWidth > 100));
   ok('动作按钮 5 个', (await mpage.$$eval('.tbtn', (e) => e.length)) === 5);
@@ -764,6 +846,27 @@ try {
   ok('动态分辨率接口就绪', await mpage.evaluate(() => typeof window.__mc.engine.setQualityScale === 'function'));
   ok('移动端锁定像素比上限 1.5', await mpage.evaluate(() => window.__mc.engine.basePixelRatio <= 1.5),
     `dpr=${await mpage.evaluate(() => window.__mc.engine.basePixelRatio)}`);
+
+  // BugFix：手机横竖屏轻点快捷栏槽位必须切换手持物（此前 pointer-events 穿透）
+  const touchSlot = await mpage.evaluate(() => {
+    const slot = document.querySelectorAll('.hotbar-slot')[2];
+    const r = slot.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      x, y,
+      pointer: getComputedStyle(slot).pointerEvents,
+      hit: !!hit && (hit === slot || slot.contains(hit)),
+      before: window.__mc.player.hotbar.index,
+    };
+  });
+  ok('移动端快捷栏槽位可命中', touchSlot.pointer === 'auto' && touchSlot.hit, JSON.stringify(touchSlot));
+  await mpage.touchscreen.touchStart(touchSlot.x, touchSlot.y);
+  await mpage.touchscreen.touchEnd();
+  await sleep(150);
+  ok('移动端轻点快捷栏可切换手持物',
+    await mpage.evaluate((before) => window.__mc.player.hotbar.index === 2 && before !== 2, touchSlot.before));
 
   // 摇杆推动
   const joy = await mpage.$('.joy-zone');

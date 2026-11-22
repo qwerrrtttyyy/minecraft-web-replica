@@ -203,14 +203,16 @@
 .vanilla-ui .stat-hunger .pip-fill svg { fill: #d48a28; stroke: #5a3208; stroke-width: 1.2px; }
 .vanilla-ui .stat-breath .pip-fill svg { fill: #a8e8fa; stroke: #1b4256; stroke-width: 1.2px; }
 
-/* ---------- 挖掘进度：原版裂纹条 ---------- */
+/* ---------- 挖掘进度（N3）：弱化辅助条，主反馈交给方块裂痕覆盖层 ---------- */
 .vanilla-ui .mining-bar {
-  height: 9px; width: 96px;
+  height: 7px; width: 64px;
+  top: calc(50% + 30px);
   background: #1a1a1a;
-  border: 2px solid #000;
+  border: 1px solid #000;
   box-shadow: 0 0 0 1px #5a5a5a;
+  opacity: .55;
 }
-.vanilla-ui .mining-fill { background: linear-gradient(#a8e06a, #6a9e2e); }
+.vanilla-ui .mining-fill { background: linear-gradient(#a8e06a, #6a9e2e); transition: none; }
 
 /* ---------- 加载屏 ---------- */
 .vanilla-ui .loading-title,
@@ -255,4 +257,120 @@
 @media (max-width: 760px) {
   .vanilla-ui .opt-row { font-size: 9px; }
   .vanilla-ui .mc-logo { letter-spacing: -2px; }
+}
+
+/* ---------- 设置页滑块：原版凹陷轨道 + 立体滑块 ---------- */
+.vanilla-ui .slider-row { gap: 8px; padding: 6px 4px; }
+.vanilla-ui .slider-head {
+  font-family: 'MC Pixel', 'PingFang SC', sans-serif;
+  font-size: 11px;
+}
+.vanilla-ui .slider-val {
+  color: #2f7a2f;
+  font-variant-numeric: tabular-nums;
+}
+.vanilla-ui .mc-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  /* 触控目标高度 ≥36px；细轨道由 runnable-track 伪元素绘制，保证原版观感 */
+  height: 38px;
+  background: transparent;
+  cursor: pointer;
+}
+.vanilla-ui .mc-slider::-webkit-slider-runnable-track,
+.vanilla-ui .mc-slider::-moz-range-track {
+  height: 12px;
+  background: #1a1a1a;
+  border: 2px solid;
+  border-color: var(--mc-gui-lo) var(--mc-gui-hi) var(--mc-gui-hi) var(--mc-gui-lo);
+  box-shadow: inset 1px 1px 0 #000;
+}
+.vanilla-ui .mc-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 20px;
+  /* 让滑块居中于 12px（含边框 16px）的细轨道 */
+  margin-top: -6px;
+  background: var(--mc-gui-face);
+  border: 2px solid;
+  border-color: var(--mc-gui-hi) var(--mc-gui-lo) var(--mc-gui-lo) var(--mc-gui-hi);
+  box-shadow: inset -2px -2px 0 #8b8b8b, inset 2px 2px 0 #e0e0e0;
+}
+.vanilla-ui .mc-slider::-moz-range-thumb {
+  width: 14px;
+  height: 20px;
+  border-radius: 0;
+  background: var(--mc-gui-face);
+  border: 2px solid;
+  border-color: var(--mc-gui-hi) var(--mc-gui-lo) var(--mc-gui-lo) var(--mc-gui-hi);
+}
+
+/* ---------- 滚动条：原版深灰凹槽 ---------- */
+.vanilla-ui .options-panel::-webkit-scrollbar,
+.vanilla-ui .keybind-overlay .mc-panel::-webkit-scrollbar { width: 12px; }
+.vanilla-ui .options-panel::-webkit-scrollbar-track,
+.vanilla-ui .keybind-overlay .mc-panel::-webkit-scrollbar-track { background: #2a2a2a; }
+.vanilla-ui .options-panel::-webkit-scrollbar-thumb,
+.vanilla-ui .keybind-overlay .mc-panel::-webkit-scrollbar-thumb {
+  background: var(--mc-gui-face);
+  border: 2px solid #3a3a3a;
+}
+
+/* ---------- 按钮禁用态：交互态补齐 ---------- */
+.vanilla-ui .mc-btn:disabled,
+.vanilla-ui .mode-btn:disabled,
+.vanilla-ui .icon-btn:disabled {
+  color: #7a7a7a;
+  background: #9a9a9a;
+  border-color: #8b8b8b #d0d0d0 #d0d0d0 #8b8b8b;
+  box-shadow: inset 1px 1px 0 #7a7a7a;
+  cursor: not-allowed;
+  opacity: .75;
+}
+
+/* ---------- 暂停 / 死亡界面：按钮间距与对齐 ---------- */
+.vanilla-ui .menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vanilla-ui .menu-row,
+.vanilla-ui .menu-new-world {
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.vanilla-ui .menu-panel .mc-btn { min-height: 34px; }
+.vanilla-ui .death-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.vanilla-ui .death-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Toast / 提示条：原版描边状态 ---------- */
+.vanilla-ui .toast {
+  padding: 8px 14px;
+  background: rgba(16, 16, 16, .82);
+  border: 2px solid #3a3a3a;
+  box-shadow: 0 0 0 1px #000;
+}
+.vanilla-ui .toast.warn { color: #ffd45c; }
+.vanilla-ui .toast.error { color: #ff6a5c; }
+
+/* ---------- 移动端：收紧但保持对齐，杜绝溢出 ---------- */
+@media (max-width: 760px) {
+  .vanilla-ui .hotbar-slot { width: 38px; height: 38px; }
+  .vanilla-ui .stats-wrap { width: min(440px, 94vw); }
+  .vanilla-ui .slider-row { gap: 4px; }
+  .vanilla-ui .menu-panel .mc-btn { font-size: 10px; min-height: 30px; }
+  .vanilla-ui .opt-row { word-break: break-all; }
 }

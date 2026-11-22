@@ -19,6 +19,19 @@
   </style>
 </head>
 <body>
+  <!-- N1：普通浏览器竖屏兜底（PWA 安装态由 manifest 的 landscape 锁定） -->
+  <div id="rotate-gate" hidden>
+    <div class="rotate-gate-panel">
+      <svg class="rotate-gate-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="19" y="7" width="26" height="50" rx="3" fill="none" stroke="currentColor" stroke-width="4" />
+        <path d="M9 42a23 23 0 0 0 39 8" fill="none" stroke="#ffd54a" stroke-width="4" stroke-linecap="round" />
+        <path d="M48 50V38m0 12H36" fill="none" stroke="#ffd54a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <div class="rotate-gate-title">请旋转设备至横屏</div>
+      <div class="rotate-gate-desc">横屏游玩视野更完整，按键与快捷栏会按横屏布局显示。</div>
+      <button type="button" class="rotate-gate-play">仍要游玩</button>
+    </div>
+  </div>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
   <script>

@@ -62,7 +62,7 @@ export interface Options {
   blockGravity: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
-  /** 实验性内容：我的世界 UI 还原（开启后 HUD 切换为原版 Java 版风格） */
+  /** 原版界面风格（默认开启；已持久化的老用户配置仍被尊重） */
   vanillaUI: boolean;
 }
 
@@ -97,7 +97,7 @@ export const DEFAULT_OPTIONS: Options = {
   showClouds: true,
   blockGravity: true,
   sortTransparent: true,
-  vanillaUI: false,
+  vanillaUI: true,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];

@@ -62,6 +62,7 @@ const entries = [
   'src/core/version.ts',
   'src/diagnostics/RuntimeDiagnostics.ts',
   'src/entity/models.ts',
+  'src/entity/basketball.ts',
   'src/entity/entity.ts',
   'src/entity/droppedItem.ts',
   'src/entity/falling.ts',

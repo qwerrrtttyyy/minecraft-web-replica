@@ -132,24 +132,11 @@ try {
     opened.sliders.join(','));
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));
 
-  // 实验性内容：我的世界 UI 还原开关
-  ok('设置页含「我的世界 UI 还原」选项行', await page.evaluate(() =>
+  // 视频分组：原版界面风格开关（v1.5.2 默认开启并移出实验性内容）
+  ok('设置页含「原版界面风格」选项行', await page.evaluate(() =>
     [...document.querySelectorAll('.options-panel .opt-row .opt-label')]
-      .some((e) => e.textContent === '我的世界 UI 还原')));
+      .some((e) => e.textContent === '原版界面风格')));
   const uiBefore = await page.evaluate(() => document.getElementById('ui').classList.contains('vanilla-ui'));
-  await clickRow(page, '我的世界 UI 还原');
-  await sleep(200);
-  const uiOn = await page.evaluate(() => ({
-    cls: document.getElementById('ui').classList.contains('vanilla-ui'),
-    val: [...document.querySelectorAll('.options-panel .opt-row')]
-      .find((b) => b.querySelector('.opt-label')?.textContent === '我的世界 UI 还原')
-      ?.querySelector('.opt-val')?.textContent,
-    saved: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI,
-  }));
-  ok('UI 还原开关即时给 #ui 挂上 vanilla-ui 类', !uiBefore && uiOn.cls,
-    `before=${uiBefore} after=${uiOn.cls}`);
-  ok('UI 还原开关显示「开」并写入 localStorage', uiOn.val === '开' && uiOn.saved === true,
-    `val=${uiOn.val} saved=${uiOn.saved}`);
 
   // 必须用普通 mc-btn：opt-row 的伪元素被刻意 display:none，读不到真实宽度
   const btnSel = '.options-panel .options-footer .mc-btn';
@@ -167,12 +154,26 @@ try {
     const el = document.querySelector('.options-panel .opt-label');
     return el ? getComputedStyle(el).fontFamily : '';
   });
-  ok('UI 还原启用像素字体', pixelFont.includes('MC Pixel'), pixelFont);
-  await clickRow(page, '我的世界 UI 还原');
+  ok('原版界面风格启用像素字体', pixelFont.includes('MC Pixel'), pixelFont);
+  await clickRow(page, '原版界面风格');
   await sleep(200);
-  ok('再点一次恢复默认界面', await page.evaluate(() =>
-    !document.getElementById('ui').classList.contains('vanilla-ui') &&
-    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI === false));
+  const uiOn = await page.evaluate(() => ({
+    cls: document.getElementById('ui').classList.contains('vanilla-ui'),
+    val: [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '原版界面风格')
+      ?.querySelector('.opt-val')?.textContent,
+    saved: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI,
+  }));
+  ok('原版界面风格开关即时切换 #ui 的 vanilla-ui 类', uiBefore !== uiOn.cls,
+    `before=${uiBefore} after=${uiOn.cls}`);
+  ok('开关显示对应状态并写入 localStorage',
+    uiOn.val === (uiBefore ? '关' : '开') && uiOn.saved === !uiBefore,
+    `val=${uiOn.val} saved=${uiOn.saved}`);
+  await clickRow(page, '原版界面风格');
+  await sleep(200);
+  ok('再点一次恢复原状态', await page.evaluate((before) =>
+    document.getElementById('ui').classList.contains('vanilla-ui') === before &&
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').vanillaUI === before, uiBefore));
 
   // Esc 关闭（标题屏来源 → 回到标题）
   // 固定 sleep 在负载高时会偶发失败，按项目硬规则改为条件轮询
@@ -557,6 +558,8 @@ try {
   // ================= 移动端 =================
   const mob = await newPage(390, 844, true);
   await gotoTitle(mob);
+  // N1：竖屏粗指针下旋转引导遮罩会拦截真实触摸，先按玩家路径点「仍要游玩」
+  await mob.evaluate(() => document.querySelector('#rotate-gate .rotate-gate-play')?.click());
   await clickText(mob, '.title-links .link-btn', '设置');
   await sleep(400);
   const mobUi = await mob.evaluate(() => {

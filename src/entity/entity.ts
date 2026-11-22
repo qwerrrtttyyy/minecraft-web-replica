@@ -12,6 +12,7 @@ import { dropHash, rollDrops } from '../world/drops';
 import { ANIMALS, BREED, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
+import { BALL, bounceVy, rollFriction } from './basketball';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -29,6 +30,8 @@ export interface EntityType {
   hostile?: boolean;
   /** 生命值，默认 10 */
   health?: number;
+  /** 物理分流：省略为现有漫步行为；'bounce' 为篮球弹跳体（无 AI） */
+  physics?: 'bounce';
   /** 单次攻击伤害，默认 3 */
   damage?: number;
   /** 攻击判定距离，默认 1.8 */
@@ -54,6 +57,9 @@ export interface EntityContext {
 
 let NEXT_ID = 1;
 
+/** 球面滚动轴：模块级复用 Vector3，避免每帧分配 */
+const ROLL_AXIS = new THREE.Vector3();
+
 export class Entity implements PhysicsBody {
   readonly id = NEXT_ID++;
   pos = new THREE.Vector3();
@@ -74,6 +80,8 @@ export class Entity implements PhysicsBody {
   cooldown = 0;
   /** 受击闪光剩余秒数：目标缩放 = 体型基准 × 1.14 */
   private hurtFlash = 0;
+  /** 拾取冷却：spawn 后延迟，防「刚投出即被捡回」 */
+  pickupCooldown = 0;
   private state: 'idle' | 'walk' = 'idle';
   private timer = 1 + Math.random() * 2;
   private phase = 0;
@@ -145,6 +153,12 @@ export class Entity implements PhysicsBody {
       const diff = scaleTarget - scaleNow;
       const step = Math.sign(diff) * Math.min(Math.abs(diff), dt * 1.2);
       this.model.group.scale.setScalar(scaleNow + step);
+    }
+
+    // 篮球：绕过漫步 AI / 攻击 / 灼烧，直接走弹跳物理分支（既有 walk 实体零改动）
+    if (this.type.physics === 'bounce') {
+      this.updateBounce(dt, world);
+      return;
     }
 
     // 白天灼烧（僵尸）：缓慢掉血
@@ -261,6 +275,69 @@ export class Entity implements PhysicsBody {
     this.model.animate(this.phase, animating);
     // 上下浮动必须叠加在实体位置上，不能由 animate() 直接写绝对坐标
     if (animating) this.model.group.position.y += Math.abs(Math.sin(this.phase)) * 0.02;
+  }
+
+  /**
+   * 篮球专用物理分支：无漫步 AI，只有重力 / 弹跳 / 滚动 / 冷却。
+   * 核心时序：反弹必须用 moveBody 之前的入射速度（moveBody 会把撞地轴 vel.y 归零）。
+   */
+  private updateBounce(dt: number, world: World): void {
+    const prevX = this.pos.x;
+    const prevZ = this.pos.z;
+    this.pickupCooldown = Math.max(0, this.pickupCooldown - dt);
+
+    // (1) 记录撞地前入射竖直速度 —— 全方法最关键的一行
+    const impactVy = this.vel.y;
+    const wasGround = this.onGround;
+
+    // (2) 重力 / 水中阻尼上浮 + 水平滚动摩擦（均在 moveBody 之前）
+    const inWater = world.registry.get(world.getBlock(
+      Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z))).liquid;
+    if (inWater) {
+      this.vel.y = Math.min(this.vel.y + 8 * dt, 2.2);
+      this.vel.x *= 0.6;
+      this.vel.z *= 0.6;
+    } else {
+      this.vel.y = Math.max(this.vel.y - BALL.GRAVITY * dt, -BALL.TERMINAL);
+    }
+    this.vel.x = rollFriction(this.vel.x, dt);
+    this.vel.z = rollFriction(this.vel.z, dt);
+
+    // (3) moveBody 逐轴碰撞：会把撞地 / 撞墙 / 撞头轴的 vel 归零
+    const hitXIn = this.vel.x;
+    const hitZIn = this.vel.z;
+    const res = moveBody(world, this, dt);
+
+    // (4) 反弹：用 (1) 的 impactVy，不能用已被归零的 this.vel.y。
+    // landed 仅在 vel.y < -8 时置位，衰减后的小弹跳靠 (!wasGround && onGround) 兜底。
+    const justLanded = (!wasGround && this.onGround) || res.landed;
+    if (justLanded && impactVy < 0) {
+      const vy = bounceVy(impactVy);
+      this.vel.y = vy; // 0 = 静止；>0 = 弹起
+      this.vel.x *= 0.92;
+      this.vel.z *= 0.92;
+      if (vy > 0) {
+        this.events.emit('basketball:bounce', {
+          id: this.id, x: this.pos.x, y: this.pos.y, z: this.pos.z, strength: Math.abs(impactVy),
+        });
+      }
+    }
+    // 撞墙轻微反弹：moveBody 已归零该轴，这里用入射值补回一点
+    if (res.hitX) this.vel.x = -hitXIn * BALL.WALL_RESTITUTION;
+    if (res.hitZ) this.vel.z = -hitZIn * BALL.WALL_RESTITUTION;
+
+    // (5) 球面按本帧实际位移滚动：轴 (dz,0,-dx) 保证向前滚而非反向滑
+    const dx = this.pos.x - prevX;
+    const dz = this.pos.z - prevZ;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 1e-5) {
+      ROLL_AXIS.set(dz, 0, -dx).normalize();
+      this.model.group.rotateOnWorldAxis(ROLL_AXIS, dist / BALL.RADIUS);
+    }
+
+    // (6) 同步模型：pos 是脚底，球心需上移一个半径
+    this.model.group.position.copy(this.pos);
+    this.model.group.position.y += BALL.RADIUS;
   }
 }
 

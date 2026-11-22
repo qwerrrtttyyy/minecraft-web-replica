@@ -373,6 +373,11 @@ img { image-rendering: pixelated; }
   width: 46px; height: 46px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
+  /* BugFix：#ui 默认 pointer-events:none，槽位是 div 而非 button，
+     必须在此显式开启命中，否则点击/触摸穿透到 canvas（老 bug：背包点不动）。
+     仅开启槽位本身：.game-hud / .hotbar-wrap / .hotbar 仍为 none，
+     全屏 HUD 不会吞掉游戏画面区域的破坏/放置点击。 */
+  pointer-events: auto;
   border: 1px solid rgba(90, 90, 90, .5);
   background: rgba(0, 0, 0, .18);
   /* 原版物品槽：左上暗、右下亮的凹陷立体感 */
@@ -420,10 +425,14 @@ img { image-rendering: pixelated; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* N5：提示移到快捷栏上方独立安全区，单行省略，不与任何槽位文字共享垂直空间 */
 .save-note {
-  position: absolute; left: 10px; bottom: 10px;
-  color: rgba(220, 220, 220, .75); font-size: 11px;
+  position: absolute; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: min(320px, 80vw);
+  color: rgba(220, 220, 220, .82); font-size: 11px;
   text-shadow: 1px 1px 0 #1a1a1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0; transition: opacity .3s;
   pointer-events: none;
 }
@@ -576,28 +585,32 @@ img { image-rendering: pixelated; }
 .keybind-key { min-width: 82px; text-align: center; font-family: 'Courier New', monospace; }
 .keybind-key.capturing { background: #6b8c3a; border-color: #a8d070; color: #fff; }
 
-/* ============ 触控 ============ */
+/* ============ 触控（N2：PE 风格圆角方形按钮 + 方形底盘摇杆） ============ */
 .touch-ui { position: absolute; inset: 0; pointer-events: none; }
 .joy-zone {
   position: absolute; left: 16px; bottom: 108px;
   width: 148px; height: 148px;
   pointer-events: auto; touch-action: none;
 }
-.joy-base {
+/* 方形底盘 + 圆形拇指盘；描边 / 投影语言与动作按钮一致 */
+.joy-base--pe {
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: 128px; height: 128px; border-radius: 50%;
-  background: rgba(255, 255, 255, .09);
-  border: 2px solid rgba(255, 255, 255, .28);
+  width: 128px; height: 128px; border-radius: 12px;
+  background: rgba(26, 28, 34, .42);
+  border: 2px solid rgba(226, 226, 226, .46);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .38), 0 4px 10px rgba(0, 0, 0, .45);
 }
-.joy-knob {
+.joy-knob--pe {
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: 56px; height: 56px; border-radius: 50%;
-  background: rgba(255, 255, 255, .34);
-  border: 2px solid rgba(255, 255, 255, .5);
+  width: 58px; height: 58px; border-radius: 50%;
+  background: rgba(238, 238, 238, .38);
+  border: 2px solid rgba(255, 255, 255, .72);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .28), 0 3px 0 rgba(0, 0, 0, .5);
 }
 .touch-buttons { position: absolute; inset: 0; }
+/* 旧类保留作回退对照；PE 变体后置覆盖，桌面无 .touch-ui 元素故不受影响 */
 .tbtn {
   position: absolute;
   display: flex; align-items: center; justify-content: center;
@@ -608,13 +621,28 @@ img { image-rendering: pixelated; }
   pointer-events: auto; touch-action: none;
   padding: 14px;
 }
-.tbtn svg { width: 100%; height: 100%; pointer-events: none; }
-.tbtn.active { background: rgba(255, 255, 255, .3); }
+.tbtn--pe {
+  box-sizing: border-box;
+  border-radius: 8px;
+  min-width: 44px; min-height: 44px;
+  padding: 8px;
+  background: rgba(34, 36, 44, .58);
+  border: 2px solid rgba(228, 228, 228, .62);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .42), 0 4px 0 rgba(0, 0, 0, .55), 0 6px 12px rgba(0, 0, 0, .35);
+}
+.tbtn--pe svg { width: 24px; height: 24px; pointer-events: none; shape-rendering: crispEdges; }
+.tbtn--pe.active {
+  transform: translateY(3px);
+  background: rgba(210, 210, 210, .34);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .5), 0 1px 0 rgba(0, 0, 0, .6);
+}
+/* 分区：左下摇杆、右下动作簇；命中区全部 ≥44×44，且不压准星与快捷栏 */
 .tbtn-jump { right: 18px; bottom: 112px; width: 76px; height: 76px; }
 .tbtn-place { right: 108px; bottom: 122px; width: 58px; height: 58px; }
 .tbtn-break { right: 22px; bottom: 208px; width: 58px; height: 58px; }
-.tbtn-fly { right: 108px; bottom: 200px; width: 50px; height: 50px; }
-.tbtn-down { right: 172px; bottom: 122px; width: 50px; height: 50px; }
+.tbtn-fly { right: 108px; bottom: 200px; width: 52px; height: 52px; }
+.tbtn-down { right: 172px; bottom: 122px; width: 52px; height: 52px; }
 
 /* ============ 滚动条 ============ */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -641,7 +669,8 @@ img { image-rendering: pixelated; }
   .mc-logo { font-size: clamp(30px, 7vh, 52px); }
   .title-sub { margin: 6px 0 14px; }
   .joy-zone { bottom: 70px; width: 120px; height: 120px; }
-  .joy-base { width: 104px; height: 104px; }
+  .joy-base--pe { width: 104px; height: 104px; }
+  .joy-knob--pe { width: 52px; height: 52px; }
   .tbtn-jump { bottom: 74px; }
   .tbtn-place { bottom: 84px; }
   .tbtn-break { bottom: 164px; }
@@ -677,17 +706,19 @@ img { image-rendering: pixelated; }
 @keyframes pipPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14) translateY(-1px); } }
 .stat-heart.dead .pip-fill { filter: grayscale(1); }
 
-/* 挖掘进度 */
+/* 挖掘进度（N3）：绿条退居辅助，方块表面裂纹才是主反馈 */
 .mining-bar {
-  position: absolute; left: 50%; top: calc(50% + 24px);
+  position: absolute; left: 50%; top: calc(50% + 30px);
   transform: translateX(-50%);
-  width: 92px; height: 8px;
-  background: rgba(8, 8, 10, .65);
-  border: 2px solid rgba(0, 0, 0, .7);
+  width: 64px; height: 7px;
+  background: rgba(8, 8, 10, .5);
+  border: 1px solid rgba(0, 0, 0, .7);
   box-shadow: inset 0 0 0 1px #5a5a5a;
+  opacity: .55;
   pointer-events: none;
 }
-.mining-fill { height: 100%; width: 0%; background: #8bd45a; transition: width .06s linear; }
+/* 去掉 width 过渡：低帧率下过渡动画本身就是抖动源 */
+.mining-fill { height: 100%; width: 0%; background: #8bd45a; transition: none; }
 
 /* 受伤红屏 */
 .hurt-flash {
@@ -743,7 +774,7 @@ img { image-rendering: pixelated; }
 
 /* ============ 移动端增强 ============ */
 @media (pointer: coarse) {
-  .mc-btn { padding: 15px 18px; font-size: 16px; }
+  .mc-btn { padding: 15px 18px; font-size: 16px; min-height: 44px; }
   .mc-btn-big { padding: 17px 18px; font-size: 18px; }
   .icon-btn { width: 44px; height: 44px; }
   .mc-slider { height: 36px; }
@@ -763,10 +794,35 @@ img { image-rendering: pixelated; }
   .mode-row { gap: 8px; }
   .mode-desc { font-size: 9.5px; }
   .death-panel { width: 92vw; padding: 20px 16px; }
-  .mining-bar { width: 74px; top: calc(50% + 20px); }
+  .mining-bar { width: 56px; top: calc(50% + 28px); }
 }
+
+/* ============ N1 旋转引导兜底（竖屏 + 粗指针，普通浏览器标签页） ============ */
+#rotate-gate {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 10, 16, .95);
+  color: #f0f0f0; text-align: center;
+  padding: 24px;
+}
+#rotate-gate[hidden] { display: none; }
+.rotate-gate-panel { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 420px; }
+.rotate-gate-icon { width: 84px; height: 84px; color: #e8e8e8; }
+.rotate-gate-title { font-size: 20px; font-weight: 700; }
+.rotate-gate-desc { font-size: 13px; line-height: 1.6; color: #c4c4c4; }
+.rotate-gate-play {
+  min-width: 148px; min-height: 44px;
+  margin-top: 6px;
+  background: #4a6b2a; border: 2px solid #8fb85a;
+  color: #fff; font-size: 15px; font-weight: 700;
+  box-shadow: 0 3px 0 #263a13;
+  cursor: pointer;
+}
+
 @media (max-height: 520px) and (orientation: landscape) {
   .stats-wrap { width: min(332px, 90vw); bottom: calc(74px + env(safe-area-inset-bottom)); }
+  /* 横屏时无论兜底态是否曾被展示，都不允许遮罩盖住 HUD（用更高优先级而非 !important） */
+  body #rotate-gate { display: none; }
 }
 
 /* 安全区 */

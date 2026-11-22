@@ -155,6 +155,25 @@ export class SoundEngine {
     setTimeout(() => this.burst(this.vary(210, 0.1), 0.08, 0.18, 'lowpass', 1.2), 160);
   }
 
+  /** 投掷篮球：短促上扬的「咻」，与放置 / 进食明确区分 */
+  throwBall() {
+    this.burst(this.vary(560, 0.12), 0.16, 0.3, 'bandpass', 1.1);
+    this.tone(this.vary(320, 0.08), 0.12, 0.12, 'triangle', 620);
+  }
+
+  /** 篮球落地弹跳：力度越大越沉、越响 */
+  bounce(strength: number) {
+    const s = Math.max(0, Math.min(1, strength / 24));
+    this.burst(this.vary(200 + s * 260, 0.1), 0.1 + s * 0.06, 0.2 + s * 0.28, 'lowpass', 0.9);
+    this.tone(this.vary(150 + s * 120, 0.08), 0.07, 0.08 + s * 0.06, 'sine');
+  }
+
+  /** 篮球拾取：清脆两连音 */
+  pickup() {
+    this.tone(this.vary(880, 0.04), 0.07, 0.14, 'square');
+    setTimeout(() => this.tone(this.vary(1320, 0.04), 0.08, 0.12, 'square'), 80);
+  }
+
   fuse() {
     this.burst(this.vary(3200, 0.06), 1.5, 0.16, 'highpass', 0.6);
   }

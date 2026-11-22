@@ -264,7 +264,8 @@ export class ChunkManager implements System {
       }),
       water: new THREE.MeshBasicMaterial({
         map: atlas.texture, transparent: true, opacity: 0.78,
-        depthWrite: false, side: THREE.DoubleSide,
+        // N4：显式声明深度测试；保持 depthWrite:false / DoubleSide 以维持水下可读性
+        depthTest: true, depthWrite: false, side: THREE.DoubleSide,
       }),
     };
     // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
@@ -279,7 +280,10 @@ export class ChunkManager implements System {
         '#include <begin_vertex>',
         `#include <begin_vertex>
         vec3 wPos = (modelMatrix * vec4(position, 1.0)).xyz;
-        transformed.y += sin(wPos.x * 0.9 + uTime * 1.7) * 0.028 + cos(wPos.z * 1.1 + uTime * 1.3) * 0.028;`,
+        // N4：把波动夹紧到 ±0.02，水面顶点不再越过方块边界形成细蓝边 / 与岩石近共面闪烁。
+        // 动画节奏、透明度与高光保持不变（Q5）。
+        float wave = sin(wPos.x * 0.9 + uTime * 1.7) * 0.028 + cos(wPos.z * 1.1 + uTime * 1.3) * 0.028;
+        transformed.y += clamp(wave, -0.02, 0.02);`,
       );
     };
     // 对照路径的旧 emissive 通道：只乘面明暗，不参与光照
@@ -506,7 +510,8 @@ export class ChunkManager implements System {
       const snapshot = buildMeshSnapshot(this.world, cx, cz);
       this.workers[wid].postMessage(
         { type: 'mesh', cx, cz, generation, snapshot, wid },
-        [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer],
+        // N4：known 位图与 data 同步转移，避免 Worker 侧收到丢失/复制的来源信息
+        [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer, snapshot.known.buffer],
       );
     }
     return promise;

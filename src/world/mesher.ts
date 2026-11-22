@@ -76,7 +76,10 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
 const isPlainCube = (def: MeshBlockDef) =>
   def.shape === 'cube' && !def.liquid && !def.transparentPass && def.lightEmission === 0;
 
-function faceVisible(def: MeshBlockDef, neighbor: MeshBlockDef): boolean {
+function faceVisible(def: MeshBlockDef, neighbor: MeshBlockDef, knowable = true): boolean {
+  // N4：邻居来源未知时，液体不能把「空气占位」当作真实空气而生成虚假水面。
+  // 该判断优先级最高，且只对液体生效——非液体四条规则保持不变。
+  if (def.liquid && !knowable) return false;
   if (neighbor.id === 0) return true;
   if (def.cullSame && neighbor.id === def.id) return false;
   if (def.liquid) return !neighbor.liquid && !neighbor.opaque;
@@ -388,7 +391,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
       const face = FACES[fi];
       const [nx, ny, nz] = face.normal;
       const nid = src.getId(bx + nx, by + ny, bz + nz);
-      if (!faceVisible(def, src.def(nid))) continue;
+      if (!faceVisible(def, src.def(nid), src.isKnown?.(bx + nx, by + ny, bz + nz) ?? true)) continue;
       emitFace(bx, by, bz, def, face);
     }
   };
@@ -445,7 +448,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const def = src.def(id);
           if (!isPlainCube(def)) continue;
           const nid = src.getId(b[0] + nx, b[1] + ny, b[2] + nz);
-          if (!faceVisible(def, src.def(nid))) continue;
+          if (!faceVisible(def, src.def(nid), src.isKnown?.(b[0] + nx, b[1] + ny, b[2] + nz) ?? true)) continue;
           const ao = computeAOInto(src, b[0], b[1], b[2], face, def, aoCheck);
           // 角点光照（平滑光照）：4 个角点各取空气侧 4 格均值
           computeCornerLightInto(src, b[0], b[1], b[2], face, cornerSky, cornerBlock);

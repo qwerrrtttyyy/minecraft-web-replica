@@ -241,6 +241,80 @@ try {
   await page.screenshot({ path: path.join(OUT, 'visual-blocks.png') });
   ok('方块展示墙颜色丰富', wall.colors > 60, `distinct=${wall.colors}`);
 
+  // ---------- N1 横屏兜底 / N2 PE 触屏 / N5 提示安全区 ----------
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'public', 'manifest.webmanifest'), 'utf8'));
+  ok('N1 PWA 清单锁定横屏', manifest.orientation === 'landscape', `orientation=${manifest.orientation}`);
+  const distHtml = fs.readFileSync(path.join(ROOT, 'dist', 'index.html'), 'utf8');
+  ok('N1 单文件产物包含旋转引导', distHtml.includes('rotate-gate'));
+
+  const gateState = await page.evaluate(() => {
+    const el = document.getElementById('rotate-gate');
+    if (!el) return null;
+    el.hidden = false;
+    const shown = !el.hidden;
+    el.querySelector('.rotate-gate-play')?.click();
+    return { shown, dismissed: el.hidden, icon: !!el.querySelector('svg') };
+  });
+  ok('N1 旋转引导可显示且「仍要游玩」可关闭',
+    !!gateState && gateState.shown && gateState.dismissed && gateState.icon,
+    JSON.stringify(gateState));
+
+  const pe = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.className = 'touch-ui';
+    host.innerHTML = '<div class="joy-zone joy-zone--pe"><div class="joy-base joy-base--pe"><div class="joy-knob joy-knob--pe"></div></div></div>' +
+      '<button class="tbtn tbtn--pe tbtn-jump" data-role="jump" data-icon="jump" aria-label="跳跃"></button>';
+    document.body.appendChild(host);
+    const btn = host.querySelector('.tbtn--pe');
+    const base = host.querySelector('.joy-base--pe');
+    const knob = host.querySelector('.joy-knob--pe');
+    const bs = getComputedStyle(btn), bass = getComputedStyle(base), ks = getComputedStyle(knob);
+    const rect = btn.getBoundingClientRect();
+    const out = {
+      radius: parseFloat(bs.borderRadius),
+      width: rect.width, height: rect.height,
+      baseRadius: parseFloat(bass.borderRadius),
+      baseWidth: base.getBoundingClientRect().width,
+      knobRadius: parseFloat(ks.borderRadius),
+    };
+    host.remove();
+    return out;
+  });
+  ok('N2 动作为圆角方形且命中区 ≥44×44',
+    pe.radius >= 6 && pe.width >= 44 && pe.height >= 44,
+    `radius=${pe.radius}px ${pe.width}×${pe.height}`);
+  ok('N2 摇杆为方形底盘 + 圆形拇指盘',
+    pe.baseRadius >= 8 && pe.baseWidth >= 100 && pe.knobRadius >= 20,
+    `base=${pe.baseRadius}px/${pe.baseWidth}px knob=${pe.knobRadius}px`);
+
+  const noteLayout = await page.evaluate(() => {
+    const note = document.querySelector('.save-note');
+    const hotbar = document.querySelector('.hotbar');
+    if (!note || !hotbar) return null;
+    note.textContent = '已自动保存于 20:59';
+    note.classList.add('show');
+    const a = note.getBoundingClientRect();
+    const b = hotbar.getBoundingClientRect();
+    return {
+      gap: b.top - a.bottom,
+      height: a.height,
+      overflow: note.scrollWidth > note.clientWidth + 1,
+    };
+  });
+  ok('N5 保存提示与快捷栏垂直间距 ≥8px', !!noteLayout && noteLayout.gap >= 8,
+    `gap=${noteLayout ? noteLayout.gap.toFixed(1) : 'n/a'}px`);
+  ok('N5 长提示不换行溢出', !!noteLayout && !noteLayout.overflow && noteLayout.height < 24,
+    `height=${noteLayout ? noteLayout.height.toFixed(1) : 'n/a'}px`);
+
+  const miningStyle = await page.evaluate(() => {
+    const bar = document.querySelector('.mining-bar');
+    if (!bar) return null;
+    const s = getComputedStyle(bar);
+    return { width: parseFloat(s.width), opacity: parseFloat(s.opacity) };
+  });
+  ok('N3 绿条已弱化为辅助反馈', !!miningStyle && miningStyle.width <= 96 && miningStyle.opacity <= 0.6,
+    JSON.stringify(miningStyle));
+
   ok('图形测试无运行时错误', errors.length === 0, errors.slice(0, 3).join(' | '));
   await page.close();
 } catch (e) {
