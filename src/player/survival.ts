@@ -317,6 +317,7 @@ export class SurvivalState {
       this.hunger = MAX_HUNGER;
       this.saturation = MAX_HUNGER;
       this.breath = MAX_BREATH;
+      this.warmth = 0;
       return;
     }
     if (this.dead) return;
@@ -343,15 +344,16 @@ export class SurvivalState {
     this.exhaustion += drain * dt;
     while (this.exhaustion >= 4) {
       this.exhaustion -= 4;
-      // 饱和度优先充当缓冲：先扣 saturation，耗尽后才扣 hunger
-      if (this.saturation > 0) this.saturation -= 1;
+      // 饱和度优先充当缓冲：先扣 saturation，耗尽后才扣 hunger。
+      // 钳到 0：FOOD_VALUES 含 1.2 / 2.4 等小数，直接减 1 会扣成负数写进存档。
+      if (this.saturation > 0) this.saturation = Math.max(0, this.saturation - 1);
       else this.hunger = Math.max(0, this.hunger - 1);
     }
 
     // 饱食回血 / 饥饿掉血
     // H10：每次回血额外产生消耗（等效 0.75 饥饿点）——满饥饿不再免费永动回血
-    // PR5：温暖达标时回血饥饿门槛从 18 降到 14（其余逻辑不变）
-    const regenHunger = this.warmth >= WARMTH.regenThreshold ? WARMTH.regenHunger : 18;
+    // PR5：温暖达标时回血饥饿门槛从常温值降到 regenHunger（其余逻辑不变）
+    const regenHunger = this.warmth >= WARMTH.regenThreshold ? WARMTH.regenHunger : WARMTH.coldHunger;
     if (this.hunger >= regenHunger && this.saturation > 0 && this.health < MAX_HEALTH) {
       this.regenAcc += dt;
       if (this.regenAcc >= 4) {

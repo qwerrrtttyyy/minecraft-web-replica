@@ -2,7 +2,7 @@
  * 温暖系统（PR5）纯逻辑回归（Vitest，直接消费 src TS 源码）。
  * 运行：npx vitest run test/warmth.test.ts
  * 覆盖：warmthTarget / approach 纯函数、WarmthSystem 升降与创造模式不更新、
- *       回血门槛（warmth>=50 → 14，否则 18）、serialize / restore 兼容。
+ *       回血门槛（warmth>=50 → regenHunger，否则 coldHunger）、serialize / restore 兼容。
  */
 import { describe, expect, it } from 'vitest';
 
@@ -10,7 +10,6 @@ import { WarmthSystem, approach, warmthTarget } from '../src/world/warmth';
 import { WARMTH } from '../src/core/tuning';
 import { SurvivalState, MAX_HUNGER } from '../src/player/survival';
 import { EventBus } from '../src/core/events';
-import type { World } from '../src/world/world';
 import type { BlockRegistry } from '../src/world/blocks';
 
 const registry = {
@@ -55,13 +54,12 @@ describe('approach', () => {
 });
 
 describe('WarmthSystem', () => {
-  const fakeWorld = {} as World;
   const heatAt = (x: number, y: number, z: number) => x === 0 && y === 0 && z === 0;
 
   it('附近有热源时 warmth 上升，远离后下降', () => {
     const s = mk();
     const sys = new WarmthSystem({
-      world: fakeWorld, registry, survival: s, isHeatAt: heatAt,
+      survival: s, isHeatAt: heatAt,
     });
     // 节拍内不更新
     sys.update(0.1, { x: 0.5, y: 0.5, z: 0.5 });
@@ -83,9 +81,17 @@ describe('WarmthSystem', () => {
     const s = mk();
     s.mode = 'creative';
     const sys = new WarmthSystem({
-      world: fakeWorld, registry, survival: s, isHeatAt: heatAt,
+      survival: s, isHeatAt: heatAt,
     });
     for (let i = 0; i < 10; i++) sys.update(0.2, { x: 0.5, y: 0.5, z: 0.5 });
+    expect(s.warmth).toBe(0);
+  });
+
+  it('生存 tick 的创造模式分支重置 warmth', () => {
+    const s = mk();
+    s.setWarmth(80);
+    s.mode = 'creative';
+    s.tick(0.1, idle);
     expect(s.warmth).toBe(0);
   });
 

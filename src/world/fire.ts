@@ -220,8 +220,9 @@ export class FireSystem implements System {
       for (const e of this.tracked.values()) sources.push(e);
       let budget = FIRE.maxPerTick;
       for (const e of sources) {
-        if (budget-- <= 0) break;
+        // 先确认源仍然有效，再占用预算：被跳过的陈旧源不该消耗蔓延额度
         if (!this.tracked.has(blockKey(e.x, e.y, e.z))) continue;
+        if (budget-- <= 0) break;
         this.spreadFrom(e.x, e.y, e.z);
       }
     }
@@ -269,7 +270,9 @@ export class FireSystem implements System {
         }
       }
 
-      // 2) 邻格是空气，且下方是实心可燃方块 → 引燃该空气格（地面火横向铺开）
+      // 2) 邻格是空气，且下方是实心可燃方块 → 引燃该空气格（地面火横向铺开）。
+      //    dy === -1 时该分支不可达：火焰能留在 tracked 里说明正下方是实心支撑，
+      //    正下方空气的火焰已在上面支撑判定中熄灭，因此这里不会再遇到 nid === AIR。
       if (nid !== AIR) continue;
       const below = this.world.getBlock(nx, ny - 1, nz);
       if (!this.registry.isSolid(below)) continue;
@@ -283,7 +286,8 @@ export class FireSystem implements System {
   private igniteCell(x: number, y: number, z: number): void {
     const cur = this.world.getBlock(x, y, z);
     if (cur === this.fireId || cur === this.campfireId) return;
-    this.world.setBlock(x, y, z, this.fireId, false);
+    // setBlock 在 y<1 等非法格返回 false：此时不能入表，也不能发点燃事件
+    if (!this.world.setBlock(x, y, z, this.fireId, false)) return;
     this.tracked.set(blockKey(x, y, z), { x, y, z, age: 0, life: this.rollLife() });
     this.events.emit('fire:ignite', { x, y, z });
     if (this.sound && this.crackleTimer <= 0) {
@@ -310,6 +314,12 @@ export class FireSystem implements System {
     }
 
     const entities = this.getEntities();
+    // 清理过期条目，避免生物死亡 / 离场后 Map 无限增长（实体为空时也要做）
+    if (this.entityDamageAt.size > 64) {
+      for (const [id, at] of this.entityDamageAt) {
+        if (at < this.time - 5) this.entityDamageAt.delete(id);
+      }
+    }
     if (entities.length === 0) return;
     for (const e of entities) {
       const bx = Math.floor(e.pos.x);
@@ -320,12 +330,6 @@ export class FireSystem implements System {
       if (this.time < next) continue;
       e.hurt(FIRE.damage, bx, bz);
       this.entityDamageAt.set(e.id, this.time + FIRE.damageInterval);
-    }
-    // 清理过期条目，避免生物死亡 / 离场后 Map 无限增长
-    if (this.entityDamageAt.size > 64) {
-      for (const [id, at] of this.entityDamageAt) {
-        if (at < this.time - 5) this.entityDamageAt.delete(id);
-      }
     }
   }
 

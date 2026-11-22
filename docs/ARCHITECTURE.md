@@ -566,7 +566,7 @@ UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出
 `clamp(1 - dist / (radius + 1), 0, 1) * 100` 求目标值并指数逼近；温暖 ≥ 50 时回血饥饿
 门槛由 18 降到 14。饱和度 0~20，进食叠加但不超过当前饥饿值，exhaustion 先扣饱和度、
 饱和为 0 再扣饥饿，回血额外要求 `saturation > 0`。两者与 `furnaces` 都是存档可选字段，
-旧档缺省 `saturation = hunger` / `warmth = 0`。
+旧档缺省 `saturation = MAX_HUNGER`（20）/ `warmth = 0`。
 
 **测试与验证**：新增 `test/fire.test.ts` / `test/warmth.test.ts` /
 `test/survival-saturation.test.ts` / `test/campfire.test.ts`（Vitest）；

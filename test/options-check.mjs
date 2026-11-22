@@ -409,6 +409,31 @@ try {
     JSON.stringify(sortOff));
   await clickRow(page, '透明排序'); // 恢复开启
 
+  // 火焰蔓延：默认开启，关闭后 fire.enabled 同步并写入 localStorage
+  const fireSpreadDefault = await page.evaluate(() => ({
+    label: [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '火焰蔓延')
+      ?.querySelector('.opt-val')?.textContent,
+    enabled: window.__mc.fire.enabled,
+  }));
+  ok('火焰蔓延默认开启且 fire.enabled 同步',
+    fireSpreadDefault.label === '开' && fireSpreadDefault.enabled === true,
+    JSON.stringify(fireSpreadDefault));
+  const fireSpreadOff = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.options-panel .opt-row')]
+      .find((b) => b.querySelector('.opt-label')?.textContent === '火焰蔓延');
+    row.click();
+    return {
+      label: row.querySelector('.opt-val').textContent,
+      enabled: window.__mc.fire.enabled,
+      stored: JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || 'null')?.fireSpread,
+    };
+  });
+  ok('火焰蔓延可关闭并即时生效', fireSpreadOff.label === '关' && fireSpreadOff.enabled === false,
+    JSON.stringify(fireSpreadOff));
+  ok('火焰蔓延写入本地设置', fireSpreadOff.stored === false, `stored=${fireSpreadOff.stored}`);
+  await clickRow(page, '火焰蔓延'); // 恢复开启
+
   // Esc 关闭设置 → 回到暂停菜单
   await page.keyboard.press('Escape');
   // 固定 sleep 在负载高时会偶发失败，按项目硬规则改为条件轮询

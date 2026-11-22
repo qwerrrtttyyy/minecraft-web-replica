@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
+import { AIR, needsSupport, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import { WORLD_HEIGHT, type BlockId } from '../core/types';
 import type { World } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
@@ -163,7 +163,7 @@ export class FallingSystem {
         this.list.push(fb);
         continue;
       }
-      if (def.shape === 'cross' && !supported) {
+      if (needsSupport(def.shape) && !supported) {
         this.world.setBlock(x, yy, z, AIR);
         this.events.emit('block:break', { x, y: yy, z, block: id });
         this.onPlantDrop?.(def, x, yy, z);

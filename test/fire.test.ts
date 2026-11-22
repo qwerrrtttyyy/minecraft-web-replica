@@ -47,12 +47,15 @@ function makeRegistry(): BlockRegistry {
 class FakeWorld {
   readonly data = new Map<string, number>();
   readonly registry = makeRegistry();
+  /** 打开后 setBlock 对 y<1 返回 false（模拟真实世界边界） */
+  rejectLowY = false;
 
   getBlock(x: number, y: number, z: number): number {
     return this.data.get(`${x},${y},${z}`) ?? AIR;
   }
 
   setBlock(x: number, y: number, z: number, id: number): boolean {
+    if (this.rejectLowY && y < 1) return false;
     this.data.set(`${x},${y},${z}`, id);
     return true;
   }
@@ -246,6 +249,41 @@ describe('火焰系统', () => {
     expect(entity.hurt).toHaveBeenCalledTimes(1);
     sys.update(0.25, pos);
     expect(entity.hurt).toHaveBeenCalledTimes(2);
+  });
+
+  it('igniteCell 尊重 setBlock 返回值：y<1 不入表、不发事件', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 0, 0, CAMPFIRE);
+    w.setBlock(1, 0, 0, OAK_LOG);
+    w.rejectLowY = true;
+    const { sys, events } = makeSystem(w, () => 0);
+
+    sys.update(0.25, POS);
+
+    expect(w.getBlock(1, 0, 0)).toBe(OAK_LOG);
+    expect(events.calls.some((c) => c.type === 'fire:ignite')).toBe(false);
+    expect(sys.trackedCount).toBe(1); // 只有营火本身，失败的引燃不入表
+  });
+
+  it('实体全部离场后仍清理过期伤害计时', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 0, 0, GRASS);
+    w.setBlock(0, 1, 0, FIRE);
+    const entities = Array.from({ length: 70 }, (_, i) => ({
+      id: i,
+      pos: new THREE.Vector3(0.5, 1.0, 0.5),
+      hurt: vi.fn(),
+    }));
+    let alive = true;
+    const { sys } = makeSystem(w, () => 0, () => (alive ? entities : []));
+
+    sys.update(0.5, new THREE.Vector3(0.5, 1.0, 0.5));
+    const map = (sys as unknown as { entityDamageAt: Map<number, number> }).entityDamageAt;
+    expect(map.size).toBe(70);
+
+    alive = false;
+    for (let i = 0; i < 24; i++) sys.update(0.25, new THREE.Vector3(0.5, 1.0, 0.5)); // 6s
+    expect(map.size).toBe(0);
   });
 
   it('isFireNear 判定火源半径', () => {

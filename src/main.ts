@@ -307,8 +307,6 @@ async function boot() {
   // 温暖系统（PR5）：靠近热源积累温暖，提供轻量回血增益与视觉表现。
   // 热源判定在此集中：火 / 营火 / 灯笼 / 蜡烛，或燃烧中的熔炉（不写回 warmth.ts）。
   const warmth = new WarmthSystem({
-    world,
-    registry,
     survival,
     isHeatAt: (x, y, z) => {
       const name = registry.get(world.getBlock(x, y, z)).name;
@@ -1120,6 +1118,9 @@ async function boot() {
   function openMenu() {
     if (mode !== 'playing') return;
     mode = 'paused';
+    // 烹饪 overlay 后挂载、层级高于暂停菜单，且暂停态下面板仍可点击：
+    // 先关掉再开菜单，避免「菜单被烹饪遮罩盖住且面板可操作」的状态
+    if (hud.cookingOpen) closeCooking();
     input.enabled = false;
     input.reset();
     input.exitLock();

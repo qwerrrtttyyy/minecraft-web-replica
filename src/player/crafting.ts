@@ -226,7 +226,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
     result: { material: 'furnace', count: 1 },
   },
   {
-    // PR4 营火：3 圆石 + 3 任意原木 + 1 煤（无序，2×2 个人格可放）
+    // PR4 营火：3 圆石 + 3 任意原木 + 1 煤（无序，共 7 格材料，需要 3×3 工作台）
     id: 'campfire',
     label: '营火',
     shapeless: ['cobblestone', 'cobblestone', 'cobblestone', '#log', '#log', '#log', 'item:coal'],

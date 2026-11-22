@@ -214,7 +214,8 @@ export const FIRE = {
  * - radius：热源扫描切比雪夫半径（格）；
  * - rise / fall：每秒向目标值靠近的比例系数（指数逼近）；
  * - regenThreshold：温暖值达到该值时回血饥饿门槛降低；
- * - regenHunger：温暖时的回血饥饿门槛（常温为 18）。
+ * - regenHunger：温暖时的回血饥饿门槛；
+ * - coldHunger：常温（未达阈值）时的回血饥饿门槛。
  *
  * 只做「靠近热源更暖」的轻量增益，不含体温 / 冻伤 / 寒冷伤害 / 天气联动。
  */
@@ -224,4 +225,5 @@ export const WARMTH = {
   fall: 0.25,
   regenThreshold: 50,
   regenHunger: 14,
+  coldHunger: 18,
 } as const;

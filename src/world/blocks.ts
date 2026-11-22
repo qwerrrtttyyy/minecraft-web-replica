@@ -4,6 +4,14 @@ import type { BlockId } from '../core/types';
 export type SoundMaterial = 'stone' | 'dirt' | 'wood' | 'sand' | 'glass' | 'cloth' | 'liquid' | 'plant';
 export type BlockShape = 'cube' | 'cross' | 'slab' | 'candle';
 
+/** 合法形状集合：register 校验用 */
+const BLOCK_SHAPES: ReadonlySet<BlockShape> = new Set(['cube', 'cross', 'slab', 'candle']);
+
+/** 需要下方实心支撑的形状：失支撑时随之清除 / 掉落（与放置校验同口径） */
+export function needsSupport(shape: BlockShape): boolean {
+  return shape === 'cross' || shape === 'slab' || shape === 'candle';
+}
+
 /**
  * 掉落规则：name 可以是方块名、物品名（'item:apple'），'self' 表示掉落自身。
  * 生存模式破坏方块时按顺序判定概率，可掉落多项。
@@ -115,6 +123,7 @@ export class BlockRegistry {
   }
 
   register(input: BlockInput): BlockDefinition {
+    if (!BLOCK_SHAPES.has(input.shape)) throw new Error(`非法的方块形状: ${input.shape}`);
     if (this.byName.has(input.name)) throw new Error(`方块名重复: ${input.name}`);
     const id = input.id ?? this.nextId;
     // 区块数据用 Uint8Array 存储，id 超过 255 会被静默截断成别的方块

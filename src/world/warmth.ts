@@ -1,7 +1,5 @@
 import { clamp, type System, type Vec3Like } from '../core/types';
 import { WARMTH } from '../core/tuning';
-import type { BlockRegistry } from './blocks';
-import type { World } from './world';
 import type { SurvivalState } from '../player/survival';
 
 /**
@@ -41,8 +39,6 @@ export function approach(current: number, target: number, dt: number, rising: bo
 }
 
 export interface WarmthSystemOptions {
-  world: World;
-  registry: BlockRegistry;
   survival: SurvivalState;
   /** 热源判定（注入）：火 / 营火 / 灯笼 / 蜡烛或燃烧中的熔炉 */
   isHeatAt: (x: number, y: number, z: number) => boolean;

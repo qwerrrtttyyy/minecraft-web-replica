@@ -95,6 +95,18 @@ describe('生存饱和度', () => {
     expect(sat.hunger).toBe(19); // 饱和度吸收回血消耗，hunger 不掉
   });
 
+  it('低饱和度反复消耗不会扣成负数', () => {
+    const s = mk();
+    s.hunger = 20;
+    s.saturation = 0.5;
+    // 400 拍 × 0.02 = 8 点消耗 → 触发 2 次扣除：
+    // 第 1 次把 0.5 钳到 0（不再变负），第 2 次饱和度已空 → 扣 1 点饥饿
+    for (let i = 0; i < 400; i++) s.tick(0.1, sprint);
+    expect(s.saturation).toBeGreaterThanOrEqual(0);
+    expect(s.saturation).toBe(0);
+    expect(s.hunger).toBe(19);
+  });
+
   it('serialize / restore 往返 saturation；旧档缺字段恢复满值', () => {
     const s = mk();
     s.hunger = 12;
