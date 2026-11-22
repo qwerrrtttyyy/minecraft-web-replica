@@ -1,0 +1,20 @@
+id: M04
+title: 移动端线验收与 evidence
+description: |
+  跑 verify:node 与完整 verify，evidence 记真实退出码；
+  把基线/优化后 ms、倍数、hash 与 p95<33ms（待有浏览器环境验证）
+  写入本线文档与 baseline 附带字段。不改 EXPERIMENTS.md / CHANGELOG.md / validate.py。
+
+touch:
+  allow:
+    - test/mesher-hotspot-baseline.json
+    - docs/agent/tasks/M04.yaml
+  deny:
+    - src/**
+    - docs/EXPERIMENTS.md
+    - docs/CHANGELOG.md
+    - docs/agent/validate.py
+
+outputs:
+  - mesher verify: verify:node 全绿；完整 verify 在 test:smoke 处 exit 1 已记录（本机无可用浏览器）
+  - mesher baseline: 性能数据与 p95 待验证目标已写入本线文档

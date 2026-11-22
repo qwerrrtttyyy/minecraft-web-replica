@@ -1,0 +1,21 @@
+id: N02
+title: 插件植物接入新群系
+description: |
+  botanyContent.ts 的 6 个 EXPANSION_PLANTS 只在 spawn map 追加新群系权重，
+  不改 id（仍止于 164）、trait、nearWater、waterPlant 与 EXPANSION_RULES。
+  测试逐值断言 6 植物 × 7 群系权重与 id 上限。
+
+touch:
+  allow:
+    - src/plugins/builtin/botanyContent.ts
+    - test/botany-rules-check.cjs
+  deny:
+    - src/world/plantTraits.ts
+    - src/world/plantStrains.ts
+    - src/world/botany.ts
+    - src/world/blocks.ts
+    - package.json
+
+outputs:
+  - botany spawn: 6 个插件植物在 7 个新群系的 spawn 权重逐值落盘
+  - verify: npm run typecheck && npm run test:snapshot && node test/botany-rules-check.cjs && npm run test:botany && npm run test:plant-energy && npm run test:crossbreed 全绿

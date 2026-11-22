@@ -1,0 +1,20 @@
+id: N03
+title: 群系线验收与 evidence
+description: |
+  把 terrain-system-check.cjs 的可达性集合从 4 个扩到 18 个群系；
+  若 seed 777 ±7 区块不可达，先扩半径到 ±12 或加 seed 2026/1234，
+  禁止改气候阈值；在测试名里写明实际半径/种子。
+  最后跑 Node 全门与完整 verify，如实记录浏览器步骤 exit 1 阻塞。
+
+touch:
+  allow:
+    - test/terrain-system-check.cjs
+    - docs/agent/tasks/N03.yaml
+  deny:
+    - src/**
+    - docs/agent/validate.py
+    - docs/EXPERIMENTS.md
+
+outputs:
+  - biome reachability: seed 777 的采样范围内 18 个群系全部有地表实例
+  - biome verify: verify:node 全绿；完整 verify 在 test:smoke 处 exit 1 已记录（本机无可用浏览器）

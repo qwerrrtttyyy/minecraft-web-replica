@@ -1,0 +1,23 @@
+id: M01
+title: 生产路径护栏、性能基线与 verify:node
+description: |
+  新增 24 区块（seed 2026，cx=0..5,cz=0..3）SnapshotMeshSource 生产路径 fixture，
+  用 sha256 固定 meshChunk 的完整输出（quad 顺序 + 顶点属性），
+  --record 记录优化前基线（预期 ≈87.27 ms/区块）。
+  package.json 新增 verify:node（verify 链去掉 test:smoke/options/visual，保留 test:mobile）
+  与 test:mesher-hotspot（不挂 verify）。
+
+touch:
+  allow:
+    - package.json
+    - test/mesher-fixture.cjs
+    - test/mesher-hotspot-check.cjs
+    - test/mesher-hotspot-baseline.json
+  deny:
+    - src/**
+    - test/mesher-check.cjs
+    - docs/agent/validate.py
+
+outputs:
+  - mesher baseline: 24 区块生产路径 SHA-256 护栏与优化前 ms 基线已提交
+  - verify:node: Node-only 验收入口可用且全绿
