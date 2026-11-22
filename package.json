@@ -25,6 +25,7 @@
     "test:ai:vitest": "vitest run test/ai.test.ts",
     "test:armor": "node test/armor-check.cjs",
     "test:mesher": "node test/mesher-check.cjs",
+    "test:mesher-hotspot": "node test/mesher-hotspot-check.cjs",
     "test:services": "node test/services-check.cjs",
     "test:diagnostics": "node test/diagnostics-check.cjs",
     "test:worker-pool": "node test/worker-pool-check.cjs",
@@ -57,7 +58,8 @@
     "test:plugin-carrier": "node test/plugin-carrier-check.cjs",
     "test:review-fixes": "node test/review-fixes-check.cjs",
     "build:plugin-fixtures": "node scripts/build-plugin-fixtures.mjs",
-    "test:mobile": "node test/mesher-check.cjs && node test/orientation-gate-check.cjs && node test/feel-check.cjs && node test/crack-overlay-check.cjs"
+    "test:mobile": "node test/mesher-check.cjs && node test/orientation-gate-check.cjs && node test/feel-check.cjs && node test/crack-overlay-check.cjs",
+    "verify:node": "npm run check:version && npm run test:permtable && npm run wasm:check && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:drop && npm run test:ai:vitest && npm run test:wasm && npm run test:plugin-v2 && npm run test:plugin-carrier && npm run test:review-fixes && npm run test:logic && npm run test:logic:vitest && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:unstuck && npm run test:edits && npm run test:retention && npm run test:terrain-system && npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:crossbreed && npm run test:botany-rules && npm run test:crafting:vitest && npm run test:equipment && npm run test:smelting && npm run test:mobile"
   },
   "dependencies": {
     "three": "0.170.0"

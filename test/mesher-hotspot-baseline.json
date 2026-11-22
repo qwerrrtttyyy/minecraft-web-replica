@@ -1,0 +1,10 @@
+{
+  "seed": 2026,
+  "chunks": 24,
+  "rounds": 8,
+  "warmupRounds": 8,
+  "greedy": true,
+  "mergeEmissive": true,
+  "hash": "816ba4ba6eb4c6a5b0ef381077fe4ab191fa7e2d1e3154537998bfdbd8e8a5eb",
+  "msPerChunk": 142.56067588541666
+}
