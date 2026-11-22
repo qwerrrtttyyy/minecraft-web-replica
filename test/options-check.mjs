@@ -56,15 +56,18 @@ const newPage = async (w, h, mobile = false) => {
   await page.setViewport({ width: w, height: h, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
-  await page.evaluateOnNewDocument(() => {
+  await page.evaluateOnNewDocument((isMobile) => {
     try {
       // 每个标签页首次加载清一次本地设置；刷新（跨会话恢复验证）要保留
       if (!sessionStorage.getItem('mc-options-cleared')) {
         localStorage.removeItem('minecraft-ts-options-v1');
+        // 移动端默认横屏会在竖屏视口弹出 .rotate-hint 遮罩，挡住设置页点击。
+        // 本用例先在竖屏下验证设置操作，再用「横屏模式」行主动开启并验证遮罩本身。
+        if (isMobile) localStorage.setItem('minecraft-ts-options-v1', JSON.stringify({ landscapeMode: false }));
         sessionStorage.setItem('mc-options-cleared', '1');
       }
     } catch { /* 忽略 */ }
-  });
+  }, mobile);
   return page;
 };
 
@@ -639,13 +642,14 @@ try {
   ).then(() => true).catch(() => false);
   ok('横屏模式跨会话恢复', restored);
 
-  // 重置回退到默认关闭（reload 后设置页已关闭，先重新打开）
+  // 重置回退到移动端默认（reload 后设置页已关闭，先重新打开）。
+  // 移动端默认横屏为开（mobileDefaults），与首次进入共用同一份默认值。
   await clickText(mob, '.title-links .link-btn', '设置');
   await sleep(300);
   await clickText(mob, '.options-panel .options-footer .mc-btn', '重置全部设置');
-  ok('重置后横屏模式回退为关闭', await mob.evaluate(() =>
-    !document.body.classList.contains('landscape-mode') &&
-    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').landscapeMode === false));
+  ok('重置后横屏模式回退为移动端默认（开）', await mob.evaluate(() =>
+    document.body.classList.contains('landscape-mode') &&
+    JSON.parse(localStorage.getItem('minecraft-ts-options-v1') || '{}').landscapeMode === true));
 
   // 重置全部设置后，移动端 autoJump 应保持开启
   await clickRow(mob, '自动跳跃');            // 先关掉
