@@ -55,6 +55,8 @@ while (Date.now() < deadline) {
   await sleep(200);
 }
 
+const chunkStats = () => page.evaluate(() => window.__mc.chunkStats());
+
 // FPS without movement
 const fps = await page.evaluate(async () => {
   return new Promise((resolve) => {
@@ -123,6 +125,35 @@ const build = await page.evaluate(async () => {
   };
 });
 
+// 区块"生存"效果：固定来回路径下的重复生成次数（主指标）
+const churn = await page.evaluate(async () => {
+  const mc = window.__mc;
+  const hold = async (code, key, ms) => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { code, key }));
+    await new Promise((r) => setTimeout(r, ms));
+    document.dispatchEvent(new KeyboardEvent('keyup', { code, key }));
+  };
+  const start = mc.chunkStats();
+  for (let i = 0; i < 3; i++) {
+    await hold('KeyW', 'w', 700);
+    await hold('KeyS', 's', 700);
+  }
+  await new Promise((resolve) => {
+    const check = () => {
+      if (mc.world.dirty.size === 0 && mc.chunks.inFlightCount === 0) resolve();
+      else setTimeout(check, 200);
+    };
+    check();
+  });
+  const end = mc.chunkStats();
+  return {
+    generated: end.generated - start.generated,
+    regenerated: end.regenerated - start.regenerated,
+    resident: end.resident,
+    maxResident: end.maxResident,
+  };
+});
+
 // Chunk loading cost: teleport far and measure convergence
 const load = await page.evaluate(async () => {
   const mc = window.__mc;
@@ -147,5 +178,9 @@ const load = await page.evaluate(async () => {
   });
 });
 
-console.log(JSON.stringify({ fps, move, build, load }, null, 2));
+const residentEnd = await chunkStats();
+console.log(JSON.stringify({
+  fps, move, build, load, churn,
+  resident: { count: residentEnd.resident, max: residentEnd.maxResident, regenerated: residentEnd.regenerated },
+}, null, 2));
 await browser.close();

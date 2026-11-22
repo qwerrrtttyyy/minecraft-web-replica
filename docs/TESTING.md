@@ -30,6 +30,7 @@ npm run verify
 | 13 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 14 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 15 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 15a | `npm run test:retention` | 区块驻留三层策略（视距必留 / 硬外沿 / LRU 上限 + 最短驻留）、来回走动重复生成仿真、配置版本竞态、chunk key 热路径解析 | ✓ |
 | 16 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 方块总数 152（141 基线 + 内容植物扩充 11） | ✓ |
 | 17 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
 | 18 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |

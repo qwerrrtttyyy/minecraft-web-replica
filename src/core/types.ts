@@ -42,6 +42,11 @@ export function mulberry32(seed: number): () => number {
 }
 
 export const chunkKey = (cx: number, cz: number) => `${cx},${cz}`;
+/** chunkKey 的逆向解析：热路径用 slice 代替 split+map，不产生临时数组 */
+export const parseChunkKey = (key: string): [number, number] => {
+  const i = key.indexOf(',');
+  return [+key.slice(0, i), +key.slice(i + 1)];
+};
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
 /** N3：挖掘裂痕阶段数（0 = 无裂纹，1..9 逐层加深，与原版一致） */

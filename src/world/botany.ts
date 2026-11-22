@@ -13,6 +13,10 @@ import {
   evictIfNeeded as evictSoil, nutrientAt as soilNutrientAt, returnToSoil,
   type SoilMap,
 } from './soil';
+import {
+  STRAINS, STRAIN_ORDER, applyStrain, findCombo, strainAt, strainIndexOf,
+  type StrainId,
+} from './plantStrains';
 import type { World } from './world';
 
 /** 一次随机刻里最多处理的采样次数（移动端减半，避免持续占用帧预算） */
@@ -54,6 +58,8 @@ export interface BotanyStats {
 export interface PlantBonus {
   item: string;
   count: number;
+  /** 品系附加产出（莓穗的甜浆果 / 金穗的花蜜） */
+  extra?: { item: string; count: number };
 }
 
 /** 生态状态存档（v1）：紧凑元组，避免对象开销撑大存档 */
@@ -63,6 +69,21 @@ export interface PlantSaveV1 {
   plants: [number, number, number, number, number, 0 | 1][];
   /** [土壤x, 土壤y, 土壤z, nutrient 0~100] */
   soil: [number, number, number, number][];
+}
+
+/**
+ * 生态状态存档（v2，minecraft-web-replica-botany 品系扩展）：
+ * plants / soil 元组形状与 v1 相同，追加 strains；
+ * v1 存档可直接按 v2 读取（strains 缺省为空 = 无品系）。
+ */
+export interface PlantSaveV2 {
+  v: 2;
+  /** [锚点x, 锚点y, 锚点z, blockId, energy 0~100, bloomed 0|1] */
+  plants: PlantSaveV1['plants'];
+  /** [土壤x, 土壤y, 土壤z, nutrient 0~100] */
+  soil: PlantSaveV1['soil'];
+  /** [锚点x, 锚点y, 锚点z, strainIndex（STRAIN_ORDER 下标）] */
+  strains: [number, number, number, number][];
 }
 
 /** 单类状态存档上限，防止存档体积失控 */
@@ -125,6 +146,8 @@ export class Botany {
   private readonly traits = new Map<BlockId, PlantTrait>();
   /** 内在能量表：坐标 → 状态。只跟踪被随机刻采样过的植物 */
   private readonly energy = new Map<string, PlantEnergyState>();
+  /** 品系表：坐标 → STRAIN_ORDER 下标。杂交产生的后代带品系，破坏即消失 */
+  private readonly strains = new Map<string, number>();
   /** 土壤养分表：支撑格坐标 → 0~100，懒初始化为 100 */
   private readonly soil: SoilMap = new Map();
   private readonly flowers = new Set<BlockId>();
@@ -309,6 +332,31 @@ export class Botany {
     return this.stateAt(x, y, z, id).energy;
   }
 
+  /** 坐标处品系 id；无品系返回 undefined */
+  strainAt(x: number, y: number, z: number): StrainId | undefined {
+    const index = this.strains.get(blockKey(x, y, z));
+    if (index === undefined) return undefined;
+    return strainAt(index);
+  }
+
+  /** 写入品系（杂交 tick 内部使用）；品系名未知时静默忽略 */
+  private setStrain(x: number, y: number, z: number, strain: StrainId): void {
+    const index = strainIndexOf(strain);
+    if (index >= 0) this.strains.set(blockKey(x, y, z), index);
+  }
+
+  /**
+   * 坐标处的有效特性：基础特性叠加品系覆盖。
+   * 生长 / 采集 / 开花都经此查询，品系数值差异因此对整条能量链生效。
+   */
+  private traitAt(x: number, y: number, z: number, id: BlockId): PlantTrait | undefined {
+    const base = this.traits.get(id);
+    if (!base) return undefined;
+    const strainId = this.strainAt(x, y, z);
+    if (!strainId) return base;
+    return applyStrain(base, STRAINS[strainId]);
+  }
+
   /** 调试 / 测试钩子：直接写入能量（0~100） */
   setEnergy(x: number, y: number, z: number, energy: number): void {
     const id = this.world.getBlock(x, y, z);
@@ -342,7 +390,7 @@ export class Botany {
   // ---------- 生态状态存档 ----------
 
   /** 序列化当前仍在原位的植物能量与土壤养分 */
-  serializeEcology(): PlantSaveV1 {
+  serializeEcology(): PlantSaveV2 {
     const plants: PlantSaveV1['plants'] = [];
     for (const st of this.energy.values()) {
       if (plants.length >= ECOLOGY_SAVE_LIMIT) break;
@@ -364,7 +412,18 @@ export class Botany {
       if (y < 0 || y >= H) continue;
       soil.push([x, y, z, Math.round(value)]);
     }
-    return { v: 1, plants, soil };
+    const strains: PlantSaveV2['strains'] = [];
+    for (const [key, index] of this.strains) {
+      if (strains.length >= ECOLOGY_SAVE_LIMIT) break;
+      const parts = key.split(',');
+      if (parts.length !== 3) continue;
+      const [x, y, z] = parts.map(Number);
+      if (![x, y, z].every(Number.isInteger) || y < 1 || y >= H) continue;
+      // 方块已被替换（采掉 / 枯死 / 长成别种）后品系不再有意义
+      if (!this.traits.has(this.world.getBlock(x, y, z))) continue;
+      strains.push([x, y, z, index]);
+    }
+    return { v: 2, plants, soil, strains };
   }
 
   /**
@@ -373,8 +432,12 @@ export class Botany {
    */
   restoreEcology(data: unknown): number {
     if (!data || typeof data !== 'object') return 0;
-    const d = data as Partial<PlantSaveV1>;
-    if (d.v !== 1 || !Array.isArray(d.plants) || !Array.isArray(d.soil)) return 0;
+    const d = data as Partial<Omit<PlantSaveV1, 'v'>> & {
+      v?: number;
+      strains?: unknown;
+    };
+    // v1 = 无品系；v2 追加 strains（品系表）。两者共用 plants / soil 形状。
+    if ((d.v !== 1 && d.v !== 2) || !Array.isArray(d.plants) || !Array.isArray(d.soil)) return 0;
 
     // 同锚点去重：保留最后一条；按输入顺序逐个校验
     const seenPlants = new Map<string, PlantSaveV1['plants'][number]>();
@@ -410,6 +473,23 @@ export class Botany {
       if (soilRestored >= ECOLOGY_SAVE_LIMIT) break;
       this.soil.set(key, value);
       soilRestored++;
+    }
+
+    // 品系表（v2）：校验下标范围 + 方块仍是品系挂载的植物，坏条目静默丢弃
+    this.strains.clear();
+    let strainRestored = 0;
+    if (d.v === 2 && Array.isArray(d.strains)) {
+      for (const entry of d.strains) {
+        if (strainRestored >= ECOLOGY_SAVE_LIMIT) break;
+        if (!Array.isArray(entry) || entry.length !== 4) continue;
+        const [x, y, z, index] = entry;
+        if (![x, y, z, index].every(Number.isInteger)) continue;
+        if (y < 1 || y >= H) continue;
+        if (index < 0 || index >= STRAIN_ORDER.length) continue;
+        if (!this.traits.has(this.world.getBlock(x, y, z))) continue;
+        this.strains.set(blockKey(x, y, z), index);
+        strainRestored++;
+      }
     }
     return restored;
   }
@@ -453,7 +533,8 @@ export class Botany {
    */
   harvest(x: number, y: number, z: number, mode: 'use' | 'break' = 'use'): PlantBonus | null {
     const id = this.world.getBlock(x, y, z);
-    const trait = this.traits.get(id);
+    // 品系覆盖后的有效特性：产出数量 / 附加产出按品系生效
+    const trait = this.traitAt(x, y, z, id);
     if (!trait?.harvest) return null;
     const st = this.stateAt(x, y, z, id);
     if (st.energy < trait.bloom) return null;
@@ -504,6 +585,7 @@ export class Botany {
    */
   private forgetAnchor(x: number, y: number, z: number, id: BlockId): void {
     this.energy.delete(blockKey(x, y, z));
+    this.strains.delete(blockKey(x, y, z));
     for (const [key, state] of this.energy) {
       if (state.x === x && state.z === z && state.id === id) this.energy.delete(key);
     }
@@ -667,7 +749,7 @@ export class Botany {
     tx: number, ty: number, tz: number, id: BlockId, kind: GrowKind,
     sx = tx, sy = ty, sz = tz, costId = id,
   ): boolean {
-    const trait = this.traits.get(costId);
+    const trait = this.traitAt(sx, sy, sz, costId);
     // 必须在写入前取能量状态：生长阶段替换方块后 id 会变化
     const state = trait ? this.stateAt(sx, sy, sz, costId) : null;
     if (trait && (!state || state.energy < trait.growthCost)) return false;
@@ -751,11 +833,11 @@ export class Botany {
     }
     if (id === this.id.wheatSeedling || id === this.id.wheatGrowing) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickWheat(x, y, z, id, daylight);
+      return this.tickWheat(x, y, z, id, daylight) || this.tickCrossbreed(x, y, z);
     }
     if (id === this.id.berryBush || id === this.id.berryBushRipe) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
-      return this.tickBerry(x, y, z, id, daylight);
+      return this.tickBerry(x, y, z, id, daylight) || this.tickCrossbreed(x, y, z);
     }
     if (id === this.id.pumpkinStem) {
       if (!this.supported(id, x, y, z)) return this.decay(x, y, z, id);
@@ -776,7 +858,8 @@ export class Botany {
       for (const rule of rules) changed = rule.tick(ctx) || changed;
       return changed;
     }
-    return false;
+    // 其余 cross 形植物（含葡萄藤）走杂交判定：组合表未命中时零开销返回
+    return this.tickCrossbreed(x, y, z);
   }
 
   // ---------- 规则：支撑与枯萎 ----------
@@ -994,7 +1077,10 @@ export class Botany {
   // ---------- 规则：作物 / 浆果 / 南瓜 ----------
 
   private tickWheat(x: number, y: number, z: number, id: BlockId, daylight: number): boolean {
-    if (this.lightAt(x, y, z, daylight) < 9) return false;
+    // 莓穗等耐阴品系把生长光照门槛从 9 降到 6
+    const strainId = this.strainAt(x, y, z);
+    const minLight = strainId && STRAINS[strainId].shadeTolerant ? 6 : 9;
+    if (this.lightAt(x, y, z, daylight) < minLight) return false;
     if (this.rng() > scaledChance(0.22, this.env)) return false;
     const next = id === this.id.wheatSeedling ? this.id.wheatGrowing : this.id.wheat;
     return next ? this.grow(x, y, z, next, 'grow', x, y, z, id) : false;
@@ -1124,6 +1210,56 @@ export class Botany {
   }
 
   /** 构造插件规则的受限上下文：不泄漏 World 实例，写入统一走 plant:grow 事件 */
+  /** 杂交亲本只认成熟植株：方块注册名 → 组合表物种名，非成熟 / 无关植物返回 undefined */
+  private crossbreedSpeciesOf(id: BlockId): string | undefined {
+    if (id === this.id.wheat) return 'wheat';
+    if (id === this.id.berryBushRipe) return 'sweet_berry_bush';
+    const name = this.registry.get(id)?.name;
+    return name === 'grape_vine' ? 'grape_vine' : undefined;
+  }
+
+  /**
+   * 自然杂交（minecraft-web-replica-botany）：成熟植株旁存在组合表匹配的
+   * 另一株成熟植物、满足土壤 / 天气条件且附近有空位时，小概率在空位长出
+   * 带品系的后代植株。所有随机走 this.rng，保证确定性。
+   */
+  private tickCrossbreed(x: number, y: number, z: number): boolean {
+    const selfSpecies = this.crossbreedSpeciesOf(this.world.getBlock(x, y, z));
+    if (!selfSpecies) return false;
+    // 水平四邻里找组合匹配的另一株成熟植物（只看与自身同高的四方向）
+    const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dz] of dirs) {
+      const mx = x + dx;
+      const mz = z + dz;
+      const mateSpecies = this.crossbreedSpeciesOf(this.world.getBlock(mx, y, mz));
+      if (!mateSpecies) continue;
+      const combo = findCombo(selfSpecies, mateSpecies);
+      if (!combo) continue;
+      if (combo.soilMin !== undefined) {
+        // 两位亲本脚下的土壤养分都要达标
+        if (Math.min(this.nutrientAt(x, y - 1, z), this.nutrientAt(mx, y - 1, mz)) < combo.soilMin) {
+          continue;
+        }
+      }
+      if (combo.rain && this.env.weather !== 'rain') continue;
+      if (this.rng() > combo.chance) continue;
+
+      // 在自身旁边的空位种下带品系的后代（有实心支撑、消耗亲本能量）
+      const offspring = this.registry.byNameGet(STRAINS[combo.offspring].species)?.id ?? 0;
+      if (!offspring) return false;
+      for (const [sx, sz] of dirs) {
+        if (this.world.getBlock(x + sx, y, z + sz) !== 0) continue;
+        if (!this.isSoil(this.world.getBlock(x + sx, y - 1, z + sz))) continue;
+        if (this.grow(x + sx, y, z + sz, offspring, 'spread', x, y, z)) {
+          this.setStrain(x + sx, y, z + sz, combo.offspring);
+          return true;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
   private ruleContext(x: number, y: number, z: number, id: BlockId, daylight: number): PlantRuleContext {
     return {
       x, y, z, id, daylight,

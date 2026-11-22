@@ -788,6 +788,8 @@ export class Player implements System, PhysicsBody {
     const bonus = this.botany.harvest(hit.x, hit.y, hit.z, 'use');
     if (!bonus) return false;
     this.survival.addDrop(bonus.item, bonus.count);
+    // 品系附加产出（莓穗的甜浆果 / 金穗小麦的花蜜）
+    if (bonus.extra) this.survival.addDrop(bonus.extra.item, bonus.extra.count);
     const def = this.registry.get(hit.block);
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.7, hit.z + 0.5, color, 12, 0.28, 1.6);

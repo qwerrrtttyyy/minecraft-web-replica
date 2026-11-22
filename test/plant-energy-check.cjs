@@ -404,7 +404,7 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
   t.botany.setNutrient(11, 20, 11, 64);
   const snap = t.botany.serializeEcology();
   ok('序列化含植物 / 土壤两条状态',
-    snap.v === 1 && snap.plants.length === 1 && snap.soil.length === 1,
+    snap.v === 2 && snap.plants.length === 1 && snap.soil.length === 1,
     JSON.stringify(snap));
 
   const fresh = new Botany(t.world, t.reg, 20261115, t.events, { radius: 8 });

@@ -13,3 +13,7 @@ test/terrain-logic/
 *.log
 .DS_Store
 .env
+
+# 代理运行时 / 本地工具配置（非项目源码）
+.atomcode/
+.mcp.json

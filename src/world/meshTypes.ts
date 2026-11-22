@@ -191,6 +191,8 @@ export interface MeshRequest {
   cz: number;
   /** 代次：同一区块被反复改脏时用于丢弃过期结果 */
   generation: number;
+  /** M06：派发时的配置版本；Worker 原样回显，失效后的结果不得落地 */
+  configRevision: number;
   snapshot: MeshSnapshot;
   /** 派发到的 Worker 序号：主线程据此做 least-busy 调度与回传计数 */
   wid: number;
@@ -207,6 +209,8 @@ export interface MeshResult {
   cx: number;
   cz: number;
   generation: number;
+  /** M06：派发时的配置版本（原样回显） */
+  configRevision: number;
   mesh: PackedMesh;
   /** 诊断：合并掉的 quad 数 / 总顶点数 */
   stats: MeshStats;
@@ -215,4 +219,18 @@ export interface MeshResult {
 export type WorkerResponse =
   | MeshResult
   | { type: 'config-ack'; wid: number; revision: number }
-  | { type: 'error'; wid: number; cx: number; cz: number; generation: number; message: string };
+  | {
+    type: 'error'; wid: number; cx: number; cz: number; generation: number;
+    configRevision: number; message: string;
+  };
+
+/**
+ * M06：判断 Worker 结果是否因配置失效而过期。
+ * 缺字段（旧 Worker / 注入消息）一律视为过期，避免旧方块元数据污染新网格。
+ */
+export function isStaleConfigRevision(
+  msgRevision: number | undefined,
+  currentRevision: number,
+): boolean {
+  return msgRevision === undefined || msgRevision !== currentRevision;
+}

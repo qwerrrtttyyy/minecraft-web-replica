@@ -44,6 +44,12 @@ export interface DiagnosticSnapshot {
     meshQuads?: number;
     /** v1.5.1：累计网格化区块数（可选） */
     meshChunks?: number;
+    /** 当前驻留区块总数（可选，旧快照不含时跳过驻留上限检查） */
+    resident?: number;
+    /** 驻留上限（可选） */
+    maxResident?: number;
+    /** 卸载后重新生成的累计次数（可选，仅作观测） */
+    regenerations?: number;
   };
   plugins: { id: string; state: string; dependencies?: string[] }[];
   events: { subscribers: number; channels: number; emitted: number };
@@ -140,6 +146,10 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
       `${c.missingMeshes} 个视距内区块既无网格也无在途任务`);
     check('chunks.backlog', c.dirty + c.inFlight <= 24,
       `网格队列积压：dirty=${c.dirty} inFlight=${c.inFlight}`, 'warn');
+    if (c.resident !== undefined && c.maxResident !== undefined) {
+      check('chunks.residentCap', c.resident <= c.maxResident,
+        `驻留区块 ${c.resident} 超过上限 ${c.maxResident}（LRU 淘汰可能失效）`, 'warn');
+    }
     // 平滑光照会让「四角光照不一致」的面退回逐面输出，Greedy 收益因此变薄。
     // 这个预算专门盯住「合并彻底失效」：一旦平均 quad 数逼近逐面基线，
     // 说明合并规则被改坏了（而不是单纯变慢），必须报出来而不是默默吃掉帧率。
