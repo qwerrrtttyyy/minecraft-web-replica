@@ -603,6 +603,8 @@ export class Player implements System, PhysicsBody {
       this.mineKey = key;
       this.beginMining(def);
       this.miningProgress = 0;
+    } else if (heldToolId(this.selectedStack()) !== this.mineToolId) {
+      this.beginMining(def);
     }
     this.mineIdle = 0;
     this.miningProgress = Math.min(1, (this.miningProgress ?? 0) + 0.3 / this.mineTime);
