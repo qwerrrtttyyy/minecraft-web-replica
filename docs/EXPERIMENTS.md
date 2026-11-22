@@ -444,6 +444,15 @@ biome 过滤生效；`min/max` 控制 count ∈ [min,max]。
 无法测量；已降级为记录目标，留给 CI / 真机环境用 `test:smoke` + 帧时采样验证。Node 基准（6.95×）
 只是代理指标，不等价于帧时结论。
 
+**总门验证结果（集成分支，2026-11-22）**：
+- `python3 docs/agent/validate.py --strict`：exit 0，26 张卡 FAIL 0 / WARN 0。
+- `npm run verify:node`：exit 0，全绿（含 18 群系可达性 / botany spawn 权重 / mesher 61 项 / mobile 四项）。
+- `npm run verify`：exit 1——但失败点是 `test:logic` 里 `test/terrain-check.cjs:301` 的机器性能断言
+  （`单区块平均生成耗时 < 40ms` 实测 133.8ms），非功能回归；该断言在 base commit 即以同样方式失败
+  （两条线均复现），属本机负载 / 性能限制。
+- `npm run test:smoke` 单独执行：exit 1，`Command '/usr/bin/chromium-browser' requires the chromium snap to be installed.`
+  ——浏览器步骤的环境阻塞与 §7 记录一致，属 CI-only 项。
+
 **已知限制**：frost_bloom 在 snowy_tundra / snowy_taiga 的 spawn 权重被 `botanyContent.ts` 既有的
 frostline 规则衰减（spawn 后即枯死）——该规则属既有生态逻辑，本轮按范围锁定未改；若日后希望霜花
 在雪原存活，需单独一轮改规则。
