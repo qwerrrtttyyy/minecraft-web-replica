@@ -1,5 +1,5 @@
 /**
- * 篮球物理回归（v1.5.2 增量，R14）。
+ * 篮球物理回归（R14）。
  *
  * 两部分：
  *  A. 纯函数快照（BALL 常量 / bounceVy / rollFriction / canPickup）——无 three / DOM 依赖。

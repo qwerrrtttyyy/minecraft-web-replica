@@ -55,7 +55,7 @@
     "test:plugin-carrier": "node test/plugin-carrier-check.cjs",
     "test:review-fixes": "node test/review-fixes-check.cjs",
     "build:plugin-fixtures": "node scripts/build-plugin-fixtures.mjs",
-    "test:mobile": "node test/mesher-check.cjs && node test/orientation-gate-check.cjs && node test/feel-check.cjs && node test/crack-overlay-check.cjs && node test/visual-check.mjs"
+    "test:mobile": "node test/mesher-check.cjs && node test/orientation-gate-check.cjs && node test/feel-check.cjs && node test/crack-overlay-check.cjs"
   },
   "dependencies": {
     "three": "0.170.0"

@@ -163,7 +163,7 @@ export class TouchControls {
   /** 放置键的语义：手持方块=放置，手持食物=进食，手持篮球=投掷，空手=禁用 */
   setUseMode(mode: 'block' | 'item' | 'throw' | 'none') {
     const btn = this.root.querySelector('[data-role="place"]') as HTMLElement;
-    const throwIcon = '<path d="M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="2"/>';
+    const throwIcon = '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12h16M12 4c3.2 3.3 3.2 12.7 0 16M12 4c-3.2 3.3-3.2 12.7 0 16" fill="none" stroke="currentColor" stroke-width="1.5"/>';
     const itemIcon = '<path d="M12 21c-4 0-7-3.2-7-7 0-4.3 4.6-7.6 7-9.6 2.4 2 7 5.3 7 9.6 0 3.8-3 7-7 7z" fill="currentColor"/><path d="M12 4c.6-1.4 2-2.4 3.6-2.4" stroke="currentColor" stroke-width="2" fill="none"/>';
     const blockIcon = '<path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/>';
     const icon = mode === 'throw' ? throwIcon : mode === 'item' ? itemIcon : blockIcon;

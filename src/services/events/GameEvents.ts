@@ -80,12 +80,12 @@ export interface GameEvents {
   'wasm:ready': { abi: number; bytes: number; sha256: string; samples: number };
   /** v1.5.0：WASM 失败已回退纯 JS */
   'wasm:fallback': { reason: string; code?: string };
-  /** v1.5.2：篮球投出（坐标脚底中心） */
+  /**篮球投出（坐标脚底中心） */
   'basketball:throw': { id: number; x: number; y: number; z: number };
-  /** v1.5.2：篮球被拍打 */
+  /**篮球被拍打 */
   'basketball:slap': { id: number; x: number; y: number; z: number };
-  /** v1.5.2：篮球落地反弹，strength 为 moveBody 之前的入射速度绝对值 */
+  /**篮球落地反弹，strength 为 moveBody 之前的入射速度绝对值 */
   'basketball:bounce': { id: number; x: number; y: number; z: number; strength: number };
-  /** v1.5.2：走近拾取篮球 */
+  /**走近拾取篮球 */
   'basketball:pickup': { x: number; y: number; z: number };
 }

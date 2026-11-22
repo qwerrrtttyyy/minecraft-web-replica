@@ -1601,9 +1601,9 @@ async function boot() {
           if (!canPickup(Math.hypot(dx, dz), dy, speed, e.pickupCooldown)) continue;
           const { x, y, z } = e.pos;
           entities.despawn(e);
-          survival.addItem('basketball', 1);
+          const picked = survival.addItem('basketball', 1);
           sound.pickup();
-          hud.toast('篮球已收回');
+          if (picked) hud.toast('篮球已收回');
           events.emit('basketball:pickup', { x, y, z });
         }
         entities.maintainPopulation(dt, player.pos, { survival: survival.isSurvival, daylight: sky.daylight });
