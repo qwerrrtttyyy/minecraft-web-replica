@@ -19,7 +19,10 @@ export interface IWorldGenerator {
 
 export type BiomeId =
   | 'ocean' | 'beach' | 'desert' | 'plains' | 'forest' | 'taiga' | 'alpine'
-  | 'mesa' | 'swamp' | 'savanna' | 'cherry';
+  | 'mesa' | 'swamp' | 'savanna' | 'cherry'
+  // 11 → 18 群系扩展：仅在末尾追加，既有 11 项顺序不动（存档 / 诊断按字符串记录 biome 名）
+  | 'jungle' | 'snowy_tundra' | 'mushroom_grove' | 'bamboo_grove'
+  | 'dark_forest' | 'birch_forest' | 'snowy_taiga';
 
 /** 地表一列的自然属性（不依赖区块是否已生成） */
 export interface ColumnInfo {
@@ -68,6 +71,9 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   treeDensity: {
     plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05,
     mesa: 0, swamp: 0.1, savanna: 0.06, cherry: 0.3,
+    // 11 → 18 群系扩展：雪原 / 竹林无乔木，其余按设计表逐群系给值
+    jungle: 0.38, snowy_tundra: 0, mushroom_grove: 0.18, bamboo_grove: 0,
+    dark_forest: 0.45, birch_forest: 0.4, snowy_taiga: 0.3,
   },
   oreRichness: 1,
 };
@@ -323,6 +329,105 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.02,
     trees: [{ species: 'cherry', weight: 1 }],
+  },
+
+  // ---------- 11 → 18 群系扩展（零新方块 id / 零新 tile） ----------
+  // 以下 7 项全部复用已注册方块，仅靠表层 / 填充 / 植物 / 树种组合做区分。
+  jungle: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'bamboo', weight: 0.03 }, { name: 'tall_fern', weight: 0.02 },
+      { name: 'vine', weight: 0.012 }, { name: 'fern', weight: 0.01 },
+      { name: 'moss_carpet', weight: 0.02 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.03,
+    trees: [{ species: 'oak', weight: 1 }],
+  },
+  snowy_tundra: {
+    surface: 'snow', filler: 'dirt',
+    plants: [
+      { name: 'snowdrop', weight: 0.01 }, { name: 'edelweiss', weight: 0.008 },
+      { name: 'snow_lily', weight: 0.006 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    // 新群系花圃权重按设计表口径取相对权重，总和 ≤ 1
+    flowerBeds: {
+      chance: 0.1, radius: 2,
+      plants: [
+        { name: 'snowdrop', weight: 0.5 }, { name: 'edelweiss', weight: 0.3 },
+        { name: 'snow_lily', weight: 0.2 },
+      ],
+    },
+  },
+  mushroom_grove: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'red_mushroom', weight: 0.02 }, { name: 'brown_mushroom', weight: 0.02 },
+      { name: 'moss_carpet', weight: 0.04 }, { name: 'glow_moss', weight: 0.02 },
+      { name: 'ivy', weight: 0.004 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'oak', weight: 1 }],
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
+  },
+  bamboo_grove: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'bamboo', weight: 0.06 }, { name: 'tall_grass', weight: 0.03 },
+      { name: 'sugar_cane', weight: 0.01 }, { name: 'vine', weight: 0.01 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.04,
+  },
+  dark_forest: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'ivy', weight: 0.006 }, { name: 'moss_carpet', weight: 0.03 },
+      { name: 'red_mushroom', weight: 0.008 }, { name: 'brown_mushroom', weight: 0.008 },
+      { name: 'fern', weight: 0.012 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'oak', weight: 0.7 }, { species: 'birch', weight: 0.3 }],
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
+  },
+  birch_forest: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'fern', weight: 0.015 }, { name: 'tall_grass', weight: 0.03 },
+      { name: 'azure_bluet', weight: 0.008 }, { name: 'lily_of_the_valley', weight: 0.006 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'birch', weight: 1 }],
+  },
+  snowy_taiga: {
+    surface: 'podzol', filler: 'dirt',
+    plants: [
+      { name: 'snowdrop', weight: 0.01 }, { name: 'lingonberry_bush', weight: 0.012 },
+      { name: 'fern', weight: 0.02 }, { name: 'tall_fern', weight: 0.02 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'spruce', weight: 1 }],
+    flowerBeds: {
+      chance: 0.1, radius: 2,
+      plants: [
+        { name: 'snowdrop', weight: 0.6 }, { name: 'lingonberry_bush', weight: 0.4 },
+      ],
+    },
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
   },
 };
 
@@ -608,18 +713,43 @@ export class DefaultGenerator implements IWorldGenerator {
     const m = clamp(humidity + jitter, 0, 1);
     const alt = smoothstep(46, 60, height);
 
+    // 11 → 18 群系扩展「抢占台账」：既有 11 条谓词与相对顺序一字不改，新规则只插在其间。
+    // 级联穷举，新群系必然从旧群系取走格子；优先从宽泛兜底域（forest / plains）细分。
+    // | 新规则          | 原本落到 | 理由                                                       |
+    // | snowy_tundra    | taiga    | 寒冷干燥低地本应是苔原；taiga 保留中湿低温格                  |
+    // | snowy_taiga     | taiga    | 最冷且较湿的格改为积雪针叶林；taiga 保留 0.20 ≤ t < 0.30       |
+    // | jungle          | forest   | t>0.68 且 m≥0.62 是湿热阔叶林，原 forest 兜底过宽             |
+    // | bamboo_grove    | forest   | cherry 湿度带以上（m>0.70）的暖区，cherry 谓词不变且优先      |
+    // | mushroom_grove  | forest   | m>0.70 的温和高地；低海拔高湿仍归 swamp（ swamp 规则在前）    |
+    // | dark_forest     | forest   | cherry 带之外的中温高湿林；cherry 谓词不变且优先              |
+    // | birch_forest    | plains   | m∈(0.45,0.56] 的温和格从 plains 细化                           |
+
     let biome: BiomeId;
     if (height < SEA_LEVEL) biome = 'ocean';
     else if (height <= SEA_LEVEL + 1) biome = 'beach';
     // 沼泽：高湿（m>0.62）中温（0.3~0.62）低平（海拔 +8 内）
     else if (m > 0.62 && t >= 0.30 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp';
     else if (alt > 0.55 || (t < 0.2 && height > 50)) biome = 'alpine';
+    // 新：寒冷干燥低地苔原（抢占 taiga 的干燥低温格）
+    else if (t < 0.30 && m < 0.40 && height <= SEA_LEVEL + 12) biome = 'snowy_tundra';
+    // 新：最冷且较湿的积雪针叶林（抢占 taiga 的最冷格）
+    else if (t < 0.20 && m >= 0.40 && height <= 50) biome = 'snowy_taiga';
     else if (t < 0.3) biome = 'taiga';
     // 恶地：比沙漠更热更干
     else if (t > 0.68 && m < 0.28) biome = 'mesa';
     else if (t > 0.68 && m < 0.45) biome = 'desert';
     // 樱花林：温和至暖 + 高湿度区，优先于高湿群系（湿度阈值靠末端增宽，稀有度归因）
     else if (m >= 0.60 && m < 0.70 && t >= 0.40 && t <= 0.68) biome = 'cherry';
+    // 新：湿热阔叶林（原 forest 兜底过宽）
+    else if (t > 0.68 && m >= 0.62 && m < 0.78) biome = 'jungle';
+    // 新：cherry 湿度带以上的暖区竹林
+    else if (t > 0.60 && t <= 0.68 && m > 0.70 && height <= SEA_LEVEL + 16) biome = 'bamboo_grove';
+    // 新：m>0.70 的温和高地真菌林；低海拔高湿仍归 swamp
+    else if (t >= 0.30 && t <= 0.60 && m > 0.70 && height <= SEA_LEVEL + 20) biome = 'mushroom_grove';
+    // 新：cherry 带之外的中温高湿暗林
+    else if (t >= 0.30 && t <= 0.55 && m > 0.56 && m <= 0.70 && height <= SEA_LEVEL + 24) biome = 'dark_forest';
+    // 新：m∈(0.45,0.56] 的温和格从 plains 细化
+    else if (t >= 0.30 && t <= 0.55 && m > 0.45 && m <= 0.56 && height <= SEA_LEVEL + 24) biome = 'birch_forest';
     // 热带草原：暖且湿度中等（0.45~0.62）
     else if (t > 0.6 && m >= 0.45 && m < 0.62) biome = 'savanna';
     else if (m > 0.56) biome = 'forest';
