@@ -193,6 +193,43 @@ img { image-rendering: pixelated; }
 }
 .crafting-pattern-cell img { width: 12px; height: 12px; image-rendering: pixelated; }
 
+/* ============ 烹饪（熔炉 / 营火，PR4） ============ */
+.cooking-panel {
+  width: min(560px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cooking-slots { display: flex; align-items: flex-start; justify-content: center; gap: 18px; }
+.cooking-slot-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cooking-slot {
+  position: relative;
+  width: 62px; height: 62px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 20, 24, .55);
+  border: 2px solid #4a4a4a;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, .5);
+  cursor: pointer; padding: 0;
+}
+.cooking-slot:hover { border-color: #ffffa0; }
+.cooking-slot img { width: 46px; height: 46px; pointer-events: none; image-rendering: pixelated; }
+.cooking-slot-label { font-size: 12px; color: #d8d8d8; }
+.cooking-status { display: flex; flex-direction: column; gap: 6px; }
+.cooking-bar { display: flex; align-items: center; gap: 8px; }
+.cooking-bar-label { font-size: 12px; color: #d8d8d8; width: 34px; text-align: right; }
+.cooking-bar-track {
+  flex: 1; height: 10px;
+  background: rgba(12, 12, 14, .7);
+  border: 1px solid #4a4a4a;
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, .6);
+}
+.cooking-bar-fill {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(#ffd24a, #e08a18);
+  transition: width .12s linear;
+}
+.cooking-bar-fill.burn { background: linear-gradient(#ff9a3c, #c24518); }
+
 /* ============ 标题屏 ============ */
 .title-screen {
   position: absolute; inset: 0;
@@ -707,6 +744,39 @@ img { image-rendering: pixelated; }
 .stat-heart.dead .pip-fill { filter: grayscale(1); }
 
 /* 挖掘进度（N3）：绿条退居辅助，方块表面裂纹才是主反馈 */
+/* 温暖指示（PR5）：火焰小图标 + 细条，悬在生命行上方，不新增 10 格行 */
+.warmth-meter {
+  position: absolute; left: 0; bottom: 100%; margin-bottom: 5px;
+  display: flex; align-items: center; gap: 4px;
+  opacity: 0; transition: opacity .25s;
+  pointer-events: none;
+}
+.warmth-meter.show { opacity: 1; }
+.warmth-flame { width: 14px; height: 14px; display: inline-flex; }
+.warmth-flame svg {
+  width: 100%; height: 100%;
+  fill: #ff8a2a; stroke: #5a2a08; stroke-width: 1.2px;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, .9));
+}
+/* 达标（warmth >= regenThreshold）：火焰高亮，提示回血门槛已降低 */
+.warmth-meter.warm .warmth-flame svg {
+  fill: #ffb03a;
+  filter: drop-shadow(0 0 3px rgba(255, 165, 45, .95));
+}
+.warmth-bar {
+  width: 64px; height: 6px;
+  background: #141414; border: 1px solid #000;
+  box-shadow: inset 0 0 0 1px #4a4a4a;
+}
+.warmth-fill { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #ff7a1a, #ffc44a); }
+
+/* 温暖暖光：fixed 全屏暖色径向光晕，强度随 warmth（不拦截输入） */
+#warmth-glow {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 150, 50, 0) 42%, rgba(255, 140, 40, .55) 100%);
+  transition: opacity .3s;
+}
+
 .mining-bar {
   position: absolute; left: 50%; top: calc(50% + 30px);
   transform: translateX(-50%);

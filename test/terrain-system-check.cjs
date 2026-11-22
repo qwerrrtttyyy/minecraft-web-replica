@@ -97,8 +97,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 152 种（141 + 内容植物扩充 11）',
-    all.length === 152, `${all.length}`);
+  ok('内置方块总数 156 种（141 + 内容植物扩充 11 + 火光地基 4）',
+    all.length === 156, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -523,7 +523,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 152（141 + 内容植物扩充 11）', all.length === 152, `${all.length}`);
+  ok('方块总数增至 156（141 + 内容植物扩充 11 + 火光地基 4）', all.length === 156, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -631,7 +631,7 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
-ok('方块总数 152（141 基线 + 内容植物扩充 11）', reg.all().length === 152);
+ok('方块总数 156（141 基线 + 内容植物扩充 11 + 火光地基 4）', reg.all().length === 156);
 
 // C02：三种新动物 + 按权重生成
 ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']

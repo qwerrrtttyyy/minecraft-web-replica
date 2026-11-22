@@ -55,6 +55,23 @@
 ### 说明
 - 确定性：AI 随机性走 `mulberry32(hash(worldSeed, entityId, label))`，无新增 `Math.random`；既有实体游荡/生成坐标的 `Math.random()` 技术债不动。
 - 方块 id / 纹理不变；运行时唯一依赖仍为 three。
+## [1.5.4] - 2026-11-22 · 火光与饥饿（融合远端熔炉烧炼）
+
+### 新增
+- **火光方块地基**：新增 4 个内置方块（显式 id 165~168，末位追加）：营火 `campfire`(165，`slab`，光 15)、灯笼 `lantern`(166，`slab`，光 15)、蜡烛 `candle`(167，`candle`，光 9)、火焰 `fire`(168，`cross`，光 15，不可破坏、无掉落)。`BlockShape` 扩展 `'slab' | 'candle'`；`mesher.emitFace` 支持任意盒 `bounds` 并新增 `emitBox`，`meshSource.toMeshDef` 透传形状，`icon` / `makeBlockGeometry` 支持子盒；补齐此前缺失的 `furnace_top` / `furnace_side` 纹理。方块总数 152 → 156。
+- **完整饱和度**：`ItemDefinition.saturation` 与 `SurvivalState.saturation`（0~20）；进食叠加饱和度且不超过当前饥饿值，消耗（exhaustion 每满 4）先扣饱和度再扣饥饿，回血额外要求 `saturation > 0`；存档往返与旧档缺省满值；HUD 饥饿条 `satiated` / `drained` 视觉。数值集中在 `tuning.ts` 的 `FOOD_VALUES`（16 种可食物，`saturation = food × 0.6`）。
+- **火焰系统**（`src/world/fire.ts`）：`campfire` / `fire` 双热源，6 邻真实蔓延（邻格本身可燃则直接引燃，正下方支撑除外；空气格下方实心可燃亦可引燃），寿命熄灭（默认 18s ±30%），失去支撑自熄；玩家与生物站在火 / 营火上每 0.5s 受 1 点火焰伤害（实体由系统自管计时，因 `Entity.hurt` 无无敌帧）；刷怪落点 3 格内有火 / 营火则该次生成失败；火焰粒子与 `fire:ignite` / `fire:extinguish` 事件、音效 `crackle()`。可燃表 `FLAMMABLE` 103 条。设置项 `fireSpread` 默认开启，设置页「实验性玩法」组可关（关闭时只熄灭不蔓延，火焰与伤害仍在）。
+- **熔炉与烹饪（融合远端）**：熔炉本体采用远端 `src/player/smelting.ts` + `src/ui/furnace.ts`（per-block 三槽 `input/fuel/output` + `burn/burnMax/progress`，10s 烧一件，燃料表 `FUEL_UNITS`，破坏 `take()` 掉落，状态入存档 `SaveData.furnaces.cells`）；扩展 `rabbit_meat → cooked_rabbit` 配方与 `crafting_table` / `bookshelf` 燃料。营火为无燃料「直接烤」（`src/ui/campfire.ts` 两槽面板，点输出即烤，可烤物判定与熔炉共用 `smeltOutputOf`）。熟肉数值统一到 `FOOD_VALUES`（熟牛 / 熟猪排 8、熟兔肉 7）。新增配方：8 圆石 → 熔炉、圆石×3 + `#log`×3 + 煤×1 → 营火。
+- **温暖状态**（`src/world/warmth.ts`）：靠近热源（火 / 营火 / 灯笼 / 蜡烛 / 燃烧中的熔炉）温暖值 0~100 上升、远离下降；温暖达标（≥50）时回血饥饿门槛从 18 降到 14；HUD 火焰细条 + 全屏暖光；存档往返。
+- **测试**：新增 `test/fire.test.ts`、`test/warmth.test.ts`、`test/survival-saturation.test.ts`、`test/campfire.test.ts`（Vitest）；`test/smelting-check.cjs` 扩展兔肉配方与新燃料；`terrain-system-check` / `botany-rules-check` 的方块总数 152→156。
+
+### 说明
+- 本版本 rebase 到远端 `main`（含 1.5.3 AI 行为树与「矿物→材料→熔炼」闭环），熔炉部分按「以远端为准」融合：删除本地 `src/world/furnace.ts` 与 `src/ui/cooking.ts` 的熔炉实现，保留营火直接烤并改用 `smeltOutputOf` 判定；`save.ts` 采用远端 `furnaces.cells` 存档格式。
+- `package.json` / lock 以远端为准（jsdom `^30.1.3`），保留 `test:vitest` 脚本与 verify 链。
+
+### 验证
+- `check:version` 三处一致（VERSION 1.5.4 / `package.json` / README；`RELEASE=v1` 正式版）。
+- 完整 `npm run verify` 在 rebase 后重跑，结果见合并前报告。
 
 ## [1.5.2] - 2026-11-21 · 内容体系完善（正式版）
 

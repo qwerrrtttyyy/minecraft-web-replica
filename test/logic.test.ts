@@ -80,9 +80,71 @@ describe('生存状态机', () => {
     const s3 = new SurvivalState(new EventBus(), registry);
     s3.mode = 'survival';
     for (let i = 0; i < 200; i++) s3.tick(0.1, { moving: true, sprinting: true, mining: false, underwater: false });
-    expect(s3.hunger).toBeLessThan(MAX_HUNGER);
+    // 饱和度缓冲：200 tick（20s 疾跑 = 4 点消耗）先扣 1 点饱和度，hunger 不变
+    expect(s3.saturation).toBeLessThan(MAX_HUNGER);
+    expect(s3.hunger).toBe(MAX_HUNGER);
     for (let i = 0; i < 200; i++) s3.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: true });
     expect(s3.breath).toBe(0);
+  });
+
+  it('饱和度：进食叠加与上限', () => {
+    const s = new SurvivalState(new EventBus(), registry);
+    s.hunger = 10;
+    s.saturation = 0;
+    expect(s.eat('apple')).toBe(true);
+    expect(s.hunger).toBe(14);
+    expect(s.saturation).toBe(2.4);
+
+    const capped = new SurvivalState(new EventBus(), registry);
+    capped.hunger = 4;
+    capped.saturation = 8;
+    capped.eat('porkchop');
+    expect(capped.hunger).toBe(10);
+    expect(capped.saturation).toBe(10); // 不超过当前 hunger
+  });
+
+  it('饱和度：exhaustion 先扣饱和度再扣饥饿', () => {
+    const s = new SurvivalState(new EventBus(), registry);
+    s.hunger = 20;
+    s.saturation = 1;
+    for (let i = 0; i < 250; i++) s.tick(0.1, { moving: true, sprinting: true, mining: false, underwater: false });
+    expect(s.saturation).toBe(0);
+    expect(s.hunger).toBe(20);
+
+    const dry = new SurvivalState(new EventBus(), registry);
+    dry.hunger = 20;
+    dry.saturation = 0;
+    for (let i = 0; i < 250; i++) dry.tick(0.1, { moving: true, sprinting: true, mining: false, underwater: false });
+    expect(dry.saturation).toBe(0);
+    expect(dry.hunger).toBe(19);
+  });
+
+  it('饱和度：回血门槛要求 saturation > 0', () => {
+    const s = new SurvivalState(new EventBus(), registry);
+    s.health = 10;
+    s.hunger = 19;
+    s.saturation = 0;
+    const heals: number[] = [];
+    const origHeal = s.heal.bind(s);
+    s.heal = (a: number) => { heals.push(a); origHeal(a); };
+    for (let i = 0; i < 200; i++) s.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: false });
+    expect(heals.length).toBe(0);
+    expect(s.health).toBe(10);
+  });
+
+  it('饱和度：serialize / restore 往返与旧档缺省', () => {
+    const s = new SurvivalState(new EventBus(), registry);
+    s.hunger = 12;
+    s.saturation = 3.2;
+    const snap = s.serialize();
+    expect(snap.saturation).toBe(3.2);
+    const s2 = new SurvivalState(new EventBus(), registry);
+    s2.restore(snap);
+    expect(s2.saturation).toBe(3.2);
+    const s3 = new SurvivalState(new EventBus(), registry);
+    s3.saturation = 5;
+    s3.restore({ health: 10, hunger: 10, breath: 15, inventory: [], spawn: { x: 0, y: 40, z: 0 } });
+    expect(s3.saturation).toBe(MAX_HUNGER);
   });
 });
 

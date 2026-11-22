@@ -13,6 +13,7 @@ import { ANIMALS, BREED, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
 import { BALL, bounceVy, rollFriction } from './basketball';
+import { isFireNear } from '../world/fire';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -440,7 +441,7 @@ export class EntityManager {
   despawn(e: Entity) {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
-    this.aiService?.detach?.(e as any);
+    this.aiService?.detach?.(e);
     this.scene.remove(e.model.group);
     // 模型材质/几何是每个实例新建的，离场时必须释放，否则反复刷新种群会持续泄漏 GPU 资源
     disposeModel(e.model.group);
@@ -491,6 +492,8 @@ export class EntityManager {
       const top = this.world.getBlock(x, h, z);
       const above = this.world.getBlock(x, h + 1, z);
       if (this.world.registry.get(top).name === 'grass' && above === 0 && h > 31) {
+        // 火焰蔓延（PR3）：落点附近 3 格内有火 / 营火则本次尝试失败，避免刷怪送死
+        if (isFireNear(this.world, x, h + 1, z, 3)) continue;
         const type = typeId ?? this.pickPassiveType();
         this.spawn(type, x + 0.5, h + 1.05, z + 0.5);
         return true;

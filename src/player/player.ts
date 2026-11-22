@@ -778,6 +778,11 @@ export class Player implements System, PhysicsBody {
       this.events.emit('furnace:open', { x: hit.x, y: hit.y, z: hit.z });
       return true;
     }
+    // 营火：右键打开「直接烤」面板
+    if (def.name === 'campfire') {
+      this.events.emit('campfire:open', { x: hit.x, y: hit.y, z: hit.z });
+      return true;
+    }
     return false;
   }
 
@@ -815,7 +820,8 @@ export class Player implements System, PhysicsBody {
     if (existing.solid) return false;
     if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return false;
     if (def.id === AIR) return false;
-    if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return false;
+    if ((def.shape === 'cross' || def.shape === 'slab' || def.shape === 'candle') &&
+      !this.world.isSolidAt(x, y - 1, z)) return false;
     // 目标格已是同一方块时 setBlock 会返回 false：先拦住，否则扣了背包却没放下方块。
     // 火把 / 草丛这类非实心方块不会被上面的 existing.solid 挡住，所以这条必须存在。
     if (existing.id === def.id) return false;

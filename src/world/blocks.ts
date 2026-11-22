@@ -2,7 +2,7 @@ import type { BlockId } from '../core/types';
 
 /** 方块音效材质（扩展点：新方块可声明自己的音效类别） */
 export type SoundMaterial = 'stone' | 'dirt' | 'wood' | 'sand' | 'glass' | 'cloth' | 'liquid' | 'plant';
-export type BlockShape = 'cube' | 'cross';
+export type BlockShape = 'cube' | 'cross' | 'slab' | 'candle';
 
 /**
  * 掉落规则：name 可以是方块名、物品名（'item:apple'），'self' 表示掉落自身。
@@ -523,5 +523,32 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     name: 'glow_torch', label: '荧光火把', shape: 'cross', solid: false, opaque: false, liquid: false,
     transparentPass: false, lightEmission: 12, hardness: 0.1, sound: 'wood',
     tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' }, crossHeight: 0.85,
+  });
+
+  // ---- 火光地基（PR1，id 165~168 末位追加；旧存档差分保持有效） ----
+  // 营火 / 灯笼：半高板（slab），自发光；蜡烛：细柱（candle）；火焰：十字面（cross）。
+  // 本 PR 只落地渲染地基，不含火焰蔓延与熔炉交互。
+  reg.register({
+    id: 165, name: 'campfire', label: '营火', shape: 'slab', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    tiles: { top: 'campfire_top', bottom: 'campfire_bottom', side: 'campfire_side' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 166, name: 'lantern', label: '灯笼', shape: 'slab', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    tiles: { top: 'lantern_top', bottom: 'lantern_bottom', side: 'lantern_side' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 167, name: 'candle', label: '蜡烛', shape: 'candle', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 9, hardness: 0.1, sound: 'wood',
+    tiles: { top: 'candle', bottom: 'candle', side: 'candle' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 168, name: 'fire', label: '火焰', shape: 'cross', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: Infinity, sound: 'dirt',
+    tiles: { top: 'fire', bottom: 'fire', side: 'fire' }, drops: [],
   });
 }

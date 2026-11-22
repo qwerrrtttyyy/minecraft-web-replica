@@ -16,7 +16,7 @@ export type UVRect = [number, number, number, number];
 export interface MeshBlockDef {
   id: BlockId;
   name: string;
-  shape: 'cube' | 'cross';
+  shape: 'cube' | 'cross' | 'slab' | 'candle';
   opaque: boolean;
   cullSame: boolean;
   liquid: boolean;

@@ -8,7 +8,7 @@ import { isKnownMaterial } from '../player/smelting';
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
  * 默认使用 localStorage，只保存世界差分、玩家与生存状态，体积极小。
- * v2 增加游戏模式、生命/饥饿/背包；读取到 v1 旧档时自动升级并进入创造模式。
+ * v2 增加游戏模式、生命/饥饿/饱和度/背包；读取到 v1 旧档时自动升级并进入创造模式。
  */
 
 export interface SaveData {
@@ -179,6 +179,10 @@ export function validateSave(data: unknown): data is SaveData {
   if (!s || !inRange(s.health, 0, MAX_HEALTH) || !inRange(s.hunger, 0, MAX_HUNGER) ||
       !inRange(s.breath, 0, MAX_BREATH) ||
       !Array.isArray(s.inventory) || !isVec3(s.spawn)) return false;
+  // v1.5.3 饱和度为可选字段：旧档缺省放行，存在时必须落在 0~20
+  if (s.saturation !== undefined && !inRange(s.saturation, 0, MAX_HUNGER)) return false;
+  // PR5 温暖值为可选字段：旧档缺省放行，存在时必须落在 0~100
+  if (s.warmth !== undefined && !inRange(s.warmth, 0, 100)) return false;
   for (const e of s.inventory) {
     if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string') return false;
     if (!ITEM_KEY_RE.test(e[0]) && !BLOCK_KEY_RE.test(e[0])) return false;
@@ -249,7 +253,7 @@ export function normalizeSave(raw: unknown): SaveData | null {
       edits: parsed.edits ?? [],
       player: parsed.player,
       survival: {
-        health: 20, hunger: 20, breath: 15, inventory: [],
+        health: 20, hunger: 20, saturation: MAX_HUNGER, warmth: 0, breath: 15, inventory: [],
         spawn: { x: parsed.player.x, y: parsed.player.y, z: parsed.player.z },
       },
       dayTime: parsed.dayTime ?? 0.32,

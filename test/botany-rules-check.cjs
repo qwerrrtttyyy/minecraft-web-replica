@@ -124,9 +124,9 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块为 152 种（141 基线 + 内容植物扩充 11），插件未挤占内置表',
-    t.reg.all().length === 152, `${t.reg.all().length}`);
-  ok('内置最大 id 为 158（glow_torch）', Math.max(...t.reg.all().map((d) => d.id)) === 158);
+  ok('内置方块为 156 种（141 基线 + 内容植物扩充 11 + 火光地基 4），插件未挤占内置表',
+    t.reg.all().length === 156, `${t.reg.all().length}`);
+  ok('内置最大 id 为 168（fire）', Math.max(...t.reg.all().map((d) => d.id)) === 168);
   install(t);
   ok('6 种插件植物 id 159~164 连续末位追加',
     EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 159 + i),
@@ -340,7 +340,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 152);
+  ok('内置方块总数未变', t.reg.all().length === 156);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

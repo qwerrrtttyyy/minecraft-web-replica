@@ -490,9 +490,90 @@ function quadsOf(g) {
   const rockQ1 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockKnown)).opaque);
   const rockQ2 = quadCount(meshChunk(new SnapshotMeshSource(cfg, rockMissing)).opaque);
   ok('非液体路径不受 known 位图影响', rockQ1 === 6 && rockQ2 === 6, `${rockQ1} → ${rockQ2}`);
+
+// 7) 火光地基：slab / candle 的盒几何保真（bounds 缩放 + 面剔除 + tile 映射）
+{
+  const reg = new BlockRegistry();
+  registerBuiltinBlocks(reg);
+  const rockId = reg.byNameGet('bedrock').id;
+  const slabId = reg.byNameGet('campfire').id;
+  const candleId = reg.byNameGet('candle').id;
+  // 悬空摆放：六面都可见，直接校验盒范围与面数
+  const read = (x, y, z) => {
+    if (y < 0) return rockId;
+    if (y >= H) return 0;
+    if (y === 10 && x === 5 && z === 5) return slabId;
+    if (y === 10 && x === 8 && z === 8) return candleId;
+    return 0;
+  };
+  const snap = buildSnapshot(read, 0, 0);
+
+  const collect = (mesh, x0, y0, z0) => {
+    const out = [];
+    for (const ch of CHANNELS) {
+      const g = mesh[ch];
+      if (!g) continue;
+      const n = g.positions.length / 12;
+      for (let q = 0; q < n; q++) {
+        const xs = [], ys = [], zs = [];
+        for (let i = 0; i < 4; i++) {
+          xs.push(g.positions[q * 12 + i * 3]);
+          ys.push(g.positions[q * 12 + i * 3 + 1]);
+          zs.push(g.positions[q * 12 + i * 3 + 2]);
+        }
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+        if (cx < x0 - 1 || cx > x0 + 2 || cy < y0 - 1 || cy > y0 + 2 || cz < z0 - 1 || cz > z0 + 2) continue;
+        out.push({
+          minX: Math.min(...xs), maxX: Math.max(...xs),
+          minY: Math.min(...ys), maxY: Math.max(...ys),
+          minZ: Math.min(...zs), maxZ: Math.max(...zs),
+          tileU: g.tile[q * 8],
+        });
+      }
+    }
+    return out;
+  };
+
+  for (const greedy of [false, true]) {
+    const mesh = meshChunk(new SnapshotMeshSource(makeConfig(reg, greedy), snap));
+    const slab = collect(mesh, 5, 10, 5);
+    ok(`slab 六面齐全（greedy=${greedy}）`, slab.length === 6, `${slab.length}`);
+    const slabBox = [
+      Math.min(...slab.map((q) => q.minX)), Math.max(...slab.map((q) => q.maxX)),
+      Math.min(...slab.map((q) => q.minY)), Math.max(...slab.map((q) => q.maxY)),
+      Math.min(...slab.map((q) => q.minZ)), Math.max(...slab.map((q) => q.maxZ)),
+    ];
+    ok(`slab 盒范围 x[5,6] y[10,10.5] z[5,6]（greedy=${greedy}）`,
+      slabBox[0] === 5 && slabBox[1] === 6 && slabBox[2] === 10 &&
+      slabBox[3] === 10.5 && slabBox[4] === 5 && slabBox[5] === 6,
+      slabBox.join(','));
+    const candle = collect(mesh, 8, 10, 8);
+    ok(`candle 六面齐全（greedy=${greedy}）`, candle.length === 6, `${candle.length}`);
+    const candleBox = [
+      Math.min(...candle.map((q) => q.minX)), Math.max(...candle.map((q) => q.maxX)),
+      Math.min(...candle.map((q) => q.minY)), Math.max(...candle.map((q) => q.maxY)),
+      Math.min(...candle.map((q) => q.minZ)), Math.max(...candle.map((q) => q.maxZ)),
+    ];
+    ok(`candle 盒范围 x/z[8.3125,8.6875] y[10,10.5]（greedy=${greedy}）`,
+      candleBox[0] === 8.3125 && candleBox[1] === 8.6875 && candleBox[2] === 10 &&
+      candleBox[3] === 10.5 && candleBox[4] === 8.3125 && candleBox[5] === 8.6875,
+      candleBox.join(','));
+  }
+
+  // tile 映射：slab 顶面用 campfire_top，侧面用 campfire_side
+  const cfg = makeConfig(reg, false);
+  const slab = collect(meshChunk(new SnapshotMeshSource(cfg, snap)), 5, 10, 5);
+  const topU = cfg.uv['campfire_top'][0];
+  const sideU = cfg.uv['campfire_side'][0];
+  ok('slab 顶面 / 侧面 tile 正确',
+    slab.some((q) => q.maxY === 10.5 && q.minY === 10.5 && q.tileU === topU) &&
+    slab.some((q) => q.minY === 10 && q.maxY === 10.5 && q.tileU === sideU),
+    `top=${topU} side=${sideU}`);
 }
 
-// 7) 汇总基准
+// 8) 汇总基准
 const drop = (1 - total.greedy / total.legacy) * 100;
 // 平滑光照 + 新群系后总体收益从约 33% 收敛到 29%，仍显著；阈值下调到 27% 留出波动余量。
 ok('总体 quad 减少 ≥ 27%', drop >= 27, `${total.legacy} → ${total.greedy}（-${drop.toFixed(1)}%）`);

@@ -76,6 +76,14 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
 const isPlainCube = (def: MeshBlockDef) =>
   def.shape === 'cube' && !def.liquid && !def.transparentPass && def.lightEmission === 0;
 
+/** 盒几何 bounds：x0,y0,z0,x1,y1,z1（方块局部坐标） */
+type BoxBounds = [number, number, number, number, number, number];
+const FULL_BOUNDS: BoxBounds = [0, 0, 0, 1, 1, 1];
+/** 半高板（营火 / 灯笼）：底面贴地，顶面半格 */
+const SLAB_BOUNDS: BoxBounds = [0, 0, 0, 1, 0.5, 1];
+/** 细蜡烛：窄柱，半格高 */
+const CANDLE_BOUNDS: BoxBounds = [0.3125, 0, 0.3125, 0.6875, 0.5, 0.6875];
+
 function faceVisible(def: MeshBlockDef, neighbor: MeshBlockDef, knowable = true): boolean {
   // N4：邻居来源未知时，液体不能把「空气占位」当作真实空气而生成虚假水面。
   // 该判断优先级最高，且只对液体生效——非液体四条规则保持不变。
@@ -300,6 +308,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     precomputedAO?: Int32Array,
     precomputedSky?: Int32Array,
     precomputedBlock?: Int32Array,
+    bounds?: BoxBounds,
   ) => {
     const g = passFor(def);
     const tile = src.uv(tileFor(def, face));
@@ -311,13 +320,15 @@ export function meshChunk(src: MeshSource): MeshOutput {
     if (!precomputedSky) computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);
     const lowerWaterTop = def.liquid && !src.def(src.getId(bx, by + 1, bz)).liquid;
     const shade = face.shade;
+    // bounds 缺省为整立方体；slab / candle 用同一组 corners 缩放到子盒
+    const b = bounds ?? FULL_BOUNDS;
     for (let i = 0; i < 4; i++) {
       const c = face.corners[i];
-      qx[i] = bx + c[0];
-      let cy = c[1];
-      if (lowerWaterTop && cy === 1) cy -= 0.12;
-      qy[i] = by + cy;
-      qz[i] = bz + c[2];
+      qx[i] = bx + b[0] + (b[3] - b[0]) * c[0];
+      let yy = b[1] + (b[4] - b[1]) * c[1];
+      if (lowerWaterTop && c[1] === 1) yy -= 0.12;
+      qy[i] = by + yy;
+      qz[i] = bz + b[2] + (b[5] - b[2]) * c[2];
       qu[i] = cu(c[3]);
       qv[i] = cu(c[4]);
       qb[i] = shade * AO_LEVELS[ao[i]];
@@ -328,6 +339,24 @@ export function meshChunk(src: MeshSource): MeshOutput {
     }
     const flip = ao[0] + ao[2] < ao[1] + ao[3];
     pushQuad(g, tile, flip, quadSky, quadBlock, flagsFor(def));
+  };
+
+  /**
+   * 任意盒几何（slab / candle / 普通立方体兜底）：遍历六个面，
+   * 用面法向的相邻块做剔除，再带 bounds 输出。
+   * AO / 角点光照仍按面法向的相邻块采样，对子盒是合理近似。
+   */
+  const emitBox = (
+    bx: number, by: number, bz: number,
+    def: MeshBlockDef, bounds: BoxBounds,
+  ) => {
+    for (let fi = 0; fi < FACES.length; fi++) {
+      const face = FACES[fi];
+      const [nx, ny, nz] = face.normal;
+      const nid = src.getId(bx + nx, by + ny, bz + nz);
+      if (!faceVisible(def, src.def(nid), src.isKnown?.(bx + nx, by + ny, bz + nz) ?? true)) continue;
+      emitFace(bx, by, bz, def, face, undefined, undefined, undefined, bounds);
+    }
   };
 
   /** 交叉面片（草丛 / 花）：两片，每片正反各一次 */
@@ -387,13 +416,10 @@ export function meshChunk(src: MeshSource): MeshOutput {
     if (id === 0) return;
     const def = src.def(id);
     if (def.shape === 'cross') { emitCross(bx, by, bz, def); return; }
-    for (let fi = 0; fi < FACES.length; fi++) {
-      const face = FACES[fi];
-      const [nx, ny, nz] = face.normal;
-      const nid = src.getId(bx + nx, by + ny, bz + nz);
-      if (!faceVisible(def, src.def(nid), src.isKnown?.(bx + nx, by + ny, bz + nz) ?? true)) continue;
-      emitFace(bx, by, bz, def, face);
-    }
+    const bounds = def.shape === 'slab' ? SLAB_BOUNDS
+      : def.shape === 'candle' ? CANDLE_BOUNDS
+        : FULL_BOUNDS;
+    emitBox(bx, by, bz, def, bounds);
   };
 
   if (!src.greedy) {

@@ -2014,6 +2014,50 @@ const rabbitMeatPainter: Painter = (p, rng) => {
   }
 };
 
+/** 熟牛肉（PR4）：烤成褐红的肉块 + 浅褐脂肪纹 */
+const cookedBeefPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 3 || y === 12;
+      p.set(x, y, jitter(edge ? 0x5a2b1c : 0x8a4526, rng, 12));
+    }
+  }
+  for (const [x, y] of [[5, 5], [6, 5], [7, 6], [9, 8], [10, 9]] as const) {
+    p.set(x, y, 0xd8b48a);
+  }
+};
+
+/** 熟猪排（PR4）：金黄烤痕的扁平肉排 */
+const cookedPorkchopPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 3; y < 16; y++) {
+    for (let x = 3; x < 14; x++) {
+      const edge = y === 3 || y === 15 || x === 3 || x === 13;
+      p.set(x, y, jitter(edge ? 0x8a5a24 : 0xc98d43, rng, 10));
+    }
+  }
+  for (let x = 4; x < 13; x++) {
+    p.set(x, 6, 0x7a451c);
+    p.set(x, 11, 0x9c6428);
+  }
+  p.set(10, 4, 0xe8c98a);
+};
+
+/** 熟兔肉（PR4）：烤成金褐的兔肉块 */
+const cookedRabbitPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 4; y < 13; y++) {
+    for (let x = 3; x < 13; x++) {
+      const edge = x === 3 || x === 12 || y === 4 || y === 12;
+      p.set(x, y, jitter(edge ? 0x7a4020 : 0xb06a35, rng, 11));
+    }
+  }
+  for (const [x, y] of [[5, 6], [6, 6], [8, 8], [9, 9], [10, 7]] as const) {
+    p.set(x, y, 0xe0b088);
+  }
+};
+
 /** 堆肥桶侧面：木条 + 横向铁皮箍 */
 const composterSidePainter: Painter = (p, rng) => {
   p.clear();
@@ -2035,6 +2079,186 @@ function composterTopPainter(ready: boolean): Painter {
   };
 }
 
+// ---- 火光地基纹理（PR1）----
+// 营火：石圈 + 交叉木柴 + 中心火焰；灯笼：金属框 + 发光芯；蜡烛：白蜡 + 烛芯；
+// 火焰：橙红渐变十字面；熔炉：石质 + 炉口（补齐 blocks.ts 早已引用但缺失的两张）。
+
+/** 营火顶面：外圈石块、内圈灰烬、交叉木柴与中心火焰 */
+const campfireTopPainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x767676, 8);
+  // 石圈
+  for (let i = 0; i < TILE; i++) {
+    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+      p.set(x, y, jitter(0x8a8a8a, rng, 8));
+    }
+  }
+  for (const [x, y] of [[0, 0], [15, 0], [0, 15], [15, 15]] as const) p.set(x, y, 0x4a4a4a);
+  // 灰烬
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) p.set(x, y, jitter(0x3a322c, rng, 10));
+  // 交叉木柴
+  for (let i = 0; i < 12; i++) {
+    p.set(2 + i, 13 - i, jitter(0x6e4a28, rng, 12));
+    p.set(13 - i, 13 - i, jitter(0x5f3f22, rng, 12));
+  }
+  // 火焰：外红 → 橙 → 黄白芯
+  for (let y = 4; y < 12; y++) {
+    for (let x = 4; x < 12; x++) {
+      const dx = x - 7.5, dy = y - 8.5;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 4) continue;
+      const hex = d > 3 ? 0xb82810 : d > 2 ? 0xe06818 : d > 1 ? 0xffa828 : 0xffe890;
+      p.set(x, y, jitter(hex, rng, 12));
+    }
+  }
+  p.set(7, 8, 0xfff6c0);
+  p.set(8, 8, 0xfff6c0);
+};
+
+/** 营火底面：深色石 / 灰烬，底面极少露出 */
+const campfireBottomPainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x4a4038, 8);
+  for (let i = 0; i < TILE; i++) {
+    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+      p.set(x, y, jitter(0x5c5248, rng, 8));
+    }
+  }
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) p.set(x, y, jitter(0x332c26, rng, 8));
+};
+
+/** 营火侧面：半高板，自上而下火光 / 木柴 / 石底 */
+const campfireSidePainter: Painter = (p, rng) => {
+  for (let y = 0; y < 4; y++) for (let x = 0; x < TILE; x++) {
+    p.set(x, y, jitter(y < 2 ? 0xffc040 : 0xe07018, rng, 14));
+  }
+  for (let y = 4; y < 11; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x6e4a28, rng, 14));
+  for (const y of [4, 7, 10]) for (let x = 0; x < TILE; x++) p.set(x, y, 0x4a3018);
+  for (let y = 11; y < TILE; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x767676, rng, 8));
+  for (let x = 0; x < TILE; x++) p.set(x, 11, 0x4a4a4a);
+};
+
+/** 灯笼顶面：金属外框 + 十字肋 + 发光芯 */
+const lanternTopPainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x3a3a42, 6);
+  for (let i = 0; i < TILE; i++) {
+    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+      p.set(x, y, jitter(0x8a8f9a, rng, 8));
+    }
+  }
+  for (let y = 2; y < 14; y++) {
+    for (let x = 2; x < 14; x++) {
+      const dx = x - 7.5, dy = y - 8.5;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      p.set(x, y, jitter(d > 4 ? 0xffb028 : 0xffe890, rng, 14));
+    }
+  }
+  for (let i = 2; i < 14; i++) {
+    p.set(i, 8, 0x6a6f78);
+    p.set(8, i, 0x6a6f78);
+  }
+};
+
+/** 灯笼底面：金属框 + 暗底，中心一点余光 */
+const lanternBottomPainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x33333a, 6);
+  for (let i = 0; i < TILE; i++) {
+    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+      p.set(x, y, jitter(0x6a6f78, rng, 8));
+    }
+  }
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) p.set(x, y, jitter(0x45454d, rng, 6));
+  p.set(7, 7, 0xffc860);
+  p.set(8, 7, 0xffc860);
+  p.set(7, 8, 0xffc860);
+  p.set(8, 8, 0xffc860);
+};
+
+/** 灯笼侧面：上下金属箍 + 竖框 + 发光窗 */
+const lanternSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x3a3a42, 6);
+  for (let x = 0; x < TILE; x++) {
+    p.set(x, 0, 0x8a8f9a);
+    p.set(x, 1, 0x6a6f78);
+    p.set(x, 14, 0x6a6f78);
+    p.set(x, 15, 0x8a8f9a);
+  }
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) p.set(x, y, jitter(0xffc040, rng, 14));
+  for (let y = 0; y < TILE; y++) {
+    p.set(1, y, 0x7a7f88);
+    p.set(14, y, 0x7a7f88);
+  }
+  p.set(7, 7, 0xfff0b0);
+  p.set(8, 8, 0xfff0b0);
+};
+
+/** 蜡烛：白蜡主体 + 受光高光 + 顶部熔边 + 烛芯（顶 / 底 / 侧共用） */
+const candlePainter: Painter = (p, rng) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0xf0ead8, rng, 5));
+  for (let y = 1; y < 15; y++) for (let x = 2; x < 4; x++) p.set(x, y, jitter(0xfffdf4, rng, 4));
+  for (let y = 1; y < 15; y++) for (let x = 12; x < 14; x++) p.set(x, y, jitter(0xd8cfb4, rng, 5));
+  for (let x = 3; x < 13; x++) p.set(x, 0, jitter(0xe4dcc8, rng, 5));
+  // 烛芯
+  for (let y = 0; y < 4; y++) {
+    p.set(7, y, 0x2b2118);
+    p.set(8, y, 0x2b2118);
+  }
+  p.set(7, 0, 0x1a140e);
+  p.set(8, 0, 0x1a140e);
+  // 芯根一点火光
+  p.set(7, 4, 0xffc040);
+  p.set(8, 4, 0xff8020);
+};
+
+/** 火焰：透明底橙红渐变，上窄下宽的火苗 */
+const firePainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 0; y < TILE; y++) {
+    const t = y / (TILE - 1);
+    const half = Math.round(6.5 * (1 - t) + 1.5 * t) + ((rng() * 2) | 0);
+    const cx = 8 + (((rng() * 3) | 0) - 1);
+    for (let x = cx - half; x <= cx + half; x++) {
+      if (x < 0 || x >= TILE) continue;
+      const edge = Math.abs(x - cx) / (half + 1);
+      const hex = y < 4 ? 0xfff0a0 : y < 8 ? 0xffc030 : y < 12 ? 0xf07018 : 0xc03010;
+      p.set(x, y, jitter(edge > 0.7 ? 0xa82810 : hex, rng, 16));
+    }
+  }
+  for (let x = 4; x < 12; x++) p.set(x, 15, jitter(0x8a2010, rng, 10));
+};
+
+/** 熔炉顶面：石质 + 炉口（补齐历史缺失纹理） */
+const furnaceTopPainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x7c7f82, 9);
+  blob(p, rng, 0x6a6d70, 6, 6);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) p.set(x, y, jitter(0x2a2a2e, rng, 6));
+  for (let i = 3; i < 13; i++) {
+    p.set(i, 3, 0x9a9da0);
+    p.set(i, 12, 0x9a9da0);
+    p.set(3, i, 0x9a9da0);
+    p.set(12, i, 0x9a9da0);
+  }
+  p.set(7, 7, 0x1a1a1e);
+  p.set(8, 8, 0x1a1a1e);
+};
+
+/** 熔炉侧面：石质 + 炉口 + 底部火光微光（补齐历史缺失纹理） */
+const furnaceSidePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0x7c7f82, 9);
+  blob(p, rng, 0x6a6d70, 6, 6);
+  for (let x = 0; x < TILE; x++) {
+    p.set(x, 0, 0x9a9da0);
+    p.set(x, 1, 0x626568);
+    p.set(x, 15, 0x5a5d60);
+  }
+  for (let y = 4; y < 12; y++) for (let x = 3; x < 13; x++) p.set(x, y, jitter(0x2a2a2e, rng, 6));
+  for (let i = 3; i < 13; i++) {
+    p.set(i, 3, 0x9a9da0);
+    p.set(i, 12, 0x9a9da0);
+    p.set(3, i, 0x9a9da0);
+    p.set(12, i, 0x9a9da0);
+  }
+  for (let x = 5; x < 11; x++) p.set(x, 11, jitter(0xd06018, rng, 10));
+};
+
 function woolPainter(hex: number): Painter {
   return (p, rng) => {
     fillNoise(p, rng, hex, 5);
@@ -2050,6 +2274,34 @@ function woolPainter(hex: number): Painter {
     }
   };
 }
+
+/**
+ * 等距盒绘制：顶面 + 左右两侧。w/h 为顶面尺寸（方块单位），hb 为高度（方块单位）。
+ * cube 图标（w=h=hb=1）与原实现逐像素一致；slab / candle 复用同一投影。
+ */
+const drawIsoBox = (
+  ctx: CanvasRenderingContext2D,
+  top: HTMLCanvasElement,
+  side: HTMLCanvasElement,
+  w: number, h: number, hb: number,
+  cx: number, y0: number, u: number,
+) => {
+  const d = 2 * u * hb;
+  // 顶面
+  ctx.setTransform(2 * u, u, -2 * u, u, cx, y0);
+  ctx.drawImage(top, 0, 0, TILE, TILE, 0, 0, w, h);
+  // 左面
+  ctx.setTransform(2 * u, u, 0, d, cx - 2 * u * h, y0 + u * h);
+  ctx.drawImage(side, 0, 0, TILE, TILE, 0, 0, w, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(0, 0, w, 1);
+  // 右面
+  ctx.setTransform(2 * u, -u, 0, d, cx + 2 * u * w - 2 * u * h, y0 + u * w + u * h);
+  ctx.drawImage(side, 0, 0, TILE, TILE, 0, 0, h, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, h, 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+};
 
 export class TextureAtlas {
   readonly texture: THREE.CanvasTexture;
@@ -2321,6 +2573,22 @@ export class TextureAtlas {
       p.set(6, 2, 0xc04858);
       p.set(8, 4, 0xf0f0f8);
     });
+    // 火光地基（PR1）：追加在全部既有纹理之后，既有 tile 索引保持不变
+    this.painters.set('campfire_top', campfireTopPainter);
+    this.painters.set('campfire_bottom', campfireBottomPainter);
+    this.painters.set('campfire_side', campfireSidePainter);
+    this.painters.set('lantern_top', lanternTopPainter);
+    this.painters.set('lantern_bottom', lanternBottomPainter);
+    this.painters.set('lantern_side', lanternSidePainter);
+    this.painters.set('candle', candlePainter);
+    this.painters.set('fire', firePainter);
+    // 熔炉两张补齐：blocks.ts 早已引用，此前缺失会回退到 slot 0
+    this.painters.set('furnace_top', furnaceTopPainter);
+    this.painters.set('furnace_side', furnaceSidePainter);
+    // 熟食三张（PR4）：追加在全部既有纹理之后，既有 tile 索引保持不变
+    this.painters.set('cooked_beef', cookedBeefPainter);
+    this.painters.set('cooked_porkchop', cookedPorkchopPainter);
+    this.painters.set('cooked_rabbit', cookedRabbitPainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 
@@ -2429,20 +2697,15 @@ export class TextureAtlas {
     const u = size / 4.6;
     const cx = size / 2;
     const y0 = size * 0.06;
-    // 顶面
-    ctx.setTransform(2 * u, u, -2 * u, u, cx, y0);
-    ctx.drawImage(top, 0, 0, TILE, TILE, 0, 0, 1, 1);
-    // 左面
-    ctx.setTransform(2 * u, u, 0, 2 * u, cx - 2 * u, y0 + u);
-    ctx.drawImage(side, 0, 0, TILE, TILE, 0, 0, 1, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.fillRect(0, 0, 1, 1);
-    // 右面
-    ctx.setTransform(2 * u, -u, 0, 2 * u, cx, y0 + 2 * u);
-    ctx.drawImage(side, 0, 0, TILE, TILE, 0, 0, 1, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, 0, 1, 1);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (def.shape === 'slab') {
+      // 半高盒：顶面 + 两侧，高度为整盒一半
+      drawIsoBox(ctx, top, side, 1, 1, 0.5, cx, y0, u);
+    } else if (def.shape === 'candle') {
+      // 细柱：窄盒，略微下移让整体居中
+      drawIsoBox(ctx, top, side, 0.375, 0.375, 0.5, cx, y0 + u * 0.5, u);
+    } else {
+      drawIsoBox(ctx, top, side, 1, 1, 1, cx, y0, u);
+    }
     return c;
   }
 
@@ -2516,6 +2779,28 @@ export class TextureAtlas {
           });
           idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         }
+      }
+    } else if (def.shape === 'slab' || def.shape === 'candle') {
+      // 子盒几何：按 bounds 缩放六个面，再整体居中（与 cube 的手持朝向一致）
+      const b = def.shape === 'slab'
+        ? [0, 0, 0, 1, 0.5, 1]
+        : [0.3125, 0, 0.3125, 0.6875, 0.5, 0.6875];
+      const ctr = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2];
+      for (const face of FACES) {
+        const tileName = face.axis === 1 ? (face.sign > 0 ? def.tiles.top : def.tiles.bottom) : def.tiles.side;
+        const [u0, v0, u1, v1] = this.uv(tileName);
+        const base = pos.length / 3;
+        for (const [x, y, z, u, v] of face.corners) {
+          pos.push(
+            b[0] + (b[3] - b[0]) * x - ctr[0],
+            b[1] + (b[4] - b[1]) * y - ctr[1],
+            b[2] + (b[5] - b[2]) * z - ctr[2],
+          );
+          nor.push(...face.normal);
+          uv.push(u0 + (u1 - u0) * u, v0 + (v1 - v0) * v);
+          col.push(face.shade, face.shade, face.shade);
+        }
+        idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
       }
     } else {
       for (const face of FACES) {

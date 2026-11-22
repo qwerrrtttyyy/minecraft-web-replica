@@ -1,4 +1,4 @@
-import { NEW_ITEMS } from '../core/tuning';
+import { FOOD_VALUES, WARMTH } from '../core/tuning';
 import type { EventService } from '../services/events';
 import { EXTENSION_POINTS } from '../services/plugins/extensions';
 import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
@@ -29,6 +29,8 @@ export interface ItemDefinition {
   tile: string;
   /** 进食恢复的饥饿值（0~20） */
   food?: number;
+  /** 进食恢复的饱和度（0~20，不超过当前饥饿值） */
+  saturation?: number;
   /** 右键时种植的方块名（种子 / 浆果等可种植物品） */
   plant?: string;
 }
@@ -39,16 +41,22 @@ for (const def of Object.values(EQUIPMENT)) {
   EQUIP_ITEMS[def.id] = { name: def.id, label: def.label, tile: def.tile };
 }
 
+/** 由 FOOD_VALUES 派生可食物品的 food / saturation，避免数值两处维护 */
+const foodDef = (name: string, extra: Partial<ItemDefinition> = {}): ItemDefinition => ({
+  name, label: extra.label ?? name, tile: extra.tile ?? name,
+  food: FOOD_VALUES[name].food, saturation: FOOD_VALUES[name].saturation, ...extra,
+});
+
 export const ITEMS: Record<string, ItemDefinition> = {
-  apple: { name: 'apple', label: '苹果', tile: 'apple', food: 4 },
+  apple: foodDef('apple', { label: '苹果', tile: 'apple' }),
   /** 世界内可拍打 / 投掷的篮球：创造模式靠 consume 恒 true 天然无限取用 */
   basketball: { name: 'basketball', label: '篮球', tile: 'basketball' },
-  porkchop: { name: 'porkchop', label: '生猪排', tile: 'porkchop', food: 6 },
+  porkchop: foodDef('porkchop', { label: '生猪排', tile: 'porkchop' }),
   wheat_seeds: { name: 'wheat_seeds', label: '小麦种子', tile: 'wheat_seeds', plant: 'wheat_seedling' },
-  sweet_berries: {
-    name: 'sweet_berries', label: '甜浆果', tile: 'sweet_berries', food: 2, plant: 'sweet_berry_bush',
-  },
-  nectar: { name: 'nectar', label: '花蜜', tile: 'nectar', food: 3 },
+  sweet_berries: foodDef('sweet_berries', {
+    label: '甜浆果', tile: 'sweet_berries', plant: 'sweet_berry_bush',
+  }),
+  nectar: foodDef('nectar', { label: '花蜜', tile: 'nectar' }),
   stick: { name: 'stick', label: '木棍', tile: 'stick' },
   /** 堆肥 / 动物掉落的有机肥：给土壤补 35 养分 */
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
@@ -56,23 +64,27 @@ export const ITEMS: Record<string, ItemDefinition> = {
   bone_meal: { name: 'bone_meal', label: '骨粉', tile: 'bone_meal' },
   // v1.7.0：内容植物产出（葡萄可种回，其余按用途进入合成）
   cotton: { name: 'cotton', label: '棉花', tile: 'cotton' },
-  rice: { name: 'rice', label: '稻米', tile: 'rice', food: 5 },
-  grapes: { name: 'grapes', label: '葡萄', tile: 'grapes', food: 2, plant: 'grape_vine' },
-  chili: { name: 'chili', label: '辣椒', tile: 'chili', food: 3 },
+  rice: foodDef('rice', { label: '稻米', tile: 'rice' }),
+  grapes: foodDef('grapes', { label: '葡萄', tile: 'grapes', plant: 'grape_vine' }),
+  chili: foodDef('chili', { label: '辣椒', tile: 'chili' }),
   glow_spore: { name: 'glow_spore', label: '荧光孢子', tile: 'glow_spore' },
-  /** 内容体系新增物品：食物值统一取自 tuning.ts 的 NEW_ITEMS */
-  coal: { name: 'coal', label: '煤炭', tile: 'coal', food: NEW_ITEMS.coal.food },
-  leather: { name: 'leather', label: '皮革', tile: 'leather', food: NEW_ITEMS.leather.food },
-  beef: { name: 'beef', label: '生牛肉', tile: 'beef', food: NEW_ITEMS.beef.food },
-  feather: { name: 'feather', label: '羽毛', tile: 'feather', food: NEW_ITEMS.feather.food },
-  egg: { name: 'egg', label: '鸡蛋', tile: 'egg', food: NEW_ITEMS.egg.food },
-  rabbit_meat: { name: 'rabbit_meat', label: '兔肉', tile: 'rabbit_meat', food: NEW_ITEMS.rabbit_meat.food },
+  /** 内容体系新增物品：食物 / 饱和度统一取自 tuning.ts 的 FOOD_VALUES */
+  coal: { name: 'coal', label: '煤炭', tile: 'coal' },
+  leather: { name: 'leather', label: '皮革', tile: 'leather' },
+  beef: foodDef('beef', { label: '生牛肉', tile: 'beef' }),
+  feather: { name: 'feather', label: '羽毛', tile: 'feather' },
+  egg: foodDef('egg', { label: '鸡蛋', tile: 'egg' }),
+  rabbit_meat: foodDef('rabbit_meat', { label: '兔肉', tile: 'rabbit_meat' }),
+  // 熔炉 / 营火烤熟后的产物（营火直接烤、熔炉烧炼共用）
+  cooked_beef: foodDef('cooked_beef', { label: '熟牛肉', tile: 'cooked_beef' }),
+  cooked_porkchop: foodDef('cooked_porkchop', { label: '熟猪排', tile: 'cooked_porkchop' }),
+  cooked_rabbit: foodDef('cooked_rabbit', { label: '熟兔肉', tile: 'cooked_rabbit' }),
   // v1.7.0 重点株特化产物：野蒜与玫瑰果及其合成菜式
-  garlic: { name: 'garlic', label: '大蒜', tile: 'garlic', food: 2 },
+  garlic: foodDef('garlic', { label: '大蒜', tile: 'garlic' }),
   rose_hips: { name: 'rose_hips', label: '玫瑰果', tile: 'rose_hips' },
-  garlic_rice: { name: 'garlic_rice', label: '蒜香米饭', tile: 'garlic_rice', food: 8 },
-  rose_tea: { name: 'rose_tea', label: '玫瑰果茶', tile: 'rose_tea', food: 6 },
-  // ---- 矿物→材料→熔炼闭环：原矿 / 锭 / 矿物材料 / 熟肉（数值统一取自 tuning.ts）----
+  garlic_rice: foodDef('garlic_rice', { label: '蒜香米饭', tile: 'garlic_rice' }),
+  rose_tea: foodDef('rose_tea', { label: '玫瑰果茶', tile: 'rose_tea' }),
+  // ---- 矿物→材料→熔炼闭环（远端新增）：原矿 / 锭 / 矿物材料 ----
   raw_iron: { name: 'raw_iron', label: '粗铁', tile: 'raw_iron' },
   raw_gold: { name: 'raw_gold', label: '粗金', tile: 'raw_gold' },
   raw_copper: { name: 'raw_copper', label: '粗铜', tile: 'raw_copper' },
@@ -84,12 +96,6 @@ export const ITEMS: Record<string, ItemDefinition> = {
   redstone: { name: 'redstone', label: '红石粉', tile: 'redstone' },
   emerald: { name: 'emerald', label: '绿宝石', tile: 'emerald' },
   charcoal: { name: 'charcoal', label: '木炭', tile: 'charcoal' },
-  cooked_porkchop: {
-    name: 'cooked_porkchop', label: '熟猪排', tile: 'cooked_porkchop', food: NEW_ITEMS.cooked_porkchop.food,
-  },
-  cooked_beef: {
-    name: 'cooked_beef', label: '熟牛肉', tile: 'cooked_beef', food: NEW_ITEMS.cooked_beef.food,
-  },
   ...EQUIP_ITEMS,
 };
 
@@ -106,6 +112,10 @@ export function parseKey(key: string): Stack {
 export interface SurvivalSave {
   health: number;
   hunger: number;
+  /** 饱和度（0~20，旧档缺省按 MAX_HUNGER 恢复） */
+  saturation: number;
+  /** 温暖值（0~100，旧档缺省 0；由 WarmthSystem 驱动） */
+  warmth: number;
   breath: number;
   inventory: [string, number][];
   spawn: Vec3Like;
@@ -122,7 +132,10 @@ export class SurvivalState {
   mode: GameMode = 'survival';
   health = MAX_HEALTH;
   hunger = MAX_HUNGER;
+  saturation = MAX_HUNGER;
   breath = MAX_BREATH;
+  /** 温暖值 0~100：靠近热源上升、远离下降；只由 WarmthSystem 写入 */
+  warmth = 0;
   dead = false;
   deathCause = '';
   spawn: Vec3Like = { x: 0.5, y: 40, z: 0.5 };
@@ -266,7 +279,9 @@ export class SurvivalState {
   respawn(pos: Vec3Like) {
     this.health = MAX_HEALTH;
     this.hunger = MAX_HUNGER;
+    this.saturation = MAX_HUNGER;
     this.breath = MAX_BREATH;
+    this.warmth = 0;
     this.dead = false;
     this.deathCause = '';
     this.exhaustion = 0;
@@ -288,7 +303,10 @@ export class SurvivalState {
     if (!this.isSurvival || !item?.food) return false;
     if (this.hunger >= MAX_HUNGER) return false;
     this.hunger = clamp(this.hunger + item.food, 0, MAX_HUNGER);
-    this.events.emit('survival:eat', { item: name, hunger: this.hunger });
+    // 饱和度不超过当前饥饿值（Minecraft 语义）
+    const sat = item.saturation ?? 0;
+    this.saturation = clamp(Math.min(this.hunger, this.saturation + sat), 0, MAX_HUNGER);
+    this.events.emit('survival:eat', { item: name, hunger: this.hunger, saturation: this.saturation });
     return true;
   }
 
@@ -297,6 +315,7 @@ export class SurvivalState {
     if (!this.isSurvival) {
       this.health = MAX_HEALTH;
       this.hunger = MAX_HUNGER;
+      this.saturation = MAX_HUNGER;
       this.breath = MAX_BREATH;
       return;
     }
@@ -324,12 +343,16 @@ export class SurvivalState {
     this.exhaustion += drain * dt;
     while (this.exhaustion >= 4) {
       this.exhaustion -= 4;
-      this.hunger = Math.max(0, this.hunger - 1);
+      // 饱和度优先充当缓冲：先扣 saturation，耗尽后才扣 hunger
+      if (this.saturation > 0) this.saturation -= 1;
+      else this.hunger = Math.max(0, this.hunger - 1);
     }
 
     // 饱食回血 / 饥饿掉血
     // H10：每次回血额外产生消耗（等效 0.75 饥饿点）——满饥饿不再免费永动回血
-    if (this.hunger >= 18 && this.health < MAX_HEALTH) {
+    // PR5：温暖达标时回血饥饿门槛从 18 降到 14（其余逻辑不变）
+    const regenHunger = this.warmth >= WARMTH.regenThreshold ? WARMTH.regenHunger : 18;
+    if (this.hunger >= regenHunger && this.saturation > 0 && this.health < MAX_HEALTH) {
       this.regenAcc += dt;
       if (this.regenAcc >= 4) {
         this.regenAcc = 0;
@@ -352,10 +375,17 @@ export class SurvivalState {
 
   // ---------- 存档 ----------
 
+  /** 温暖值写入唯一入口（clamp 0~100），由 WarmthSystem 每 0.2s 调用 */
+  setWarmth(v: number) {
+    this.warmth = clamp(v, 0, 100);
+  }
+
   serialize(): SurvivalSave {
     return {
       health: this.health,
       hunger: this.hunger,
+      saturation: this.saturation,
+      warmth: this.warmth,
       breath: this.breath,
       inventory: [...this.inventory.entries()],
       spawn: { ...this.spawn },
@@ -366,6 +396,12 @@ export class SurvivalState {
     if (!data) return;
     if (typeof data.health === 'number') this.health = clamp(data.health, 0, MAX_HEALTH);
     if (typeof data.hunger === 'number') this.hunger = clamp(data.hunger, 0, MAX_HUNGER);
+    // 旧档无 saturation 字段时按满值恢复
+    this.saturation = typeof data.saturation === 'number'
+      ? clamp(data.saturation, 0, MAX_HUNGER)
+      : MAX_HUNGER;
+    // 旧档无 warmth 字段时按 0 恢复；越界 clamp 到 0~100
+    this.warmth = typeof data.warmth === 'number' ? clamp(data.warmth, 0, 100) : 0;
     if (typeof data.breath === 'number') this.breath = clamp(data.breath, 0, MAX_BREATH);
     if (Array.isArray(data.inventory)) {
       this.inventory.clear();

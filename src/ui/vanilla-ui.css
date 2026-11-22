@@ -201,7 +201,13 @@
 .vanilla-ui .pip-fill svg { width: 18px; height: 18px; }
 .vanilla-ui .stat-heart .pip-fill svg { fill: #ff2822; stroke: #5a0a08; stroke-width: 1.2px; }
 .vanilla-ui .stat-hunger .pip-fill svg { fill: #d48a28; stroke: #5a3208; stroke-width: 1.2px; }
+/* 饱和度缓冲：暖色微光；耗尽：鸡腿变暗（轻量表现，不改像素风） */
+.vanilla-ui .stat-hunger.satiated .pip-fill svg { filter: drop-shadow(0 0 2px rgba(255,190,60,.9)); }
+.vanilla-ui .stat-hunger.drained .pip-fill svg { filter: saturate(.4) brightness(.75); }
 .vanilla-ui .stat-breath .pip-fill svg { fill: #a8e8fa; stroke: #1b4256; stroke-width: 1.2px; }
+/* 温暖指示：原版主题下放大一档，与 18px 状态图标对齐 */
+.vanilla-ui .warmth-flame { width: 16px; height: 16px; }
+.vanilla-ui .warmth-bar { width: 72px; }
 
 /* ---------- 挖掘进度（N3）：弱化辅助条，主反馈交给方块裂痕覆盖层 ---------- */
 .vanilla-ui .mining-bar {
@@ -241,6 +247,12 @@
 }
 .vanilla-ui .crafting-arrow { color: #fff; text-shadow: 2px 2px 0 #000; font-family: 'MC Pixel', sans-serif; }
 .vanilla-ui .crafting-head .panel-title { font-size: 14px; }
+.vanilla-ui .cooking-slot {
+  border-color: #373737 #b4b4b4 #b4b4b4 #373737;
+  background: #8b8b8b;
+  box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #b0b0b0;
+}
+.vanilla-ui .cooking-slot-label { font-family: 'MC Pixel', 'PingFang SC', sans-serif; }
 
 /* ---------- 死亡界面 ---------- */
 .vanilla-ui .death-title {

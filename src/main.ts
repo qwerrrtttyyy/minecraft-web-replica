@@ -39,6 +39,8 @@ import { buildBasketball } from './entity/models';
 import { canPickup, registerBasketball } from './entity/basketball';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
+import { FireSystem, isHeatBlock } from './world/fire';
+import { WarmthSystem } from './world/warmth';
 import { SoundEngine } from './audio/sound';
 import { HUD } from './ui/hud';
 import { createOrientationGate } from './ui/orientationGate';
@@ -292,6 +294,28 @@ async function boot() {
     if (boxIntersectsBlock(player.pos, player.width, player.height, x, y, z)) return true;
     return entities.entities.some((e) => boxIntersectsBlock(e.pos, e.width, e.height, x, y, z));
   };
+  // 火焰系统（PR3）：火源引燃 + 真实蔓延 + 玩家/生物灼烧；火焰不写存档差分
+  const fire = new FireSystem({
+    world,
+    registry,
+    events,
+    particles,
+    hurtPlayer: (amount, cause) => survival.damage(amount, cause),
+    getEntities: () => entities.entities,
+    sound,
+  });
+  // 温暖系统（PR5）：靠近热源积累温暖，提供轻量回血增益与视觉表现。
+  // 热源判定在此集中：火 / 营火 / 灯笼 / 蜡烛，或燃烧中的熔炉（不写回 warmth.ts）。
+  const warmth = new WarmthSystem({
+    world,
+    registry,
+    survival,
+    isHeatAt: (x, y, z) => {
+      const name = registry.get(world.getBlock(x, y, z)).name;
+      return isHeatBlock(name) || name === 'lantern' || name === 'candle' ||
+        smelting.cell(x, y, z).burn > 0;
+    },
+  });
   // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
     const def = registry.get(block);
@@ -333,6 +357,7 @@ async function boot() {
   entities.allowSpawn = settings.doMobSpawning;
   sky.setCloudsEnabled(settings.showClouds);
   falling.enabled = settings.blockGravity;
+  fire.enabled = settings.fireSpread;
   chunks.transparentSortEnabled = settings.sortTransparent;
 
   const tntList: PrimedTnt[] = [];
@@ -359,6 +384,8 @@ async function boot() {
   let paletteReturn: 'game' | 'menu' = 'game';
   /** 合成界面的来源：关闭后回到菜单还是直接恢复游戏 */
   let craftingReturn: 'game' | 'menu' = 'game';
+  /** 当前打开的营火「直接烤」界面；打开时不暂停游戏 */
+  let campfireCtx: { x: number; y: number; z: number } | null = null;
   /** 新世界 / 导入存档触发 reload 时，禁止 beforeunload 用旧状态反写存档 */
   let suppressUnloadSave = false;
 
@@ -559,6 +586,7 @@ async function boot() {
   const hud = new HUD({
     uiRoot, atlas, registry, hotbar, isMobile,
     craftingHost,
+    onCampfireClose: () => closeCampfire(),
     onStart: (cont, chosen) => {
       if (cont) { void startGame(true); return; } // 继续游戏保留存档模式
       // 标题页选的模式必须真正写回状态机，否则选「创造」仍会进入生存
@@ -679,6 +707,13 @@ async function boot() {
       settings.blockGravity = v;
       falling.enabled = v;
       hud.toast(v ? '方块重力：开启' : '方块重力：关闭（悬空方块保持原位）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onFireSpread: (v) => {
+      settings.fireSpread = v;
+      fire.enabled = v;
+      hud.toast(v ? '火焰蔓延：开启' : '火焰蔓延：关闭（已有火焰将自然燃尽）');
       persistOptions(settings);
       markDirty();
     },
@@ -890,13 +925,13 @@ async function boot() {
     entities.allowSpawn = settings.doMobSpawning;
     sky.setCloudsEnabled(settings.showClouds);
     falling.enabled = settings.blockGravity;
+    fire.enabled = settings.fireSpread;
     chunks.transparentSortEnabled = settings.sortTransparent;
     applyVanillaUI(settings.vanillaUI);
   };
 
   // 空手右键工作台方块 → 打开合成界面
   events.on('crafting:open', () => openCrafting('game'));
-
   // ---- 熔炉烧炼界面：右键熔炉打开，暂停态与合成界面同款 ----
   let furnaceTarget: { x: number; y: number; z: number } | null = null;
   let furnaceReturn: 'game' | 'menu' = 'game';
@@ -984,6 +1019,9 @@ async function boot() {
       drops.spawn(name, s.count, x + 0.5, y + 0.5, z + 0.5, 'furnace');
     }
   });
+
+  // 营火「直接烤」界面：右键营火打开（不暂停游戏）
+  events.on('campfire:open', ({ x, y, z }) => openCampfire(x, y, z));
   const cycleCamera = () => {
     player.cycleCamera();
     hud.toast(['第一人称视角', '第三人称（背面）', '第三人称（正面）'][player.cameraMode]);
@@ -1174,6 +1212,38 @@ async function boot() {
     hud.hideCrafting();
     if (craftingReturn === 'menu') hud.showMenu(true);
     else resumeGame();
+  }
+
+  /**
+   * 打开营火「直接烤」界面。
+   *
+   * 与合成界面不同：营火不暂停游戏（mode 保持 playing），只禁用输入并退出指针锁。
+   */
+  function openCampfire(x: number, y: number, z: number) {
+    if (!survival.isSurvival) {
+      hud.toast('创造模式不需要烹饪');
+      return;
+    }
+    if (mode !== 'playing' || campfireCtx) return;
+    campfireCtx = { x, y, z };
+    input.enabled = false;
+    input.reset();
+    input.exitLock();
+    hud.showCampfire(x, y, z);
+  }
+
+  /** 关闭营火界面；面板把输入 / 输出退回背包 */
+  function closeCampfire() {
+    if (!campfireCtx) return;
+    campfireCtx = null;
+    hud.hideCampfire();
+    // 打开期间不暂停，因此只有在仍处于 playing 时才恢复输入与指针锁；
+    // 死亡 / 退出标题等状态切换时由对应流程接管输入
+    if (mode === 'playing') {
+      input.enabled = true;
+      input.reset();
+      input.requestLock();
+    }
   }
 
   function quitToTitle() {
@@ -1389,6 +1459,8 @@ async function boot() {
       input.reset();
       input.exitLock();
       touch?.setVisible(false);
+      // 死亡时若营火面板还开着，先关掉（不恢复输入，死亡流程已接管）
+      if (hud.campfireOpen) closeCampfire();
       saveNow();
     },
   };
@@ -1472,7 +1544,8 @@ async function boot() {
           } else if (hud.optionsOpen) {
             // 设置页盖在最上层，Esc 先关它（标题屏打开时也适用）
             closeOptions();
-          } else if (mode === 'playing') openMenu();
+          } else if (hud.campfireOpen) closeCampfire();
+          else if (mode === 'playing') openMenu();
           else if (mode === 'paused') {
             if (hud.keybindOpen) hud.showKeybinds(false);
             else if (hud.helpOpen) hud.showHelp(false);
@@ -1545,13 +1618,13 @@ async function boot() {
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
-      `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}`,
+      `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}  火焰: ${fire.trackedCount}`,
       `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy} / 土壤 ${plants.soilAvg}`,
       `季节: ${seasonAt(sky.dayCount)} / 天气: ${weatherAt(seed, sky.dayCount)} / 第 ${sky.dayCount} 天`,
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
-        ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  背包 ${survival.inventory.size} 种`
+        ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  温暖 ${Math.round(survival.warmth)}/100  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
       `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
@@ -1642,6 +1715,22 @@ async function boot() {
   });
   engine.addSystem(particles);
   engine.addSystem({
+    name: 'fire',
+    update: (dt) => {
+      // 暂停 / 死亡 / 加载时不推进火焰
+      if (mode !== 'playing') return;
+      fire.update(dt, player.pos);
+    },
+  });
+  engine.addSystem({
+    name: 'warmth',
+    update: (dt) => {
+      // 暂停 / 死亡 / 加载时不推进温暖
+      if (mode !== 'playing') return;
+      warmth.update(dt, player.pos);
+    },
+  });
+  engine.addSystem({
     name: 'ui',
     update: (dt) => {
       // 昼夜强度写进区块 shader；手持物按眼睛所在格的光照变暗/变亮
@@ -1656,8 +1745,10 @@ async function boot() {
       player.heldMaterial.color
         .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
         .multiply(sky.sunTint);
+      const hlShape = player.target ? registry.get(player.target.block).shape : '';
       const hlTarget = mode === 'playing' && player.target &&
-        registry.get(player.target.block).shape !== 'cross' ? player.target : null;
+        hlShape !== 'cross' && hlShape !== 'slab' && hlShape !== 'candle'
+        ? player.target : null;
       highlight.set(hlTarget);
       const uw = mode === 'playing' && player.eyeInWater;
       if (uw && !wasUnderwater) sound.splash();
@@ -1762,7 +1853,7 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling,
+    botany, falling, fire, smelting,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,

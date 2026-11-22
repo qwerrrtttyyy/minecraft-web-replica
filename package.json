@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.5.4-alpha.2",
+  "version": "1.5.4",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -20,6 +20,7 @@
     "test:snapshot": "node scripts/build-test-snapshot.mjs",
     "test:logic": "node test/logic-check.cjs && node test/terrain-check.cjs && node test/basketball-check.cjs",
     "test:logic:vitest": "vitest run test/logic.test.ts test/terrain.test.ts",
+    "test:vitest": "vitest run",
     "test:drop": "node test/drop-check.cjs",
     "test:ai": "node test/ai-check.cjs",
     "test:ai:vitest": "vitest run test/ai.test.ts",
@@ -41,7 +42,7 @@
     "test:smoke": "node test/survival-smoke.mjs",
     "test:options": "node test/options-check.mjs",
     "test:smoke:xvfb": "xvfb-run -a -s \"-screen 0 1280x760x24\" env MC_HEADLESS=0 MC_GL=desktop node test/survival-smoke.mjs",
-    "verify": "npm run check:version && npm run test:permtable && npm run wasm:check && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:drop && npm run test:ai:vitest && npm run test:wasm && npm run test:plugin-v2 && npm run test:plugin-carrier && npm run test:review-fixes && npm run test:logic && npm run test:logic:vitest && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:unstuck && npm run test:edits && npm run test:terrain-system && npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:botany-rules && npm run test:crafting:vitest && npm run test:equipment && npm run test:smelting && npm run test:smoke && npm run test:options && npm run test:mobile && npm run test:visual",
+    "verify": "npm run check:version && npm run test:permtable && npm run wasm:check && npm run lint && npm run typecheck && npm run build && npm run test:snapshot && npm run test:drop && npm run test:ai:vitest && npm run test:wasm && npm run test:plugin-v2 && npm run test:plugin-carrier && npm run test:review-fixes && npm run test:logic && npm run test:logic:vitest && npm run test:vitest && npm run test:light && npm run test:mesher && npm run test:services && npm run test:diagnostics && npm run test:worker-pool && npm run test:unstuck && npm run test:edits && npm run test:terrain-system && npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:botany-rules && npm run test:crafting:vitest && npm run test:equipment && npm run test:smelting && npm run test:smoke && npm run test:options && npm run test:mobile && npm run test:visual",
     "test:feel": "node test/feel-check.cjs",
     "test:permtable": "node test/permission-table-check.cjs",
     "test:light": "node test/light-check.cjs",

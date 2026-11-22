@@ -524,10 +524,61 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 `edits` 指向的方块几何会错位。新物品纹理与方块纹理一样末位追加；方块 id 同样只追加
 （内容体系本轮不新增方块；合并 v1.7.0 内容植物扩充后总数为 152——原 141 基线 + 11 种新方块，内置 id 到 158）。
 
+## 8.9 火光与饥饿（v1.5.4）
+
+火光与饥饿把「白天耕种 / 狩猎 → 傍晚生火烹饪 → 夜晚守火进食」的核心循环补上，
+由火焰、熔炉、温暖三部分 + 一套火光方块与饱和度数值组成。接线仍遵守
+`main → services → 业务模块` 单向依赖：`FireSystem` / `WarmthSystem` 实现 `System`，
+由 `main.ts` 构造并挂进引擎；熔炉本体为纯逻辑类 `Smelting`，由主循环 `tick(dt)` 驱动。
+状态只存内存与存档可选字段，不写世界方块差分：
+
+| 模块 | 接口 | 职责 |
+|---|---|---|
+| `src/world/blocks.ts` / `mesher.ts` | `BlockShape`（新增 `'slab' \| 'candle'`）、`emitFace(..., bounds?)` / `emitBox` | 火光方块地基：营火 / 灯笼 / 蜡烛 / 火焰（id 165~168）与任意盒几何，`icon` / `makeBlockGeometry` 同步支持子盒 |
+| `src/core/tuning.ts` | `FOOD_VALUES` / `FLAMMABLE` / `WARMTH` / `FIRE` / `NEW_ITEMS` | 数值中心：16 种可食物与饱和度、103 条可燃概率、温暖与火焰参数集中一处；`NEW_ITEMS` 食物值从 `FOOD_VALUES` 派生 |
+| `src/world/fire.ts` | `FireSystem` / `isHeatBlock` / `isFireNear` / `scanHeatSources` | 火焰蔓延与伤害：双热源、6 邻引燃、寿命熄灭、支撑检查、玩家 / 实体灼伤、刷怪规避 |
+| `src/player/smelting.ts` | `Smelting` / `SMELT_RECIPES` / `FUEL_UNITS` / `FurnaceSave` | per-block 熔炉状态机：输入 / 燃料 / 输出 + 燃烧 / 进度，10s 烧一件，破坏 `take()` 掉落，存档往返 |
+| `src/ui/furnace.ts` | `FurnacePanel` | 熔炉三槽面板 + 进度 / 燃烧条；打开时不暂停游戏 |
+| `src/world/warmth.ts` | `WarmthSystem` / `warmthTarget` / `approach` / `MAX_WARMTH` | 轻量温暖：靠近热源升、远离降，达标降低回血饥饿门槛 |
+| `src/ui/campfire.ts` | `CampfirePanel` / `CAMPFIRE_STACK_LIMIT` | 营火两槽「直接烤」面板：点输出即时烤熟 1 个，无燃料无进度；关闭退回槽内材料 |
+| `src/player/survival.ts` | `SurvivalState.saturation` / `eat()` / `serialize()` / `restore()` | 完整饱和度：进食叠加、exhaustion 先扣饱和度、回血门槛、旧档缺省 |
+| `src/save/save.ts` | `SaveData.saturation?` / `warmth?` / `furnaces?`（`cells`） / `isFurnaceSave` | 存档可选字段与逐条校验；不 bump save version |
+| `src/core/options.ts` | `fireSpread` | 设置项「火焰蔓延」默认开启，设置页「实验性玩法」组可关 |
+
+**火焰蔓延**：`FireSystem` 内部以 `Map<key, {x,y,z,age,life}>` 跟踪热源，由玩家周围
+定期扫描发现 + 自身点燃直接入表。每拍最多处理 `FIRE.maxPerTick` 个火源，对 6 邻判定：
+邻格本身可燃则直接引燃（正下方支撑除外，否则火焰会立刻失去立足点自熄）；邻格是空气
+且下方是实心可燃方块则引燃该空气格，让地面火横向铺开。蔓延开关关闭时只燃尽、不引燃，
+已有火焰仍按寿命燃尽并造成伤害。点燃 / 熄灭走 `world.setBlock(..., record=false)`，
+不写玩家编辑差分，读档后火焰熄灭。玩家 / 实体站在火 / 营火上每 `FIRE.damageInterval`
+秒受 `FIRE.damage` 点伤害，实体计时由系统自管（`Entity.hurt` 无无敌帧）。
+
+**熔炉与烹饪（融合远端）**：熔炉本体为 `Smelting` 的 per-block 状态（`input/fuel/output`
++ `burn/burnMax/progress`），每件物品烧 `SMELT_SECONDS`（10s）；`burn` 耗尽后自动消耗下
+一个燃料，`progress` 满时输入 -1、输出 +1 产物。状态序列化为 `furnaces.cells`（坐标 +
+三槽 + 燃烧 / 进度秒数），`restore()` 逐条校验坐标 / 数值 / 材料白名单后重建，坏条目跳过；
+方块被挖掉时 `take()` 返回三槽内容供掉落。营火定位为光源 + 温暖 + 驱敌，不做第二套熔炉
+UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出即时烤熟 1 个，可烤物判定与
+熔炉共用 `smeltOutputOf`，关闭面板把槽内材料退回背包。新增配方：8 圆石 → 熔炉、
+圆石×3 + `#log`×3 + 煤×1 → 营火。
+
+**温暖与饱和度**：`WarmthSystem` 每 0.2s 重算玩家 6 格内最近热源，按
+`clamp(1 - dist / (radius + 1), 0, 1) * 100` 求目标值并指数逼近；温暖 ≥ 50 时回血饥饿
+门槛由 18 降到 14。饱和度 0~20，进食叠加但不超过当前饥饿值，exhaustion 先扣饱和度、
+饱和为 0 再扣饥饿，回血额外要求 `saturation > 0`。两者与 `furnaces` 都是存档可选字段，
+旧档缺省 `saturation = hunger` / `warmth = 0`。
+
+**测试与验证**：新增 `test/fire.test.ts` / `test/warmth.test.ts` /
+`test/survival-saturation.test.ts` / `test/campfire.test.ts`（Vitest）；
+`test/smelting-check.cjs` 覆盖熔炉配方 / 燃料 / 状态机 / 存档往返，并扩展兔肉配方与
+`crafting_table` / `bookshelf` 燃料；`terrain-system-check` / `botany-rules-check` 的
+方块总数 152→156。`check:version` 校验 `VERSION=1.5.4` / `RELEASE=v1` 三处一致。
+
 ## 9. 后续路线（带验收标准）
 
 | 版本 | 目标 | 可机械检查的验收标准 |
 |---|---|---|
+| v1.5.4 | 火光与饥饿（已完成） | 4 个火光方块 id 165~168 append-only；熔炉采用远端 `Smelting` + `FurnacePanel`；`fire` / `warmth` / `survival-saturation` / `campfire` Vitest 与 `smelting-check` 全绿；`terrain-system-check` 方块总数 156；`check:version` 1.5.4 |
 | v1.3.0 | Worker 池（least-busy 派发） | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升 |
 | v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 21 项断言（v1.3.1 补遮光回收、跨区块天窗与幂等往返回归）；mesher 面覆盖与光照逐格一致 |
 | v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置 |
@@ -539,7 +590,7 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 | v1.4.4 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
 | v2.0 | 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
-> 编号说明：表中 `v1.6.0 花海扩充 + 植被表现力` 与其他历史 `v1.6.0` 标题均沿用早期规划编号；现行项目版本统一为 **1.5.2 正式版**（§8.8 内容体系，`VERSION=1.5.2`、`RELEASE=v1`），旧标题仅作历史记录保留，现行版本号以 `src/core/version.ts` 为准。
+> 编号说明：表中 `v1.6.0 花海扩充 + 植被表现力` 与其他历史 `v1.6.0` 标题均沿用早期规划编号；现行项目版本统一为 **1.5.4 非正式版**（§8.9 火光与饥饿，`VERSION=1.5.4`、`RELEASE=v1`），旧标题仅作历史记录保留，现行版本号以 `src/core/version.ts` 为准。
 
 **当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
 下一步做透明排序与 AABB 脱困。
