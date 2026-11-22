@@ -318,14 +318,18 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
       baseSrc.includes('抢占台账') && baseSrc.includes('snowy_tundra') &&
       baseSrc.includes('birch_forest'));
   }
-  ok('新群系可达：seed 777 的 ±7 区块内 4 个群系都有地表实例',
+  // seed 777 的 ±7 区块（±112）只覆盖 15 个群系，缺 ocean / snowy_tundra / snowy_taiga；
+  // 按设计口径先把采样半径扩到 ±12 区块（±192），不调整任何气候阈值或级联条件。
+  ok('seed 777 的 ±12 区块内 18 个群系都有地表实例（x/z=-192..192 step 4）',
     (() => {
       const gen = new DefaultGenerator(777, reg);
       const seen = new Set();
-      for (let x = -112; x < 112; x += 4) {
-        for (let z = -112; z < 112; z += 4) seen.add(gen.biomeAt(x, z));
+      for (let x = -192; x < 192; x += 4) {
+        for (let z = -192; z < 192; z += 4) seen.add(gen.biomeAt(x, z));
       }
-      return ['mesa', 'swamp', 'savanna', 'cherry'].every((b) => seen.has(b));
+      const missing = biomes.filter((b) => !seen.has(b));
+      if (missing.length) log(`    缺失群系：${missing.join(',')}`);
+      return missing.length === 0;
     })());
 }
 
