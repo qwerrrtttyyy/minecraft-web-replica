@@ -152,6 +152,9 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
   },
   desert: {
     surface: 'sand', filler: 'sand',
+    // 沙石地层：沙层之下按深度间隔出现砂岩 / 切制砂岩 / 平滑砂岩，
+    // 仍以沙为主，不改变地表外观与仙人掌生成规则。
+    strata: ['sand', 'sandstone', 'sand', 'sand', 'cut_sandstone', 'sand', 'smooth_sandstone', 'sand'],
     plants: [
       { name: 'dead_bush', weight: 0.006 }, { name: 'desert_marigold', weight: 0.004 },
       { name: 'yucca', weight: 0.0025 }, { name: 'ghost_flower', weight: 0.0012 },

@@ -269,7 +269,10 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('stone_bricks', '石砖', {}, { hardness: 2 });
   cube('mossy_cobblestone', '苔石圆石', {}, { hardness: 2 });
   cube('obsidian', '黑曜石', {}, { hardness: 12 });
-  cube('gravel', '沙砾', {}, { sound: 'sand', hardness: 0.6, falling: true });
+  cube('gravel', '沙砾', {}, {
+    sound: 'sand', hardness: 0.6, falling: true,
+    drops: [{ name: 'self' }, { name: 'item:flint', chance: 0.3 }],
+  });
   cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
   cube('ice', '冰', {}, {
     // cullSame：相邻冰方块之间的内部面与玻璃一样剔除，避免透明通道多出无用面片。
@@ -524,4 +527,11 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     transparentPass: false, lightEmission: 12, hardness: 0.1, sound: 'wood',
     tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' }, crossHeight: 0.85,
   });
+
+  // ---- 砂岩家族扩充（内容更新：沙石，末位追加）----
+  // 沙漠地层由 BIOME_PROFILES.desert.strata 自然生成；红沙岩由 mesa 表层附近的红沙合成。
+  cube('smooth_sandstone', '平滑砂岩', {}, { sound: 'sand', hardness: 1.2 });
+  cube('chiseled_sandstone', '錾制砂岩', {}, { sound: 'sand', hardness: 1.2 });
+  cube('cut_sandstone', '切制砂岩', {}, { sound: 'sand', hardness: 1.2 });
+  cube('red_sandstone', '红砂岩', {}, { sound: 'sand', hardness: 1.2 });
 }

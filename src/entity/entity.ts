@@ -4,12 +4,12 @@ import type { World } from '../world/world';
 import { moveBody, type PhysicsBody } from '../player/physics';
 import {
   buildPig, buildSheep, buildCow, buildChicken, buildRabbit,
-  buildZombie, buildSkeleton, type MobModel,
+  buildZombie, buildSkeleton, buildCreeper, buildSpider, buildSquid, type MobModel,
 } from './models';
 import type { DropSpec } from '../world/blocks';
 import type { Particles } from '../gfx/particles';
 import { dropHash, rollDrops } from '../world/drops';
-import { ANIMALS, BREED, POPULATION } from '../core/tuning';
+import { ANIMALS, BREED, NEW_MOBS, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
 import { BALL, bounceVy, rollFriction } from './basketball';
@@ -42,6 +42,10 @@ export interface EntityType {
   drops?: DropSpec[];
   /** 生成权重，默认 1 */
   weight?: number;
+  /** 水中悬浮生物（鱿鱼）：入水时悬停而非上浮，且不被“水域阻挡”逻辑调头 */
+  aquatic?: boolean;
+  /** 攻击时自爆（苦力怕）：数值为破坏 / 伤害半径 */
+  explodeRadius?: number;
 }
 
 export interface EntityContext {
@@ -51,6 +55,8 @@ export interface EntityContext {
   /** 0~1 日照强度 */
   daylight: number;
   playerDead: boolean;
+  /** 自爆生物触发的爆炸回调（由主装配注入；缺省时退化为普通近战） */
+  explode?: (x: number, y: number, z: number, radius: number) => void;
   /** 是否处于游玩态：默认 true；暂停 / 标题时繁殖计时不推进 */
   playing?: boolean;
 }
@@ -135,6 +141,23 @@ export class Entity implements PhysicsBody {
     this.model.group.scale.setScalar(this.scaleBase * 1.14);
   }
 
+  /**
+   * 一次近战 / 自爆结算（AI 与硬编码追击两条路径共用）。
+   * 苦力怕自爆后立即死亡进入掉落流程；其余生物走普通伤害 + 前扑。
+   */
+  private strike(ctx: EntityContext): void {
+    if (this.attackCooldown > 0) return;
+    this.attackCooldown = 1.05;
+    if (this.type.explodeRadius && ctx.explode) {
+      ctx.explode(this.pos.x, this.pos.y + this.height * 0.5, this.pos.z, this.type.explodeRadius);
+      this.hp = 0;
+      return;
+    }
+    ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
+    this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+    this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+  }
+
   update(dt: number, world: World, ctx?: EntityContext) {
     this.hurtCooldown = Math.max(0, this.hurtCooldown - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
@@ -179,12 +202,7 @@ export class Entity implements PhysicsBody {
       if (ai.blackboard.get<boolean>('wantAttack') === true && ctx && !ctx.playerDead) {
         const dy = Math.abs(ctx.playerPos.y - this.pos.y);
         const dist = Math.hypot(ctx.playerPos.x - this.pos.x, ctx.playerPos.z - this.pos.z);
-        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
-          this.attackCooldown = 1.05;
-          ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
-          this.vel.x += (-Math.sin(this.yaw)) * 2.2;
-          this.vel.z += (-Math.cos(this.yaw)) * 2.2;
-        }
+        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
         ai.blackboard.set('wantAttack', false);
       }
     } else {
@@ -197,13 +215,7 @@ export class Entity implements PhysicsBody {
           moving = true;
           speed = this.type.speed * (dist > 2.2 ? 1.45 : 1.1);
           const dy = Math.abs(ctx.playerPos.y - this.pos.y);
-          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
-            this.attackCooldown = 1.05;
-            ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
-            // 攻击前扑
-            this.vel.x += (-Math.sin(this.yaw)) * 2.2;
-            this.vel.z += (-Math.cos(this.yaw)) * 2.2;
-          }
+          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
         }
       }
     }
@@ -229,7 +241,7 @@ export class Entity implements PhysicsBody {
     const fz = -Math.cos(this.yaw);
 
     // 前方障碍 / 悬崖 / 水域检测（追击时不绕路，直接贴住）
-    if (moving && !this.hostile) {
+    if (moving && !this.hostile && !this.type.aquatic) {
       const ax = Math.floor(this.pos.x + fx * 0.8);
       const az = Math.floor(this.pos.z + fz * 0.8);
       const ay = Math.floor(this.pos.y);
@@ -251,7 +263,8 @@ export class Entity implements PhysicsBody {
     const inWater = world.registry.get(world.getBlock(
       Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z))).liquid;
     if (inWater) {
-      this.vel.y = 2.2;
+      // 水生生物悬浮在水中，而不是像误入水的陆生生物一样上浮
+      this.vel.y = this.type.aquatic ? 0 : 2.2;
     } else {
       this.vel.y -= 24 * dt;
       this.vel.y = Math.max(this.vel.y, -40);
@@ -412,6 +425,30 @@ export class EntityManager {
       hostile: true, health: 12, damage: 2, attackRange: 1.7, burnInDay: true,
       drops: [{ name: 'item:bone_meal', chance: 0.75 }],
     });
+    // ---- 内容更新：三种新生物（数值来自 tuning.ts 的 NEW_MOBS） ----
+    const creeper = NEW_MOBS.creeper;
+    this.registerType({
+      id: 'creeper', label: '苦力怕', width: creeper.width, height: creeper.height,
+      speed: creeper.speed, build: buildCreeper,
+      hostile: true, health: creeper.health, damage: creeper.damage, attackRange: creeper.attackRange,
+      burnInDay: creeper.burnInDay, explodeRadius: creeper.explodeRadius,
+      drops: creeper.drops.map((d) => ({ ...d })),
+    });
+    const spider = NEW_MOBS.spider;
+    this.registerType({
+      id: 'spider', label: '蜘蛛', width: spider.width, height: spider.height,
+      speed: spider.speed, build: buildSpider,
+      hostile: true, health: spider.health, damage: spider.damage, attackRange: spider.attackRange,
+      burnInDay: spider.burnInDay,
+      drops: spider.drops.map((d) => ({ ...d })),
+    });
+    const squid = NEW_MOBS.squid;
+    this.registerType({
+      id: 'squid', label: '鱿鱼', width: squid.width, height: squid.height,
+      speed: squid.speed, build: buildSquid,
+      health: squid.health, aquatic: squid.aquatic,
+      drops: squid.drops.map((d) => ({ ...d })),
+    });
   }
 
   registerType(type: EntityType) {
@@ -560,7 +597,29 @@ export class EntityManager {
     this.updateBreeding(dt, ctx.playing !== false);
   }
 
-  /** 维持种群：夜晚在生存模式额外生成僵尸，白天清退 */
+  /**
+   * 在近岸水体生成鱿鱼（内容更新）。脚底落在水面下的水格中，
+   * 数量上限 2，避免把水生生物刷满整片海。
+   */
+  private trySpawnSquid(playerPos: THREE.Vector3): boolean {
+    if (!this.allowSpawn || this.entities.length >= POPULATION.cap) return false;
+    if (this.entities.filter((e) => e.type.id === 'squid').length >= 2) return false;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 10 + Math.random() * 18;
+      const x = Math.floor(playerPos.x + Math.cos(ang) * dist);
+      const z = Math.floor(playerPos.z + Math.sin(ang) * dist);
+      const h = this.world.surfaceHeight(x, z);
+      const isWater = (id: number) => id !== 0 && this.world.registry.get(id).liquid;
+      if (isWater(this.world.getBlock(x, h + 1, z)) && isWater(this.world.getBlock(x, h + 2, z))) {
+        this.spawn('squid', x + 0.5, h + 1.5, z + 0.5);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 维持种群：夜晚在生存模式额外生成敌对生物，白天清退 */
   maintainPopulation(dt: number, playerPos: THREE.Vector3, opts: { survival: boolean; daylight: number }) {
     this.daylight = opts.daylight;
     this.popTimer -= dt;
@@ -578,8 +637,11 @@ export class EntityManager {
     const target = opts.survival && night ? 9 : 6;
     if (this.entities.length < target) {
       const wantHostile = opts.survival && night && zombies < 4 && Math.random() < 0.6;
-      const hostileType = wantHostile ? (Math.random() < 0.5 ? 'skeleton' : 'zombie') : undefined;
+      // 敌对池扩充为四种：僵尸 / 骷髅 / 苦力怕 / 蜘蛛
+      const hostilePool = ['zombie', 'skeleton', 'creeper', 'spider'];
+      const hostileType = wantHostile ? hostilePool[(Math.random() * hostilePool.length) | 0] : undefined;
       this.trySpawnNear(playerPos, hostileType);
+      if (!hostileType && Math.random() < 0.3) this.trySpawnSquid(playerPos);
     }
   }
 

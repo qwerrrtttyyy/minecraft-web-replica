@@ -2051,6 +2051,117 @@ function woolPainter(hex: number): Painter {
   };
 }
 
+// ---- 生物 / 弓箭内容更新：材料与装备纹理（追加在末尾，既有 tile 索引不变） ----
+// 砂岩家族纹理：与既有 sandstone 同一色调，靠层理 / 切痕 / 雕纹区分
+const smoothSandstonePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xe2d9a8, 4);
+  for (const y of [5, 11]) {
+    for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0xd4ca96, rng, 3));
+  }
+};
+
+const cutSandstonePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xe0d7a6, 5);
+  for (let x = 0; x < TILE; x += 4) {
+    for (let y = 0; y < TILE; y++) p.set(x, y, jitter(0xc8bd8a, rng, 4));
+  }
+};
+
+const chiseledSandstonePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xded5a3, 4);
+  rect(p, 2, 2, 12, 12, 0xc8bd8a);
+  rect(p, 3, 3, 10, 10, 0xe6ddaf);
+  // 中心菱形徽记
+  for (let y = 5; y <= 10; y++) {
+    const w = y <= 7 ? y - 4 : 11 - y;
+    for (let x = 8 - w; x <= 8 + w; x++) p.set(x, y, jitter(0xb9ad7c, rng, 4));
+  }
+};
+
+const redSandstonePainter: Painter = (p, rng) => {
+  fillNoise(p, rng, 0xc97a56, 6);
+  for (const y of [4, 11]) {
+    for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0xb56745, rng, 5));
+  }
+  blob(p, rng, 0xd98c68, 5, 3);
+};
+
+const gunpowderPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 5; y < 13; y++) {
+    for (let x = 4; x < 13; x++) {
+      if (rng() < 0.78) p.set(x, y, jitter(0x4a4a52, rng, 16));
+    }
+  }
+  for (const [x, y] of [[6, 7], [10, 9], [8, 11]] as const) p.set(x, y, 0x8a8a92);
+};
+
+const stringPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let i = 0; i < 12; i++) {
+    const x = 3 + i;
+    const y = 12 - ((i * 2) % 5);
+    p.set(x, y, jitter(0xe6dfc4, rng, 8));
+    p.set(x, y + 1, jitter(0xbfb79a, rng, 6));
+  }
+  p.set(3, 12, 0xffffff);
+};
+
+const inkSacPainter: Painter = (p, rng) => {
+  p.clear();
+  for (let y = 4; y < 13; y++) {
+    const r = Math.min(4, 1 + (y - 4) * 0.6);
+    for (let x = 3; x < 14; x++) {
+      if (Math.abs(x - 8) > r) continue;
+      p.set(x, y, jitter(y < 7 ? 0x4b2f63 : 0x241830, rng, 8));
+    }
+  }
+  p.set(7, 5, 0x7c5a95);
+};
+
+const flintPainter: Painter = (p, rng) => {
+  p.clear();
+  const shard = [
+    [7, 3], [8, 3], [9, 4], [10, 6], [11, 9], [10, 11], [8, 13], [6, 12], [4, 9], [5, 6],
+  ] as const;
+  for (const [x, y] of shard) p.set(x, y, jitter(0x6f7480, rng, 10));
+  for (let y = 6; y < 12; y++) for (let x = 6 + (y % 2); x < 10; x++) {
+    if (rng() < 0.7) p.set(x, y, jitter(0x525761, rng, 8));
+  }
+  p.set(7, 6, 0x9aa0ac);
+};
+
+const bowPainter: Painter = (p, rng) => {
+  p.clear();
+  // 弓臂：右弯的像素弧
+  const arc: [number, number][] = [[5, 2], [7, 3], [9, 5], [10, 8], [9, 11], [7, 13], [5, 14]];
+  for (const [x, y] of arc) {
+    p.set(x, y, jitter(0x9a6b3a, rng, 8));
+    p.set(x + 1, y, jitter(0x6b4520, rng, 6));
+  }
+  // 弓弦
+  for (let y = 3; y <= 13; y++) p.set(4, y, jitter(0xe6dfc4, rng, 6));
+  p.set(4, 2, 0xffffff);
+  p.set(4, 14, 0xffffff);
+};
+
+const arrowPainter: Painter = (p, rng) => {
+  p.clear();
+  // 箭杆：左下到右上的斜线
+  for (let i = 0; i < 10; i++) {
+    const x = 4 + i;
+    const y = 12 - i;
+    p.set(x, y, jitter(0xa9743d, rng, 8));
+    p.set(x, y + 1, jitter(0x7c5228, rng, 6));
+  }
+  // 箭头
+  p.set(14, 2, 0xb9c0cc); p.set(13, 2, 0xd8dee8); p.set(14, 3, 0x8b939f);
+  p.set(13, 4, 0xb9c0cc); p.set(12, 3, 0x8b939f);
+  // 尾羽
+  p.set(4, 12, 0xe9e4d6); p.set(3, 11, 0xc9c2b0);
+  p.set(5, 13, 0xe9e4d6); p.set(4, 14, 0xc9c2b0);
+};
+
 export class TextureAtlas {
   readonly texture: THREE.CanvasTexture;
   private painters = new Map<string, Painter>();
@@ -2321,6 +2432,17 @@ export class TextureAtlas {
       p.set(6, 2, 0xc04858);
       p.set(8, 4, 0xf0f0f8);
     });
+    // 生物 / 弓箭内容更新：追加在全部既有纹理之后，保持既有 tile 索引不变
+    this.painters.set('gunpowder', gunpowderPainter);
+    this.painters.set('string', stringPainter);
+    this.painters.set('ink_sac', inkSacPainter);
+    this.painters.set('flint', flintPainter);
+    this.painters.set('bow', bowPainter);
+    this.painters.set('arrow', arrowPainter);
+    this.painters.set('smooth_sandstone', smoothSandstonePainter);
+    this.painters.set('cut_sandstone', cutSandstonePainter);
+    this.painters.set('chiseled_sandstone', chiseledSandstonePainter);
+    this.painters.set('red_sandstone', redSandstonePainter);
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

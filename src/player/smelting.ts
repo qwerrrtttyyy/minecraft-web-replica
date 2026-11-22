@@ -17,6 +17,7 @@ export const SMELT_RECIPES: Record<string, string> = {
   raw_gold: 'gold_ingot',
   raw_copper: 'copper_ingot',
   sand: 'glass',
+  sandstone: 'smooth_sandstone',
   oak_log: 'charcoal',
   birch_log: 'charcoal',
   spruce_log: 'charcoal',

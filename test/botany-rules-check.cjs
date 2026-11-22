@@ -124,12 +124,12 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块为 152 种（141 基线 + 内容植物扩充 11），插件未挤占内置表',
-    t.reg.all().length === 152, `${t.reg.all().length}`);
-  ok('内置最大 id 为 158（glow_torch）', Math.max(...t.reg.all().map((d) => d.id)) === 158);
+  ok('内置方块为 156 种（141 基线 + 内容植物扩充 11 + 砂岩家族 4），插件未挤占内置表',
+    t.reg.all().length === 156, `${t.reg.all().length}`);
+  ok('内置最大 id 为 162（red_sandstone）', Math.max(...t.reg.all().map((d) => d.id)) === 162);
   install(t);
-  ok('6 种插件植物 id 159~164 连续末位追加',
-    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 159 + i),
+  ok('6 种插件植物 id 163~168 连续末位追加',
+    EXPANSION_PLANTS.every((p, i) => t.reg.byNameGet(p.name)?.id === 163 + i),
     EXPANSION_PLANTS.map((p) => `${p.name}=${t.reg.byNameGet(p.name).id}`).join(' '));
   ok('旧 id 未重排（black_wool=44 / spruce_leaves=91 / glow_fern=147）',
     t.reg.byNameGet('black_wool').id === 44 && t.reg.byNameGet('spruce_leaves').id === 91 &&
@@ -157,21 +157,21 @@ log('\n[2] 规则注册表契约');
   assert.throws(() => r.register(a), /重复注册/);
   assert.throws(() => r.register({ id: '', owner: 'o', plants: ['x'], tick: () => false }), /字段不完整/);
   ok('重复 id 与字段缺失都会被拒绝', r.size === 2, `${r.size}`);
-  ok('同一方块命中多条规则', r.ruleFor(159).length === 2, `${r.ruleFor(159).length}`);
+  ok('同一方块命中多条规则', r.ruleFor(163).length === 2, `${r.ruleFor(163).length}`);
 
   // 优先级：按 (priority, id) 双键稳定排序
   const pr = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
   pr.register({ id: 'zeta', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
   pr.register({ id: 'alpha', owner: 'o', plants: ['thistle'], priority: 1, tick: () => false });
   pr.register({ id: 'first', owner: 'o', plants: ['thistle'], priority: -1, tick: () => false });
-  const ordered = pr.ruleFor(159).map((rule) => rule.id);
+  const ordered = pr.ruleFor(163).map((rule) => rule.id);
   ok('规则按 (priority, id) 双键稳定排序',
     ordered[0] === 'first' && ordered[1] === 'alpha' && ordered[2] === 'zeta',
     ordered.join(','));
   ok('list() 暴露 priority',
     pr.list().some((info) => info.priority === -1 && info.id === 'first'));
 
-  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(159).length === 0);
+  ok('按 owner 批量注销', r.unregister('o') === 2 && r.ruleFor(163).length === 0);
 
   // 动态解析：先注册引用「尚不存在方块」的规则，方块补齐后自动命中
   const late = new PlantRuleRegistry((n) => t.reg.byNameGet(n)?.id ?? 0);
@@ -340,7 +340,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 152);
+  ok('内置方块总数未变', t.reg.all().length === 156);
 }
 
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

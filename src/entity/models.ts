@@ -434,6 +434,122 @@ export function buildRabbit(): MobModel {
   };
 }
 
+/** 苦力怕：绿皮、四足、无颈的裂口脸（内容更新：更多生物） */
+export function buildCreeper(): MobModel {
+  const group = new THREE.Group();
+  const skin = lambert(0x5fbf4a);
+  const skinDark = lambert(0x3f8a33);
+  const face = lambert(0x1d2c19);
+  const body = box(0.5, 0.75, 0.3, skin);
+  body.position.y = 1.05;
+  const head = box(0.52, 0.5, 0.42, skin);
+  head.position.y = 1.75;
+  const eyeL = box(0.1, 0.12, 0.02, face);
+  eyeL.position.set(-0.13, 1.82, 0.22);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.13;
+  const mouth = box(0.16, 0.14, 0.02, face);
+  mouth.position.set(0, 1.62, 0.22);
+  const legs: THREE.Group[] = [];
+  for (const x of [-0.14, 0.14]) {
+    for (const z of [-0.12, 0.12]) {
+      const leg = limb(0.2, 0.65, 0.2, z > 0 ? skin : skinDark);
+      leg.position.set(x, 0.65, z);
+      legs.push(leg);
+      group.add(leg);
+    }
+  }
+  group.add(body, head, eyeL, eyeR, mouth);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.7 : 0;
+      legs[0].rotation.x = s;
+      legs[1].rotation.x = -s;
+      legs[2].rotation.x = -s;
+      legs[3].rotation.x = s;
+    },
+  };
+}
+
+/** 蜘蛛：黑褐躯体 + 八条分节腿 + 红色眼组 */
+export function buildSpider(): MobModel {
+  const group = new THREE.Group();
+  const body = lambert(0x2b2118);
+  const headM = lambert(0x3b2d20);
+  const eyeM = lambert(0xc4302a);
+  const abdomen = box(0.62, 0.42, 0.66, body);
+  abdomen.position.set(0, 0.5, -0.32);
+  const head = box(0.42, 0.34, 0.4, headM);
+  head.position.set(0, 0.48, 0.25);
+  for (const [x, y] of [[-0.12, 0.56], [0.12, 0.56], [-0.16, 0.48], [0.16, 0.48]] as const) {
+    const eye = box(0.06, 0.06, 0.02, eyeM);
+    eye.position.set(x, y, 0.46);
+    group.add(eye);
+  }
+  const legs: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const leg = new THREE.Group();
+      const upper = box(0.1, 0.1, 0.55, body);
+      upper.position.set(side * 0.36, 0.08, 0.2 - i * 0.16);
+      upper.rotation.y = side * (0.3 + i * 0.16);
+      const lower = box(0.08, 0.42, 0.08, body);
+      lower.position.set(side * 0.56, -0.2, 0.2 - i * 0.16);
+      leg.add(upper, lower);
+      leg.position.y = 0.5;
+      legs.push(leg);
+      group.add(leg);
+    }
+  }
+  group.add(abdomen, head);
+  return {
+    group,
+    animate(phase, moving) {
+      const s = moving ? Math.sin(phase) * 0.5 : 0;
+      legs.forEach((leg, i) => { leg.rotation.x = (i % 2 ? -s : s) * 0.6; });
+    },
+  };
+}
+
+/** 鱿鱼：紫色外套膜 + 八条触腕 + 大白眼（水中悬浮） */
+export function buildSquid(): MobModel {
+  const group = new THREE.Group();
+  const skin = lambert(0x8a5aa8);
+  const skinDark = lambert(0x6d4387);
+  const eyeWhite = lambert(0xf4f0ea);
+  const eyeM = lambert(0x1a1a1a);
+  const mantle = box(0.55, 0.6, 0.55, skin);
+  mantle.position.y = 0.52;
+  const head = box(0.4, 0.28, 0.4, skinDark);
+  head.position.y = 0.18;
+  const eyeL = box(0.1, 0.1, 0.02, eyeWhite);
+  eyeL.position.set(-0.12, 0.2, 0.21);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.12;
+  const pupilL = box(0.05, 0.05, 0.02, eyeM);
+  pupilL.position.set(-0.12, 0.2, 0.23);
+  const pupilR = pupilL.clone();
+  pupilR.position.x = 0.12;
+  const tentacles: THREE.Group[] = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const t = limb(0.07, 0.32, 0.07, i % 2 ? skin : skinDark);
+    t.position.set(Math.cos(a) * 0.16, 0.06, Math.sin(a) * 0.16);
+    tentacles.push(t);
+    group.add(t);
+  }
+  group.add(mantle, head, eyeL, eyeR, pupilL, pupilR);
+  return {
+    group,
+    animate(phase, moving) {
+      tentacles.forEach((t, i) => {
+        t.rotation.x = Math.sin(phase * (moving ? 1.6 : 0.7) + i) * 0.22;
+      });
+    },
+  };
+}
+
 /** 篮球：橙色低多边形球体 + 程序化像素分格线，零外部资源 */
 export function buildBasketball(): MobModel {
   const group = new THREE.Group();

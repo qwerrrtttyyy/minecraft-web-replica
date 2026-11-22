@@ -111,4 +111,44 @@ export const NEW_ITEMS: Record<string, { food?: number }> = {
   // 熟肉比生肉高 2 点饥饿（原版：生猪排 6→熟猪排 8，生牛肉 7→熟牛肉 8）
   cooked_porkchop: { food: 8 },
   cooked_beef: { food: 8 },
+  // ---- 生物 / 弓箭内容更新：全部不可食，统一走材料闭环 ----
+  gunpowder: {},
+  string: {},
+  ink_sac: {},
+  flint: {},
+  bow: {},
+  arrow: {},
 };
+
+/**
+ * 新增生物属性 / 掉落（内容更新：更多生物）。
+ * 键是 EntityType id；被动动物进入 ANIMALS 的加权生成表，敌对生物走夜间生成。
+ * 掉落名一律 item: 前缀，与既有物品同键可堆叠。
+ */
+export const NEW_MOBS = {
+  creeper: {
+    width: 0.6, height: 1.7, speed: 1.0, health: 12, damage: 0, attackRange: 1.9,
+    explodeRadius: 2.6, weight: 3, burnInDay: false,
+    drops: [{ name: 'item:gunpowder', min: 1, max: 2 }],
+  },
+  spider: {
+    width: 1.1, height: 0.9, speed: 1.55, health: 12, damage: 3, attackRange: 1.8,
+    weight: 3, burnInDay: true,
+    drops: [{ name: 'item:string', min: 1, max: 2 }],
+  },
+  squid: {
+    width: 0.8, height: 0.8, speed: 0.55, health: 6, weight: 2,
+    aquatic: true,
+    drops: [{ name: 'item:ink_sac', min: 1, max: 2 }],
+  },
+} as const;
+
+/** 远程战斗数值（弓箭）：速度与伤害在单一来源，便于平衡调整 */
+export const RANGED = {
+  arrowSpeed: 28,
+  arrowGravity: 12,
+  arrowDamage: 5,
+  arrowLifetime: 6,
+  bowCooldown: 0.72,
+  bowExhaust: 0.06,
+} as const;
