@@ -83,6 +83,31 @@ export interface WasmRuntimeOptions {
   onFallback?: (event: WasmFallbackEvent) => void;
 }
 
+/** 基准采样负载：各噪声函数在单次 bench 中的调用次数（C 决策层据此计算总耗时）。 */
+export const NOISE_BENCH_SAMPLE = { noise2: 5, fbm2: 4, ridged2: 1, noise3: 2, fbm3: 0 } as const;
+
+/**
+ * 自适应后端选择：只有 WASM 明显更快（严格小于 jsMs * threshold）才接管。
+ * 默认阈值 0.9，给测量噪声留 10% 余量；非法 / NaN 输入一律回到安全的 JS 路径。
+ */
+export function chooseNoiseBackend(input: {
+  jsMs: number;
+  wasmMs: number;
+  threshold?: number;
+}): 'js' | 'wasm' {
+  const { jsMs, wasmMs, threshold = 0.9 } = input;
+  if (!Number.isFinite(jsMs) || !Number.isFinite(wasmMs) || !Number.isFinite(threshold)) return 'js';
+  if (jsMs <= 0 || wasmMs < 0 || threshold <= 0) return 'js';
+  return wasmMs < jsMs * threshold ? 'wasm' : 'js';
+}
+
+/** 参数优先级：URL 显式值最高，其次实验开关，默认关闭。 */
+export function resolveWasmMode(param: string | null, experimental: boolean): 'off' | 'force' | 'adaptive' {
+  if (param === '0') return 'off';
+  if (param === 'force') return 'force';
+  return experimental ? 'adaptive' : 'off';
+}
+
 const now = (): number =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
