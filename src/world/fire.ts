@@ -52,8 +52,11 @@ export interface FireSystemOptions {
   rng?: () => number;
   /** 实体列表提供者（伤害判定用；主装配传 EntityManager.entities） */
   getEntities?: () => readonly FireEntityLike[];
-  /** 可选音效（点燃时的噼啪声） */
-  sound?: { crackle(): void };
+  /**
+   * 玩家是否正处于「忙碌」状态（如开着烹饪面板，无法移动）。
+   * 为 true 时跳过玩家灼伤，实体伤害不受影响。
+   */
+  isPlayerBusy?: () => boolean;
 }
 
 interface TrackedFire {
@@ -123,7 +126,7 @@ export class FireSystem implements System {
   private readonly hurtPlayer: (amount: number, cause: string) => boolean;
   private readonly rng: () => number;
   private readonly getEntities: () => readonly FireEntityLike[];
-  private readonly sound?: { crackle(): void };
+  private readonly isPlayerBusy?: () => boolean;
   private readonly fireId: BlockId;
   private readonly campfireId: BlockId;
 
@@ -133,7 +136,6 @@ export class FireSystem implements System {
   private readonly entityDamageAt = new Map<number, number>();
   private scanTimer = 0;
   private damageTimer = 0;
-  private crackleTimer = 0;
   private time = 0;
   private playerPos: THREE.Vector3 | null = null;
 
@@ -145,7 +147,7 @@ export class FireSystem implements System {
     this.hurtPlayer = opts.hurtPlayer;
     this.rng = opts.rng ?? Math.random;
     this.getEntities = opts.getEntities ?? (() => []);
-    this.sound = opts.sound;
+    this.isPlayerBusy = opts.isPlayerBusy;
     this.fireId = this.registry.byNameGet('fire')?.id ?? 168;
     this.campfireId = this.registry.byNameGet('campfire')?.id ?? 165;
   }
@@ -165,7 +167,6 @@ export class FireSystem implements System {
     this.time += dt;
     this.scanTimer += dt;
     this.damageTimer += dt;
-    this.crackleTimer = Math.max(0, this.crackleTimer - dt);
 
     // 扫描 / 蔓延 / 寿命 / 粒子：按 scanTick 节拍推进
     let guard = 0;
@@ -290,10 +291,6 @@ export class FireSystem implements System {
     if (!this.world.setBlock(x, y, z, this.fireId, false)) return;
     this.tracked.set(blockKey(x, y, z), { x, y, z, age: 0, life: this.rollLife() });
     this.events.emit('fire:ignite', { x, y, z });
-    if (this.sound && this.crackleTimer <= 0) {
-      this.crackleTimer = 0.15;
-      this.sound.crackle();
-    }
   }
 
   /** 熄灭火焰（寿命到期 / 失去支撑），营火不会走到这里 */
@@ -309,7 +306,10 @@ export class FireSystem implements System {
   /** 玩家 / 实体灼烧伤害节拍 */
   private applyDamage(): void {
     const p = this.playerPos;
-    if (p && this.isHeatAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) {
+    // 玩家忙碌（烹饪面板打开、无法移动）时豁免灼伤，避免「不能动却挨打」；
+    // 实体伤害不受此豁免影响。
+    if (p && this.isPlayerBusy?.() !== true
+        && this.isHeatAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) {
       this.hurtPlayer(FIRE.damage, '火焰');
     }
 

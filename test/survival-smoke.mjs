@@ -633,6 +633,7 @@ try {
   await page.evaluate(() => {
     const mc = window.__mc;
     mc.survival.hunger = 8;
+    mc.survival.saturation = 0; // 基线清零，确保「上升」断言不是恒真
     const appleSlot = mc.player.hotbar.slots.findIndex((s) => s && s.kind === 'item' && s.id === 'apple');
     if (appleSlot >= 0) mc.selectSlot(appleSlot);
   });
@@ -643,9 +644,103 @@ try {
   await page.mouse.up({ button: 'right' });
   await sleep(350);
   const hungerNow = await page.evaluate(() => window.__mc.survival.hunger);
+  const satNow = await page.evaluate(() => window.__mc.survival.saturation);
   const appleAfter = await page.evaluate(() => window.__mc.survival.countKey('i:apple'));
   ok('吃苹果恢复饥饿', hungerNow > 8, `hunger=${hungerNow}`);
+  ok('进食提升饱和度', satNow > 0 && satNow <= hungerNow, `saturation=${satNow}`);
   ok('进食消耗苹果', appleAfter === appleBefore - 1 || appleBefore === 0, `${appleBefore}→${appleAfter}`);
+
+  // ---- 火光与饥饿端到端（v1.5.3）----
+  // 火焰灼烧：脚下放火，关闭蔓延（只验伤害，不点燃地形），轮询等待掉血
+  let fireSetup;
+  {
+    fireSetup = await page.evaluate(() => {
+      const mc = window.__mc;
+      const fireEnabled = mc.fire.enabled;
+      mc.fire.enabled = false;
+      const p = mc.player.pos;
+      const x = Math.floor(p.x), y = Math.floor(p.y), z = Math.floor(p.z);
+      const stone = mc.registry.byNameGet('stone').id;
+      const fire = mc.registry.byNameGet('fire').id;
+      mc.world.setBlock(x, y - 1, z, stone, false);
+      mc.world.setBlock(x, y, z, fire, false);
+      return { x, y, z, health: mc.survival.health, fireEnabled };
+    });
+    const burned = await page.waitForFunction(
+      (c) => window.__mc.survival.health < c.health,
+      { timeout: 8000, polling: 100 }, fireSetup,
+    ).then(() => true).catch(() => false);
+    const healthAfterFire = await page.evaluate(() => window.__mc.survival.health);
+    ok('火焰灼烧：站火上持续掉血', burned, `${fireSetup.health}→${healthAfterFire}`);
+    await page.evaluate((c) => {
+      const mc = window.__mc;
+      mc.world.setBlock(c.x, c.y, c.z, 0, false);
+    }, fireSetup);
+    // 补回火焰测试造成的掉血，避免把后续「僵尸能攻击玩家」的基线压低成恒真
+    await page.evaluate(() => window.__mc.survival.heal(20));
+  }
+
+  // 温暖：附近放营火 → 上升；传送远离 → 下降
+  // 放在熔炉之前：熔炉燃烧时也是热源，若先做熔炉，温暖基线会被抬高导致「上升」断言失真
+  {
+    const warmSetup = await page.evaluate(() => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      const x = Math.floor(p.x) + 2, y = Math.floor(p.y), z = Math.floor(p.z);
+      mc.world.setBlock(x, y, z, mc.registry.byNameGet('campfire').id, false);
+      return { x, y, z, ox: p.x, oy: p.y, oz: p.z, warmth: mc.survival.warmth };
+    });
+    const riseTo = Math.max(20, warmSetup.warmth + 10);
+    const rose = await page.waitForFunction(
+      (t) => window.__mc.survival.warmth > t,
+      { timeout: 15000, polling: 100 }, riseTo,
+    ).then(() => true).catch(() => false);
+    const peak = await page.evaluate(() => window.__mc.survival.warmth);
+    ok('温暖：靠近营火上升', rose, `${warmSetup.warmth}→${peak}（阈值 ${riseTo}）`);
+    // 传送到 24 格外（渲染距离内，地面已加载），远离热源后等待下降
+    await page.evaluate((w) => window.__mc.player.teleport(w.ox + 24, w.oy, w.oz), warmSetup);
+    const fell = await page.waitForFunction(
+      (p) => window.__mc.survival.warmth < p * 0.5,
+      { timeout: 20000, polling: 100 }, peak,
+    ).then(() => true).catch(() => false);
+    const low = await page.evaluate(() => window.__mc.survival.warmth);
+    ok('温暖：远离热源下降', fell, `${peak}→${low}`);
+    await page.evaluate((w, fireEnabled) => {
+      const mc = window.__mc;
+      mc.world.setBlock(w.x, w.y, w.z, 0, false);
+      mc.player.teleport(w.ox, w.oy, w.oz);
+      mc.fire.enabled = fireEnabled;
+    }, warmSetup, fireSetup.fireEnabled);
+    await sleep(200);
+  }
+
+  // 熔炉产出：放熔炉 + 燃料 + 生食，等待烤熟（远端 Smelting：putFuelFrom / putInput）
+  {
+    const furnaceSetup = await page.evaluate(() => {
+      const mc = window.__mc;
+      const p = mc.player.pos;
+      const x = Math.floor(p.x) + 2, y = Math.floor(p.y), z = Math.floor(p.z);
+      mc.world.setBlock(x, y, z, mc.registry.byNameGet('furnace').id, false);
+      mc.survival.addItem('coal', 1);
+      mc.survival.addItem('beef', 1);
+      const fuelOk = mc.smelting.putFuelFrom(mc.survival, x, y, z, 'coal', 1, { kind: 'item', id: 'coal' });
+      const inputOk = mc.smelting.putInput(mc.survival, x, y, z, 'beef', 1, { kind: 'item', id: 'beef' });
+      return { x, y, z, fuelOk, inputOk };
+    });
+    const cooked = await page.waitForFunction(
+      (c) => window.__mc.smelting.cell(c.x, c.y, c.z).output?.material === 'cooked_beef',
+      { timeout: 60000, polling: 250 }, furnaceSetup,
+    ).then(() => true).catch(() => false);
+    const out = await page.evaluate(
+      (c) => window.__mc.smelting.cell(c.x, c.y, c.z).output ?? null, furnaceSetup);
+    ok('熔炉产出熟食', cooked && furnaceSetup.fuelOk && furnaceSetup.inputOk,
+      `output=${out ? `${out.material}x${out.count}` : 'null'}`);
+    await page.evaluate((c) => {
+      const mc = window.__mc;
+      mc.smelting.takeOutput(mc.survival, c.x, c.y, c.z);
+      mc.world.setBlock(c.x, c.y, c.z, 0, false);
+    }, furnaceSetup);
+  }
 
   // ---- 夜晚 + 僵尸 ----
   await page.evaluate(() => {

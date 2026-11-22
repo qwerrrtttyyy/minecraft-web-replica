@@ -148,6 +148,11 @@ export class SoundEngine {
     this.burst(this.vary(1500, 0.25), 0.07, 0.2, 'highpass', 0.8);
   }
 
+  /** 熔炉烤熟：短促高频「叮」，上行滑音让提示更明确 */
+  ding() {
+    this.tone(this.vary(1560, 0.05), 0.09, 0.16, 'triangle', 2093);
+  }
+
   /** 近战命中：干脆的打击感，加一记高频「咔」让命中确认更明确 */
   hit() {
     this.burst(this.vary(420, 0.12), 0.1, 0.34, 'bandpass', 2.2);

@@ -497,7 +497,7 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 
 | 模块 | 接口 | 职责 |
 |---|---|---|
-| `src/core/tuning.ts` | `POPULATION` / `BREED` / `DROPS` / `BREED_FOODS` / `ANIMALS` / `NEW_ITEMS` | 纯数据数值中心：既有种群 / 交互距离原样搬入，新动物 / 掉落 / 繁殖 / 食物参数集中一处，调参零改调用方 |
+| `src/core/tuning.ts` | `POPULATION` / `BREED` / `DROPS` / `BREED_FOODS` / `ANIMALS` | 纯数据数值中心：既有种群 / 交互距离原样搬入，新动物 / 掉落 / 繁殖 / 食物参数集中一处，调参零改调用方 |
 | `src/world/dropLogic.ts` | `scatterOffset` / `canPickup` / `mergeKey` / `dropsMerge` / `shouldDespawn` / `advanceWater` | 可见掉落物的纯判定（无 three / DOM）：确定性散开、拾取半径与延迟、同类合并、超时 / 掉出世界、入水终端下沉与水平衰减 |
 | `src/entity/droppedItem.ts` | `DropManager.spawn / update / clear` 与 `DroppedItem` | 渲染与生命周期：复用 `moveBody` 做碰撞、按材料键缓存几何 / 共享材质、浮动自转、入水水花与拾取反馈；拾取 / 消失只 `scene.remove`，不 dispose 共享资源 |
 | `src/entity/breeding.ts` | `isBreedFood` / `pickMate` / `canBreed` | 纯规则判定：食物白名单、按实体 id 升序稳定择偶、同类成体求爱且冷却结束才可繁殖；状态字段（age / loveTimer / cooldown）挂在 `Entity` 上 |
@@ -553,6 +553,12 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 不写玩家编辑差分，读档后火焰熄灭。玩家 / 实体站在火 / 营火上每 `FIRE.damageInterval`
 秒受 `FIRE.damage` 点伤害，实体计时由系统自管（`Entity.hurt` 无无敌帧）。
 
+**事件接线与营火豁免**：`FireSystem` 自身不播音效，只发 `fire:ignite` / `fire:extinguish`；
+`main.ts` 订阅 `fire:ignite` 播放 `sound.crackle()`（0.15s 节流，避免蔓延刷屏），
+`fire:extinguish` 暂无内置音效、保留订阅作为插件钩子。营火面板打开时 `mode` 保持
+`playing` 但输入被禁用，`FireSystem` 经 `isPlayerBusy`（`hud.campfireOpen`）跳过玩家灼伤，
+实体伤害不变；面板底部常驻提示「营火中无法移动，Esc 关闭；火焰不会灼伤你」。
+
 **熔炉与烹饪（融合远端）**：熔炉本体为 `Smelting` 的 per-block 状态（`input/fuel/output`
 + `burn/burnMax/progress`），每件物品烧 `SMELT_SECONDS`（10s）；`burn` 耗尽后自动消耗下
 一个燃料，`progress` 满时输入 -1、输出 +1 产物。状态序列化为 `furnaces.cells`（坐标 +
@@ -565,8 +571,9 @@ UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出
 **温暖与饱和度**：`WarmthSystem` 每 0.2s 重算玩家 6 格内最近热源，按
 `clamp(1 - dist / (radius + 1), 0, 1) * 100` 求目标值并指数逼近；温暖 ≥ 50 时回血饥饿
 门槛由 18 降到 14。饱和度 0~20，进食叠加但不超过当前饥饿值，exhaustion 先扣饱和度、
-饱和为 0 再扣饥饿，回血额外要求 `saturation > 0`。两者与 `furnaces` 都是存档可选字段，
-旧档缺省 `saturation = MAX_HUNGER`（20）/ `warmth = 0`。
+饱和为 0 再扣饥饿，回血额外要求 `saturation > 0`。可食物值统一由 `FOOD_VALUES` 派生
+（`survival.ts` 的 `foodDef`），`tuning.ts` 不再保留重复的 `NEW_ITEMS` 表。两者与
+`furnaces` 都是存档可选字段，旧档缺省 `saturation = MAX_HUNGER`（20）/ `warmth = 0`。
 
 **测试与验证**：新增 `test/fire.test.ts` / `test/warmth.test.ts` /
 `test/survival-saturation.test.ts` / `test/campfire.test.ts`（Vitest）；

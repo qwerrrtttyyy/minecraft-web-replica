@@ -124,10 +124,12 @@ describe('营火直接烤', () => {
 
   it('关闭面板把输入与输出退回背包，不吞物品', () => {
     const host = new FakeHost();
-    host.add('item:beef', 1);
+    // 放 2 个生牛肉：烤 1 个后输入槽仍剩 1 个，才能同时验证两槽退回
+    host.add('item:beef', 2);
     const panel = makePanel(host);
     panel.show(0, 0, 0);
 
+    clickChip(panel, ITEMS.beef.label);
     clickChip(panel, ITEMS.beef.label);
     clickSlot(panel, 'output');
     panel.hide();

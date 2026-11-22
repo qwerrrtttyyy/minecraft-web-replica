@@ -175,8 +175,8 @@ export class CampfirePanel {
     this.refresh();
   }
 
-  /** 点背包条目：可烧炼材料进输入槽 */
-  private onBagClick(material: MaterialId, count: number) {
+  /** 点背包条目：可烧炼材料进输入槽（每次 1 个，与合成面板一致） */
+  private onBagClick(material: MaterialId) {
     const name = materialToPlain(material);
     if (smeltOutputOf(name) === null) {
       this.setHint('营火只能烤制可烧炼的材料');
@@ -188,28 +188,20 @@ export class CampfirePanel {
       this.refresh();
       return;
     }
-    const cur = this.input?.count ?? 0;
-    const n = Math.min(count, CAMPFIRE_STACK_LIMIT - cur);
-    if (n <= 0) {
+    if ((this.input?.count ?? 0) >= CAMPFIRE_STACK_LIMIT) {
       this.setHint('输入槽已满');
       this.refresh();
       return;
     }
-    const taken = this.takeFromBag(material, n);
-    if (taken <= 0) {
+    if (!this.host.take(material)) {
+      this.setHint('材料不足');
       this.refresh();
       return;
     }
     if (!this.input) this.input = { name, count: 0 };
-    this.input.count += taken;
-    this.setHint(`放入 ${this.labelOf(material)} ×${taken}`);
+    this.input.count += 1;
+    this.setHint(`放入 ${this.labelOf(material)} ×1`);
     this.refresh();
-  }
-
-  private takeFromBag(material: MaterialId, n: number): number {
-    let taken = 0;
-    while (taken < n && this.host.take(material)) taken++;
-    return taken;
   }
 
   private returnSlot(slot: Slot | null) {
@@ -263,7 +255,7 @@ export class CampfirePanel {
       chip.append(img, h('span', 'crafting-count', `x${m.count}`));
       chip.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.onBagClick(m.material, m.count);
+        this.onBagClick(m.material);
       });
       this.bagEl.appendChild(chip);
     }

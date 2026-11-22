@@ -229,6 +229,10 @@ img { image-rendering: pixelated; }
   transition: width .12s linear;
 }
 .cooking-bar-fill.burn { background: linear-gradient(#ff9a3c, #c24518); }
+.cooking-note {
+  font-size: 12px; color: #9a9a9a; text-align: center; line-height: 1.4;
+  text-shadow: 1px 1px 0 #1a1a1a;
+}
 
 /* ============ 标题屏 ============ */
 .title-screen {

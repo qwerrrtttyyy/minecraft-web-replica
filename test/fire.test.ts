@@ -80,6 +80,7 @@ function makeSystem(
   world: FakeWorld,
   rng: () => number = () => 0,
   getEntities: () => Array<{ id: number; pos: THREE.Vector3; hurt: ReturnType<typeof vi.fn> }> = () => [],
+  isPlayerBusy?: () => boolean,
 ): Harness {
   const { calls, events } = makeEvents();
   const particles = { enabled: true, burst: vi.fn() } as unknown as Particles;
@@ -92,6 +93,7 @@ function makeSystem(
     hurtPlayer,
     rng,
     getEntities,
+    isPlayerBusy,
   });
   return { sys, events: { calls, events }, particles, hurtPlayer };
 }
@@ -230,6 +232,22 @@ describe('火焰系统', () => {
     expect(hurtPlayer).toHaveBeenCalledTimes(1);
     sys.update(0.25, pos);
     expect(hurtPlayer).toHaveBeenCalledTimes(2);
+  });
+
+  it('玩家忙碌（如开着烹饪面板）时跳过灼伤，实体照常受伤', () => {
+    const w = new FakeWorld();
+    w.setBlock(0, 0, 0, GRASS);
+    w.setBlock(0, 1, 0, FIRE);
+    const entity = { id: 7, pos: new THREE.Vector3(0.5, 1.0, 0.5), hurt: vi.fn() };
+    const { sys, hurtPlayer } = makeSystem(w, () => 0, () => [entity], () => true);
+    const pos = new THREE.Vector3(0.5, 1.0, 0.5);
+
+    sys.update(0.25, pos);
+    expect(hurtPlayer).not.toHaveBeenCalled();
+    sys.update(0.25, pos);
+    expect(hurtPlayer).not.toHaveBeenCalled();
+    expect(entity.hurt).toHaveBeenCalledTimes(1);
+    expect(entity.hurt).toHaveBeenLastCalledWith(1, 0, 0);
   });
 
   it('实体在火上的伤害间隔为 0.5s（系统自管计时）', () => {

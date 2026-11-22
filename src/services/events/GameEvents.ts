@@ -69,12 +69,8 @@ export interface GameEvents {
   'furnace:open': { x: number; y: number; z: number };
   /** 合成完成（配方 id / 产物材料 / 数量） */
   'crafting:crafted': { recipe: string; result: string; count: number };
-  /** 生存模式：空手右键熔炉，请求打开熔炉界面（PR4） */
-  'furnace:open': { x: number; y: number; z: number };
   /** 生存模式：空手右键营火，请求打开营火烤制界面（PR4） */
   'campfire:open': { x: number; y: number; z: number };
-  /** 熔炉烤熟一份食物（PR4） */
-  'furnace:done': { x: number; y: number; z: number; item: string };
   'game:start': { seed: number };
   'game:pause': { paused: boolean };
   'save:done': { bytes: number };

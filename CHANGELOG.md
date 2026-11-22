@@ -71,7 +71,9 @@
 
 ### 验证
 - `check:version` 三处一致（VERSION 1.5.4 / `package.json` / README；`RELEASE=v1` 正式版）。
-- 完整 `npm run verify` 在 rebase 后重跑，结果见合并前报告。
+- `typecheck` 0 error；`lint`（Biome）通过；`build` 通过。
+- 非浏览器回归链全绿：`test:permtable` / `wasm:check` / `test:snapshot` / `test:drop` / `test:ai:vitest`(47) / `test:wasm` / `test:plugin-v2` / `test:plugin-carrier` / `test:review-fixes` / `test:logic:vitest`(30) / `test:vitest`(167，含 fire 16 / warmth 13 / survival-saturation 8 / campfire 5) / `test:light` / `test:mesher` / `test:services` / `test:diagnostics` / `test:worker-pool` / `test:unstuck` / `test:edits` / `test:terrain-system` / `test:feel` / `test:botany` / `test:plant-energy` / `test:botany-rules` / `test:crafting:vitest`(48) / `test:equipment` / `test:smelting`(35)。
+- 浏览器组：`test:visual` 13/13 通过；`test:smoke` 111/114、`test:options` 63/67。失败项均为触控 / 横屏方向相关，且在 `origin/main` 上逐项复现（smoke 3 项、options 4 项），属环境限制，非本次融合引入。
 
 ## [1.5.2] - 2026-11-21 · 内容体系完善（正式版）
 

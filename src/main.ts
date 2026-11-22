@@ -302,7 +302,20 @@ async function boot() {
     particles,
     hurtPlayer: (amount, cause) => survival.damage(amount, cause),
     getEntities: () => entities.entities,
-    sound,
+    // 烹饪面板打开时玩家无法移动：此时豁免火焰灼伤，避免「不能动却挨打」
+    isPlayerBusy: () => hud.campfireOpen,
+  });
+  // 火焰事件接线：引燃播噼啪声，0.15s 节流避免大面积蔓延时刷屏；
+  // 熄灭暂无内置音效，保留订阅作为插件钩子（统计 / 环境反馈等）。
+  let lastCrackleAt = 0;
+  events.on('fire:ignite', () => {
+    const now = performance.now();
+    if (now - lastCrackleAt < 150) return;
+    lastCrackleAt = now;
+    sound.crackle();
+  });
+  events.on('fire:extinguish', () => {
+    // 内置侧无音效；此订阅供插件观察火焰熄灭（如生态统计）。
   });
   // 温暖系统（PR5）：靠近热源积累温暖，提供轻量回血增益与视觉表现。
   // 热源判定在此集中：火 / 营火 / 灯笼 / 蜡烛，或燃烧中的熔炉（不写回 warmth.ts）。
@@ -1118,9 +1131,9 @@ async function boot() {
   function openMenu() {
     if (mode !== 'playing') return;
     mode = 'paused';
-    // 烹饪 overlay 后挂载、层级高于暂停菜单，且暂停态下面板仍可点击：
-    // 先关掉再开菜单，避免「菜单被烹饪遮罩盖住且面板可操作」的状态
-    if (hud.cookingOpen) closeCooking();
+    // 营火 overlay 后挂载、层级高于暂停菜单，且暂停态下面板仍可点击：
+    // 先关掉再开菜单，避免「菜单被营火遮罩盖住且面板可操作」的状态
+    if (hud.campfireOpen) closeCampfire();
     input.enabled = false;
     input.reset();
     input.exitLock();
