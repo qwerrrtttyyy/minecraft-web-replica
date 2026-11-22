@@ -713,18 +713,43 @@ export class DefaultGenerator implements IWorldGenerator {
     const m = clamp(humidity + jitter, 0, 1);
     const alt = smoothstep(46, 60, height);
 
+    // 11 → 18 群系扩展「抢占台账」：既有 11 条谓词与相对顺序一字不改，新规则只插在其间。
+    // 级联穷举，新群系必然从旧群系取走格子；优先从宽泛兜底域（forest / plains）细分。
+    // | 新规则          | 原本落到 | 理由                                                       |
+    // | snowy_tundra    | taiga    | 寒冷干燥低地本应是苔原；taiga 保留中湿低温格                  |
+    // | snowy_taiga     | taiga    | 最冷且较湿的格改为积雪针叶林；taiga 保留 0.20 ≤ t < 0.30       |
+    // | jungle          | forest   | t>0.68 且 m≥0.62 是湿热阔叶林，原 forest 兜底过宽             |
+    // | bamboo_grove    | forest   | cherry 湿度带以上（m>0.70）的暖区，cherry 谓词不变且优先      |
+    // | mushroom_grove  | forest   | m>0.70 的温和高地；低海拔高湿仍归 swamp（ swamp 规则在前）    |
+    // | dark_forest     | forest   | cherry 带之外的中温高湿林；cherry 谓词不变且优先              |
+    // | birch_forest    | plains   | m∈(0.45,0.56] 的温和格从 plains 细化                           |
+
     let biome: BiomeId;
     if (height < SEA_LEVEL) biome = 'ocean';
     else if (height <= SEA_LEVEL + 1) biome = 'beach';
     // 沼泽：高湿（m>0.62）中温（0.3~0.62）低平（海拔 +8 内）
     else if (m > 0.62 && t >= 0.30 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp';
     else if (alt > 0.55 || (t < 0.2 && height > 50)) biome = 'alpine';
+    // 新：寒冷干燥低地苔原（抢占 taiga 的干燥低温格）
+    else if (t < 0.30 && m < 0.40 && height <= SEA_LEVEL + 12) biome = 'snowy_tundra';
+    // 新：最冷且较湿的积雪针叶林（抢占 taiga 的最冷格）
+    else if (t < 0.20 && m >= 0.40 && height <= 50) biome = 'snowy_taiga';
     else if (t < 0.3) biome = 'taiga';
     // 恶地：比沙漠更热更干
     else if (t > 0.68 && m < 0.28) biome = 'mesa';
     else if (t > 0.68 && m < 0.45) biome = 'desert';
     // 樱花林：温和至暖 + 高湿度区，优先于高湿群系（湿度阈值靠末端增宽，稀有度归因）
     else if (m >= 0.60 && m < 0.70 && t >= 0.40 && t <= 0.68) biome = 'cherry';
+    // 新：湿热阔叶林（原 forest 兜底过宽）
+    else if (t > 0.68 && m >= 0.62 && m < 0.78) biome = 'jungle';
+    // 新：cherry 湿度带以上的暖区竹林
+    else if (t > 0.60 && t <= 0.68 && m > 0.70 && height <= SEA_LEVEL + 16) biome = 'bamboo_grove';
+    // 新：m>0.70 的温和高地真菌林；低海拔高湿仍归 swamp
+    else if (t >= 0.30 && t <= 0.60 && m > 0.70 && height <= SEA_LEVEL + 20) biome = 'mushroom_grove';
+    // 新：cherry 带之外的中温高湿暗林
+    else if (t >= 0.30 && t <= 0.55 && m > 0.56 && m <= 0.70 && height <= SEA_LEVEL + 24) biome = 'dark_forest';
+    // 新：m∈(0.45,0.56] 的温和格从 plains 细化
+    else if (t >= 0.30 && t <= 0.55 && m > 0.45 && m <= 0.56 && height <= SEA_LEVEL + 24) biome = 'birch_forest';
     // 热带草原：暖且湿度中等（0.45~0.62）
     else if (t > 0.6 && m >= 0.45 && m < 0.62) biome = 'savanna';
     else if (m > 0.56) biome = 'forest';

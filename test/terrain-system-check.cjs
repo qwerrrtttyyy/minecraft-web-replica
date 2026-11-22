@@ -9,6 +9,8 @@
  *   发光植物的生成位置约束。
  */
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   DefaultGenerator, DEFAULT_TERRAIN, BIOME_PROFILES, TERRAIN_STAGES,
 } = require('./terrain-logic/world/generator.js');
@@ -81,9 +83,12 @@ const FLOWER_BLOCKS = [
 const FLORA_RULES = {
   lavender: 'plains', buttercup: 'plains', forget_me_not: 'plains|forest',
   marigold: 'plains', foxglove: 'plains', hollyhock: 'plains', violet: 'plains',
-  wood_anemone: 'forest', wild_garlic: 'forest|taiga', hyacinth: 'forest', ivy: 'forest',
-  lingonberry_bush: 'taiga', snowdrop: 'taiga|alpine',
-  edelweiss: 'alpine', snow_lily: 'alpine', crocus: 'alpine', gentian: 'alpine',
+  // 11 → 18 群系扩展：以下植物也进入新群系配置表，按实际配置放宽分布域
+  wood_anemone: 'forest', wild_garlic: 'forest|taiga', hyacinth: 'forest',
+  ivy: 'forest|jungle|mushroom_grove|dark_forest',
+  lingonberry_bush: 'taiga|snowy_taiga', snowdrop: 'taiga|alpine|snowy_tundra|snowy_taiga',
+  edelweiss: 'alpine|snowy_tundra', snow_lily: 'alpine|snowy_tundra',
+  crocus: 'alpine', gentian: 'alpine',
   yucca: 'desert', desert_marigold: 'desert', ghost_flower: 'desert',
   beach_grass: 'beach', sea_thrift: 'beach',
   duckweed: 'floating', sea_anemone: 'underwater', red_algae: 'underwater',
@@ -256,6 +261,63 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     BIOME_PROFILES.swamp.surface === 'mud' &&
     BIOME_PROFILES.savanna.surface === 'dry_grass' &&
     BIOME_PROFILES.cherry.trees?.[0].species === 'cherry');
+  // 级联契约（N01）：旧 11 条谓词逐字保留且相对顺序不变，7 条新规则只插在其间。
+  {
+    const src = fs.readFileSync(path.join(__dirname, '../src/world/generator.ts'), 'utf8');
+    const baseSrc = src.slice(
+      src.indexOf('private base(x: number, z: number): ColumnBase {'),
+      src.indexOf('const info: ColumnBase'),
+    );
+    ok('能从源码定位 base() 级联体', baseSrc.length > 400, `${baseSrc.length}`);
+    const OLD_PREDICATES = [
+      "height < SEA_LEVEL) biome = 'ocean'",
+      "height <= SEA_LEVEL + 1) biome = 'beach'",
+      "m > 0.62 && t >= 0.30 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp'",
+      "alt > 0.55 || (t < 0.2 && height > 50)) biome = 'alpine'",
+      "t < 0.3) biome = 'taiga'",
+      "t > 0.68 && m < 0.28) biome = 'mesa'",
+      "t > 0.68 && m < 0.45) biome = 'desert'",
+      "m >= 0.60 && m < 0.70 && t >= 0.40 && t <= 0.68) biome = 'cherry'",
+      "t > 0.6 && m >= 0.45 && m < 0.62) biome = 'savanna'",
+      "m > 0.56) biome = 'forest'",
+      "else biome = 'plains'",
+    ];
+    const oldAt = OLD_PREDICATES.map((s) => baseSrc.indexOf(s));
+    ok('旧 11 条谓词文本逐字存在', oldAt.every((i) => i >= 0),
+      OLD_PREDICATES.map((s, i) => `${i}:${oldAt[i]}`).join(' '));
+    ok('旧 11 条谓词相对顺序不变',
+      oldAt.every((i, k) => i >= 0 && (k === 0 || i > oldAt[k - 1])));
+
+    const NEW_BEFORE_OLD = [
+      ["t < 0.30 && m < 0.40 && height <= SEA_LEVEL + 12) biome = 'snowy_tundra'",
+        "t < 0.3) biome = 'taiga'"],
+      ["t < 0.20 && m >= 0.40 && height <= 50) biome = 'snowy_taiga'",
+        "t < 0.3) biome = 'taiga'"],
+      ["t > 0.68 && m >= 0.62 && m < 0.78) biome = 'jungle'", "m > 0.56) biome = 'forest'"],
+      ["t >= 0.30 && t <= 0.55 && m > 0.56 && m <= 0.70 && height <= SEA_LEVEL + 24) biome = 'dark_forest'",
+        "m > 0.56) biome = 'forest'"],
+      ["t >= 0.30 && t <= 0.55 && m > 0.45 && m <= 0.56 && height <= SEA_LEVEL + 24) biome = 'birch_forest'",
+        "m > 0.56) biome = 'forest'"],
+    ];
+    ok('7 条新规则逐字存在且抢占位置正确',
+      NEW_BEFORE_OLD.every(([rule, old]) => {
+        const r = baseSrc.indexOf(rule);
+        const o = baseSrc.indexOf(old);
+        return r >= 0 && o >= 0 && r < o;
+      }),
+      NEW_BEFORE_OLD.map(([rule]) => `${rule.split('biome = ')[1]}:${baseSrc.indexOf(rule)}`).join(' '));
+    ok('bamboo_grove / mushroom_grove 位于 jungle 之后、savanna 之前',
+      (() => {
+        const j = baseSrc.indexOf("biome = 'jungle'");
+        const b = baseSrc.indexOf("biome = 'bamboo_grove'");
+        const g = baseSrc.indexOf("biome = 'mushroom_grove'");
+        const s = baseSrc.indexOf("biome = 'savanna'");
+        return j > 0 && j < b && b < g && g < s;
+      })());
+    ok('抢占台账（代码注释）已落盘',
+      baseSrc.includes('抢占台账') && baseSrc.includes('snowy_tundra') &&
+      baseSrc.includes('birch_forest'));
+  }
   ok('新群系可达：seed 777 的 ±7 区块内 4 个群系都有地表实例',
     (() => {
       const gen = new DefaultGenerator(777, reg);
@@ -309,7 +371,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
                 fail(`黏土不在浅海床 ${wx},${y},${wz} h=${h} ${biome}`);
               }
             } else if (name === 'podzol') {
-              if (biome !== 'taiga' || y !== h) {
+              // 灰化土同时是 taiga 与 snowy_taiga 的地表层
+              if (!['taiga', 'snowy_taiga'].includes(biome) || y !== h) {
                 fail(`灰化土不在针叶林地表 ${wx},${y},${wz} ${biome}`);
               }
             } else if (name === 'cactus') {
@@ -317,13 +380,19 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
                 fail(`仙人掌不在沙质地貌 ${wx},${y},${wz} h=${h} ${biome}`);
               }
             } else if (name === 'sugar_cane') {
-              const near = gen.surfaceHeight(wx + 1, wz) < h ||
-                gen.surfaceHeight(wx - 1, wz) < h ||
-                gen.surfaceHeight(wx, wz + 1) < h ||
-                gen.surfaceHeight(wx, wz - 1) < h;
-              if (y <= h || !near) fail(`甘蔗不在临水浅岸 ${wx},${y},${wz} h=${h}`);
+              // 竹林把甘蔗列为普通地表植物（配置表 plants），不受临水甘蔗规则约束
+              if (biome === 'bamboo_grove') {
+                if (y !== h + 1) fail(`竹林甘蔗不在地表 ${wx},${y},${wz} h=${h}`);
+              } else {
+                const near = gen.surfaceHeight(wx + 1, wz) < h ||
+                  gen.surfaceHeight(wx - 1, wz) < h ||
+                  gen.surfaceHeight(wx, wz + 1) < h ||
+                  gen.surfaceHeight(wx, wz - 1) < h;
+                if (y <= h || !near) fail(`甘蔗不在临水浅岸 ${wx},${y},${wz} h=${h}`);
+              }
             } else if (name === 'fern') {
-              if (y !== h + 1 || !['plains', 'forest', 'taiga'].includes(biome)) {
+              if (y !== h + 1 || !['plains', 'forest', 'taiga', 'jungle',
+                'dark_forest', 'birch_forest', 'snowy_taiga'].includes(biome)) {
                 fail(`蕨不在草甸/森林/针叶林地表 ${wx},${y},${wz} ${biome}`);
               }
             }
@@ -341,7 +410,9 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   ok('大范围生成无明显性能退化', ms < 15000, `${ms} ms / ${(2 * R + 1) ** 2} 区块`);
 }
 
-// 3b) v1.4.1 自然植物：固定种子 ±7 区块内全部出现，且位置符合规则
+// 3b) v1.4.1 自然植物：固定种子 ±12 区块内全部出现，且位置符合规则
+// 11 → 18 群系扩展后 forest / taiga 域被新群系大幅细分，稀有植物需更大样本才能覆盖；
+// 与 Task 3 的可达性采样半径保持一致（seed 777，±12 区块）。
 {
   const { reg, gen } = make(777);
   const ids = Object.fromEntries(NATURAL_PLANTS.map((n) => [n, reg.byNameGet(n).id]));
@@ -349,7 +420,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   const counts = Object.fromEntries(NATURAL_PLANTS.map((n) => [n, 0]));
   const bad = [];
   const fail = (msg) => { if (bad.length < 12) bad.push(msg); };
-  const R = 7;
+  const R = 12;
 
   for (let cx = -R; cx <= R; cx++) {
     for (let cz = -R; cz <= R; cz++) {
@@ -365,7 +436,10 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
             const h = gen.surfaceHeight(wx, wz);
             const biome = gen.biomeAt(wx, wz);
             if (name === 'birch_log' || name === 'spruce_log') {
-              const okBiome = name === 'birch_log' ? biome === 'forest' : (biome === 'taiga' || biome === 'alpine');
+              // 白桦进入白桦林 / 暗林，云杉进入积雪针叶林
+              const okBiome = name === 'birch_log'
+                ? ['forest', 'birch_forest', 'dark_forest'].includes(biome)
+                : ['taiga', 'alpine', 'snowy_taiga'].includes(biome);
               if (!okBiome || y <= h) fail(`${name} 不在正确群系 ${wx},${y},${wz} ${biome}`);
             } else if (name === 'acacia_log' || name === 'acacia_leaves' ||
               name === 'cherry_log' || name === 'cherry_leaves') {
@@ -387,7 +461,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
               }
             } else if (name === 'sweet_berry_bush') {
               if (biome !== 'taiga' || y !== h + 1) fail(`甜浆果丛不在针叶林 ${wx},${y},${wz} ${biome}`);
-            } else if (y !== h + 1 || !['plains', 'forest', 'taiga'].includes(biome)) {
+            } else if (y !== h + 1 || !['plains', 'forest', 'taiga', 'jungle',
+              'snowy_taiga', 'birch_forest'].includes(biome)) {
               fail(`${name} 不在草甸/森林/针叶林地表 ${wx},${y},${wz} ${biome}`);
             }
           }
@@ -460,7 +535,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     JSON.stringify(counts));
 }
 
-// 3c-2) v1.6.0 新植物：±8 区块内全部出现，位置符合花圃 / 洞穴 / 水面规则
+// 3c-2) v1.6.0 新植物：±12 区块内全部出现，位置符合花圃 / 洞穴 / 水面规则
+// 11 → 18 群系扩展后新群系（含 snowy_tundra）需 ±12 区块才全部可达，采样半径同步扩大
 {
   const { reg, gen } = make(777);
   const ids = Object.fromEntries(NEW_NATURAL_PLANTS.map((n) => [n, reg.byNameGet(n).id]));
@@ -468,7 +544,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
   const counts = Object.fromEntries(NEW_NATURAL_PLANTS.map((n) => [n, 0]));
   const bad = [];
   const fail = (msg) => { if (bad.length < 12) bad.push(msg); };
-  const R = 8;
+  const R = 12;
 
   for (let cx = -R; cx <= R; cx++) {
     for (let cz = -R; cz <= R; cz++) {
@@ -484,8 +560,12 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
             const h = gen.surfaceHeight(wx, wz);
             const biome = gen.biomeAt(wx, wz);
             const rule = FLORA_RULES[name];
-            if (rule === 'cave') {
+            // 真菌林把荧光苔列为地表植物（配置表 plants），它同时仍是各群系洞穴植物
+            const surfaceGlowMoss = name === 'glow_moss' && biome === 'mushroom_grove' && y === h + 1;
+            if (rule === 'cave' && !surfaceGlowMoss) {
               if (!(y < h - 2)) fail(`${name} 不在深层洞穴 ${wx},${y},${wz} h=${h} ${biome}`);
+            } else if (surfaceGlowMoss) {
+              // 合法地表实例，放行
             } else if (rule === 'floating') {
               if (biome !== 'ocean' || y !== SEA_LEVEL + 1) {
                 fail(`${name} 不在海面 ${wx},${y},${wz} ${biome}`);
