@@ -19,7 +19,10 @@ export interface IWorldGenerator {
 
 export type BiomeId =
   | 'ocean' | 'beach' | 'desert' | 'plains' | 'forest' | 'taiga' | 'alpine'
-  | 'mesa' | 'swamp' | 'savanna' | 'cherry';
+  | 'mesa' | 'swamp' | 'savanna' | 'cherry'
+  // 11 → 18 群系扩展：仅在末尾追加，既有 11 项顺序不动（存档 / 诊断按字符串记录 biome 名）
+  | 'jungle' | 'snowy_tundra' | 'mushroom_grove' | 'bamboo_grove'
+  | 'dark_forest' | 'birch_forest' | 'snowy_taiga';
 
 /** 地表一列的自然属性（不依赖区块是否已生成） */
 export interface ColumnInfo {
@@ -68,6 +71,9 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   treeDensity: {
     plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05,
     mesa: 0, swamp: 0.1, savanna: 0.06, cherry: 0.3,
+    // 11 → 18 群系扩展：雪原 / 竹林无乔木，其余按设计表逐群系给值
+    jungle: 0.38, snowy_tundra: 0, mushroom_grove: 0.18, bamboo_grove: 0,
+    dark_forest: 0.45, birch_forest: 0.4, snowy_taiga: 0.3,
   },
   oreRichness: 1,
 };
@@ -323,6 +329,105 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     ],
     clayChance: 0, cactusChance: 0, caneChance: 0.02,
     trees: [{ species: 'cherry', weight: 1 }],
+  },
+
+  // ---------- 11 → 18 群系扩展（零新方块 id / 零新 tile） ----------
+  // 以下 7 项全部复用已注册方块，仅靠表层 / 填充 / 植物 / 树种组合做区分。
+  jungle: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'bamboo', weight: 0.03 }, { name: 'tall_fern', weight: 0.02 },
+      { name: 'vine', weight: 0.012 }, { name: 'fern', weight: 0.01 },
+      { name: 'moss_carpet', weight: 0.02 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.03,
+    trees: [{ species: 'oak', weight: 1 }],
+  },
+  snowy_tundra: {
+    surface: 'snow', filler: 'dirt',
+    plants: [
+      { name: 'snowdrop', weight: 0.01 }, { name: 'edelweiss', weight: 0.008 },
+      { name: 'snow_lily', weight: 0.006 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    // 新群系花圃权重按设计表口径取相对权重，总和 ≤ 1
+    flowerBeds: {
+      chance: 0.1, radius: 2,
+      plants: [
+        { name: 'snowdrop', weight: 0.5 }, { name: 'edelweiss', weight: 0.3 },
+        { name: 'snow_lily', weight: 0.2 },
+      ],
+    },
+  },
+  mushroom_grove: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'red_mushroom', weight: 0.02 }, { name: 'brown_mushroom', weight: 0.02 },
+      { name: 'moss_carpet', weight: 0.04 }, { name: 'glow_moss', weight: 0.02 },
+      { name: 'ivy', weight: 0.004 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'oak', weight: 1 }],
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
+  },
+  bamboo_grove: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'bamboo', weight: 0.06 }, { name: 'tall_grass', weight: 0.03 },
+      { name: 'sugar_cane', weight: 0.01 }, { name: 'vine', weight: 0.01 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0.04,
+  },
+  dark_forest: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'ivy', weight: 0.006 }, { name: 'moss_carpet', weight: 0.03 },
+      { name: 'red_mushroom', weight: 0.008 }, { name: 'brown_mushroom', weight: 0.008 },
+      { name: 'fern', weight: 0.012 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'oak', weight: 0.7 }, { species: 'birch', weight: 0.3 }],
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
+  },
+  birch_forest: {
+    surface: 'grass', filler: 'dirt',
+    plants: [
+      { name: 'fern', weight: 0.015 }, { name: 'tall_grass', weight: 0.03 },
+      { name: 'azure_bluet', weight: 0.008 }, { name: 'lily_of_the_valley', weight: 0.006 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'birch', weight: 1 }],
+  },
+  snowy_taiga: {
+    surface: 'podzol', filler: 'dirt',
+    plants: [
+      { name: 'snowdrop', weight: 0.01 }, { name: 'lingonberry_bush', weight: 0.012 },
+      { name: 'fern', weight: 0.02 }, { name: 'tall_fern', weight: 0.02 },
+    ],
+    clayChance: 0, cactusChance: 0, caneChance: 0,
+    trees: [{ species: 'spruce', weight: 1 }],
+    flowerBeds: {
+      chance: 0.1, radius: 2,
+      plants: [
+        { name: 'snowdrop', weight: 0.6 }, { name: 'lingonberry_bush', weight: 0.4 },
+      ],
+    },
+    cavePlants: [
+      // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
+      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+    ],
+    caveChance: 0.06,
   },
 };
 

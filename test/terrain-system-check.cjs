@@ -188,8 +188,23 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     gen.stageNames.join(' → '));
 
   const biomes = ['ocean', 'beach', 'desert', 'plains', 'forest', 'taiga', 'alpine',
-    'mesa', 'swamp', 'savanna', 'cherry'];
-  ok('群系配置表覆盖全部 11 个群系', biomes.every((b) => BIOME_PROFILES[b]));
+    'mesa', 'swamp', 'savanna', 'cherry',
+    // 11 → 18 群系扩展：仅在末尾追加 7 项，既有 11 项顺序不变
+    'jungle', 'snowy_tundra', 'mushroom_grove', 'bamboo_grove',
+    'dark_forest', 'birch_forest', 'snowy_taiga'];
+  const NEW_BIOMES = ['jungle', 'snowy_tundra', 'mushroom_grove', 'bamboo_grove',
+    'dark_forest', 'birch_forest', 'snowy_taiga'];
+  ok('群系配置表覆盖全部 18 个群系', biomes.length === 18 && biomes.every((b) => BIOME_PROFILES[b]));
+  ok('7 个新群系配置全部存在', NEW_BIOMES.every((b) => !!BIOME_PROFILES[b]));
+  ok('DEFAULT_TERRAIN.treeDensity 覆盖 7 个新群系键',
+    NEW_BIOMES.every((b) => b in DEFAULT_TERRAIN.treeDensity));
+  ok('5 个有林新群系树密度 > 0',
+    ['jungle', 'mushroom_grove', 'dark_forest', 'birch_forest', 'snowy_taiga']
+      .every((b) => DEFAULT_TERRAIN.treeDensity[b] > 0));
+  ok('新群系地貌特征：雪原雪面 / 竹林竹子 / 白桦林纯白桦',
+    BIOME_PROFILES.snowy_tundra.surface === 'snow' &&
+    BIOME_PROFILES.bamboo_grove.plants.some((p) => p.name === 'bamboo') &&
+    BIOME_PROFILES.birch_forest.trees.every((t) => t.species === 'birch'));
   ok('针叶林地表配置为灰化土', BIOME_PROFILES.taiga.surface === 'podzol');
   ok('浅海黏土 / 沙漠仙人掌 / 临水甘蔗都在配置表里',
     BIOME_PROFILES.ocean.clayChance > 0 &&
