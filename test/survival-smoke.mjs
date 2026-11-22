@@ -44,11 +44,15 @@ async function openPage(browser, mobile, url = URL_UNDER_TEST) {
   await page.waitForFunction('window.__mc !== undefined', { timeout: 25000 });
   // 固定种子：不同地形（悬崖/洞穴上方）会让光照增量更新的耗时差一个数量级，
   // 冒烟测试不应把随机世界当成变量。视觉回归同样使用 seed=2026。
-  await page.evaluate(() => {
+  await page.evaluate((mobile) => {
     localStorage.clear();
+    // 移动端默认横屏会在竖屏视口弹出 .rotate-hint 全屏遮罩（pointer-events:auto），
+    // 挡住摇杆/挖掘/拖动视角。本用例沿用竖屏视口与既有触摸坐标，显式关掉该实验开关；
+    // 横屏默认值本身由 test:options 覆盖，不在这里重复验证。
+    if (mobile) localStorage.setItem('minecraft-ts-options-v1', JSON.stringify({ landscapeMode: false }));
     sessionStorage.setItem('mc-ts-new-seed', '2026');
     sessionStorage.setItem('mc-ts-new-mode', 'survival');
-  });
+  }, mobile);
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 25000 });
   await sleep(500);
@@ -434,9 +438,16 @@ try {
   ok('挖掘进度条可见', barVisible);
   if (brokenId !== 0) brokenId = await page.evaluate((c) => window.__mc.world.getBlock(c.x, c.y, c.z), mineCell);
   ok('生存模式按住可破坏方块', brokenId === 0, `block=${brokenId}`);
-  ok('石头掉落为圆石', await page.evaluate(() => window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('cobblestone').id) >= 1));
+  // 可见掉落物有 0.4s 游戏时间的拾取延迟，软件渲染下 dt 钳制使游戏时间约为真实的一半，
+  // 固定 sleep 会偶发抢在拾取之前；改为按条件轮询（与上面的破坏等待同一口径）。
+  const cobbleId = await page.evaluate(() => window.__mc.registry.byNameGet('cobblestone').id);
+  const gotCobble = await page.waitForFunction(
+    (id) => window.__mc.survival.countKey('b:' + id) >= 1,
+    { timeout: 8000, polling: 100 }, cobbleId,
+  ).then(() => true).catch(() => false);
+  ok('石头掉落为圆石', gotCobble);
   ok('掉落自动补进快捷栏',
-    await page.evaluate(() => window.__mc.player.hotbar.slots.some((s) => s && s.kind === 'block' && s.id === window.__mc.registry.byNameGet('cobblestone').id)));
+    await page.evaluate((id) => window.__mc.player.hotbar.slots.some((s) => s && s.kind === 'block' && s.id === id), cobbleId));
 
   // ---- 放置：瞄准 3 格外的方块顶面，放下泥土 ----
   console.log('[smoke] placement setup');
