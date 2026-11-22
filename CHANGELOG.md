@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### 新增（群系扩展 · 2026-11-22）
+- **11 → 18 群系**：`BIOME_PROFILES` 与 `BiomeId` 末尾追加 7 个群系——jungle、snowy_tundra、mushroom_grove、bamboo_grove、dark_forest、birch_forest、snowy_taiga；全部复用现有方块（0 新 id / 0 新 tile），各自配置表层 / 填充 / 植物 / 树种 / 花圃 / 洞穴植物。
+- **气候级联**：`base()` 在旧 11 条谓词一字不改的前提下插入 7 条判定，代码注释留存逐条抢占台账；可达性实测 seed 777 需 ±12 区块（±192）覆盖全部 18 群系，未改气候阈值。
+- **botany 联动**：6 个既有插件植物（id 159~164）补 22 条新群系 spawn 权重，未加新植物 / 品系。
+- **已知限制**：frost_bloom 在雪原群系的权重被既有 frostline 规则衰减（本轮按范围锁定未改规则）。
+
+### 性能（mesher 热点 · 2026-11-22）
+- **Greedy 网格化提速 6.95×**：`mesher.ts` 内层循环标量化 + `meshTypes.ts` 几何缓冲 typed array 化（`packMesh` 用 `subarray(0,length)`）；本机 24 区块基准 142.561 → 20.505 ms/区块，输出 SHA-256 逐字节一致，`test:mesher` 61 项绿。
+- **新增 `verify:node`**：完整 verify 链去掉三个浏览器步骤、保留 `test:mobile`，本机可全绿；`p95<33ms @ 默认移动设置` 记为待浏览器验证目标（见 `docs/EXPERIMENTS.md` §9）。
+- B.3（合并两次全量扫描）因威胁逐字节一致且目标已超额达成，未执行。
+
 ### 新增（植物杂交品系 · minecraft-web-replica-botany）
 - **品系系统**：新模块 `src/world/plantStrains.ts`——品系是挂在既有植物方块上的数据层（生长耗能 / 开花阈值 / 采收产出 / 耐阴覆盖），不新增方块与物品注册；`STRAIN_ORDER` 存档顺序只允许末尾追加（与 `BIOME_IDS` 同纪律）。
 - **自然杂交**：成熟植株旁存在组合表匹配的另一株成熟植物、满足土壤养分 / 雨天条件且附近有空位时，随机刻小概率长出带品系的后代；全部随机走 Botany 确定性 rng。首批 5 条组合：大穗小麦、莓穗、藤莓、霜酿葡萄、金穗小麦（隐藏）。

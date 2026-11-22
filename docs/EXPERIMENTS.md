@@ -406,3 +406,44 @@ biome 过滤生效；`min/max` 控制 count ∈ [min,max]。
 - 确定性：两次结果相同；不同 source 有分布变化 ✓。
 - nightOnly：0.1→100，0.5→0；biome：desert→50，plains→0。
 - min~max：count=4,2,5,3,5,2（前 6 次）。
+
+---
+
+## 9. mesher 热点：标量化 Greedy 内层循环（E14，2026-11-22）
+
+本机浏览器不可用（见 §7），本实验是 **Node 快照基准 + 逐字节输出护栏**（不挂 `verify`，
+脚本 `test/mesher-hotspot-check.cjs`，命令 `npm run test:mesher-hotspot`）。基线数据先于任何
+优化记录并提交在 `test/mesher-hotspot-baseline.json`。
+
+**假设**：`meshChunk` 占 CPU 采样 90.6%，是玩家移动 / 传送时的主要开销；其 Greedy 内层循环里
+的可变坐标数组 `bb`、循环内可选调用 `src.isKnown?.()`、以及 `FACE_GEOMS` 未预存法线分量
+是可去除的常数成本。把这些成本标量 / 提升 / 预计算后，`meshChunk` 可提速 ≥1.5×，且输出不变。
+
+**对照**：优化前的生产路径（seed 2026，`cx=0..5, cz=0..3` 共 24 区块，`SnapshotMeshSource`
++ 与 `test/mesher-check.cjs::makeConfig` 相同的确定性 UV 替身，`greedy=true`，`mergeEmissive=true`，
+8 轮预热 + 8 轮计时），完整输出缓冲按固定通道 / 属性顺序拼成 Buffer 后取 SHA-256。
+
+**翻转方式**：三个独立子项，逐项跑护栏（hash 变化即回滚该子项）：
+1. `meshTypes.ts` 的 `GeoArrays` 放宽为 typed array，`packMesh` 用 `subarray(0,length)` 只打包已用前缀；
+   `newGeo()` 改为带容量倍增的 typed array。
+2. `mesher.ts` 的 `blockAt` 用局部标量 `bx/by/bz` 替代可变数组；`FACE_GEOMS` 预存 `nx/ny/nz`；
+   `isKnown` 提升到循环外。AO / 角点光 / mask key / `emitFace` 数学一字不改。
+3. 合并两次全量扫描（B.3）**未执行**——目标已超额达成，且该子项会改变特殊方块发射顺序、威胁逐字节一致。
+
+**判据**：
+- 输出 SHA-256 与基线完全一致（quad 顺序 + 全部顶点属性）；
+- `msPerChunk <= baseline.msPerChunk / 1.5`；
+- `test:mesher` 61 项、`test:mobile` 四项、`verify:node` 全绿。
+
+**原始数据（实测，本机口径）**：
+- 基线：`msPerChunk = 142.561`，hash `816ba4ba6eb4c6a5b0ef381077fe4ab191fa7e2d1e3154537998bfdbd8e8a5eb`。
+- 优化后：`msPerChunk = 20.505`，**6.95×**（阈值 ≤95.04 / 1.5×，超额达成），hash 不变。
+- 硬件 / 机器与 tuning 副本文档记录的 87.27 ms/区块不同，倍数按本机基线计算。
+
+**待验证目标**：用户关心的 `p95 帧时 < 33ms @ 默认移动设置` 是浏览器实景指标，本环境无可用浏览器
+无法测量；已降级为记录目标，留给 CI / 真机环境用 `test:smoke` + 帧时采样验证。Node 基准（6.95×）
+只是代理指标，不等价于帧时结论。
+
+**已知限制**：frost_bloom 在 snowy_tundra / snowy_taiga 的 spawn 权重被 `botanyContent.ts` 既有的
+frostline 规则衰减（spawn 后即枯死）——该规则属既有生态逻辑，本轮按范围锁定未改；若日后希望霜花
+在雪原存活，需单独一轮改规则。

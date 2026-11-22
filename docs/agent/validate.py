@@ -381,6 +381,14 @@ CHECKS = [
         and "test:mesher-hotspot" in pkg_scripts()
         and "verify:node" in pkg_scripts(),
     ),
+    (
+        "biome validate",
+        "集成：validate.py 覆盖 N/M 系列全部契约关键词",
+        lambda: all(k in read("docs/agent/validate.py") for k in (
+            "new biomes", "biome cascade", "botany spawn", "biome reachability",
+            "mesher baseline", "typed arrays", "mesher hotspot",
+        )),
+    ),
 ]
 
 
