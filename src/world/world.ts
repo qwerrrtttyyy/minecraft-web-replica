@@ -25,6 +25,9 @@ export class Chunk {
   generated = false;
   /** 光照是否已初始化 */
   lit = false;
+  /** 逻辑时间（秒）：创建 / 最近一次有意义访问，用于 LRU 驻留；不用 Date.now 以保证可复现 */
+  createdAt = 0;
+  lastTouch = 0;
   constructor(readonly cx: number, readonly cz: number) {}
   idx(x: number, y: number, z: number) {
     return (y * CS + z) * CS + x;
@@ -50,6 +53,12 @@ export class World {
   readonly dirty = new Set<string>();
   /** 天空光 / 方块光传播引擎（区块生成与方块变化时增量更新） */
   readonly light: LightEngine;
+  /** 逻辑时间（秒）：由 ChunkManager.update 每帧推进，是区块驻留策略的唯一时钟 */
+  time = 0;
+  /** 累计生成次数 / 卸载后再次生成的次数（用于"区块生存"效果基准） */
+  generatedCount = 0;
+  regeneratedCount = 0;
+  private everGenerated = new Set<string>();
   /** 编辑差分按 chunkKey 分桶，值为已解析的数值坐标：ensureChunk 不再逐条 split 字符串 */
   private editsByChunk = new Map<string, Map<string, BlockEdit>>();
   private bedrockId: BlockId;
@@ -95,6 +104,12 @@ export class World {
     this.cacheCx = Number.NaN;
   }
 
+  /** 标记区块被"有意义地访问"（网格调度 / 玩家编辑），刷新 LRU 时钟 */
+  touchChunk(cx: number, cz: number): void {
+    const chunk = this.chunks.get(chunkKey(cx, cz));
+    if (chunk) chunk.lastTouch = this.time;
+  }
+
   /** 记录一条玩家编辑，同时维护分桶索引（幂等：同坐标后写覆盖前写） */
   private recordEdit(k: string, id: BlockId): void {
     this.edits.set(k, id);
@@ -124,11 +139,16 @@ export class World {
     let chunk = this.chunks.get(key);
     if (!chunk) {
       chunk = new Chunk(cx, cz);
+      chunk.createdAt = this.time;
+      chunk.lastTouch = this.time;
       this.chunks.set(key, chunk);
       // M01：热路径缓存可能已把该 key 记成 null（未生成），插入后失效
       this.cacheCx = Number.NaN;
     }
     if (!chunk.generated) {
+      this.generatedCount++;
+      if (this.everGenerated.has(key)) this.regeneratedCount++;
+      else this.everGenerated.add(key);
       this.generator.generateChunk(cx, cz, chunk.data);
       // v1.6.0：世界生成扩展点。插件（JS / WASM）可在地形落地后改写列内容，
       // 发生在玩家编辑差分与光照初始化之前：编辑仍优先，新方块参与光照计算。
@@ -217,6 +237,7 @@ export class World {
     const cx = Math.floor(x / CS);
     const cz = Math.floor(z / CS);
     const chunk = this.ensureChunk(cx, cz);
+    this.touchChunk(cx, cz);
     const lx = x - cx * CS;
     const lz = z - cz * CS;
     const old = chunk.data[chunk.idx(lx, y, lz)];
@@ -251,6 +272,7 @@ export class World {
       const cx = Math.floor(x / CS);
       const cz = Math.floor(z / CS);
       const chunk = this.ensureChunk(cx, cz);
+      this.touchChunk(cx, cz);
       const lx = x - cx * CS;
       const lz = z - cz * CS;
       const idx = chunk.idx(lx, y, lz);

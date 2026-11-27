@@ -95,7 +95,7 @@ function compileRaw(bytes: Uint8Array, strict: boolean): WebAssembly.Module {
   validateModuleBytes(bytes);
   let mod: WebAssembly.Module;
   try {
-    mod = new WebAssembly.Module(bytes);
+    mod = new WebAssembly.Module(new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength));
   } catch (e) {
     throw new WasmKernelError('compile-failed', `WebAssembly 编译失败：${e instanceof Error ? e.message : String(e)}`);
   }

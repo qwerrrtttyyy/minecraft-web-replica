@@ -325,6 +325,70 @@ CHECKS = [
             "plant drops", "compost bin", "plant rule context",
         )),
     ),
+    # ---- 2026-11-22 双线扩展任务卡（N01~N03 / M01~M04）----
+    (
+        "new biomes",
+        "群系扩展：BiomeId 与 BIOME_PROFILES 覆盖新增 7 个群系",
+        lambda: all(n in read("src/world/generator.ts") for n in (
+            "jungle", "snowy_tundra", "mushroom_grove", "bamboo_grove",
+            "dark_forest", "birch_forest", "snowy_taiga",
+        )),
+    ),
+    (
+        "biome cascade",
+        "群系扩展：base() 级联含 7 条新判定且抢占台账留档",
+        lambda: all(f"'{n}'" in read("src/world/generator.ts") for n in (
+            "jungle", "snowy_tundra", "mushroom_grove", "bamboo_grove",
+            "dark_forest", "birch_forest", "snowy_taiga",
+        )) and "抢占" in read("src/world/generator.ts"),
+    ),
+    (
+        "botany spawn",
+        "群系扩展：6 个插件植物 spawn 含新群系权重",
+        lambda: all(n in read("src/plugins/builtin/botanyContent.ts") for n in (
+            "jungle", "snowy_tundra", "mushroom_grove", "bamboo_grove",
+            "dark_forest", "birch_forest", "snowy_taiga",
+        )),
+    ),
+    (
+        "biome reachability",
+        "群系扩展：可达性断言覆盖 18 个群系",
+        lambda: "777" in read("test/terrain-system-check.cjs") and all(
+            n in read("test/terrain-system-check.cjs") for n in (
+                "jungle", "snowy_tundra", "mushroom_grove", "bamboo_grove",
+                "dark_forest", "birch_forest", "snowy_taiga",
+            )),
+    ),
+    (
+        "mesher baseline",
+        "移动端：24 区块 SHA-256 基线与 p95 待验证目标已记录",
+        lambda: (ROOT / "test/mesher-hotspot-baseline.json").exists()
+        and "hash" in read("test/mesher-hotspot-baseline.json")
+        and "msPerChunk" in read("test/mesher-hotspot-baseline.json")
+        and "p95" in read("docs/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md"),
+    ),
+    (
+        "typed arrays",
+        "移动端：packMesh 支持 typed array 且只打包已用前缀",
+        lambda: "export type GeoArray" in read("src/world/meshTypes.ts")
+        and "subarray(" in read("src/world/meshTypes.ts")
+        and (ROOT / "test/mesh-typed-arrays-check.cjs").exists(),
+    ),
+    (
+        "mesher hotspot",
+        "移动端：mesher 热点护栏、基准脚本与 verify:node 已落地",
+        lambda: (ROOT / "test/mesher-hotspot-check.cjs").exists()
+        and "test:mesher-hotspot" in pkg_scripts()
+        and "verify:node" in pkg_scripts(),
+    ),
+    (
+        "biome validate",
+        "集成：validate.py 覆盖 N/M 系列全部契约关键词",
+        lambda: all(k in read("docs/agent/validate.py") for k in (
+            "new biomes", "biome cascade", "botany spawn", "biome reachability",
+            "mesher baseline", "typed arrays", "mesher hotspot",
+        )),
+    ),
 ]
 
 

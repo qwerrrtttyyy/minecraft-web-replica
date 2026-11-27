@@ -33,10 +33,14 @@ import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
 import { AIService } from './ai/AIService';
-import { pigBehavior, sheepBehavior, zombieBehavior, skeletonBehavior } from './ai/behaviors';
+import {
+  pigBehavior, sheepBehavior, zombieBehavior, skeletonBehavior,
+  creeperBehavior, spiderBehavior, squidBehavior,
+} from './ai/behaviors';
 import { DropManager } from './entity/droppedItem';
 import { buildBasketball } from './entity/models';
 import { canPickup, registerBasketball } from './entity/basketball';
+import { ArrowManager } from './entity/projectile';
 import { PrimedTnt } from './entity/tnt';
 import { FallingSystem } from './entity/falling';
 import { SoundEngine } from './audio/sound';
@@ -227,12 +231,14 @@ async function boot() {
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
   // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
   const workersParam = qs.get('workers');
+  const maxChunksParam = qs.get('maxChunks');
   // 实验对照：?emerge=0 保留 v1.5.1 的独立 emissive 通道（默认并入不透明通道）
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
     mergeEmissive: qs.get('emerge') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
+    maxChunks: maxChunksParam != null ? Number(maxChunksParam) : undefined,
     camera: engine.camera,
   });
   // 开发者设置：网格化线程（URL 调试参数优先，其次才看设置页）
@@ -248,11 +254,14 @@ async function boot() {
   entities.setAIService(aiService);
   // 篮球复用实体系统的 spawn / raycast / despawn（disposeModel 自动释放 GPU 资源）
   registerBasketball(entities, buildBasketball);
-  // 注册 4 种内置生物行为树（A08：行为与 v1.4.9 等价）
+  // 内置生物行为树：原有 4 种 + 内容更新新增 3 种
   aiService.registerType('pig', pigBehavior as any);
   aiService.registerType('sheep', sheepBehavior as any);
   aiService.registerType('zombie', zombieBehavior as any);
   aiService.registerType('skeleton', skeletonBehavior as any);
+  aiService.registerType('creeper', creeperBehavior as any);
+  aiService.registerType('spider', spiderBehavior as any);
+  aiService.registerType('squid', squidBehavior as any);
 
   // ---- 生存状态 ----
   const survival = new SurvivalState(events, registry, extensions);
@@ -281,6 +290,9 @@ async function boot() {
   const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
     survival, hotbar, entities, engine.scene, isMobile);
   player.dropManager = drops;
+  // 弓箭投射物：复用实体射线判定，命中走 Entity.hurt；网格几何共享，命中即回收
+  const arrows = new ArrowManager(engine.scene, atlas, world, entities, events, particles);
+  player.arrowManager = arrows;
   const botany = new Botany(world, registry, seed, events, { isMobile });
   player.setBotany(botany);
   // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
@@ -1188,6 +1200,7 @@ async function boot() {
     }
     falling.clear();
     drops.clear();
+    arrows.clear();
     input.enabled = false;
     input.reset();
     input.exitLock();
@@ -1329,6 +1342,9 @@ async function boot() {
         unlitChunks,
         meshQuads: chunks.meshStats.quads,
         meshChunks: chunks.meshStats.chunks,
+        resident: chunks.residentCount,
+        maxResident: chunks.maxResident,
+        regenerations: world.regeneratedCount,
       },
       plugins: plugins.list().map((p) => ({
         id: p.manifest.id,
@@ -1581,6 +1597,7 @@ async function boot() {
       input.pollGamepad(dt);
       // 掉落物只在 playing 推进 age / 物理 / 拾取；暂停时调用会直接返回
       drops.update(dt, player.pos, mode === 'playing');
+      arrows.update(dt, mode === 'playing');
       if (mode === 'playing') {
         player.update(dt);
         aiService.update(dt, { playerPos: player.pos, daylight: sky.daylight, playerDead: survival.dead });
@@ -1590,6 +1607,7 @@ async function boot() {
           playerDead: survival.dead,
           playing: mode === 'playing',
           hurtPlayer: (amount, cause) => survival.damage(amount, cause),
+          explode: (x, y, z, radius) => explode(x, y, z, radius),
         });
         // 篮球走近自动拾取（无地面掉落物系统的降级方案，Q3）
         for (const e of [...entities.entities]) {
@@ -1623,6 +1641,7 @@ async function boot() {
           playerDead: true,
           playing: false,
           hurtPlayer: () => false,
+          explode: () => {},
         });
       }
     },
@@ -1757,14 +1776,33 @@ async function boot() {
     if (mode === 'playing') openMenu();
   });
 
+  // M05：顶层资源释放（Worker / 网格几何 / 材质 / 渲染器）。
+  // bfcache 恢复的页面仍需要这些资源，因此 persisted=true 的 pagehide 不释放。
+  const teardown = () => {
+    diagnostics.dispose();
+    chunks.dispose();
+    engine.dispose();
+  };
+  addEventListener('pagehide', (e) => {
+    if (!(e as PageTransitionEvent).persisted) teardown();
+  });
+
   // ---- 内部调试钩子（自动化测试 / 控制台把玩用）----
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling,
+    botany, falling, arrows,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
+    dispose: teardown,
+    chunkStats: () => ({
+      generated: world.generatedCount,
+      regenerated: world.regeneratedCount,
+      resident: chunks.residentCount,
+      maxResident: chunks.maxResident,
+      time: world.time,
+    }),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
     openCrafting, closeCrafting,
   };

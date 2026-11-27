@@ -88,4 +88,12 @@ export interface GameEvents {
   'basketball:bounce': { id: number; x: number; y: number; z: number; strength: number };
   /**走近拾取篮球 */
   'basketball:pickup': { x: number; y: number; z: number };
+  // ---- 内容更新：弓箭 ----
+  /** 玩家射出箭矢（发射点，非落点） */
+  'bow:shoot': { x: number; y: number; z: number };
+  /** 箭矢命中：生物给出类型，方块给出坐标 */
+  'arrow:shoot': { x: number; y: number; z: number };
+  'arrow:hit':
+    | { kind: 'entity'; type: string }
+    | { kind: 'block'; x: number; y: number; z: number };
 }

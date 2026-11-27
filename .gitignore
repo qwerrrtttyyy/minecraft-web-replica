@@ -13,3 +13,25 @@ test/terrain-logic/
 *.log
 .DS_Store
 .env
+
+# 代理运行时 / 本地工具配置（非项目源码）
+.atomcode/
+.mcp.json
+
+# 工作区遗留材料（非项目源码，不纳入 lint / 版本控制）
+.agents/
+.chainguard/
+.claude/
+.kilo/
+.ef-plan.*
+agent/
+core/
+lua-5.5.0/
+lua55_bench.lua
+mcr-dl/
+preview/
+preview-voxel/
+teach/
+skills-lock.json
+MinecraftTS-*.zip
+minecraft-web-replica问题分析_精简版.txt

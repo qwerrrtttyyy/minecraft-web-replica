@@ -15,6 +15,8 @@ export interface PlantHarvest {
   /** 物品名，形如 item:nectar */
   item: string;
   count: number;
+  /** 品系附加产出（如莓穗额外掉一串甜浆果）；缺省无 */
+  extra?: PlantHarvest;
 }
 
 export interface PlantTrait {

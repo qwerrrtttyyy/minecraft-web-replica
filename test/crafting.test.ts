@@ -296,9 +296,9 @@ describe('装备配方', () => {
   const gridOf = (rows: string[], symbols: Record<string, string>) =>
     rows.join('').split('').map((c) => symbols[c] ?? null);
 
-  it('36 件装备各有配方，产物与 EQUIPMENT 一致', () => {
+  it('41 件装备各有配方，产物与 EQUIPMENT 一致（新增铜工具 4 + 铜锄 1）', () => {
     const equipRecipes = CRAFTING_RECIPES.filter((r) => !!EQUIPMENT[r.id]);
-    expect(equipRecipes.length).toBe(36);
+    expect(equipRecipes.length).toBe(41);
     for (const r of equipRecipes) {
       expect(r.result.material).toBe(`item:${r.id}`);
       expect(ITEMS[r.id]).toBeTruthy();

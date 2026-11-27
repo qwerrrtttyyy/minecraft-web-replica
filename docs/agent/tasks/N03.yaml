@@ -1,0 +1,22 @@
+id: N03
+title: 群系线验收与 evidence
+description: |
+  把 terrain-system-check.cjs 的可达性集合从 4 个扩到 18 个群系；
+  若 seed 777 ±7 区块不可达，先扩半径到 ±12 或加 seed 2026/1234，
+  禁止改气候阈值；在测试名里写明实际半径/种子。
+  最后跑 Node 全门与完整 verify，如实记录浏览器步骤 exit 1 阻塞。
+
+touch:
+  allow:
+    - test/terrain-system-check.cjs
+    - docs/agent/tasks/N03.yaml
+  deny:
+    - src/**
+    - docs/agent/validate.py
+    - docs/EXPERIMENTS.md
+
+outputs:
+  - biome reachability: seed 777、x/z=-192..192 step 4（±12 区块）18 个群系全部有地表实例（node test/terrain-system-check.cjs exit 0，PASS 100 组断言）；±7 区块时缺 ocean / snowy_tundra / snowy_taiga，仅扩采样半径，未改气候阈值或级联条件；测试名已写明 seed 与半径
+  - biome verify: 本 worktree 无 verify:node 脚本（由移动端线添加，未合入），已逐条跑 Node-only 命令链：32 条中 31 条 exit 0；test:logic:vitest 因环境性能基准（单区块 48.875ms > 40ms 阈值）exit 1，已在 base commit 90ccd6c 复现 114.6875ms > 40ms，属本机性能限制，完整 verify 中该项通过
+  - biome verify: 完整 npm run verify 实跑 exit 1，卡在 test:smoke，错误行 "Command '/usr/bin/chromium-browser' requires the chromium snap to be installed."（本机无可用浏览器，环境阻塞，已记录）
+  - biome validate: 集成后 python3 docs/agent/validate.py exit 0，26 张任务卡 FAIL 0 / WARN 0（N/M 关键词已由集成步骤补入 CHECKS）

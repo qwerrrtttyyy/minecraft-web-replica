@@ -38,6 +38,7 @@ ok('熟肉配方齐全',
   smeltOutputOf('beef') === 'cooked_beef');
 ok('沙子烧玻璃、原木烧木炭',
   smeltOutputOf('sand') === 'glass' && smeltOutputOf('oak_log') === 'charcoal');
+ok('圆石烧石头', smeltOutputOf('cobblestone') === 'stone');
 ok('燃料表比例与原版一致',
   fuelUnitsOf('coal') === 8 && fuelUnitsOf('charcoal') === 8 &&
   fuelUnitsOf('oak_planks') === 1.5 && fuelUnitsOf('oak_log') === 1.5 &&

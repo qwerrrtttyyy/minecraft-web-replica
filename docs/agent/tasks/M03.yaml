@@ -1,0 +1,21 @@
+id: M03
+title: Greedy 内层循环标量化
+description: |
+  mesher.ts：blockAt 的可变数组换局部标量 bx/by/bz；FACE_GEOMS 预存 nx/ny/nz；
+  src.isKnown?.() 提升到循环外。AO / 角点光 / mask key / emitFace 数学不改。
+  条件性合并两次全量扫描仅在 SHA-256 护栏仍一致时保留，否则回滚。
+  目标 msPerChunk <= 基线/1.5（≤58.2）；未达标但 hash 一致时如实记录实际倍数。
+
+touch:
+  allow:
+    - src/world/mesher.ts
+  deny:
+    - src/world/meshTypes.ts
+    - src/world/chunkManager.ts
+    - src/wasm/**
+    - package.json
+    - docs/agent/validate.py
+
+outputs:
+  - mesher hotspot: 24 区块基准提速 >=1.5× 或如实记录实际倍数，输出 SHA-256 与基线一致
+  - verify: npm run typecheck && node test/mesher-hotspot-check.cjs && npm run test:mesher && npm run test:mobile 全绿

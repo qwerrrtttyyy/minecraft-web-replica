@@ -46,6 +46,7 @@ const entries = [
   'src/world/blocks.ts',
   'src/world/botany.ts',
   'src/world/plantTraits.ts',
+  'src/world/plantStrains.ts',
   'src/world/plantRules.ts',
   'src/plugins/builtin/botanyContent.ts',
   'src/world/trees.ts',
@@ -55,6 +56,7 @@ const entries = [
   'src/world/noise.ts',
   'src/world/faces.ts',
   'src/world/meshTypes.ts',
+  'src/world/chunkRetention.ts',
   'src/world/mesher.ts',
   'src/world/meshSource.ts',
   'src/world/snapshotSource.ts',
@@ -79,17 +81,20 @@ const entries = [
   'src/ai/registry.ts',
   'src/ai/AIComponent.ts',
   'src/ai/AIService.ts',
+  // 内容更新：行为树配置与箭矢投射物（纯逻辑，不触碰 DOM）
+  'src/ai/behaviors.ts',
+  'src/entity/projectile.ts',
 ];
 
-const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
+const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');
 const args = [
+  '--ignoreConfig',
   '--module', 'commonjs',
-  '--moduleResolution', 'node',
+  '--moduleResolution', 'bundler',
   '--target', 'ES2020',
   '--lib', 'ES2020,DOM,DOM.Iterable',
   '--strict',
   '--skipLibCheck',
-  '--esModuleInterop', 'false',
   '--outDir', tmp,
   '--rootDir', 'src',
   '--noEmit', 'false',

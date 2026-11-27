@@ -21,8 +21,8 @@ export const INTERACTIVE_BLOCK = 'crafting_table';
 
 /** 材料组：配方里用 '#组名' 引用，组内任一材料都可满足该格 */
 export const CRAFTING_GROUPS: Record<string, string[]> = {
-  // 三种木板：合成工作台 / 木棍时任一木板均可
-  planks: ['oak_planks', 'birch_planks', 'spruce_planks'],
+  // 木板：合成工作台 / 木棍时任一木板均可（金合欢 / 樱花按末位追加）
+  planks: ['oak_planks', 'birch_planks', 'spruce_planks', 'acacia_planks', 'cherry_planks'],
 };
 
 /** 材料标识：方块名，或带 'item:' 前缀的物品名 */
@@ -58,6 +58,7 @@ const EQUIP_MATERIAL: Record<EquipMaterial, string> = {
   gold: 'item:gold_ingot',
   diamond: 'item:diamond',
   leather: 'item:leather',
+  copper: 'item:copper_ingot',
 };
 
 interface EquipTier {
@@ -72,6 +73,8 @@ const TOOL_TIERS: EquipTier[] = [
   { material: 'iron', prefix: 'iron', label: '铁' },
   { material: 'gold', prefix: 'golden', label: '金' },
   { material: 'diamond', prefix: 'diamond', label: '钻石' },
+  // 铜仅作为新材料种类接入，复用既有 4 工具模板；数值取石与铁之间
+  { material: 'copper', prefix: 'copper', label: '铜' },
 ];
 
 const ARMOR_TIERS: EquipTier[] = [
@@ -81,7 +84,7 @@ const ARMOR_TIERS: EquipTier[] = [
   { material: 'diamond', prefix: 'diamond', label: '钻石' },
 ];
 
-/** 由材质档位生成 36 条装备配方（id / 产物与 EQUIPMENT 保持一致） */
+/** 由材质档位生成 41 条装备配方（id / 产物与 EQUIPMENT 保持一致） */
 function equipmentRecipes(): Recipe[] {
   const out: Recipe[] = [];
   for (const tier of TOOL_TIERS) {
@@ -121,7 +124,7 @@ function equipmentRecipes(): Recipe[] {
  * 最小闭环：原木→木板→工作台，外加砂岩 / 石砖 / 木棍三条实用线。
  * 每条配方都刻意做成 2×2 以内的小配方，这样玩家的 2×2 个人合成格
  * 在拿到工作台之前就能先攒出工作台本身（详见 README 的玩法说明）。
- * E04 起追加 36 条装备配方（需要 3×3 工作台，2×2 个人格放不下）。
+ * E04 起追加 41 条装备配方（需要 3×3 工作台，2×2 个人格放不下）。
  */
 export const CRAFTING_RECIPES: Recipe[] = [
   {
@@ -142,6 +145,19 @@ export const CRAFTING_RECIPES: Recipe[] = [
     shapeless: ['spruce_log'],
     result: { material: 'spruce_planks', count: 4 },
   },
+  // 金合欢 / 樱花树种闭环：原木 → 木板，木板进入 #planks 组
+  {
+    id: 'acacia_planks',
+    label: '金合欢木板',
+    shapeless: ['acacia_log'],
+    result: { material: 'acacia_planks', count: 4 },
+  },
+  {
+    id: 'cherry_planks',
+    label: '樱花木板',
+    shapeless: ['cherry_log'],
+    result: { material: 'cherry_planks', count: 4 },
+  },
   {
     id: 'crafting_table',
     label: '工作台',
@@ -156,6 +172,27 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { S: 'sand' },
     result: { material: 'sandstone', count: 1 },
   },
+  // 砂岩家族：切制 / 錾制走 2×2 合成，平滑砂岩走熔炉（见 SMELT_RECIPES）
+  {
+    id: 'cut_sandstone',
+    label: '切制砂岩',
+    pattern: ['SS', 'SS'],
+    key: { S: 'sandstone' },
+    result: { material: 'cut_sandstone', count: 4 },
+  },
+  {
+    id: 'chiseled_sandstone',
+    label: '錾制砂岩',
+    shapeless: ['cut_sandstone', 'cut_sandstone'],
+    result: { material: 'chiseled_sandstone', count: 1 },
+  },
+  {
+    id: 'red_sandstone',
+    label: '红砂岩',
+    pattern: ['RR', 'RR'],
+    key: { R: 'red_sand' },
+    result: { material: 'red_sandstone', count: 1 },
+  },
   {
     id: 'stone_bricks',
     label: '石砖',
@@ -163,12 +200,40 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { C: 'cobblestone' },
     result: { material: 'stone_bricks', count: 1 },
   },
+  // 铜材料链：铜锭 ⇄ 铜块（3×3 工作台配方，可逆）
+  {
+    id: 'copper_block',
+    label: '铜块',
+    pattern: ['III', 'III', 'III'],
+    key: { I: 'item:copper_ingot' },
+    result: { material: 'copper_block', count: 1 },
+  },
+  {
+    id: 'copper_ingot',
+    label: '铜锭（铜块拆解）',
+    shapeless: ['copper_block'],
+    result: { material: 'item:copper_ingot', count: 9 },
+  },
   {
     id: 'stick',
     label: '木棍',
     pattern: ['P', 'P'],
     key: { P: '#planks' },
     result: { material: 'item:stick', count: 4 },
+  },
+  // 内容更新：弓箭闭环——蜘蛛线 + 木棍做弓；燧石 + 木棍 + 羽毛做 4 支箭（2×2 个人格可做）
+  {
+    id: 'bow',
+    label: '弓',
+    pattern: [' S ', 'STS', ' T '],
+    key: { S: 'item:string', T: 'item:stick' },
+    result: { material: 'item:bow', count: 1 },
+  },
+  {
+    id: 'arrow',
+    label: '箭',
+    shapeless: ['item:flint', 'item:stick', 'item:feather'],
+    result: { material: 'item:arrow', count: 4 },
   },
   {
     // 堆肥桶：2×2 个人合成格即可制作，保证生存模式能进入堆肥→施肥闭环
@@ -194,6 +259,14 @@ export const CRAFTING_RECIPES: Recipe[] = [
     result: { material: 'glow_torch', count: 2 },
   },
   ...equipmentRecipes(),
+  {
+    // 铜锄：既有档位模板没有锄，仅为铜单独补一条（与铜工具同一材料）
+    id: 'copper_hoe',
+    label: '铜锄',
+    pattern: ['MM', 'S ', 'S '],
+    key: { M: 'item:copper_ingot', S: 'item:stick' },
+    result: { material: 'item:copper_hoe', count: 1 },
+  },
   {
     // C01：煤炭 + 木棍 → 4 火把（1×2 竖排，2×2 个人合成格也放得下）
     id: 'torch_fuel',
