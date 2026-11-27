@@ -6,6 +6,8 @@ import type { CraftAPI } from '../api/CraftAPI';
 import type { BuiltinDeps } from '../plugins/builtin/deps';
 import type { WasmRuntime } from '../wasm/runtime';
 import type { WasmBytes } from './plugins/carriers/types';
+import type { PluginSaveBag } from './plugins/saveBag';
+import type { PanelHost } from './ui/PanelHost';
 
 /** 全局服务令牌：组装根 provide，插件与门面 require */
 export const TOKENS = {
@@ -16,6 +18,10 @@ export const TOKENS = {
   BuiltinDeps: token<BuiltinDeps>('builtin-deps'),
   /** v1.5.0：WASM 运行时（由组装根在世界生成前创建并注入） */
   Wasm: token<WasmRuntime>('wasm'),
+  /** A2-5：按世界存档的插件数据袋（SaveData.plugins） */
+  PluginSaveBag: token<PluginSaveBag>('plugin-save-bag'),
+  /** A2-5：插件 UI 宿主（暂停菜单面板 / HUD 锚点 / 快捷栏装饰） */
+  PanelHost: token<PanelHost>('panel-host'),
 };
 
 export interface Services {

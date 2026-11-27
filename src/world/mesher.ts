@@ -38,6 +38,7 @@ interface FaceGeom {
   face: FaceDef;
   uAxis: 0 | 1 | 2;
   vAxis: 0 | 1 | 2;
+  /** L 是深度轴：{uAxis, vAxis, dAxis} 恰好划分 {0,1,2}，dimD 由它取尺寸 */
   dAxis: 0 | 1 | 2;
   /** 预解构的法线分量：Greedy 每格都要用法向取邻居，避免循环内 destructuring */
   nx: number;
@@ -80,6 +81,14 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
 
 const isPlainCube = (def: MeshBlockDef) =>
   def.shape === 'cube' && !def.liquid && !def.transparentPass && def.lightEmission === 0;
+
+/** 盒几何 bounds：x0,y0,z0,x1,y1,z1（方块局部坐标） */
+type BoxBounds = [number, number, number, number, number, number];
+const FULL_BOUNDS: BoxBounds = [0, 0, 0, 1, 1, 1];
+/** 半高板（营火 / 灯笼）：底面贴地，顶面半格 */
+const SLAB_BOUNDS: BoxBounds = [0, 0, 0, 1, 0.5, 1];
+/** 细蜡烛：窄柱，半格高 */
+const CANDLE_BOUNDS: BoxBounds = [0.3125, 0, 0.3125, 0.6875, 0.5, 0.6875];
 
 function faceVisible(def: MeshBlockDef, neighbor: MeshBlockDef, knowable = true): boolean {
   // N4：邻居来源未知时，液体不能把「空气占位」当作真实空气而生成虚假水面。
@@ -247,6 +256,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   /**
+   * 可选来源可信度查询提升到入口：每个可见面都要问一次，
+   * 把可选链与属性读取从内层循环移到整块只做一次。缺省来源恒为可信。
+   */
+  // 注意：isKnown 是源对象上的方法（SnapshotMeshSource 会读 this.snapshot），
+  // 必须在入口 bind 一次；直接取出裸函数再调用会丢掉 this。
+  const isKnown = src.isKnown ? src.isKnown.bind(src) : () => true;
+
+  /**
    * 通道分配。默认把自发光并进不透明通道：它不需要光照 / 染色，
    * 用 aTint=2 告诉 shader 跳过光照，省下一份材质、一次 draw call 与一次几何。
    * mergeEmissive=false（?emerge=0）保留 v1.5.1 的独立 emissive 通道，仅作实验对照。
@@ -267,14 +284,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
     mutable.opaque ??= newGeo();
     return mutable.opaque;
   };
-
-  /**
-   * 可选来源可信度查询提升到入口：每个可见面都要问一次，
-   * 把可选链与属性读取从内层循环移到整块只做一次。缺省来源恒为可信。
-   * 注意：isKnown 是源对象上的方法（SnapshotMeshSource 会读 this.snapshot），
-   * 必须在入口 bind 一次；直接取出裸函数再调用会丢掉 this。
-   */
-  const isKnown = src.isKnown ? src.isKnown.bind(src) : () => true;
 
   /** 收集完成后把通道引用挂到对外契约上（类型放宽但运行时同一对象） */
   const publish = (): MeshOutput => {
@@ -326,6 +335,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
     precomputedAO?: Int32Array,
     precomputedSky?: Int32Array,
     precomputedBlock?: Int32Array,
+    bounds?: BoxBounds,
   ) => {
     const g = passFor(def);
     const tile = src.uv(tileFor(def, face));
@@ -337,13 +347,15 @@ export function meshChunk(src: MeshSource): MeshOutput {
     if (!precomputedSky) computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);
     const lowerWaterTop = def.liquid && !src.def(src.getId(bx, by + 1, bz)).liquid;
     const shade = face.shade;
+    // bounds 缺省为整立方体；slab / candle 用同一组 corners 缩放到子盒
+    const b = bounds ?? FULL_BOUNDS;
     for (let i = 0; i < 4; i++) {
       const c = face.corners[i];
-      qx[i] = bx + c[0];
-      let cy = c[1];
-      if (lowerWaterTop && cy === 1) cy -= 0.12;
-      qy[i] = by + cy;
-      qz[i] = bz + c[2];
+      qx[i] = bx + b[0] + (b[3] - b[0]) * c[0];
+      let yy = b[1] + (b[4] - b[1]) * c[1];
+      if (lowerWaterTop && c[1] === 1) yy -= 0.12;
+      qy[i] = by + yy;
+      qz[i] = bz + b[2] + (b[5] - b[2]) * c[2];
       qu[i] = cu(c[3]);
       qv[i] = cu(c[4]);
       qb[i] = shade * AO_LEVELS[ao[i]];
@@ -354,6 +366,24 @@ export function meshChunk(src: MeshSource): MeshOutput {
     }
     const flip = ao[0] + ao[2] < ao[1] + ao[3];
     pushQuad(g, tile, flip, quadSky, quadBlock, flagsFor(def));
+  };
+
+  /**
+   * 任意盒几何（slab / candle / 普通立方体兜底）：遍历六个面，
+   * 用面法向的相邻块做剔除，再带 bounds 输出。
+   * AO / 角点光照仍按面法向的相邻块采样，对子盒是合理近似。
+   */
+  const emitBox = (
+    bx: number, by: number, bz: number,
+    def: MeshBlockDef, bounds: BoxBounds,
+  ) => {
+    for (let fi = 0; fi < FACES.length; fi++) {
+      const face = FACES[fi];
+      const [nx, ny, nz] = face.normal;
+      const nid = src.getId(bx + nx, by + ny, bz + nz);
+      if (!faceVisible(def, src.def(nid), src.isKnown?.(bx + nx, by + ny, bz + nz) ?? true)) continue;
+      emitFace(bx, by, bz, def, face, undefined, undefined, undefined, bounds);
+    }
   };
 
   /** 交叉面片（草丛 / 花）：两片，每片正反各一次 */
@@ -413,12 +443,19 @@ export function meshChunk(src: MeshSource): MeshOutput {
     if (id === 0) return;
     const def = src.def(id);
     if (def.shape === 'cross') { emitCross(bx, by, bz, def); return; }
+    if (def.shape === 'slab' || def.shape === 'candle') {
+      const bounds = def.shape === 'slab' ? SLAB_BOUNDS
+      : def.shape === 'candle' ? CANDLE_BOUNDS
+        : FULL_BOUNDS;
+    emitBox(bx, by, bz, def, bounds);
+    } else {
     for (let fi = 0; fi < FACE_GEOMS.length; fi++) {
       const fg = FACE_GEOMS[fi];
       const face = fg.face;
       const nid = src.getId(bx + fg.nx, by + fg.ny, bz + fg.nz);
       if (!faceVisible(def, src.def(nid), isKnown(bx + fg.nx, by + fg.ny, bz + fg.nz))) continue;
       emitFace(bx, by, bz, def, face);
+    }
     }
   };
 
@@ -474,7 +511,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const def = src.def(id);
           if (!isPlainCube(def)) continue;
           const nid = src.getId(bx + nx, by + ny, bz + nz);
-          if (!faceVisible(def, src.def(nid), isKnown(bx + nx, by + ny, bz + nz))) continue;
+          if (!faceVisible(def, src.def(nid), isKnown(bx + nx, by + ny, bz + nz) ?? true)) continue;
           const ao = computeAOInto(src, bx, by, bz, face, def, aoCheck);
           // 角点光照（平滑光照）：4 个角点各取空气侧 4 格均值
           computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);

@@ -16,7 +16,7 @@ export type UVRect = [number, number, number, number];
 export interface MeshBlockDef {
   id: BlockId;
   name: string;
-  shape: 'cube' | 'cross';
+  shape: 'cube' | 'cross' | 'slab' | 'candle';
   opaque: boolean;
   cullSame: boolean;
   liquid: boolean;
@@ -93,17 +93,17 @@ export interface MeshSnapshot {
 }
 
 /**
+ * 收集期的几何数组：普通 number[]（逐面收集）或预分配 typed array（去 GC 路径）。
+ * 两者都能被 packMesh 直接消费；typed array 的多余容量由 GeoArrays.used 标出。
+ */
+export type GeoArray = number[] | Float32Array | Uint32Array;
+
+/**
  * 收集期的动态数组几何（顶点打包后的布局，每顶点 11 个 float）：
  * position(3) + uv(2) + shade(1) + light(2) + tile(2) + flags(1) = 44 字节。
  * 旧布局每顶点 15 个 float（60 字节），其中 color 三分量同值、tile 的 du/dv 全图集一致，
  * 纯冗余 —— 详见 docs/EXPERIMENTS.md 实验 E1。
  */
-/**
- * 收集期的几何数组：普通 number[]（历史路径）或预分配 typed array（去 GC 路径）。
- * 两者都能被 packMesh 直接消费；typed array 的多余容量由 GeoArrays.used 标出。
- */
-export type GeoArray = number[] | Float32Array | Uint32Array;
-
 export interface GeoArrays {
   positions: GeoArray;
   /** 局部 UV：普通面 0..1，合并面 0..w / 0..h（shader 内 fract 平铺） */
@@ -137,7 +137,10 @@ export interface GeoArrays {
   };
 }
 
-/** 收集期专用的窄类型：所有分量仍是普通 number[]，因此可 .push。 */
+/**
+ * 收集期专用的窄类型：所有分量仍是普通 number[]，因此可 .push。
+ * 结构上可从 MutableGeoArrays 赋值给 GeoArrays；packMesh 接受更宽的 GeoArrays。
+ */
 export type MutableGeoArrays = {
   [K in Exclude<keyof GeoArrays, 'used'>]: number[];
 };
@@ -150,7 +153,7 @@ export interface ChunkMeshData {
   water: GeoArrays | null;
 }
 
-/** 收集期窄类型：四通道都是 MutableGeoArrays，结构上可赋值给 ChunkMeshData。 */
+/** 同上：meshChunk 内部收集时四通道都是 MutableGeoArrays，返回时按 ChunkMeshData 兼容 */
 export type MutableChunkMeshData = {
   [K in keyof ChunkMeshData]: MutableGeoArrays | null;
 };
@@ -204,7 +207,13 @@ const geoView = (a: GeoArray, used?: number): ArrayLike<number> =>
 export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayBuffer[] } {
   const transfer: ArrayBuffer[] = [];
   const pack = (g: GeoArrays | null): PackedGeo | null => {
-    if (!g || (g.used?.indices ?? g.indices.length) === 0) return null;
+    if (!g) return null;
+    // 只有 typed array 才看 used.indices；普通 number[] 的 length 即已写入数，
+    // 即便调用方误填了 used.indices=0 也不能据此把真实几何当空通道丢掉。
+    const empty = isTypedArray(g.indices)
+      ? (g.used?.indices ?? g.indices.length) === 0
+      : g.indices.length === 0;
+    if (empty) return null;
     const p = new Float32Array(geoView(g.positions, g.used?.positions));
     const u = new Float32Array(geoView(g.uvs, g.used?.uvs));
     const s = new Float32Array(geoView(g.shade, g.used?.shade));

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, SEA_LEVEL, WORLD_HEIGHT, type BlockId, type System } from '../core/types';
 import type { EventService } from '../services/events';
-import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
+import { AIR, needsSupport, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { Input } from '../input/input';
@@ -19,6 +19,8 @@ import { INTERACTIVE_BLOCK } from './crafting';
 import { rollDrops } from '../world/drops';
 import { BALL } from '../entity/basketball';
 import { RANGED } from '../core/tuning';
+import type { ExtensionRegistry } from '../services/plugins/extensions';
+import { heldToolId, notifyUsedTool, resolveAttack, resolveMining, resolveUseItem } from './playerHooks';
 import {
   COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
 } from '../world/compost';
@@ -94,6 +96,11 @@ export class Player implements System, PhysicsBody {
   private patTimer = 0;
   private mineKey = '';
   private mineTime = 0.2;
+  /** 本次挖掘是否掉落（player:mining 可改写，如镐等级不足） */
+  private mineHarvest = true;
+  private mineToolId: string | null = null;
+  /** 玩家行为扩展点（player:use-item / mining / attack / used-tool）；组装根注入 */
+  extensions: ExtensionRegistry | null = null;
   private lastTapBreakAt = 0;
   private mineSoundAcc = 0;
   private mineIdle = 0;
@@ -185,7 +192,9 @@ export class Player implements System, PhysicsBody {
     if (stack.kind === 'block') {
       const def = this.registry.get(stack.id as BlockId);
       this.heldMesh = new THREE.Mesh(this.atlas.makeBlockGeometry(def), this.heldMaterial);
-      this.heldMesh.scale.setScalar(def.shape === 'cross' ? 0.34 : 0.30);
+      // 十字面植物用 0.34；蜡烛几何本身是窄柱，0.30 偏小，用 0.42 保住手持存在感
+      const heldScale = def.shape === 'cross' ? 0.34 : def.shape === 'candle' ? 0.42 : 0.30;
+      this.heldMesh.scale.setScalar(heldScale);
     } else {
       const item = ITEMS[stack.id as string];
       if (!item) return;
@@ -406,7 +415,7 @@ export class Player implements System, PhysicsBody {
     if (this.onGround && !this.wasGround) {
       // 约 3 格起算：v = sqrt(2 * 27 * 3) ≈ 12.7，避免 2 格小跳也掉血
       if (!this.inWater && this.fallVy > 12.7) {
-        this.survival.damage((this.fallVy - 12) * 0.75, '摔落');
+        this.survival.damage((this.fallVy - 12) * 0.75, '摔落', true, 'fall');
       }
       this.fallVy = 0;
     } else if (!this.onGround && this.vel.y < 0) {
@@ -512,6 +521,8 @@ export class Player implements System, PhysicsBody {
     this.mineIdle = 0;
     this.mineKey = '';
     this.mineTime = 0.2;
+    this.mineHarvest = true;
+    this.mineToolId = null;
     this.miningProgress = null;
     this.miningBlock = null;
   }
@@ -532,7 +543,7 @@ export class Player implements System, PhysicsBody {
     this.mineIdle = 0;
     if (key !== this.mineKey) {
       this.mineKey = key;
-      this.mineTime = Math.max(0.06, def.hardness * 1.1);
+      this.beginMining(def);
       this.miningProgress = 0;
       this.miningBlock = def;
       this.mineSoundAcc = 0;
@@ -541,6 +552,9 @@ export class Player implements System, PhysicsBody {
         this.resetMining();
         return;
       }
+    } else if (heldToolId(this.selectedStack()) !== this.mineToolId) {
+      // 挖到一半切换手持：按新工具重算耗时，已挖进度保留
+      this.beginMining(def);
     }
     this.miningProgress = Math.min(1, (this.miningProgress ?? 0) + dt / this.mineTime);
     this.mineSoundAcc += dt;
@@ -553,8 +567,17 @@ export class Player implements System, PhysicsBody {
     }
     if (this.miningProgress >= 1) {
       this.breakBlock();
+      notifyUsedTool(this.extensions, this.mineToolId, 'mine');
       this.resetMining();
     }
+  }
+
+  /** 开始挖一个方块：经 player:mining 结算耗时与是否掉落（无处理器时为徒手值） */
+  private beginMining(def: BlockDefinition) {
+    this.mineToolId = heldToolId(this.selectedStack());
+    const r = resolveMining(this.extensions, def, this.mineToolId);
+    this.mineTime = r.time;
+    this.mineHarvest = r.harvest;
   }
 
   /** 轻点破坏（移动端）：生存模式给一小段挖掘进度 */
@@ -586,8 +609,10 @@ export class Player implements System, PhysicsBody {
     const key = `${hit.x},${hit.y},${hit.z}`;
     if (key !== this.mineKey) {
       this.mineKey = key;
-      this.mineTime = Math.max(0.06, def.hardness * 1.1);
+      this.beginMining(def);
       this.miningProgress = 0;
+    } else if (heldToolId(this.selectedStack()) !== this.mineToolId) {
+      this.beginMining(def);
     }
     this.mineIdle = 0;
     this.miningProgress = Math.min(1, (this.miningProgress ?? 0) + 0.3 / this.mineTime);
@@ -596,6 +621,7 @@ export class Player implements System, PhysicsBody {
     this.swing();
     if (this.miningProgress >= 1) {
       this.breakBlock();
+      notifyUsedTool(this.extensions, this.mineToolId, 'mine');
       this.resetMining();
     }
   }
@@ -637,7 +663,7 @@ export class Player implements System, PhysicsBody {
     const color = this.atlas.avgColor(def.tiles.side);
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
-    this.collectDrops(def, hit.x, hit.y, hit.z);
+    if (this.mineHarvest) this.collectDrops(def, hit.x, hit.y, hit.z);
     if (bonus) this.survival.addDrop(bonus.item, bonus.count);
     // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
     // 未注入重力系统时保留旧的植物连带行为
@@ -646,7 +672,7 @@ export class Player implements System, PhysicsBody {
     } else {
       const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
       const above = this.registry.get(aboveId);
-      if (above.shape === 'cross') {
+      if (needsSupport(above.shape)) {
         this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
         this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
         this.collectDrops(above, hit.x, hit.y + 1, hit.z);
@@ -678,6 +704,8 @@ export class Player implements System, PhysicsBody {
     // 喂食：手持繁殖食物对准可繁殖成体；喂错材料静默走原流程
     if (this.tryFeedEntity()) return;
     const stack = this.selectedStack();
+    // 插件（如护甲右键穿戴）可声明已处理，截断默认放置 / 进食流程
+    if (stack && resolveUseItem(this.extensions, stack)) return;
     if (!stack) {
       // 空手右键可交互方块（如工作台）：交给上层打开对应界面
       if (this.tryInteract()) return;
@@ -808,6 +836,11 @@ export class Player implements System, PhysicsBody {
       this.events.emit('furnace:open', { x: hit.x, y: hit.y, z: hit.z });
       return true;
     }
+    // 营火：右键打开「直接烤」面板
+    if (def.name === 'campfire') {
+      this.events.emit('campfire:open', { x: hit.x, y: hit.y, z: hit.z });
+      return true;
+    }
     return false;
   }
 
@@ -847,7 +880,7 @@ export class Player implements System, PhysicsBody {
     if (existing.solid) return false;
     if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return false;
     if (def.id === AIR) return false;
-    if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return false;
+    if (needsSupport(def.shape) && !this.world.isSolidAt(x, y - 1, z)) return false;
     // 目标格已是同一方块时 setBlock 会返回 false：先拦住，否则扣了背包却没放下方块。
     // 火把 / 草丛这类非实心方块不会被上面的 existing.solid 挡住，所以这条必须存在。
     if (existing.id === def.id) return false;
@@ -952,8 +985,10 @@ export class Player implements System, PhysicsBody {
     if (this.attackTimer > 0) return;
     this.attackTimer = 0.55;
     this.swing();
-    const dmg = this.survival.isSurvival ? 3 : 999;
+    const toolId = this.survival.isSurvival ? heldToolId(this.selectedStack()) : null;
+    const dmg = this.survival.isSurvival ? resolveAttack(this.extensions, toolId, target.entity.type.id) : 999;
     target.entity.hurt(dmg, this.pos.x, this.pos.z);
+    notifyUsedTool(this.extensions, toolId, 'attack');
     this.survival.exhaust(0.1);
     this.sound.hit();
     // 命中确认：碎屑贴在被击者身上（世界空间生成），小幅度屏震不抢操作

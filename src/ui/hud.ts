@@ -1,11 +1,14 @@
-import type { BlockId, GameMode } from '../core/types';
+import { clamp, type BlockId, type GameMode } from '../core/types';
+import { WARMTH } from '../core/tuning';
 import type { MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
 import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
 import { CraftingPanel, type CraftingHost } from './crafting';
+import { CampfirePanel } from './campfire';
 import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
+import type { HudAnchor, SlotDecorator } from '../services/ui/PanelHost';
 
 /**
  * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
@@ -62,6 +65,8 @@ export interface HUDOptions {
   onShowClouds: (v: boolean) => void;
   /** 实验性玩法：方块重力 */
   onBlockGravity: (v: boolean) => void;
+  /** 实验性玩法：火焰蔓延 */
+  onFireSpread: (v: boolean) => void;
   /** 实验性玩法：透明通道距离排序 */
   onSortTransparent: (v: boolean) => void;
   /** 原版界面风格开关（默认开启，设置页「视频」分组） */
@@ -76,6 +81,8 @@ export interface HUDOptions {
   craftingHost: CraftingHost;
   /** 打开合成界面（from: 'game' = 游戏中，'menu' = 从菜单进入） */
   onCraftOpen: (from: 'game' | 'menu') => void;
+  /** 关闭营火界面（恢复输入 / 指针锁） */
+  onCampfireClose: (x: number, y: number, z: number) => void;
   onRespawn: () => void;
   onModeToggle: () => void;
   onExportSave: () => void;
@@ -100,6 +107,10 @@ const STAT_PATHS: Record<'heart' | 'hunger' | 'bubble', string> = {
   hunger: '<path d="M14.6 3.2a6.2 6.2 0 0 1 6.2 6.2c0 3.1-2.2 5.2-5.6 5.4l-4.4 4.4a2.7 2.7 0 1 1-3.8-3.8l4.4-4.4C13.6 7.6 14.4 5.3 14.6 3.2z"/>',
   bubble: '<circle cx="12" cy="12" r="7.4" fill="none" stroke-width="3.2"/>',
 };
+
+/** 温暖指示的火焰图标（像素风实心 + 深描边，与状态图标同一套渲染） */
+const WARMTH_FLAME_PATH =
+  'M12 2C14 5 9 6.5 9 10a3 3 0 0 0 6 0c0-1.5-1-2.5-1-2.5c2.5 1.2 4.5 3.5 4.5 6.5a7 7 0 1 1-14 0C4.5 8 9.5 5.5 12 2z';
 
 /** 设置页循环行的候选值：画质 / 网格化线程 / 自动保存间隔 */
 const QUALITY_CHOICES: { value: QualityMode; label: string }[] = [
@@ -149,6 +160,14 @@ export class HUD {
   private hotbarEl!: HTMLElement;
   private slotEls: HTMLElement[] = [];
   private slotCounts: HTMLElement[] = [];
+  // 插件 UI 宿主（PanelHost）的底层挂点：菜单按钮行 / HUD 锚点 / 快捷栏装饰器 / 通用面板
+  private menuBtnRow!: HTMLElement;
+  private anchors = new Map<HudAnchor, HTMLElement>();
+  private slotDecorators = new Set<SlotDecorator>();
+  private pluginOverlay!: HTMLElement;
+  private pluginTitle!: HTMLElement;
+  private pluginBody!: HTMLElement;
+  private pluginOnClose: (() => void) | null = null;
   private itemName!: HTMLElement;
   private debugEl!: HTMLElement;
   private hintEl!: HTMLElement;
@@ -165,6 +184,9 @@ export class HUD {
   private heartsRow!: HTMLElement;
   private hungerRow!: HTMLElement;
   private breathRow!: HTMLElement;
+  private warmthMeter!: HTMLElement;
+  private warmthFill!: HTMLElement;
+  private warmthGlow!: HTMLElement;
   private miningBar!: HTMLElement;
   private miningFill!: HTMLElement;
   private menuOverlay!: HTMLElement;
@@ -209,6 +231,7 @@ export class HUD {
   private mobSpawnRow?: HTMLButtonElement;
   private cloudsRow?: HTMLButtonElement;
   private gravityRow?: HTMLButtonElement;
+  private fireSpreadRow?: HTMLButtonElement;
   private sortRow?: HTMLButtonElement;
   private vanillaUIRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
@@ -221,6 +244,7 @@ export class HUD {
   private modeBtns: HTMLButtonElement[] = [];
   private menuModeBtn!: HTMLButtonElement;
   private crafting!: CraftingPanel;
+  private campfire!: CampfirePanel;
 
   hudHidden = false;
   private itemNameTimer = 0;
@@ -228,7 +252,7 @@ export class HUD {
   /** N5：自动保存提示单一定时器，连续触发不堆叠 */
   private savedNoteTimer = 0;
   private pips: HTMLElement[] = [];
-  private lastStats = { health: -1, hunger: -1, breath: -1, mode: '' as string };
+  private lastStats = { health: -1, hunger: -1, saturation: -1, breath: -1, warmth: -1, mode: '' as string };
   private selectedMode: GameMode = 'survival';
 
   constructor(opts: HUDOptions) {
@@ -250,6 +274,12 @@ export class HUD {
     // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
     this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
     this.root.appendChild(this.crafting.root);
+    this.buildPluginPanel();
+    // 营火面板与合成面板同级挂载，复用遮罩与层级
+    this.campfire = new CampfirePanel(
+      opts.craftingHost, opts.atlas, opts.registry, opts.onCampfireClose,
+    );
+    this.root.appendChild(this.campfire.root);
   }
 
   private icon(stack: Stack): string {
@@ -413,6 +443,10 @@ export class HUD {
     this.gameHud.appendChild(this.flashEl);
     this.hurtEl = h('div', 'hurt-flash');
     this.gameHud.appendChild(this.hurtEl);
+    // 温暖暖光：fixed 定位的暖色径向光晕，强度随 warmth（不拦截输入）
+    this.warmthGlow = h('div');
+    this.warmthGlow.id = 'warmth-glow';
+    this.gameHud.appendChild(this.warmthGlow);
 
     // 顶部按钮
     const topBar = h('div', 'top-buttons');
@@ -447,6 +481,15 @@ export class HUD {
     this.breathRow = mkRow('bubble');
     this.statsWrap.append(this.heartsRow, this.hungerRow, this.breathRow);
     this.breathRow.style.display = 'none';
+    // 轻量温暖指示：火焰小图标 + 细条，悬在生命行上方，不新增 10 格行
+    this.warmthMeter = h('div', 'warmth-meter');
+    const flame = h('span', 'warmth-flame');
+    flame.innerHTML = `<svg viewBox="0 0 24 24"><path d="${WARMTH_FLAME_PATH}"/></svg>`;
+    const bar = h('span', 'warmth-bar');
+    this.warmthFill = h('span', 'warmth-fill');
+    bar.appendChild(this.warmthFill);
+    this.warmthMeter.append(flame, bar);
+    this.statsWrap.appendChild(this.warmthMeter);
     this.statsWrap.style.display = 'none';
     this.gameHud.appendChild(this.statsWrap);
 
@@ -463,6 +506,13 @@ export class HUD {
     const hotbarWrap = h('div', 'hotbar-wrap');
     this.itemName = h('div', 'item-name');
     hotbarWrap.appendChild(this.itemName);
+    const anchorRow = h('div', 'hud-anchor-row');
+    for (const name of ['above-hotbar-left', 'above-hotbar-right'] as const) {
+      const el = h('div', `hud-anchor hud-anchor-${name}`);
+      this.anchors.set(name, el);
+      anchorRow.appendChild(el);
+    }
+    hotbarWrap.appendChild(anchorRow);
     this.hotbarEl = h('div', 'hotbar');
     for (let i = 0; i < 9; i++) {
       const slot = h('div', 'hotbar-slot');
@@ -542,7 +592,62 @@ export class HUD {
       this.slotCounts[i].textContent = cnt > 1 ? String(cnt) : '';
       this.slotEls[i].classList.toggle('selected', i === index);
       this.slotEls[i].classList.toggle('empty', !stack || (survival && cnt <= 0));
+      for (const fn of this.slotDecorators) {
+        try {
+          fn(this.slotEls[i], stack, i);
+        } catch (err) {
+          console.error('[hud] 快捷栏装饰器异常', err);
+        }
+      }
     }
+  }
+
+  // ---------- 插件 UI 挂点（经 PanelHost 暴露给插件） ----------
+
+  anchor(name: HudAnchor): HTMLElement {
+    const el = this.anchors.get(name);
+    if (!el) throw new Error(`[hud] 未知锚点: ${name}`);
+    return el;
+  }
+
+  addSlotDecorator(fn: SlotDecorator): () => void {
+    this.slotDecorators.add(fn);
+    this.updateHotbar();
+    return () => {
+      if (this.slotDecorators.delete(fn)) this.updateHotbar();
+    };
+  }
+
+  addMenuButton(label: string, onClick: () => void): () => void {
+    const b = this.mcButton(label, onClick);
+    this.menuBtnRow.appendChild(b);
+    return () => b.remove();
+  }
+
+  private buildPluginPanel() {
+    this.pluginOverlay = h('div', 'overlay plugin-panel-overlay');
+    const panel = h('div', 'mc-panel plugin-panel');
+    const head = h('div', 'crafting-head');
+    this.pluginTitle = h('div', 'panel-title');
+    head.append(this.pluginTitle, this.mcButton('关闭', () => this.pluginOnClose?.(), 'mc-btn-small'));
+    this.pluginBody = h('div', 'plugin-panel-body');
+    panel.append(head, this.pluginBody);
+    this.pluginOverlay.appendChild(panel);
+    this.pluginOverlay.style.display = 'none';
+    this.root.appendChild(this.pluginOverlay);
+  }
+
+  showPluginPanel(title: string, root: HTMLElement, onClose: () => void) {
+    this.pluginTitle.textContent = title;
+    this.pluginBody.replaceChildren(root);
+    this.pluginOnClose = onClose;
+    this.pluginOverlay.style.display = '';
+  }
+
+  hidePluginPanel() {
+    this.pluginOverlay.style.display = 'none';
+    this.pluginBody.replaceChildren();
+    this.pluginOnClose = null;
   }
 
   showItemName(label: string) {
@@ -613,13 +718,34 @@ export class HUD {
   // ---------- 生存状态 ----------
 
   /** 每帧调用；内部做变化检测，避免频繁重排 DOM */
-  setSurvival(s: { health: number; hunger: number; breath: number; mode: GameMode; dead: boolean } | null) {
+  setSurvival(s: { health: number; hunger: number; saturation: number; breath: number; warmth: number; mode: GameMode; dead: boolean } | null) {
     const survival = !!s && s.mode === 'survival';
     this.statsWrap.style.display = survival && !this.hudHidden ? '' : 'none';
-    if (!s || !survival) return;
+    if (!s || !survival) {
+      // 创造 / 无状态：暖光熄灭，温暖指示隐藏
+      this.warmthGlow.style.opacity = '0';
+      this.warmthMeter.classList.remove('show');
+      return;
+    }
     if (s.health === this.lastStats.health && s.hunger === this.lastStats.hunger &&
-      s.breath === this.lastStats.breath && s.mode === this.lastStats.mode) return;
-    this.lastStats = { health: s.health, hunger: s.hunger, breath: s.breath, mode: s.mode };
+      s.saturation === this.lastStats.saturation &&
+      s.breath === this.lastStats.breath && s.warmth === this.lastStats.warmth &&
+      s.mode === this.lastStats.mode) return;
+    this.lastStats = {
+      health: s.health, hunger: s.hunger, saturation: s.saturation,
+      breath: s.breath, warmth: s.warmth, mode: s.mode,
+    };
+
+    // 温暖表现：屏幕暖光强度 + 火焰细条 + 达标高亮（阈值来自 tuning）
+    const warmth = clamp(s.warmth ?? 0, 0, 100);
+    this.warmthGlow.style.opacity = (warmth / 100 * 0.35).toFixed(3);
+    this.warmthMeter.classList.toggle('show', warmth > 0.5);
+    this.warmthFill.style.width = `${warmth}%`;
+    this.warmthMeter.classList.toggle('warm', warmth >= WARMTH.regenThreshold);
+
+    // 饱和度视觉：有缓冲时暖色微光，耗尽时鸡腿变暗（互斥）
+    this.hungerRow.classList.toggle('satiated', s.saturation > 0);
+    this.hungerRow.classList.toggle('drained', s.saturation <= 0 && s.hunger > 0);
 
     const fill = (row: HTMLElement, value: number, max: number) => {
       const pips = [...row.children] as HTMLElement[];
@@ -681,6 +807,7 @@ export class HUD {
     btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
     btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
+    this.menuBtnRow = btnRow;
 
     const saveRow = h('div', 'menu-row');
     saveRow.appendChild(this.mcButton('导出存档', () => this.opts.onExportSave(), 'mc-btn-small'));
@@ -913,12 +1040,17 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     gamerules.appendChild(this.gravityRow);
+    this.fireSpreadRow = this.optionRow('火焰蔓延', () => {
+      this.opts.onFireSpread(!this.opts.getOptions().fireSpread);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.fireSpreadRow);
     this.sortRow = this.optionRow('透明排序', () => {
       this.opts.onSortTransparent(!this.opts.getOptions().sortTransparent);
       this.syncOptions(this.opts.getOptions());
     });
     gamerules.appendChild(this.sortRow);
-    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；后三项为渲染/玩法特性对照，全部立即生效并自动保存。'));
+    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；后四项为渲染/玩法特性对照，全部立即生效并自动保存。'));
 
     // ---- 开发者 ----
     const dev = group('开发者');
@@ -1031,6 +1163,7 @@ export class HUD {
     if (this.mobSpawnRow) this.setRowVal(this.mobSpawnRow, o.doMobSpawning ? '开' : '关', !o.doMobSpawning);
     if (this.cloudsRow) this.setRowVal(this.cloudsRow, o.showClouds ? '开' : '关', !o.showClouds);
     if (this.gravityRow) this.setRowVal(this.gravityRow, o.blockGravity ? '开' : '关', !o.blockGravity);
+    if (this.fireSpreadRow) this.setRowVal(this.fireSpreadRow, o.fireSpread ? '开' : '关', !o.fireSpread);
     if (this.sortRow) this.setRowVal(this.sortRow, o.sortTransparent ? '开' : '关', !o.sortTransparent);
     if (this.vanillaUIRow) this.setRowVal(this.vanillaUIRow, o.vanillaUI ? '开' : '关', !o.vanillaUI);
   }
@@ -1208,6 +1341,22 @@ export class HUD {
 
   get craftingOpen() {
     return this.crafting.isOpen;
+  }
+
+  // ---------- 营火（直接烤） ----------
+
+  /** 打开营火界面 */
+  showCampfire(x: number, y: number, z: number) {
+    this.campfire.show(x, y, z);
+  }
+
+  /** 关闭营火界面（输入 / 输出退回背包） */
+  hideCampfire() {
+    this.campfire.hide();
+  }
+
+  get campfireOpen() {
+    return this.campfire.isOpen;
   }
 
   // ---------- 死亡 ----------

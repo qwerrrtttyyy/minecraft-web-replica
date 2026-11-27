@@ -612,7 +612,7 @@ const validSave = () => ({
   edits: [['1,2,3', 5]],
   player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
   survival: {
-    health: 20, hunger: 20, breath: 15,
+    health: 20, hunger: 20, saturation: 20, breath: 15,
     inventory: [['i:apple', 2]], spawn: { x: 1, y: 2, z: 3 },
   },
   dayTime: 0.32,
@@ -648,11 +648,64 @@ ok('validateSave 拒绝损坏的生态字段', () => {
     assert.strictEqual(validateSave(d), false, `应拒绝生态坏档：${mutate.toString().slice(0, 50)}`);
   }
 });
+ok('饱和度为可选字段：缺失放行、越界拒绝', () => {
+  const noSat = validSave();
+  delete noSat.survival.saturation;
+  assert.strictEqual(validateSave(noSat), true, '旧档缺 saturation 应放行');
+  const bad = validSave();
+  bad.survival.saturation = 1e6;
+  assert.strictEqual(validateSave(bad), false, 'saturation 越界应拒绝');
+  const neg = validSave();
+  neg.survival.saturation = -1;
+  assert.strictEqual(validateSave(neg), false, 'saturation 负值应拒绝');
+});
 ok('旧档缺生态字段仍通过校验并补默认值', () => {
   const d = validSave();
   const normalized = normalizeSave(d);
   assert.strictEqual(normalized.dayCount, 0);
   assert.strictEqual(normalized.botany, undefined);
+});
+ok('validateSave 接受含熔炉字段的存档并保留', () => {
+  const d = validSave();
+  d.furnaces = {
+    v: 1,
+    cells: [
+      { pos: [1, 2, 3], input: ['beef', 3], fuel: ['coal', 2], output: ['cooked_beef', 1], burn: 12.5, burnMax: 80, progress: 4.2 },
+      { pos: [-17, 21, -9], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 },
+    ],
+  };
+  assert.strictEqual(validateSave(d), true);
+  const normalized = normalizeSave(d);
+  assert.strictEqual(normalized.furnaces.cells.length, 2);
+});
+ok('validateSave 拒绝结构损坏的熔炉字段', () => {
+  const bad = [
+    (d) => { d.furnaces = { v: 2, cells: [] }; },
+    (d) => { d.furnaces = { v: 1, cells: 'x' }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1.5, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, -1, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 81, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['beef', 0], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['beef', 1000], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['rock', 1], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: -1, burnMax: 0, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: -1, progress: 0 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: -0.5 }] }; },
+    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 61 }] }; },
+  ];
+  for (const mutate of bad) {
+    const d = validSave();
+    mutate(d);
+    assert.strictEqual(validateSave(d), false, `应拒绝熔炉坏档：${mutate.toString().slice(0, 50)}`);
+  }
+});
+ok('旧档缺熔炉字段仍通过校验', () => {
+  const d = validSave();
+  assert.strictEqual(d.furnaces, undefined);
+  assert.strictEqual(validateSave(d), true);
+  assert.strictEqual(normalizeSave(d).furnaces, undefined);
 });
 ok('validateSave 拒绝各类坏档', () => {
   const bad = [
@@ -683,6 +736,8 @@ ok('validateSave 拒绝各类坏档', () => {
     (d) => { d.player.z = -1e308; },
     (d) => { d.survival.spawn.y = 1e308; },
     (d) => { d.survival.health = 1e6; },
+    (d) => { d.survival.saturation = 1e6; },
+    (d) => { d.survival.saturation = -1; },
     (d) => { d.survival.breath = -1; },
   ];
   for (const mutate of bad) {
@@ -719,7 +774,7 @@ ok('M10 v2 存档缺失 mode 字段应拒绝（防静默模式切换）', () => 
   const v2NoMode = {
     version: 2, seed: 7, mode: undefined,
     edits: [], player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
-    survival: { health: 20, hunger: 20, breath: 15, inventory: [], spawn: { x: 1, y: 2, z: 3 } },
+    survival: { health: 20, hunger: 20, saturation: 20, breath: 15, inventory: [], spawn: { x: 1, y: 2, z: 3 } },
     dayTime: 0.3, hotbar: Array(9).fill(null), slot: 0,
     settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
     savedAt: 1,

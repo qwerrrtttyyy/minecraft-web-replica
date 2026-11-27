@@ -23,6 +23,8 @@ export const INTERACTIVE_BLOCK = 'crafting_table';
 export const CRAFTING_GROUPS: Record<string, string[]> = {
   // 木板：合成工作台 / 木棍时任一木板均可（金合欢 / 樱花按末位追加）
   planks: ['oak_planks', 'birch_planks', 'spruce_planks', 'acacia_planks', 'cherry_planks'],
+  // 五种原木：营火等配方任选一种原木
+  log: ['oak_log', 'birch_log', 'spruce_log', 'acacia_log', 'cherry_log'],
 };
 
 /** 材料标识：方块名，或带 'item:' 前缀的物品名 */
@@ -287,6 +289,21 @@ export const CRAFTING_RECIPES: Recipe[] = [
     label: '玫瑰果茶',
     shapeless: ['item:rose_hips', 'item:nectar'],
     result: { material: 'item:rose_tea', count: 2 },
+  },
+  {
+    // PR4 熔炉：8 个圆石围一圈（3×3 工作台）
+    id: 'furnace',
+    label: '熔炉',
+    pattern: ['CCC', 'C C', 'CCC'],
+    key: { C: 'cobblestone' },
+    result: { material: 'furnace', count: 1 },
+  },
+  {
+    // PR4 营火：3 圆石 + 3 任意原木 + 1 煤（无序，共 7 格材料，需要 3×3 工作台）
+    id: 'campfire',
+    label: '营火',
+    shapeless: ['cobblestone', 'cobblestone', 'cobblestone', '#log', '#log', '#log', 'item:coal'],
+    result: { material: 'campfire', count: 1 },
   },
 ];
 

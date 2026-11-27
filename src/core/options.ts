@@ -60,6 +60,8 @@ export interface Options {
   showClouds: boolean;
   /** 实验性玩法：方块重力（沙/砾石下落，关闭后悬空方块保持原位） */
   blockGravity: boolean;
+  /** 实验性玩法：火焰蔓延（关闭后火源不再引燃，已有火焰自然燃尽） */
+  fireSpread: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
   /** 原版界面风格（默认开启；已持久化的老用户配置仍被尊重） */
@@ -96,6 +98,7 @@ export const DEFAULT_OPTIONS: Options = {
   doMobSpawning: true,
   showClouds: true,
   blockGravity: true,
+  fireSpread: true,
   sortTransparent: true,
   vanillaUI: true,
 };
@@ -159,6 +162,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       doMobSpawning: bool(o.doMobSpawning, base.doMobSpawning),
       showClouds: bool(o.showClouds, base.showClouds),
       blockGravity: bool(o.blockGravity, base.blockGravity),
+      fireSpread: bool(o.fireSpread, base.fireSpread),
       sortTransparent: bool(o.sortTransparent, base.sortTransparent),
       vanillaUI: bool(o.vanillaUI, base.vanillaUI),
     };
@@ -203,6 +207,7 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     doMobSpawning: bool(base.doMobSpawning, DEFAULT_OPTIONS.doMobSpawning),
     showClouds: bool(base.showClouds, DEFAULT_OPTIONS.showClouds),
     blockGravity: bool(base.blockGravity, DEFAULT_OPTIONS.blockGravity),
+    fireSpread: bool(base.fireSpread, DEFAULT_OPTIONS.fireSpread),
     sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
     vanillaUI: bool(base.vanillaUI, DEFAULT_OPTIONS.vanillaUI),
   };

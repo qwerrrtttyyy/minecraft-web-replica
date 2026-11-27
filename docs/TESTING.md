@@ -1,4 +1,4 @@
-# 测试体系（v1.4.9）
+# 测试体系（v1.5.4）
 
 本项目的测试全部可离线运行：纯逻辑组不依赖浏览器 / three.js，浏览器组使用
 puppeteer-core + 自带 Chromium 的软件 WebGL。`npm run verify` 是唯一入口，
@@ -13,30 +13,45 @@ npm run verify
 | # | 命令 | 内容 | 依赖快照 |
 |---|---|---|---|
 | 1 | `npm run check:version` | `package.json` / `src/core/version.ts` / README 版本号一致 | — |
-| 2 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
-| 3 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
-| 4 | `npm run build` | 单文件 `dist/index.html` | — |
-| 5 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
-| 6 | `npm run test:logic` | 生存状态机（含确定性掉落） + 地形基础回归 | ✓ |
-| 7 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
-| 8 | `npm run test:ai` | 实体 AI：NodeStatus/Blackboard/TickContext 确定性 RNG、复合节点与装饰器、条件/动作节点、BehaviorTree JSON 编译、AIService 生命周期、4 种生物行为树冒烟回归 | ✓ |
-| 9 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
-| 10 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益 | ✓ |
-| 11 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验（含可选生态字段与坏档隔离） | ✓ |
-| 12 | `npm run test:diagnostics` | 运行时诊断组（健康快照 + 异常注入，含植物能量快照） | ✓ |
-| 13 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
-| 14 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
-| 15 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 15a | `npm run test:retention` | 区块驻留三层策略（视距必留 / 硬外沿 / LRU 上限 + 最短驻留）、来回走动重复生成仿真、配置版本竞态、chunk key 热路径解析 | ✓ |
-| 16 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 + 堆肥桶 / 肥料来源（id 110~118）+ 煤矿石掉落煤炭 / 内置方块总数 161（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4，最大 id 173） | ✓ |
-| 16a | `node test/content-update-check.cjs` | 内容更新：砂岩家族（id 170~173）末位追加 / 弓箭合成与熔炼闭环 / 三种新生物属性掉落与行为树 / 箭矢飞行、命中与生命周期 | ✓ |
-| 17 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住） | ✓ |
-| 18 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 | ✓ |
-| 19 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 | ✓ |
-| 19 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
-| 20 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端） | — |
-| 21 | `npm run test:options` | 设置页与选项持久化/行为回归 | — |
-| 22 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙） | — |
+| 2 | `npm run test:permtable` | 权限表与 `CraftAPI` 写入口一致性机械校验 | — |
+| 3 | `npm run wasm:check` | 内联 WASM 二进制完整性（构建产物校验） | — |
+| 4 | `npm run lint` | ESLint 静态门禁（语法硬错误 / no-explicit-any / 未使用变量） | — |
+| 5 | `npm run typecheck` | `tsc --noEmit`（strict） | — |
+| 6 | `npm run build` | 单文件 `dist/index.html` | — |
+| 7 | `npm run test:snapshot` | 从当前 TS 源码现场编译 CommonJS 快照 | — |
+| 8 | `npm run test:perf` | 火焰系统 tick 成本基准（`fireSpread` 开 / 关对照，超阈值即失败） | ✓ |
+| 9 | `npm run test:drop` | 可见掉落物：确定性散开 / 拾取半径与延迟 / 同类合并 / 超时与掉出世界 / 入水终端下沉与出水重力 / 暂停不推进 age | ✓ |
+| 10 | `npm run test:ai:vitest` | 实体 AI Vitest：NodeStatus / Blackboard / TickContext 确定性 RNG、复合节点与装饰器、BehaviorTree JSON 编译、AIService 生命周期 | — |
+| 11 | `npm run test:wasm` | WASM 层：ABI 与导出契约 / 逐位等价 / 运行时生命周期 / 权限裁剪 | ✓ |
+| 12 | `npm run test:plugin-v2` | 插件体系 v2：semver / manifest / 依赖 / 热重载 / 上下文 / 权限裁剪 | ✓ |
+| 13 | `npm run test:plugin-carrier` | 插件载体：js / wasm:module / wasm:host + ABI 校验 / 事件桥接 | ✓ |
+| 14 | `npm run test:review-fixes` | 代码审查修复回归（M/L 项，纯逻辑） | ✓ |
+| 15 | `npm run test:logic` | 纯逻辑主干：生存状态机 9 组 + 地形基础 23 组 + 篮球弹跳 / 拾取 76 项 | ✓ |
+| 16 | `npm run test:logic:vitest` | 生存状态机 + 地形基础 Vitest | — |
+| 17 | `npm run test:vitest` | Vitest 全量：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting（173 项） | — |
+| 18 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
+| 19 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益、slab / candle 盒几何、N4 未知来源液面 | ✓ |
+| 20 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 59 项（含可选生态 / 熔炉字段与坏档隔离） | ✓ |
+| 21 | `npm run test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 22 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
+| 23 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
+| 24 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
+| 25 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）+ 阶段管线 + 11 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 繁殖与植物特性 90 组 | ✓ |
+| 26 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住）+ 挖掘裂痕阶段 | ✓ |
+| 27 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 34 组 | ✓ |
+| 28 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 54 组 | ✓ |
+| 29 | `npm run test:botany-rules` | 生态扩展点：规则注册表 / 权限 / 植物 / 规则 / 生成选种 | ✓ |
+| 30 | `npm run test:crafting:vitest` | 合成系统 Vitest | — |
+| 31 | `npm run test:equipment` | 装备（武器 / 工具 / 护甲）回归 | ✓ |
+| 32 | `npm run test:smelting` | 远端熔炉烧炼 35 项 | ✓ |
+| 33 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端）125 项 | — |
+| 34 | `npm run test:options` | 设置页与选项持久化 / 行为回归 67 项 | — |
+| 35 | `npm run test:mobile` | 移动端组合：网格 / 旋转引导 / 手感 / 裂纹覆盖层 | ✓ |
+| 36 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙 / 移动端 UI 21 项） | — |
+| 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
+| 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
+| 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
+| 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
 
 ## 当前内容口径
 
@@ -69,15 +84,18 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   `pickupDelay` 边界、同类合并 / 异类不合并（`item:` 前缀口径）、超时与 `y<0` 消失、
   入水终端下沉 `-waterSink` 与水平 `exp(-8*dt)` 衰减、出水恢复重力，以及
   `DropManager.update(dt, pos, false)` 不推进 age（暂停期间掉落物不过期）。
-- **terrain-system**：方块是否末位追加（id 45~91；92~97 保留给插件；98~109 群系扩充；
-  110~118 堆肥桶；119 熔炉；120~147 新植物；148~158 内容植物扩充；159~164 留给插件植物，
-  165~169 为本次新增的铜 / 树种方块，最大 id 169）、`TERRAIN_STAGES` 顺序契约、
-  `BIOME_PROFILES` 是否覆盖 11 个群系（原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）
-  并驱动地表 / 装饰 / 树种 / 水下植物，以及黏土（浅海床）、灰化土（针叶林地表）、
-  仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、新花卉（草甸 / 森林 / 针叶林）、
-  白桦 / 云杉 / 金合欢 / 樱花（对应群系）、恶地彩色陶瓦层（`strata`）、沼泥、
-  海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）
-  且内置方块总数为 161（141 基线 + 内容植物扩充 11 + 铜 / 树种方块 5 + 砂岩家族 4，最大 id 173）。
+- **terrain-system**：方块是否末位追加（id 45~147，92~97 保留给插件；火光地基
+  174~177）、`TERRAIN_STAGES` 顺序契约、`BIOME_PROFILES` 是否覆盖 11 个群系
+  （原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）并驱动地表 / 装饰 / 树种 / 水下植物，
+  以及黏土（浅海床）、灰化土（针叶林地表）、仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、
+  新花卉（草甸 / 森林 / 针叶林）、白桦 / 云杉 / 金合欢 / 樱花（对应群系）、
+  恶地彩色陶瓦层（`strata`）、沼泥、海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）
+  的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）、35 种植物 id 57~91、
+  28 种花 id 120~147，且方块总数为 165（141 基线 + 内容植物扩充 11 + 火光地基 4）。
+| 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
+| 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
+| 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
+| 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
@@ -93,13 +111,31 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   生态状态存档 round-trip / 坏档隔离 / 柱状锚点清理。
 - **crafting-check**：配方表结构（id 唯一 / 有序与无序互斥 / 产物与数量，共 58 条）、有序配方的
   3×3 内偏移摆放、材料组 `#planks`、无序配方不放多余材料、L 形摆放不匹配、
-  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成；
-  另断言 41 件装备均有配方（含新增 copper 档 5 件）且产物与 `EQUIPMENT` 一致。
-- **smelting-check**：熔炼配方表（共 12 条，含 `cobblestone → stone`）、矿石 / 肉类 / 沙子 / 原木的产物映射、
-  燃料投放与不可燃物拒收、无燃料不推进、tick 进度与取锭入包、序列化 / 反序列化与坏档兜底、
-  负 dt 不推进。
+  2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成。
+- **smelting-check**：远端熔炉烧炼纯逻辑 35 项（配方 / 燃料表 / `putFuelFrom` 统一校验 /
+  扣背包 / 加燃料 / tick 状态机 / `serialize` 往返），已挂入 `verify`。
+| 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
+| 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
+| 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
+| 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
+- **vitest**：直接消费 `src` TS 源码的 Vitest 全量（`fire` / `warmth` / `campfire` /
+  `survival-saturation` / `ai` / `logic` / `terrain` / `crafting`），不依赖 CJS 快照，
+  已挂入 `verify`。
+- **test:mesher-hotspot**（`npm run test:mesher-hotspot`，**不挂 `verify`**）：生产路径输出护栏。
+  脚本先跑 `test:snapshot`，再用 seed 2026 的 24 区块（`SnapshotMeshSource` + Greedy 默认配置）
+  对打包后的四通道几何做 SHA-256，与 `test/mesher-hotspot-baseline.json` 比较；任何 quad 顺序或
+  顶点属性变化都会 FAIL（哈希漂移），同时打印 8 轮预热后的 ms/区块供性能对照。
+  `--record` 只在故意修改 fixture 时重记基线，不可用于让优化「过门禁」。
+- **test:wasm-choice**（`npm run test:wasm-choice`，**不挂 `verify`**）：后端自适应决策纯函数回归。
+  覆盖 `chooseNoiseBackend` 的更快 / 更慢 / 相等 / 阈值边界与非法输入回退 JS，
+  `resolveWasmMode` 的 `0 > force > experimental > 自适应` 优先级，以及 `NOISE_BENCH_SAMPLE`
+  逐值等于生成器真实调用组合。脚本先跑 `test:snapshot`，再用 Node 直接执行
+  `test/wasm-backend-choice-check.cjs`。
+- **test:mesh-typed-arrays**（`npm run test:mesh-typed-arrays`，**不挂 `verify`**）：`packMesh`
+  对预分配 typed array 只打包 `GeoArrays.used` 标出的前缀，尾部容量不入几何，且与 `number[]`
+  版本逐字节一致；防止几何输出护栏被 typed-array 化破坏。
 - **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
   manifest 防篡改）、级联停用、存档校验。
 - **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含
@@ -110,6 +146,12 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   固定种子 / 相机 / 区块集合，换最小系统组并冻结水面与天空相位，同页翻转变量后比对
   帧率 / draw call / 逐通道 mesh 与顶点字节 / 归一化像素签名；自带 12 项有效性闸门
   （含「噪声底必须为零」），失败非零退出。设置与数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
+- **hooks-check**（`npm run test:hooks`，A2-5）：护甲 / 工具闭环的核心通用接口。
+  `DamageKind` 透传到 `combat:damage-incoming` 与 `survival:damage`（溺水 / 饥饿内部标注）；
+  `player:use-item / mining / attack / used-tool` 无插件时逐项等于旧值（挖掘 `max(0.06, hardness×1.1)`、
+  徒手伤害 3、不截断右键），注册可改写、卸载复原、异常处理器隔离；`SaveData.plugins?`
+  旧档 / 新档校验与 `PluginSaveBag` 的 `save:collect / save:restore` 往返；`PanelHost`
+  注册 / 打开 / 关闭回源 / 注销与创造模式拒开。
 - **experiment-gameplay**（`npm run test:experiment-gameplay`，**不挂 `verify`**）：玩法/生存机制实验（node 实景）：
   生存状态机经济与死亡阈值 / 生态随机刻节奏 / 实体攻击+射线 / 确定性掉落 / 脱困解算。
   脚本 `test/experiment-gameplay.cjs`，设置与实测数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
@@ -155,6 +197,17 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 - 断言必须用 `waitForFunction` / 条件轮询等待世界收敛，禁止固定长 sleep。
 - 截图与 `results.json` 写入 `test/artifacts/`（已 gitignore）。
 
+**触控 / 方向断言的依赖**：`test:smoke` 与 `test:options` 里的触控与横屏用例依赖
+Chromium 的触控合成（`touchscreen.touchStart/Move/End`）与 `screen.orientation.lock`。
+本机（Xvfb + 自带 Chromium）在 v1.5.4 的这轮 rebase 后全链通过（`test:smoke` 125/125、
+`test:options` 67/67、`test:visual` 21/21），说明这两项能力已由脚本内的显式仿真覆盖；
+若换到裁剪过的浏览器构建上它们报错，应先比对 `origin/main` 同版本的输出再判断是否为回归。
+
+预期计数以脚本实际输出为准（`合计 N 项，失败 M 项` / `设置页测试：X/Y 通过`）。
+
+另：`npm run test:perf`（火焰开 / 关的 `FireSystem` tick 成本回归守卫，依赖 `test:snapshot` 产物）
+已插入 `verify` 链的 `test:snapshot` 之后。
+
 ## 新增测试的硬规则
 
 1. 纯逻辑优先：能放进 Node 的规则不要放进浏览器组。
@@ -170,6 +223,10 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
    `Math.random()`；确定性硬规则只管掉落判定，既有 AI 游荡 / 生成坐标的 `Math.random()`
    不在本轮范围。新增掉落规则同时更新 `test:drop`。
 8. 图集新增纹理（含新物品 tile）必须追加在全部既有 painter 之后，既有 tile 索引不变；
-   方块 id 只追加；当前内置方块总数 161（141 基线 + 内容植物扩充 11 + 铜 / 树种方块 5 + 砂岩家族 4，
-   最大 id 173；159~164 留给插件植物）。新增方块 / 纹理后同步更新
-   `test:terrain-system` 的 id / tile 断言、本文「当前内容口径」与对应测试组描述。
+   方块 id 只追加，内容体系本轮不新增方块；合并后总数为 156（原 141 基线 + 内容植物扩充 11
+   + 火光地基 4，内置 id 到 177，火光地基 174~177）。新增方块 / 纹理后同步更新
+   `test:terrain-system` 的 id / tile 断言与本文。
+| 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
+| 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
+| 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
+| 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |

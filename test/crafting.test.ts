@@ -355,3 +355,84 @@ describe('内容配方', () => {
     expect(r?.key.S).toBe('item:stick');
   });
 });
+
+// ---- 14. PR4 熔炉 / 营火配方 ----
+describe('熔炉与营火配方', () => {
+  it('8 个圆石围一圈 → 熔炉', () => {
+    const cells = grid(3);
+    const ring: Array<[number, number]> = [
+      [0, 0], [1, 0], [2, 0],
+      [0, 1], [2, 1],
+      [0, 2], [1, 2], [2, 2],
+    ];
+    for (const [col, row] of ring) put(cells, 3, col, row, blk('cobblestone'));
+    const m = matchOf(cells, 3);
+    expect(m?.recipe.id).toBe('furnace');
+    expect(m?.recipe.result.material).toBe('furnace');
+    expect(m?.recipe.result.count).toBe(1);
+    expect(reg.byNameGet('furnace')?.id).toBe(id('furnace'));
+  });
+
+  it('9 个圆石（中间也放）不匹配熔炉', () => {
+    const cells = grid(3);
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) put(cells, 3, col, row, blk('cobblestone'));
+    expect(matchOf(cells, 3)).toBeNull();
+  });
+
+  it('3 圆石 + 3 橡木原木 + 1 煤 → 营火', () => {
+    const cells = grid(3);
+    put(cells, 3, 0, 0, blk('cobblestone'));
+    put(cells, 3, 1, 0, blk('cobblestone'));
+    put(cells, 3, 2, 0, blk('cobblestone'));
+    put(cells, 3, 0, 1, blk('oak_log'));
+    put(cells, 3, 1, 1, blk('oak_log'));
+    put(cells, 3, 2, 1, blk('oak_log'));
+    put(cells, 3, 0, 2, 'item:coal');
+    const m = matchOf(cells, 3);
+    expect(m?.recipe.id).toBe('campfire');
+    expect(m?.recipe.result.material).toBe('campfire');
+    expect(reg.byNameGet('campfire')?.id).toBe(id('campfire'));
+  });
+
+  it('材料组 #log：白桦 / 云杉原木也能合成营火', () => {
+    for (const log of ['birch_log', 'spruce_log']) {
+      const cells = grid(3);
+      put(cells, 3, 0, 0, blk('cobblestone'));
+      put(cells, 3, 1, 0, blk('cobblestone'));
+      put(cells, 3, 2, 0, blk('cobblestone'));
+      put(cells, 3, 0, 1, blk(log));
+      put(cells, 3, 1, 1, blk(log));
+      put(cells, 3, 2, 1, blk(log));
+      put(cells, 3, 0, 2, 'item:coal');
+      expect(matchOf(cells, 3)?.recipe.id).toBe('campfire');
+    }
+  });
+
+  it('营火缺煤 / 缺圆石都不匹配', () => {
+    const noCoal = grid(3);
+    put(noCoal, 3, 0, 0, blk('cobblestone'));
+    put(noCoal, 3, 1, 0, blk('cobblestone'));
+    put(noCoal, 3, 2, 0, blk('cobblestone'));
+    put(noCoal, 3, 0, 1, blk('oak_log'));
+    put(noCoal, 3, 1, 1, blk('oak_log'));
+    put(noCoal, 3, 2, 1, blk('oak_log'));
+    expect(matchOf(noCoal, 3)).toBeNull();
+
+    const noStone = grid(3);
+    put(noStone, 3, 0, 0, blk('oak_log'));
+    put(noStone, 3, 1, 0, blk('oak_log'));
+    put(noStone, 3, 2, 0, blk('oak_log'));
+    put(noStone, 3, 0, 1, blk('oak_log'));
+    put(noStone, 3, 1, 1, blk('oak_log'));
+    put(noStone, 3, 2, 1, blk('oak_log'));
+    put(noStone, 3, 0, 2, 'item:coal');
+    expect(matchOf(noStone, 3)).toBeNull();
+  });
+
+  it('营火配方的材料标识可被 materialToStack 解析', () => {
+    const coal = materialToStack('item:coal', reg);
+    expect(coal?.kind).toBe('item');
+    expect(coal?.id).toBe('coal');
+    expect(ITEMS.coal).toBeTruthy();
+  });
+});

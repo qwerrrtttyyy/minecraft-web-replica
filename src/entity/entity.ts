@@ -13,6 +13,7 @@ import { ANIMALS, BREED, NEW_MOBS, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
 import { BALL, bounceVy, rollFriction } from './basketball';
+import { isFireNear } from '../world/fire';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -51,7 +52,7 @@ export interface EntityType {
 export interface EntityContext {
   playerPos: THREE.Vector3;
   /** 对玩家造成伤害，返回是否命中 */
-  hurtPlayer(amount: number, cause: string): boolean;
+  hurtPlayer(amount: number, cause: string, kind?: 'attack'): boolean;
   /** 0~1 日照强度 */
   daylight: number;
   playerDead: boolean;
@@ -202,7 +203,12 @@ export class Entity implements PhysicsBody {
       if (ai.blackboard.get<boolean>('wantAttack') === true && ctx && !ctx.playerDead) {
         const dy = Math.abs(ctx.playerPos.y - this.pos.y);
         const dist = Math.hypot(ctx.playerPos.x - this.pos.x, ctx.playerPos.z - this.pos.z);
-        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
+        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
+          this.attackCooldown = 1.05;
+          ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
+          this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+          this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+        }
         ai.blackboard.set('wantAttack', false);
       }
     } else {
@@ -215,7 +221,13 @@ export class Entity implements PhysicsBody {
           moving = true;
           speed = this.type.speed * (dist > 2.2 ? 1.45 : 1.1);
           const dy = Math.abs(ctx.playerPos.y - this.pos.y);
-          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
+          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
+            this.attackCooldown = 1.05;
+            ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
+            // 攻击前扑
+            this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+            this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+          }
         }
       }
     }
@@ -477,7 +489,7 @@ export class EntityManager {
   despawn(e: Entity) {
     const i = this.entities.indexOf(e);
     if (i >= 0) this.entities.splice(i, 1);
-    this.aiService?.detach?.(e as any);
+    this.aiService?.detach?.(e);
     this.scene.remove(e.model.group);
     // 模型材质/几何是每个实例新建的，离场时必须释放，否则反复刷新种群会持续泄漏 GPU 资源
     disposeModel(e.model.group);
@@ -528,6 +540,8 @@ export class EntityManager {
       const top = this.world.getBlock(x, h, z);
       const above = this.world.getBlock(x, h + 1, z);
       if (this.world.registry.get(top).name === 'grass' && above === 0 && h > 31) {
+        // 火焰蔓延（PR3）：落点附近 3 格内有火 / 营火则本次尝试失败，避免刷怪送死
+        if (isFireNear(this.world, x, h + 1, z, 3)) continue;
         const type = typeId ?? this.pickPassiveType();
         this.spawn(type, x + 0.5, h + 1.05, z + 0.5);
         return true;

@@ -26,6 +26,7 @@ export const SMELT_RECIPES: Record<string, string> = {
   porkchop: 'cooked_porkchop',
   beef: 'cooked_beef',
   cobblestone: 'stone',
+  rabbit_meat: 'cooked_rabbit',
 };
 
 /** 燃料表：燃料可烧炼的物品件数（原版比例） */
@@ -41,6 +42,8 @@ export const FUEL_UNITS: Record<string, number> = {
   spruce_log: 1.5,
   acacia_log: 1.5,
   cherry_log: 1.5,
+  crafting_table: 1.5,
+  bookshelf: 1.5,
   stick: 0.5,
 };
 

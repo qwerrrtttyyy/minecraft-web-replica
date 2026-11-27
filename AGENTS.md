@@ -27,18 +27,22 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 |---|---|
 | `check:version` | 双轨版本号格式、`package.json` / `version.ts` / README 三处一致、源码禁硬编码版本字面量 |
 | `test:snapshot` | 由 `scripts/build-test-snapshot.mjs` 用项目自己的 `tsc` 编译 `test/logic/`、`test/terrain-logic/` |
-| `test:logic` | 生存状态机 8 组 + 地形基础 23 组 |
+| `test:logic` | 生存状态机 9 组 + 地形基础 23 组 + 篮球弹跳 / 拾取 76 项 |
+| `test:vitest` | Vitest 全量（直接消费 `src` TS）：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting |
 | `test:light` | 天空光 / 方块光 21 项 |
-| `test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例 |
-| `test:services` | 服务容器 / 事件 / 插件 / 存档 38 项 |
-| `test:diagnostics` | 运行时诊断 20 组（健康快照 + 异常注入） |
+| `test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例、slab / candle 盒几何、N4 未知来源液面 |
+| `test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
+| `test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
+| `test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入） |
 | `test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
-| `test:terrain-system` | 方块扩充（id 45~119）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 42 组 |
+| `test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 11 群系、90 组 |
 | `test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 / 攀爬 / 发光植物 34 组 |
-| `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 32 组 |
-| `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 43 组 |
-| `test:smoke` | Chromium 实景（桌面 + 移动端），产物写 `test/artifacts/` |
+| `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 54 组 |
+| `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 94 项 |
+| `test:smelting` | 远端熔炉烧炼纯逻辑 35 项（配方 / 燃料 / `putFuelFrom` / tick / 序列化） |
+| `test:smoke` | Chromium 实景（桌面 + 移动端）125 项，产物写 `test/artifacts/` |
+| `test:mobile` | 移动端组合：mesher + 旋转引导 + 手感 + 裂纹覆盖层 |
 | `test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块墙 / 天穹 |
 
 **执行顺序**：`test:snapshot` 必须先于全部 `require` 快照的纯逻辑测试
@@ -76,6 +80,18 @@ src/
     ├── builtin/       默认启用的内置插件（autosave / hudFeedback）
     └── example/       插件开发示例（默认不启用）
 ```
+
+**v1.5.4 火光 / 饥饿模块速览**
+
+| 模块 | 作用 |
+|---|---|
+| `src/world/fire.ts` | 火焰系统：热源跟踪、6 邻蔓延、寿命 / 水灭 / 支撑熄灭、玩家与实体灼伤、火星烟雾粒子；`enabled` 由设置项 `fireSpread` 驱动 |
+| `src/world/warmth.ts` | 轻量温暖：靠近热源升温、远离降温，温暖达标降低回血饥饿门槛 |
+| `src/ui/campfire.ts` | 营火「直接烤」面板（无燃料 / 无进度，与熔炉共用 `smeltOutputOf`） |
+| `src/player/smelting.ts` | 远端熔炉烧炼纯逻辑：三槽 + 燃料 / 进度 + 存档序列化 |
+| `src/ui/furnace.ts` | 熔炉三槽界面（输入 / 燃料 / 输出 + 火焰与箭头进度） |
+| `src/core/tuning.ts` | `FOOD_VALUES` / `FLAMMABLE` / `FIRE` / `WARMTH` 数值中心 |
+| 设置项 `fireSpread` | 火焰蔓延开关（`src/core/options.ts`，默认开；关闭时只燃尽不引燃） |
 
 **依赖方向单向**：`main → services → 业务模块`。`api/` 只做适配；
 插件只依赖 `PluginContext`，**不 import 引擎内部实现**。
