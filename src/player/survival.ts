@@ -50,6 +50,13 @@ export const ITEMS: Record<string, ItemDefinition> = {
   },
   nectar: { name: 'nectar', label: '花蜜', tile: 'nectar', food: 3 },
   stick: { name: 'stick', label: '木棍', tile: 'stick' },
+  // ---- 生物 / 弓箭内容更新：材料与远程武器（数值在 core/tuning.ts 的 NEW_ITEMS / RANGED）----
+  gunpowder: { name: 'gunpowder', label: '火药', tile: 'gunpowder', food: NEW_ITEMS.gunpowder.food },
+  string: { name: 'string', label: '线', tile: 'string', food: NEW_ITEMS.string.food },
+  ink_sac: { name: 'ink_sac', label: '墨囊', tile: 'ink_sac', food: NEW_ITEMS.ink_sac.food },
+  flint: { name: 'flint', label: '燧石', tile: 'flint', food: NEW_ITEMS.flint.food },
+  bow: { name: 'bow', label: '弓', tile: 'bow', food: NEW_ITEMS.bow.food },
+  arrow: { name: 'arrow', label: '箭', tile: 'arrow', food: NEW_ITEMS.arrow.food },
   /** 堆肥 / 动物掉落的有机肥：给土壤补 35 养分 */
   fertilizer: { name: 'fertilizer', label: '肥料', tile: 'fertilizer' },
   /** 骷髅掉落的骨粉：补 55 养分并给目标植物 15 能量 */

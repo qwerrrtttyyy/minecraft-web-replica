@@ -102,8 +102,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 157 种（141 + 内容植物扩充 11 + 铜与宝石工艺 5）',
-    all.length === 157, `${all.length}`);
+  ok('内置方块总数 161 种（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）',
+    all.length === 161, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -176,6 +176,12 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     reg.byNameGet('poppy').crossHeight < reg.byNameGet('hollyhock').crossHeight &&
     reg.byNameGet('hollyhock').crossHeight === 1);
   ok('越橘丛可掉甜浆果', reg.byNameGet('lingonberry_bush').drops.some((d) => d.name === 'item:sweet_berries'));
+  ok('砂岩家族末位追加（glow_torch 之后，id 连续）', (() => {
+    const names = ['smooth_sandstone', 'chiseled_sandstone', 'cut_sandstone', 'red_sandstone'];
+    const ids = names.map((n) => reg.byNameGet(n)?.id);
+    return ids.every((id) => typeof id === 'number' && id > reg.byNameGet('glow_torch').id) &&
+      ids.every((id, i) => i === 0 || id === ids[i - 1] + 1);
+  })());
 
   const { ITEMS } = require('./terrain-logic/player/survival.js');
   ok('种子 / 浆果 / 花蜜物品注册完整',
@@ -622,7 +628,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 157（141 + 内容植物扩充 11 + 铜与宝石工艺 5）', all.length === 157, `${all.length}`);
+  ok('方块总数增至 161（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）', all.length === 161, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -753,7 +759,7 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
-ok('方块总数 157（141 基线 + 内容植物扩充 11 + 铜与宝石工艺 5）', reg.all().length === 157);
+ok('方块总数 161（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）', reg.all().length === 161);
 
 // C02：三种新动物 + 按权重生成
 ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']

@@ -18,6 +18,7 @@ import type { Botany } from '../world/botany';
 import { INTERACTIVE_BLOCK } from './crafting';
 import { rollDrops } from '../world/drops';
 import { BALL } from '../entity/basketball';
+import { RANGED } from '../core/tuning';
 import {
   COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
 } from '../world/compost';
@@ -87,6 +88,8 @@ export class Player implements System, PhysicsBody {
   private breakTimer = 0;
   private placeTimer = 0;
   private attackTimer = 0;
+  /** 弓射击冷却，防止按住右键连发 */
+  private bowTimer = 0;
   /** 篮球拍打节流，避免按住左键连拍到失控 */
   private patTimer = 0;
   private mineKey = '';
@@ -108,6 +111,8 @@ export class Player implements System, PhysicsBody {
   daylight = 1;
   /** 掉落管理器由组装根注入；未注入时 collectDrops 不生成可见掉落物 */
   dropManager: DropManager | null = null;
+  /** 箭矢管理器由组装根注入；弓射击时调用 */
+  arrowManager: { shoot(origin: THREE.Vector3, dir: THREE.Vector3, damage?: number): void } | null = null;
   /** 沙类重力系统在组装根创建后注入（失支撑沙块下落 + 上方植物连带） */
   private falling: { triggerColumn(x: number, y: number, z: number): void } | null = null;
   private tmpDir = new THREE.Vector3();
@@ -446,6 +451,7 @@ export class Player implements System, PhysicsBody {
     this.breakTimer -= dt;
     this.placeTimer -= dt;
     this.attackTimer -= dt;
+    this.bowTimer -= dt;
     this.patTimer -= dt;
     this.eatTimer -= dt;
 
@@ -679,6 +685,11 @@ export class Player implements System, PhysicsBody {
       return;
     }
     if (stack.kind === 'item') {
+      // 手持弓右键 = 射箭，优先级高于投掷 / 进食（内容更新：弓箭）
+      if (stack.id === 'bow') {
+        this.shootBow();
+        return;
+      }
       // 手持篮球右键 = 投掷，优先级高于默认放置 / 进食（R6）
       if (stack.id === 'basketball') {
         this.throwBasketball(stack);
@@ -702,6 +713,25 @@ export class Player implements System, PhysicsBody {
       return;
     }
     this.doPlace();
+  }
+
+  /**
+   * 射出一支箭（内容更新：弓箭）。
+   * 生存模式必须有箭并消耗一支；创造模式由 consume 恒 true 天然无限取用。
+   * 未注入 ArrowManager 时静默失败，不凭空消耗箭。
+   */
+  private shootBow(): void {
+    if (this.bowTimer > 0 || !this.arrowManager) return;
+    if (!this.survival.has({ kind: 'item', id: 'arrow' }, 1)) return;
+    if (!this.survival.consume({ kind: 'item', id: 'arrow' }, 1)) return;
+    this.bowTimer = RANGED.bowCooldown;
+    this.eyePosition(this.tmpEye);
+    this.viewDirection(this.tmpDir);
+    this.arrowManager.shoot(this.tmpEye, this.tmpDir, RANGED.arrowDamage);
+    this.swing();
+    this.sound.click(880);
+    this.survival.exhaust(RANGED.bowExhaust);
+    this.events.emit('bow:shoot', { x: this.tmpEye.x, y: this.tmpEye.y, z: this.tmpEye.z });
   }
 
   /** 手持可堆肥物投放 / 空手从成熟桶取肥；返回是否处理了这次右键 */

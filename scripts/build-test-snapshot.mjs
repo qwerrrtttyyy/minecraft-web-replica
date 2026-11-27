@@ -81,6 +81,9 @@ const entries = [
   'src/ai/registry.ts',
   'src/ai/AIComponent.ts',
   'src/ai/AIService.ts',
+  // 内容更新：行为树配置与箭矢投射物（纯逻辑，不触碰 DOM）
+  'src/ai/behaviors.ts',
+  'src/entity/projectile.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');

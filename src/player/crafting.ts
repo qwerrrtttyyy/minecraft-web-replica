@@ -172,6 +172,27 @@ export const CRAFTING_RECIPES: Recipe[] = [
     key: { S: 'sand' },
     result: { material: 'sandstone', count: 1 },
   },
+  // 砂岩家族：切制 / 錾制走 2×2 合成，平滑砂岩走熔炉（见 SMELT_RECIPES）
+  {
+    id: 'cut_sandstone',
+    label: '切制砂岩',
+    pattern: ['SS', 'SS'],
+    key: { S: 'sandstone' },
+    result: { material: 'cut_sandstone', count: 4 },
+  },
+  {
+    id: 'chiseled_sandstone',
+    label: '錾制砂岩',
+    shapeless: ['cut_sandstone', 'cut_sandstone'],
+    result: { material: 'chiseled_sandstone', count: 1 },
+  },
+  {
+    id: 'red_sandstone',
+    label: '红砂岩',
+    pattern: ['RR', 'RR'],
+    key: { R: 'red_sand' },
+    result: { material: 'red_sandstone', count: 1 },
+  },
   {
     id: 'stone_bricks',
     label: '石砖',
@@ -199,6 +220,20 @@ export const CRAFTING_RECIPES: Recipe[] = [
     pattern: ['P', 'P'],
     key: { P: '#planks' },
     result: { material: 'item:stick', count: 4 },
+  },
+  // 内容更新：弓箭闭环——蜘蛛线 + 木棍做弓；燧石 + 木棍 + 羽毛做 4 支箭（2×2 个人格可做）
+  {
+    id: 'bow',
+    label: '弓',
+    pattern: [' S ', 'STS', ' T '],
+    key: { S: 'item:string', T: 'item:stick' },
+    result: { material: 'item:bow', count: 1 },
+  },
+  {
+    id: 'arrow',
+    label: '箭',
+    shapeless: ['item:flint', 'item:stick', 'item:feather'],
+    result: { material: 'item:arrow', count: 4 },
   },
   {
     // 堆肥桶：2×2 个人合成格即可制作，保证生存模式能进入堆肥→施肥闭环

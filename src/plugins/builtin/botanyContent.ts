@@ -43,7 +43,7 @@ export interface ExpansionPlant {
 const nectar = { item: 'item:nectar', count: 1 };
 
 /**
- * 6 种新植物（id 159~164，顺延在内置方块 148~158 之后）。
+ * 6 种新植物（id 159~164，固定占位；内置方块 165~169 为铜 / 树种，170~173 为砂岩家族）。
  * 代谢类型沿用 plantTraits.ts 的 solar / hydro / fungal 三分类，
  * 因此自动接入蓄能、开花、根系共享与采集结算，无需改 Botany 的能量模型。
  */
