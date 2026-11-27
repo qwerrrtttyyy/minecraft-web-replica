@@ -97,8 +97,8 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 152 种（141 + 内容植物扩充 11）',
-    all.length === 152, `${all.length}`);
+  ok('内置方块总数 157 种（141 + 内容植物扩充 11 + 铜与宝石工艺 5）',
+    all.length === 157, `${all.length}`);
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -523,7 +523,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 152（141 + 内容植物扩充 11）', all.length === 152, `${all.length}`);
+  ok('方块总数增至 157（141 + 内容植物扩充 11 + 铜与宝石工艺 5）', all.length === 157, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -624,6 +624,29 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
     reg.byNameGet('cotton_block').solid === true && reg.byNameGet('cotton_block').opaque === true);
 }
 
+// 铜与宝石工艺扩展：5 个新方块末位追加、纹理与形状完整
+{
+  const { reg } = make(1);
+  const CRAFT_BLOCKS = ['copper_block', 'acacia_planks', 'cherry_planks', 'acacia_sapling', 'cherry_sapling'];
+  ok('5 个铜/树种方块 id 165~169 连续末位追加（159~164 留给插件植物）',
+    CRAFT_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 165 + i),
+    `${CRAFT_BLOCKS[0]}=${reg.byNameGet(CRAFT_BLOCKS[0])?.id}..${CRAFT_BLOCKS.at(-1)}=${reg.byNameGet(CRAFT_BLOCKS.at(-1))?.id}`);
+  ok('铜块/木板为实心立方体，树苗为十字面且纹理完整',
+    ['copper_block', 'acacia_planks', 'cherry_planks'].every((n) => {
+      const d = reg.byNameGet(n);
+      return d && d.shape === 'cube' && d.solid && d.drops.length > 0 &&
+        d.tiles.top && d.tiles.bottom && d.tiles.side;
+    }) &&
+    ['acacia_sapling', 'cherry_sapling'].every((n) => {
+      const d = reg.byNameGet(n);
+      return d && d.shape === 'cross' && !d.solid && d.crossHeight > 0 &&
+        d.tiles.top && d.tiles.bottom && d.tiles.side;
+    }));
+  ok('金合欢/樱花树叶有概率掉对应树苗',
+    reg.byNameGet('acacia_leaves').drops.some((d) => d.name === 'acacia_sapling') &&
+    reg.byNameGet('cherry_leaves').drops.some((d) => d.name === 'cherry_sapling'));
+}
+
 // C01：煤矿石 → 煤炭闭环（方块总数不变）
 const { reg } = make(1);
 ok('煤矿石掉落煤炭（item:coal，1~2）',
@@ -631,7 +654,7 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
-ok('方块总数 152（141 基线 + 内容植物扩充 11）', reg.all().length === 152);
+ok('方块总数 157（141 基线 + 内容植物扩充 11 + 铜与宝石工艺 5）', reg.all().length === 157);
 
 // C02：三种新动物 + 按权重生成
 ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']

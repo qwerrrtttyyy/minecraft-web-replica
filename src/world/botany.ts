@@ -79,6 +79,7 @@ interface BotanyIds {
   wheatSeedling: BlockId; wheatGrowing: BlockId; wheat: BlockId;
   berryBush: BlockId; berryBushRipe: BlockId; pumpkinStem: BlockId; pumpkin: BlockId;
   oakSapling: BlockId; birchSapling: BlockId; spruceSapling: BlockId;
+  acaciaSapling: BlockId; cherrySapling: BlockId;
   redMushroom: BlockId; brownMushroom: BlockId;
   tallGrass: BlockId; fern: BlockId; tallFern: BlockId;
 }
@@ -176,6 +177,7 @@ export class Botany {
       pumpkinStem: byName('pumpkin_stem'), pumpkin: byName('pumpkin'),
       oakSapling: byName('oak_sapling'), birchSapling: byName('birch_sapling'),
       spruceSapling: byName('spruce_sapling'),
+      acaciaSapling: byName('acacia_sapling'), cherrySapling: byName('cherry_sapling'),
       redMushroom: byName('red_mushroom'), brownMushroom: byName('brown_mushroom'),
       tallGrass: byName('tall_grass'), fern: byName('fern'), tallFern: byName('tall_fern'),
     };
@@ -218,6 +220,9 @@ export class Botany {
     if (this.id.oakSapling) this.saplings.set(this.id.oakSapling, 'oak');
     if (this.id.birchSapling) this.saplings.set(this.id.birchSapling, 'birch');
     if (this.id.spruceSapling) this.saplings.set(this.id.spruceSapling, 'spruce');
+    // 金合欢 / 樱花：树苗按树种名映射，长树时写回各自的原木与树叶
+    if (this.id.acaciaSapling) this.saplings.set(this.id.acaciaSapling, 'acacia');
+    if (this.id.cherrySapling) this.saplings.set(this.id.cherrySapling, 'cherry');
     for (const id of [this.id.kelp, this.id.seagrass, this.id.seaAnemone, this.id.redAlgae]) {
       if (id) this.aquatic.add(id);
     }
@@ -1063,12 +1068,18 @@ export class Botany {
   }
 
   private logOf(species: TreeSpecies): BlockId {
-    const name = species === 'birch' ? 'birch_log' : species === 'spruce' ? 'spruce_log' : 'oak_log';
+    const name = species === 'birch' ? 'birch_log'
+      : species === 'spruce' ? 'spruce_log'
+        : species === 'acacia' ? 'acacia_log'
+          : species === 'cherry' ? 'cherry_log' : 'oak_log';
     return this.registry.byNameGet(name)?.id ?? 0;
   }
 
   private leafOf(species: TreeSpecies): BlockId {
-    const name = species === 'birch' ? 'birch_leaves' : species === 'spruce' ? 'spruce_leaves' : 'oak_leaves';
+    const name = species === 'birch' ? 'birch_leaves'
+      : species === 'spruce' ? 'spruce_leaves'
+        : species === 'acacia' ? 'acacia_leaves'
+          : species === 'cherry' ? 'cherry_leaves' : 'oak_leaves';
     return this.registry.byNameGet(name)?.id ?? 0;
   }
 

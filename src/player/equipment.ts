@@ -3,9 +3,9 @@
  *
  * 武器 / 工具 / 盔甲的数值、显示名与纹理名集中在这里，供生存状态、
  * 战斗 / 挖掘接入与 UI 共同读取。命名约定（atlas 纹理注册依赖它）：
- * - 武器 / 工具：`<前缀>_<sword|pickaxe|axe|shovel>`
+ * - 武器 / 工具：`<前缀>_<sword|pickaxe|axe|shovel|hoe>`
  * - 盔甲：`<前缀>_<helmet|chestplate|leggings|boots>`
- * - 前缀：wooden / stone / iron / golden / diamond / leather
+ * - 前缀：wooden / stone / iron / golden / diamond / leather / copper（仅铜有 hoe）
  */
 
 export type EquipKind =
@@ -13,13 +13,14 @@ export type EquipKind =
   | 'pickaxe'
   | 'axe'
   | 'shovel'
+  | 'hoe'
   | 'helmet'
   | 'chestplate'
   | 'leggings'
   | 'boots';
 
 export type EquipSlot = 'head' | 'chest' | 'legs' | 'feet';
-export type EquipMaterial = 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'leather';
+export type EquipMaterial = 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'leather' | 'copper';
 export type ToolKind = 'pickaxe' | 'axe' | 'shovel';
 
 export interface EquipmentDef {
@@ -50,13 +51,15 @@ interface Tier {
   durability: number;
 }
 
-/** 剑 / 工具的 5 个材质档位 */
+/** 剑 / 工具的材质档位（铜为末位追加的新种类，数值取石与铁之间） */
 const TOOL_TIERS: Tier[] = [
   { material: 'wood', prefix: 'wooden', label: '木', attack: 4, miningSpeed: 2, durability: 59 },
   { material: 'stone', prefix: 'stone', label: '石', attack: 5, miningSpeed: 4, durability: 131 },
   { material: 'iron', prefix: 'iron', label: '铁', attack: 6, miningSpeed: 6, durability: 250 },
   { material: 'gold', prefix: 'golden', label: '金', attack: 4, miningSpeed: 12, durability: 32 },
   { material: 'diamond', prefix: 'diamond', label: '钻石', attack: 7, miningSpeed: 8, durability: 1561 },
+  // 铜：数值取石与铁之间（挖掘 4→5→6，耐久 131→190→250），既有档位一字不改
+  { material: 'copper', prefix: 'copper', label: '铜', attack: 5, miningSpeed: 5, durability: 190 },
 ];
 
 const TOOL_KINDS: { kind: ToolKind; label: string }[] = [
@@ -119,6 +122,11 @@ function buildEquipment(): Record<string, EquipmentDef> {
       };
     }
   }
+  // 铜锄：现有档位没有锄，只为铜单独补一件，其他材质结构保持不变
+  out.copper_hoe = {
+    id: 'copper_hoe', label: '铜锄', tile: 'copper_hoe', kind: 'hoe',
+    material: 'copper', durability: 190,
+  };
   for (const mat of ARMOR_MATERIALS) {
     for (const kind of ARMOR_KINDS) {
       const id = `${mat.prefix}_${kind.kind}`;

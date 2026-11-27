@@ -221,6 +221,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     wheat_seedling: 0.3, wheat_growing: 0.55, wheat: 0.9,
     sweet_berry_bush: 0.7, sweet_berry_bush_ripe: 0.7, pumpkin_stem: 0.82,
     oak_sapling: 0.7, birch_sapling: 0.7, spruce_sapling: 0.72,
+    acacia_sapling: 0.7, cherry_sapling: 0.72,
     // v1.6.0 花海扩充
     lavender: 0.9, buttercup: 0.5, forget_me_not: 0.44, marigold: 0.58,
     foxglove: 1, hollyhock: 1, violet: 0.4,
@@ -405,7 +406,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     { id: 106, sound: 'wood', hardness: 2 });
   cube('acacia_leaves', '金合欢树叶', {}, {
     id: 107, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
-    drops: [{ name: 'self' }],
+    drops: [{ name: 'acacia_sapling', chance: 0.08 }, { name: 'self' }],
   });
   // 樱花：樱花林的粉冠乔木
   cube('cherry_log', '樱花原木',
@@ -413,7 +414,7 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     { id: 108, sound: 'wood', hardness: 2 });
   cube('cherry_leaves', '樱花树叶', {}, {
     id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
-    drops: [{ name: 'self' }],
+    drops: [{ name: 'cherry_sapling', chance: 0.08 }, { name: 'self' }],
   });
 
   // ---- 堆肥桶（id 110~118，末位追加；等级编码进 block id，借 world.edits 免费持久化） ----
@@ -524,4 +525,14 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     transparentPass: false, lightEmission: 12, hardness: 0.1, sound: 'wood',
     tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' }, crossHeight: 0.85,
   });
+
+  // ---- 铜与宝石工艺扩展（id 165~169，末位追加，旧存档 edits 差分保持有效） ----
+  // 159~164 已由内置插件植物显式固定占用，新方块只能从 165 起追加，避免撞车与旧档错位
+  // 铜锭→铜块的建材产物；硬度取石（1.5）与铁之间，舒缓的开采节奏
+  cube('copper_block', '铜块', {}, { id: 165, hardness: 3, sound: 'stone' });
+  // 金合欢 / 樱花：原木→木板、树叶→树苗，补齐树种从采集到种植的闭环
+  cube('acacia_planks', '金合欢木板', {}, { id: 166, sound: 'wood', hardness: 2 });
+  cube('cherry_planks', '樱花木板', {}, { id: 167, sound: 'wood', hardness: 2 });
+  plant('acacia_sapling', '金合欢树苗', undefined, { id: 168 });
+  plant('cherry_sapling', '樱花树苗', undefined, { id: 169 });
 }

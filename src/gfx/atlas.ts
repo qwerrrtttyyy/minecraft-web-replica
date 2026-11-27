@@ -2321,6 +2321,51 @@ export class TextureAtlas {
       p.set(6, 2, 0xc04858);
       p.set(8, 4, 0xf0f0f8);
     });
+    // ---- 铜与宝石工艺扩展：新纹理全部追加在末尾，既有 tile 索引不变 ----
+    const contentPlank = (base: number, seam: number, highlight: number, joints: number[]): Painter =>
+      (p, rng) => {
+        fillNoise(p, rng, base, 7);
+        for (const y of [3, 7, 11, 15]) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(seam, rng, 4));
+        for (let r = 0; r < 4; r++) {
+          for (let y = r * 4; y < r * 4 + 3; y++) p.set(joints[r], y, seam);
+        }
+        for (let i = 0; i < 10; i++) {
+          const y = (rng() * TILE) | 0;
+          const x = (rng() * 12) | 0;
+          const len = 3 + ((rng() * 4) | 0);
+          for (let k = 0; k < len; k++) if (y % 4 !== 3) p.set(x + k, y, jitter(highlight, rng, 5));
+        }
+      };
+    this.painters.set('copper_block', (p, rng) => {
+      fillNoise(p, rng, 0xb87333, 8);
+      // 铜板拼接：暗缝 + 左上高光 + 右下阴影
+      for (const y of [0, 5, 10, 15]) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x7a4526, rng, 5));
+      for (const x of [0, 5, 10, 15]) for (let y = 0; y < TILE; y++) p.set(x, y, jitter(0x7a4526, rng, 5));
+      for (let by = 0; by < 3; by++) {
+        for (let bx = 0; bx < 3; bx++) {
+          const x0 = bx * 5 + 1, y0 = by * 5 + 1;
+          rect(p, x0, y0, 2, 2, 0xe8a37e);
+          rect(p, x0 + 2, y0 + 2, 2, 2, 0x8a4a26);
+        }
+      }
+    });
+    this.painters.set('acacia_planks', contentPlank(0xa86a3a, 0x6b4426, 0xc68a52, [5, 12, 3, 9]));
+    this.painters.set('cherry_planks', contentPlank(0xd8b0a8, 0x9a7068, 0xf0d0cc, [4, 11, 2, 9]));
+    this.painters.set('acacia_sapling', saplingPainter(0x5f7a34, 0x7a9746, 0x6e6e6a));
+    this.painters.set('cherry_sapling', saplingPainter(0xe8a0b8, 0xf6c8d8, 0x5a3f34));
+    this.painters.set('copper_hoe', (p, rng) => {
+      p.clear();
+      // 斜置木柄 + 铜制锄板
+      for (let i = 0; i < 9; i++) {
+        const x = 3 + i, y = 13 - i;
+        p.set(x, y, jitter(0x8a5a2e, rng, 6));
+        p.set(x + 1, y, 0x6b4426);
+      }
+      rect(p, 9, 2, 6, 2, 0xc46a45);
+      rect(p, 9, 4, 4, 2, 0xe8a37e);
+      p.set(14, 2, 0x8a4426);
+      p.set(14, 3, 0x8a4426);
+    });
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

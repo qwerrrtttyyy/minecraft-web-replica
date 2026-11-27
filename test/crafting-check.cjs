@@ -301,7 +301,7 @@ ok('材料组非空且成员合法',
 {
   const { EQUIPMENT } = require('./logic/player/equipment.js');
   const equipRecipes = CRAFTING_RECIPES.filter((r) => !!EQUIPMENT[r.id]);
-  ok('36 件装备各有配方', equipRecipes.length === 36, String(equipRecipes.length));
+  ok('41 件装备各有配方（新增铜工具 4 + 铜锄 1）', equipRecipes.length === 41, String(equipRecipes.length));
   for (const r of equipRecipes) {
     ok(`配方 ${r.id} 产物与 EQUIPMENT 一致`,
       r.result.material === `item:${r.id}` && !!ITEMS[r.id] && r.result.count === 1);
