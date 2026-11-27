@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+## [1.5.6-alpha.1] - 2026-11-27
+
+### 合入剩余内容
+- **A2-5 核心接口**：`DamageKind` 透传、四个玩家扩展点、插件存档袋与 `PanelHost`，新增 `test:hooks`。
+- **火光与饥饿**：营火 / 灯笼 / 蜡烛 / 火焰方块（id 174~177）、火焰蔓延、饱和度、温暖系统、远端熔炉与营火直接烤，新增 `test:perf` / `test:vitest`。
+- **WASM 后端自适应**：`chooseNoiseBackend` / `resolveWasmMode` 与基准诊断，新增 `test:wasm-choice` 等。
+- **版本**：`VERSION` 推进至 `1.5.6-alpha.1`，`package.json` / README 同步。
+
 ### 内容更新（c5ae5b3 / 76bc731）
 - **铜材料链**：新增方块 `copper_block`（id 165）与铜锭 ⇄ 铜块双向合成；铜工具 4 条按模板生成、
   铜锄 1 条，合成配方 49 → 58。装备新增 `copper` 档位（攻击 5 / 挖掘 5 / 耐久 190，
