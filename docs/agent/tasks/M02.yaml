@@ -1,0 +1,22 @@
+id: M02
+title: packMesh 支持 typed array
+description: |
+  meshTypes.ts 定义 GeoArray 并放宽 GeoArrays；packMesh 对 typed array
+  使用 subarray(0, length) 只打包已用前缀；mesher.ts 的 newGeo 改为
+  容量倍增的 typed array（初始按 2048 quad）。不改 packMesh 签名，不用 as any。
+  护栏 hash 必须保持与基线一致，否则回滚本卡。
+
+touch:
+  allow:
+    - src/world/meshTypes.ts
+    - src/world/mesher.ts
+    - test/mesh-typed-arrays-check.cjs
+  deny:
+    - package.json
+    - src/wasm/**
+    - src/world/chunkManager.ts
+    - docs/agent/validate.py
+
+outputs:
+  - typed arrays: packMesh 对 typed array 只打包已用前缀且与普通数组结果逐值一致
+  - verify: npm run typecheck && node test/mesh-typed-arrays-check.cjs && node test/mesher-hotspot-check.cjs && npm run test:mesher 全绿且 hash 不变

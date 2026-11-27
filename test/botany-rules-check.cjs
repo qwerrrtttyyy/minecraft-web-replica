@@ -344,4 +344,35 @@ log('\n[7] 内置生态不受影响');
   ok('内置方块总数未变', t.reg.all().length === 157);
 }
 
+log('\n[8] 插件植物接入 7 个新群系（spawn 权重）');
+{
+  const byName = Object.fromEntries(EXPANSION_PLANTS.map((p) => [p.name, p]));
+  // 设计表逐值：只在既有 6 种植物的 spawn map 追加新群系键
+  const EXPECTED_SPAWN = {
+    thistle: { jungle: 0.006, bamboo_grove: 0.004, dark_forest: 0.004, birch_forest: 0.004, mushroom_grove: 0.003 },
+    cattail: { jungle: 0.008, bamboo_grove: 0.012, mushroom_grove: 0.006 },
+    glow_mushroom: {
+      mushroom_grove: 0.012, dark_forest: 0.008, jungle: 0.005,
+      snowy_taiga: 0.004, birch_forest: 0.003,
+    },
+    frost_bloom: { snowy_tundra: 0.014, snowy_taiga: 0.008 },
+    ember_fern: { jungle: 0.006, dark_forest: 0.006, bamboo_grove: 0.004, mushroom_grove: 0.005 },
+    moonlotus: { jungle: 0.006, bamboo_grove: 0.006, mushroom_grove: 0.004 },
+  };
+  const missing = [];
+  for (const [name, weights] of Object.entries(EXPECTED_SPAWN)) {
+    for (const [biome, weight] of Object.entries(weights)) {
+      if (byName[name]?.spawn[biome] !== weight) missing.push(`${name}@${biome}=${weight}`);
+    }
+  }
+  ok('6 个插件植物在 7 个新群系的 spawn 权重逐值落盘', missing.length === 0, missing.join(' '));
+  ok('插件植物仍为 6 种且 id 上限仍为 164',
+    EXPANSION_PLANTS.length === 6 &&
+    EXPANSION_PLANTS.map((p) => p.id).join(',') === '159,160,161,162,163,164' &&
+    EXPANSION_PLANTS.every((p) => p.id <= 164));
+  ok('新群系可由 planSpawn 命中插件植物',
+    planSpawn('snowy_tundra', 0.001, false) === 'frost_bloom' &&
+    planSpawn('jungle', 0.001, false) === 'thistle');
+}
+
 log(`\nPASS 生态扩展点回归：${passed} 组断言全部通过\n`);

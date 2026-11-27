@@ -51,7 +51,12 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'thistle', label: '蓟', id: 159,
     trait: { metabolism: 'solar', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
-    spawn: { plains: 0.008, forest: 0.004 },
+    // 11 → 18 群系扩展：仅追加新群系权重，既有 plains / forest 键不动
+    spawn: {
+      plains: 0.008, forest: 0.004,
+      jungle: 0.006, bamboo_grove: 0.004, dark_forest: 0.004,
+      birch_forest: 0.004, mushroom_grove: 0.003,
+    },
     paint: (set) => {
       for (let y = 9; y < 16; y++) set(8, y, 0x4a7c3f);
       for (let y = 3; y < 9; y++) {
@@ -64,7 +69,10 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'cattail', label: '香蒲', id: 160,
     trait: { metabolism: 'hydro', bloom: 70, growthCost: 16, shareRadius: 2, sharePower: 10 },
-    spawn: { beach: 0.02, plains: 0.012, forest: 0.008 },
+    spawn: {
+      beach: 0.02, plains: 0.012, forest: 0.008,
+      jungle: 0.008, bamboo_grove: 0.012, mushroom_grove: 0.006,
+    },
     nearWater: true, waterPlant: true,
     paint: (set) => {
       for (let y = 4; y < 16; y++) set(8, y, 0x4c7a3a);
@@ -75,7 +83,11 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'glow_mushroom', label: '荧光菇', id: 161,
     trait: { metabolism: 'fungal', bloom: 65, growthCost: 14, shareRadius: 3, sharePower: 16, hub: true },
-    spawn: { forest: 0.005, taiga: 0.004 },
+    spawn: {
+      forest: 0.005, taiga: 0.004,
+      mushroom_grove: 0.012, dark_forest: 0.008, jungle: 0.005,
+      snowy_taiga: 0.004, birch_forest: 0.003,
+    },
     lightEmission: 5,
     paint: (set) => {
       for (let y = 9; y < 16; y++) set(8, y, 0xd8e8d0);
@@ -90,7 +102,7 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'frost_bloom', label: '霜花', id: 162,
     trait: { metabolism: 'solar', bloom: 75, growthCost: 20, shareRadius: 2, sharePower: 10, harvest: nectar },
-    spawn: { alpine: 0.012 },
+    spawn: { alpine: 0.012, snowy_tundra: 0.014, snowy_taiga: 0.008 },
     paint: (set) => {
       for (let y = 9; y < 16; y++) set(8, y, 0x5f8f6a);
       const petals = [[8, 3], [5, 5], [11, 5], [4, 8], [12, 8], [6, 11], [10, 11]];
@@ -101,7 +113,10 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'ember_fern', label: '余烬蕨', id: 163,
     trait: { metabolism: 'fungal', bloom: 60, growthCost: 12, shareRadius: 2, sharePower: 10 },
-    spawn: { forest: 0.006, taiga: 0.006 },
+    spawn: {
+      forest: 0.006, taiga: 0.006,
+      jungle: 0.006, dark_forest: 0.006, bamboo_grove: 0.004, mushroom_grove: 0.005,
+    },
     paint: (set) => {
       for (let y = 4; y < 16; y++) {
         set(8, y, 0x8a3a24);
@@ -113,7 +128,10 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
     name: 'moonlotus', label: '月莲', id: 164,
     trait: { metabolism: 'hydro', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
-    spawn: { ocean: 0.006, beach: 0.01 },
+    spawn: {
+      ocean: 0.006, beach: 0.01,
+      jungle: 0.006, bamboo_grove: 0.006, mushroom_grove: 0.004,
+    },
     nearWater: true, waterPlant: true,
     paint: (set) => {
       for (let x = 3; x < 13; x++) { set(x, 12, 0x2f6f8a); set(x, 13, 0x245b73); }

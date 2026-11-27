@@ -4,6 +4,7 @@ import {
   type Stack, type SurvivalSave,
 } from '../player/survival';
 import { isKnownMaterial } from '../player/smelting';
+import { type PlantSaveV1, type PlantSaveV2 } from '../world/botany';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -33,12 +34,8 @@ export interface SaveData {
   };
   /** v1.6：累计游戏日（旧档缺省 0） */
   dayCount?: number;
-  /** v1.6：植物能量 / 土壤养分快照（旧档缺省，植物从初始能量起步） */
-  botany?: {
-    v: 1;
-    plants: [number, number, number, number, number, 0 | 1][];
-    soil: [number, number, number, number][];
-  };
+  /** v1.6：植物能量 / 土壤养分快照（旧档缺省，植物从初始能量起步）；v2 追加品系表 */
+  botany?: PlantSaveV1 | PlantSaveV2;
   /** 熔炉方块实体快照（旧档缺省即无运行中的熔炉） */
   furnaces?: {
     v: 1;
