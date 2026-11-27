@@ -83,15 +83,15 @@ const entries = [
   'src/ai/AIService.ts',
 ];
 
-const tsc = path.join(root, 'node_modules', '.bin', 'tsc');
+const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');
 const args = [
+  '--ignoreConfig',
   '--module', 'commonjs',
-  '--moduleResolution', 'node',
+  '--moduleResolution', 'bundler',
   '--target', 'ES2020',
   '--lib', 'ES2020,DOM,DOM.Iterable',
   '--strict',
   '--skipLibCheck',
-  '--esModuleInterop', 'false',
   '--outDir', tmp,
   '--rootDir', 'src',
   '--noEmit', 'false',
