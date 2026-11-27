@@ -24,6 +24,7 @@ export const SMELT_RECIPES: Record<string, string> = {
   cherry_log: 'charcoal',
   porkchop: 'cooked_porkchop',
   beef: 'cooked_beef',
+  cobblestone: 'stone',
 };
 
 /** 燃料表：燃料可烧炼的物品件数（原版比例） */
