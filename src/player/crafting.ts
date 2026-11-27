@@ -84,7 +84,7 @@ const ARMOR_TIERS: EquipTier[] = [
   { material: 'diamond', prefix: 'diamond', label: '钻石' },
 ];
 
-/** 由材质档位生成 36 条装备配方（id / 产物与 EQUIPMENT 保持一致） */
+/** 由材质档位生成 41 条装备配方（id / 产物与 EQUIPMENT 保持一致） */
 function equipmentRecipes(): Recipe[] {
   const out: Recipe[] = [];
   for (const tier of TOOL_TIERS) {
@@ -124,7 +124,7 @@ function equipmentRecipes(): Recipe[] {
  * 最小闭环：原木→木板→工作台，外加砂岩 / 石砖 / 木棍三条实用线。
  * 每条配方都刻意做成 2×2 以内的小配方，这样玩家的 2×2 个人合成格
  * 在拿到工作台之前就能先攒出工作台本身（详见 README 的玩法说明）。
- * E04 起追加 36 条装备配方（需要 3×3 工作台，2×2 个人格放不下）。
+ * E04 起追加 41 条装备配方（需要 3×3 工作台，2×2 个人格放不下）。
  */
 export const CRAFTING_RECIPES: Recipe[] = [
   {
