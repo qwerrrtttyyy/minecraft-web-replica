@@ -18,10 +18,13 @@ import type {
   WasmModuleCarrier, WasmHostCarrier,
 } from './types';
 
-const toBytes = (input: WasmBytes): Uint8Array => {
-  if (typeof input === 'string') return decodeBase64(input);
+const toBytes = (input: WasmBytes): Uint8Array<ArrayBuffer> => {
+  if (typeof input === 'string') {
+    const decoded = decodeBase64(input);
+    return new Uint8Array(decoded.buffer as ArrayBuffer, decoded.byteOffset, decoded.byteLength);
+  }
   if (input instanceof ArrayBuffer) return new Uint8Array(input);
-  return input;
+  return new Uint8Array(input.buffer as ArrayBuffer, input.byteOffset, input.byteLength);
 };
 
 /** wasm:module：零 import 纯计算模块，注册为插件私有 WASM 模块 */

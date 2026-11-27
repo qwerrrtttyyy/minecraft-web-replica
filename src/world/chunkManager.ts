@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import MeshWorker from './mesh.worker?worker&inline';
 import { createWorkerPool } from './workerPool';
-import { CHUNK_SIZE, chunkKey, type System } from '../core/types';
+import { CHUNK_SIZE, chunkKey, parseChunkKey, type System } from '../core/types';
 import type { EventService } from '../services/events';
 import type { World } from './world';
 import type { TextureAtlas } from '../gfx/atlas';
@@ -9,10 +9,11 @@ import { meshChunk } from './mesher';
 import { buildMeshConfig, buildMeshSnapshot, WorldMeshSource } from './meshSource';
 import { installTiledAtlas } from './tiledAtlas';
 import {
-  MESH_CHANNELS, packMesh,
+  MESH_CHANNELS, isStaleConfigRevision, packMesh,
   type MeshConfig, type MeshStats, type PackedGeo, type PackedMesh,
   type WorkerResponse,
 } from './meshTypes';
+import { selectEvictions } from './chunkRetention';
 
 interface ChunkMeshes {
   opaque?: THREE.Mesh;
@@ -24,6 +25,8 @@ interface ChunkMeshes {
 
 interface InFlight {
   generation: number;
+  /** M06：派发时的配置版本，用于丢弃 configRevision 之后到达的旧结果 */
+  configRevision: number;
   promise: Promise<void>;
   resolve: () => void;
 }
@@ -36,6 +39,12 @@ const MAX_DISPATCH_PER_FRAME = 6;
 export const BACKLOG_LIMIT = 24;
 /** initialLoad 等待 Worker 的兜底超时（ms），超时自动降级主线程 */
 const LOAD_TIMEOUT_MS = 15000;
+/** 视距之外的驻留区块上限（可通过 ?maxChunks=N 覆盖） */
+const DEFAULT_MAX_RESIDENT = 512;
+/** 缓冲区硬外沿相对视距的额外圈数：超出后无条件卸载 */
+const DEFAULT_RETENTION_MARGIN = 8;
+/** 区块最短驻留时间（秒）：缓冲区 LRU 淘汰的前置条件 */
+const DEFAULT_MIN_RESIDENCY_SEC = 10;
 
 export interface ChunkManagerOptions {
   /** 强制主线程同步网格化（对照基准 / 调试 / file:// 回退） */
@@ -48,6 +57,12 @@ export interface ChunkManagerOptions {
   workers?: number;
   /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
   camera?: THREE.Camera;
+  /** 驻留区块总上限（视距内优先保留），默认 512；URL ?maxChunks=N */
+  maxChunks?: number;
+  /** 缓冲区硬外沿相对视距的额外圈数，默认 8 */
+  retentionMargin?: number;
+  /** 区块最短驻留秒数（缓冲区 LRU 淘汰前置条件），默认 10 */
+  minResidencySec?: number;
 }
 
 const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
@@ -193,6 +208,12 @@ function injectSway(shader: ChunkShader, time: { value: number }) {
 export class ChunkManager implements System {
   readonly name = 'chunks';
   renderDistance: number;
+  /** 驻留区块总上限（视距内区块不因上限被淘汰） */
+  readonly maxResident: number;
+  private readonly retentionMargin: number;
+  private readonly minResidencySec: number;
+  /** 已释放资源标记：dispose() 幂等，update() 在释放后不再调度 */
+  private disposed = false;
   readonly materials: {
     opaque: THREE.MeshBasicMaterial;
     /** 仅 ?emerge=0 对照路径使用 */
@@ -250,6 +271,12 @@ export class ChunkManager implements System {
     options: ChunkManagerOptions = {},
   ) {
     this.renderDistance = renderDistance;
+    const requestedCap = options.maxChunks ?? DEFAULT_MAX_RESIDENT;
+    const requestedMargin = options.retentionMargin ?? DEFAULT_RETENTION_MARGIN;
+    const requestedResidency = options.minResidencySec ?? DEFAULT_MIN_RESIDENCY_SEC;
+    this.maxResident = Number.isFinite(requestedCap) ? Math.max(1, Math.floor(requestedCap)) : DEFAULT_MAX_RESIDENT;
+    this.retentionMargin = Number.isFinite(requestedMargin) ? Math.max(2, Math.floor(requestedMargin)) : DEFAULT_RETENTION_MARGIN;
+    this.minResidencySec = Number.isFinite(requestedResidency) ? Math.max(0, requestedResidency) : DEFAULT_MIN_RESIDENCY_SEC;
     this.greedyOption = options.greedy ?? true;
     this.mergeEmissiveOption = options.mergeEmissive ?? true;
     this.camera = options.camera ?? null;
@@ -343,7 +370,7 @@ export class ChunkManager implements System {
     const pending = [...this.inFlight.entries()];
     this.inFlight.clear();
     for (const [key, rec] of pending) {
-      const [cx, cz] = key.split(',').map(Number);
+      const [cx, cz] = parseChunkKey(key);
       this.applySync(cx, cz);
       rec.resolve();
     }
@@ -377,6 +404,8 @@ export class ChunkManager implements System {
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
   get meshCount() { return this.meshes.size; }
+  /** 当前驻留区块总数（诊断 / 基准用） */
+  get residentCount() { return this.world.chunks.size; }
   get isLoading() { return this.loading; }
   get mesherMode(): 'worker' | 'main' { return this.mode; }
   get workerCount(): number { return this.workers.length; }
@@ -488,9 +517,12 @@ export class ChunkManager implements System {
     const existing = this.inFlight.get(key);
     if (existing) return existing.promise;
     const generation = ++this.generation;
+    const configRevision = this.configRevision;
     let resolve!: () => void;
     const promise = new Promise<void>((r) => { resolve = r; });
-    this.inFlight.set(key, { generation, promise, resolve });
+    this.inFlight.set(key, { generation, configRevision, promise, resolve });
+    // 网格调度是"有意义访问"：刷新 LRU 时钟，让缓冲区保留玩家真正看过的区块
+    this.world.touchChunk(cx, cz);
 
     if (this.mode === 'main') {
       // H05：主线程路径必须兜住异常——applySync 抛错时若不释放 inFlight，
@@ -509,7 +541,7 @@ export class ChunkManager implements System {
       const wid = this.pickWorker();
       const snapshot = buildMeshSnapshot(this.world, cx, cz);
       this.workers[wid].postMessage(
-        { type: 'mesh', cx, cz, generation, snapshot, wid },
+        { type: 'mesh', cx, cz, generation, configRevision, snapshot, wid },
         // N4：known 位图与 data 同步转移，避免 Worker 侧收到丢失/复制的来源信息
         [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer, snapshot.known.buffer],
       );
@@ -536,6 +568,13 @@ export class ChunkManager implements System {
       const rec = this.inFlight.get(key);
       if (!rec || rec.generation !== msg.generation) continue;
       this.inFlight.delete(key);
+      // M06：派发后 invalidateConfig() 使配置失效 → 这份结果用的是旧方块元数据，
+      // 必须丢弃并重新入队（这些 key 已从 dirty 移除，invalidateConfig 只重排已有网格）
+      if (isStaleConfigRevision(msg.configRevision, this.configRevision)) {
+        this.world.dirty.add(key);
+        rec.resolve();
+        continue;
+      }
       if (msg.type === 'result') {
         if (this.world.getChunk(msg.cx, msg.cz)?.generated) {
           this.applyPacked(key, msg.cx, msg.cz, msg.mesh);
@@ -629,7 +668,9 @@ export class ChunkManager implements System {
   }
 
   update(dt: number) {
+    if (this.disposed) return;
     this.waterTime.value += dt;
+    this.world.time += dt;
     this.drainResults();
     if (this.loading) return;
     // 透明排序开关：关闭瞬间把透明/水网格复位到默认 renderOrder（对照未排序效果），
@@ -689,7 +730,7 @@ export class ChunkManager implements System {
     if (this.world.dirty.size > 0) {
       const list: [number, number][] = [];
       for (const key of this.world.dirty) {
-        const [x, z] = key.split(',').map(Number);
+        const [x, z] = parseChunkKey(key);
         if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
           // 远处脏标记直接丢弃，避免长期累积；靠近时会由第 0 步重新入队
           this.world.dirty.delete(key);
@@ -712,11 +753,21 @@ export class ChunkManager implements System {
       }
     }
 
-    // 3) 卸载：按 world.chunks 遍历，在途任务一并取消
-    // M02：Map 迭代中删除条目是安全（不会重访已删项），无需每帧全量拷贝 441 项
-    const limit = R + 2;
-    for (const [key, chunk] of this.world.chunks) {
-      if (Math.abs(chunk.cx - cx) <= limit && Math.abs(chunk.cz - cz) <= limit) continue;
+    // 3) 卸载：三层驻留策略（视距必留 / 缓冲区 LRU / 硬外沿必卸）
+    // M02：Map 迭代中删除条目是安全的，无需每帧全量拷贝。
+    const keepRadius = R + 2;
+    const keys = selectEvictions(this.world.chunks, {
+      centerX: cx,
+      centerZ: cz,
+      keepRadius,
+      hardRadius: R + this.retentionMargin,
+      maxResident: this.maxResident,
+      minResidencySec: this.minResidencySec,
+      now: this.world.time,
+    });
+    for (const key of keys) {
+      const chunk = this.world.chunks.get(key);
+      if (!chunk) continue;
       const rec = this.inFlight.get(key);
       if (rec) { this.inFlight.delete(key); rec.resolve(); }
       const m = this.meshes.get(key);
@@ -739,6 +790,27 @@ export class ChunkManager implements System {
       this.scene.remove(mesh);
       mesh.geometry.dispose();
     }
+  }
+
+  /**
+   * M05：顶层资源释放。Worker 终止、在途 Promise 结算、网格几何 / 材质释放；
+   * 幂等，调用后 update() 直接返回。供页面卸载与调试钩子使用。
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const rec of this.inFlight.values()) rec.resolve();
+    this.inFlight.clear();
+    this.pendingResults.length = 0;
+    for (const [key, m] of this.meshes) {
+      this.disposeMeshes(m);
+      this.meshes.delete(key);
+    }
+    this.meshes.clear();
+    this.transparentOrderCache.length = 0;
+    // inFlight 已清空，teardownWorkers 不会触发主线程补算
+    this.teardownWorkers();
+    for (const mat of Object.values(this.materials)) mat.dispose();
   }
 
   /**

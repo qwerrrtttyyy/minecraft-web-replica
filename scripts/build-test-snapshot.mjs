@@ -55,6 +55,7 @@ const entries = [
   'src/world/noise.ts',
   'src/world/faces.ts',
   'src/world/meshTypes.ts',
+  'src/world/chunkRetention.ts',
   'src/world/mesher.ts',
   'src/world/meshSource.ts',
   'src/world/snapshotSource.ts',

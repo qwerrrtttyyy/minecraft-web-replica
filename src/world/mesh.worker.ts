@@ -31,6 +31,7 @@ const runMesh = (msg: Extract<WorkerRequest, { type: 'mesh' }>) => {
       cx: msg.cx,
       cz: msg.cz,
       generation: msg.generation,
+      configRevision: msg.configRevision,
       mesh,
       stats: out.stats,
     }, transfer);
@@ -41,6 +42,7 @@ const runMesh = (msg: Extract<WorkerRequest, { type: 'mesh' }>) => {
       cx: msg.cx,
       cz: msg.cz,
       generation: msg.generation,
+      configRevision: msg.configRevision,
       message: err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err),
     });
   }

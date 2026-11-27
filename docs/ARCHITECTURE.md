@@ -249,6 +249,27 @@ initialLoad():  生成 chunk ──► remesh ──► world.dirty.clear()   �
 - 卸载从「遍历 `meshes`」改为「遍历 `world.chunks`」，生成了却没网格化的区块
   同样释放，堵住内存泄漏；发出 `chunk:unloaded` 便于观测。
 
+#### 三层区块驻留（"chunk survival"）
+
+`src/world/chunkRetention.ts` 的 `selectEvictions()` 是纯数据决策，ChunkManager 只负责执行：
+
+1. 切比雪夫距离 `≤ R+2` 的区块永远保留（视距所需，不因上限被淘汰）；
+2. 超出 `R+8` 的区块无条件卸载（内存 / 场景规模兜底）；
+3. 两层之间是可回收缓冲区，总驻留超过 `maxChunks`（默认 512，`?maxChunks=N` 覆盖）
+   时按 `lastTouch` 从旧到新淘汰，且必须驻留满 10 秒。排序用 `(lastTouch, key)` 双键，
+   key 用字典序而非 `localeCompare`，保证跨环境确定性。
+
+时钟是 `World.time`（由 `ChunkManager.update(dt)` 每帧推进的逻辑秒数），不用 `Date.now()`。
+"有意义访问"=`ensureChunk()` 新建、`requestMesh()` 网格调度、`setBlock`/`setBlocks` 玩家编辑；
+每帧读方块的 `chunkAt()` 不算，否则视距内所有区块持续刷新，LRU 失去区分度。
+`World.generatedCount` / `regeneratedCount` 记录累计生成与卸载后重建次数，
+`window.__mc.chunkStats()` 与 `test/tuning-baseline.mjs` 的 `churn` 段据此量化"来回走动重复生成"。
+
+M05：新增幂等 `ChunkManager.dispose()`（终止 Worker、结算在途 Promise、释放几何/材质），
+由组装根的 `pagehide`（非 bfcache）与 `window.__mc.dispose()` 调用。
+M06：网格请求携带 `configRevision`，Worker 原样回显；`invalidateConfig()` 后到达的结果
+被丢弃并重新入队，避免旧方块元数据污染新网格。
+
 ### 6.3 Pointer Lock
 
 `requestPointerLock()` 在现代浏览器返回 Promise，无用户手势 / iframe 下会 reject。

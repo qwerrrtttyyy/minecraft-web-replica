@@ -37,6 +37,9 @@ const base = () => ({
     unlitChunks: 0,
     meshQuads: 81 * 1420,
     meshChunks: 81,
+    resident: 81,
+    maxResident: 512,
+    regenerations: 0,
   },
   plugins: [
     { id: 'core:autosave', state: 'enabled' },
@@ -217,6 +220,24 @@ console.log('运行时诊断组回归');
   ok('标题态不产生输入/区块误报',
     !has(r, 'input.enabled') && !has(r, 'chunks.missingMesh') && !has(r, 'chunks.ghostMesh'),
     ids(r).join(','));
+}
+
+{
+  // 区块驻留上限护栏：LRU 策略失效导致驻留失控时必须报出来
+  const bad = runRuntimeDiagnostics(clone((s) => {
+    s.chunks.resident = 600;
+    s.chunks.maxResident = 512;
+  }));
+  ok('驻留区块超过上限被标记为 warn', has(bad, 'chunks.residentCap') && bad.warnings >= 1, ids(bad).join(','));
+  const good = runRuntimeDiagnostics(clone((s) => {
+    s.chunks.resident = 512;
+  }));
+  ok('驻留区块未超限不误报', !has(good, 'chunks.residentCap'));
+  const absent = runRuntimeDiagnostics(clone((s) => {
+    delete s.chunks.resident;
+    delete s.chunks.maxResident;
+  }));
+  ok('旧快照缺少驻留字段时跳过该检查', !has(absent, 'chunks.residentCap'));
 }
 
 console.log(`\nPASS 运行时诊断组：${passed} 组断言全部通过`);

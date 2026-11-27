@@ -227,12 +227,14 @@ async function boot() {
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
   // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
   const workersParam = qs.get('workers');
+  const maxChunksParam = qs.get('maxChunks');
   // 实验对照：?emerge=0 保留 v1.5.1 的独立 emissive 通道（默认并入不透明通道）
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
     mergeEmissive: qs.get('emerge') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
+    maxChunks: maxChunksParam != null ? Number(maxChunksParam) : undefined,
     camera: engine.camera,
   });
   // 开发者设置：网格化线程（URL 调试参数优先，其次才看设置页）
@@ -1329,6 +1331,9 @@ async function boot() {
         unlitChunks,
         meshQuads: chunks.meshStats.quads,
         meshChunks: chunks.meshStats.chunks,
+        resident: chunks.residentCount,
+        maxResident: chunks.maxResident,
+        regenerations: world.regeneratedCount,
       },
       plugins: plugins.list().map((p) => ({
         id: p.manifest.id,
@@ -1757,6 +1762,17 @@ async function boot() {
     if (mode === 'playing') openMenu();
   });
 
+  // M05：顶层资源释放（Worker / 网格几何 / 材质 / 渲染器）。
+  // bfcache 恢复的页面仍需要这些资源，因此 persisted=true 的 pagehide 不释放。
+  const teardown = () => {
+    diagnostics.dispose();
+    chunks.dispose();
+    engine.dispose();
+  };
+  addEventListener('pagehide', (e) => {
+    if (!(e as PageTransitionEvent).persisted) teardown();
+  });
+
   // ---- 内部调试钩子（自动化测试 / 控制台把玩用）----
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
@@ -1765,6 +1781,14 @@ async function boot() {
     botany, falling,
     services: container, events, plugins, api,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
+    dispose: teardown,
+    chunkStats: () => ({
+      generated: world.generatedCount,
+      regenerated: world.regeneratedCount,
+      resident: chunks.residentCount,
+      maxResident: chunks.maxResident,
+      time: world.time,
+    }),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
     openCrafting, closeCrafting,
   };
