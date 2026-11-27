@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, SEA_LEVEL, WORLD_HEIGHT, type BlockId, type System } from '../core/types';
 import type { EventService } from '../services/events';
-import { AIR, type BlockDefinition, type BlockRegistry } from '../world/blocks';
+import { AIR, needsSupport, type BlockDefinition, type BlockRegistry } from '../world/blocks';
 import type { World, RayHit } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { Input } from '../input/input';
@@ -192,7 +192,9 @@ export class Player implements System, PhysicsBody {
     if (stack.kind === 'block') {
       const def = this.registry.get(stack.id as BlockId);
       this.heldMesh = new THREE.Mesh(this.atlas.makeBlockGeometry(def), this.heldMaterial);
-      this.heldMesh.scale.setScalar(def.shape === 'cross' ? 0.34 : 0.30);
+      // 十字面植物用 0.34；蜡烛几何本身是窄柱，0.30 偏小，用 0.42 保住手持存在感
+      const heldScale = def.shape === 'cross' ? 0.34 : def.shape === 'candle' ? 0.42 : 0.30;
+      this.heldMesh.scale.setScalar(heldScale);
     } else {
       const item = ITEMS[stack.id as string];
       if (!item) return;
@@ -670,7 +672,7 @@ export class Player implements System, PhysicsBody {
     } else {
       const aboveId = this.world.getBlock(hit.x, hit.y + 1, hit.z);
       const above = this.registry.get(aboveId);
-      if (above.shape === 'cross') {
+      if (needsSupport(above.shape)) {
         this.world.setBlock(hit.x, hit.y + 1, hit.z, AIR);
         this.events.emit('block:break', { x: hit.x, y: hit.y + 1, z: hit.z, block: aboveId });
         this.collectDrops(above, hit.x, hit.y + 1, hit.z);
@@ -834,6 +836,11 @@ export class Player implements System, PhysicsBody {
       this.events.emit('furnace:open', { x: hit.x, y: hit.y, z: hit.z });
       return true;
     }
+    // 营火：右键打开「直接烤」面板
+    if (def.name === 'campfire') {
+      this.events.emit('campfire:open', { x: hit.x, y: hit.y, z: hit.z });
+      return true;
+    }
     return false;
   }
 
@@ -873,7 +880,7 @@ export class Player implements System, PhysicsBody {
     if (existing.solid) return false;
     if (boxIntersectsBlock(this.pos, this.width, this.height, x, y, z)) return false;
     if (def.id === AIR) return false;
-    if (def.shape === 'cross' && !this.world.isSolidAt(x, y - 1, z)) return false;
+    if (needsSupport(def.shape) && !this.world.isSolidAt(x, y - 1, z)) return false;
     // 目标格已是同一方块时 setBlock 会返回 false：先拦住，否则扣了背包却没放下方块。
     // 火把 / 草丛这类非实心方块不会被上面的 existing.solid 挡住，所以这条必须存在。
     if (existing.id === def.id) return false;

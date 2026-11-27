@@ -17,6 +17,10 @@ export interface GameEvents {
   'block:break': { x: number; y: number; z: number; block: BlockId };
   'block:place': { x: number; y: number; z: number; block: BlockId };
   'block:ignite': { x: number; y: number; z: number };
+  /** 火焰引燃一个新方块（PR3 火焰蔓延） */
+  'fire:ignite': { x: number; y: number; z: number };
+  /** 火焰熄灭（寿命到期 / 失去支撑 / 遇水） */
+  'fire:extinguish': { x: number; y: number; z: number; cause: 'lifetime' | 'unsupported' | 'water' };
   /** 生态随机刻改变了方块（生长 / 蔓延 / 枯萎 / 成熟 / 采集），供存档与插件观测 */
   'plant:grow': {
     x: number; y: number; z: number; block: BlockId;
@@ -54,7 +58,7 @@ export interface GameEvents {
   /** 生存模式：重生 */
   'survival:respawn': { position: Vec3Like };
   /** 生存模式：进食 */
-  'survival:eat': { item: string; hunger: number };
+  'survival:eat': { item: string; hunger: number; saturation: number };
   /** 生存模式：背包变化（kind: block/item） */
   'inventory:change': { key: string; count: number };
   /** 装备穿戴 / 耐久变化（slot 为 null 表示背包装备） */
@@ -66,6 +70,8 @@ export interface GameEvents {
   'furnace:open': { x: number; y: number; z: number };
   /** 合成完成（配方 id / 产物材料 / 数量） */
   'crafting:crafted': { recipe: string; result: string; count: number };
+  /** 生存模式：空手右键营火，请求打开营火烤制界面（PR4） */
+  'campfire:open': { x: number; y: number; z: number };
   'game:start': { seed: number };
   'game:pause': { paused: boolean };
   'save:done': { bytes: number };

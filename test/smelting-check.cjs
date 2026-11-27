@@ -35,13 +35,15 @@ ok('原矿→锭配方齐全',
   smeltOutputOf('raw_copper') === 'copper_ingot');
 ok('熟肉配方齐全',
   smeltOutputOf('porkchop') === 'cooked_porkchop' &&
-  smeltOutputOf('beef') === 'cooked_beef');
+  smeltOutputOf('beef') === 'cooked_beef' &&
+  smeltOutputOf('rabbit_meat') === 'cooked_rabbit');
 ok('沙子烧玻璃、原木烧木炭',
   smeltOutputOf('sand') === 'glass' && smeltOutputOf('oak_log') === 'charcoal');
 ok('圆石烧石头', smeltOutputOf('cobblestone') === 'stone');
 ok('燃料表比例与原版一致',
   fuelUnitsOf('coal') === 8 && fuelUnitsOf('charcoal') === 8 &&
   fuelUnitsOf('oak_planks') === 1.5 && fuelUnitsOf('oak_log') === 1.5 &&
+  fuelUnitsOf('crafting_table') === 1.5 && fuelUnitsOf('bookshelf') === 1.5 &&
   fuelUnitsOf('stick') === 0.5);
 ok('非燃料返回 0', fuelUnitsOf('stone') === 0);
 ok('不可烧炼返回 null', smeltOutputOf('stone') === null);

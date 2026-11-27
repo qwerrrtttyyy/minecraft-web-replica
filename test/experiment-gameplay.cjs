@@ -69,7 +69,9 @@ log('E9 生存状态机：饥饿消耗率 / 饱食回血 / 饥饿掉血 / 伤害
     const s = mkSurv();
     const ctx = { moving, sprinting, mining, underwater: false };
     for (let i = 0; i < T * 10; i++) s.tick(0.1, ctx);
-    return { points: 20 - s.hunger, rate: (20 - s.hunger) / T, healthLost: 20 - s.health };
+    // 饱和度先当缓冲：总消耗 = 已失 hunger + 已失 saturation（两池合计 40）
+    const points = 40 - s.hunger - s.saturation;
+    return { points, rate: points / T, healthLost: 20 - s.health };
   };
   const walk = drainRate(true, false, false);
   ok('运动消耗：walk ≈ 0.06/s（200s）',
@@ -92,13 +94,14 @@ log('E9 生存状态机：饥饿消耗率 / 饱食回血 / 饥饿掉血 / 伤害
     s.heal = (a) => { heals.push(a); origHeal(a); };
     for (let i = 0; i < 400; i++) s.tick(0.1, idleCtx);
     ok('饱食回血：触发（heals ≥ 1）', heals.length >= 1, `heals=${heals.length}`);
-    ok('饱食回血：health ∈ [10,16]，hunger ∈ [12,20]',
-      s.health >= 10 && s.health <= 16 && s.hunger >= 12 && s.hunger <= 20,
-      `health=${s.health} hunger=${s.hunger}`);
+    // 饱和度缓冲回血消耗：health 回满，hunger 保持 19 不掉
+    ok('饱食回血：health 回满，hunger 不掉（饱和度缓冲）',
+      s.health === 20 && s.hunger === 19,
+      `health=${s.health} hunger=${s.hunger} saturation=${s.saturation}`);
   }
   {
     const s = mkSurv();
-    s.health = 5; s.hunger = 0;
+    s.health = 5; s.hunger = 0; s.saturation = 0; // 饱和度清空，隔离饥饿掉血路径
     const damages = [];
     const origDamage = s.damage.bind(s);
     s.damage = (a, c, u) => { damages.push(c); return origDamage(a, c, u); };

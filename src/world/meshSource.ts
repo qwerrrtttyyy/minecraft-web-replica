@@ -1,5 +1,5 @@
 import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
-import type { BlockRegistry } from './blocks';
+import type { BlockRegistry, BlockShape } from './blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { World, Chunk } from './world';
 import {
@@ -17,10 +17,10 @@ const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 const W = CS + 2;
 
-const toMeshDef = (d: { id: number; name: string; shape: string; opaque: boolean; cullSame?: boolean; liquid: boolean; transparentPass: boolean; lightEmission: number; tiles: { top: string; bottom: string; side: string }; tint?: boolean; crossHeight?: number }): MeshBlockDef => ({
+const toMeshDef = (d: { id: number; name: string; shape: BlockShape; opaque: boolean; cullSame?: boolean; liquid: boolean; transparentPass: boolean; lightEmission: number; tiles: { top: string; bottom: string; side: string }; tint?: boolean; crossHeight?: number }): MeshBlockDef => ({
   id: d.id,
   name: d.name,
-  shape: d.shape === 'cross' ? 'cross' : 'cube',
+  shape: d.shape,
   opaque: d.opaque,
   cullSame: d.cullSame ?? false,
   liquid: d.liquid,

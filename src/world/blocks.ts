@@ -2,7 +2,15 @@ import type { BlockId } from '../core/types';
 
 /** 方块音效材质（扩展点：新方块可声明自己的音效类别） */
 export type SoundMaterial = 'stone' | 'dirt' | 'wood' | 'sand' | 'glass' | 'cloth' | 'liquid' | 'plant';
-export type BlockShape = 'cube' | 'cross';
+export type BlockShape = 'cube' | 'cross' | 'slab' | 'candle';
+
+/** 合法形状集合：register 校验用 */
+const BLOCK_SHAPES: ReadonlySet<BlockShape> = new Set(['cube', 'cross', 'slab', 'candle']);
+
+/** 需要下方实心支撑的形状：失支撑时随之清除 / 掉落（与放置校验同口径） */
+export function needsSupport(shape: BlockShape): boolean {
+  return shape === 'cross' || shape === 'slab' || shape === 'candle';
+}
 
 /**
  * 掉落规则：name 可以是方块名、物品名（'item:apple'），'self' 表示掉落自身。
@@ -115,6 +123,7 @@ export class BlockRegistry {
   }
 
   register(input: BlockInput): BlockDefinition {
+    if (!BLOCK_SHAPES.has(input.shape)) throw new Error(`非法的方块形状: ${input.shape}`);
     if (this.byName.has(input.name)) throw new Error(`方块名重复: ${input.name}`);
     const id = input.id ?? this.nextId;
     // 区块数据用 Uint8Array 存储，id 超过 255 会被静默截断成别的方块
@@ -544,4 +553,30 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('chiseled_sandstone', '錾制砂岩', {}, { id: 171, sound: 'sand', hardness: 1.2 });
   cube('cut_sandstone', '切制砂岩', {}, { id: 172, sound: 'sand', hardness: 1.2 });
   cube('red_sandstone', '红砂岩', {}, { id: 173, sound: 'sand', hardness: 1.2 });
+  // ---- 火光地基（PR1，id 174~177 末位追加；旧存档差分保持有效） ----
+  // 营火 / 灯笼：半高板（slab），自发光；蜡烛：细柱（candle）；火焰：十字面（cross）。
+  // 本 PR 只落地渲染地基，不含火焰蔓延与熔炉交互。
+  reg.register({
+    id: 174, name: 'campfire', label: '营火', shape: 'slab', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    tiles: { top: 'campfire_top', bottom: 'campfire_bottom', side: 'campfire_side' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 175, name: 'lantern', label: '灯笼', shape: 'slab', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    tiles: { top: 'lantern_top', bottom: 'lantern_bottom', side: 'lantern_side' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 176, name: 'candle', label: '蜡烛', shape: 'candle', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 9, hardness: 0.1, sound: 'wood',
+    tiles: { top: 'candle', bottom: 'candle', side: 'candle' },
+    drops: [{ name: 'self' }],
+  });
+  reg.register({
+    id: 177, name: 'fire', label: '火焰', shape: 'cross', solid: false, opaque: false,
+    liquid: false, transparentPass: false, lightEmission: 15, hardness: Infinity, sound: 'dirt',
+    tiles: { top: 'fire', bottom: 'fire', side: 'fire' }, drops: [],
+  });
 }
