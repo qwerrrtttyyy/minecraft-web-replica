@@ -38,6 +38,7 @@ interface FaceGeom {
   face: FaceDef;
   uAxis: 0 | 1 | 2;
   vAxis: 0 | 1 | 2;
+  /** L 是深度轴：{uAxis, vAxis, dAxis} 恰好划分 {0,1,2}，dimD 由它取尺寸 */
   dAxis: 0 | 1 | 2;
   /** 预解构的法线分量：Greedy 每格都要用法向取邻居，避免循环内 destructuring */
   nx: number;
@@ -255,6 +256,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   /**
+   * 可选来源可信度查询提升到入口：每个可见面都要问一次，
+   * 把可选链与属性读取从内层循环移到整块只做一次。缺省来源恒为可信。
+   */
+  // 注意：isKnown 是源对象上的方法（SnapshotMeshSource 会读 this.snapshot），
+  // 必须在入口 bind 一次；直接取出裸函数再调用会丢掉 this。
+  const isKnown = src.isKnown ? src.isKnown.bind(src) : () => true;
+
+  /**
    * 通道分配。默认把自发光并进不透明通道：它不需要光照 / 染色，
    * 用 aTint=2 告诉 shader 跳过光照，省下一份材质、一次 draw call 与一次几何。
    * mergeEmissive=false（?emerge=0）保留 v1.5.1 的独立 emissive 通道，仅作实验对照。
@@ -275,14 +284,6 @@ export function meshChunk(src: MeshSource): MeshOutput {
     mutable.opaque ??= newGeo();
     return mutable.opaque;
   };
-
-  /**
-   * 可选来源可信度查询提升到入口：每个可见面都要问一次，
-   * 把可选链与属性读取从内层循环移到整块只做一次。缺省来源恒为可信。
-   * 注意：isKnown 是源对象上的方法（SnapshotMeshSource 会读 this.snapshot），
-   * 必须在入口 bind 一次；直接取出裸函数再调用会丢掉 this。
-   */
-  const isKnown = src.isKnown ? src.isKnown.bind(src) : () => true;
 
   /** 收集完成后把通道引用挂到对外契约上（类型放宽但运行时同一对象） */
   const publish = (): MeshOutput => {
@@ -510,7 +511,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const def = src.def(id);
           if (!isPlainCube(def)) continue;
           const nid = src.getId(bx + nx, by + ny, bz + nz);
-          if (!faceVisible(def, src.def(nid), isKnown(bx + nx, by + ny, bz + nz))) continue;
+          if (!faceVisible(def, src.def(nid), isKnown(bx + nx, by + ny, bz + nz) ?? true)) continue;
           const ao = computeAOInto(src, bx, by, bz, face, def, aoCheck);
           // 角点光照（平滑光照）：4 个角点各取空气侧 4 格均值
           computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);

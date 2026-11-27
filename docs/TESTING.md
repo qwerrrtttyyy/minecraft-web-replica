@@ -123,6 +123,19 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **vitest**：直接消费 `src` TS 源码的 Vitest 全量（`fire` / `warmth` / `campfire` /
   `survival-saturation` / `ai` / `logic` / `terrain` / `crafting`），不依赖 CJS 快照，
   已挂入 `verify`。
+- **test:mesher-hotspot**（`npm run test:mesher-hotspot`，**不挂 `verify`**）：生产路径输出护栏。
+  脚本先跑 `test:snapshot`，再用 seed 2026 的 24 区块（`SnapshotMeshSource` + Greedy 默认配置）
+  对打包后的四通道几何做 SHA-256，与 `test/mesher-hotspot-baseline.json` 比较；任何 quad 顺序或
+  顶点属性变化都会 FAIL（哈希漂移），同时打印 8 轮预热后的 ms/区块供性能对照。
+  `--record` 只在故意修改 fixture 时重记基线，不可用于让优化「过门禁」。
+- **test:wasm-choice**（`npm run test:wasm-choice`，**不挂 `verify`**）：后端自适应决策纯函数回归。
+  覆盖 `chooseNoiseBackend` 的更快 / 更慢 / 相等 / 阈值边界与非法输入回退 JS，
+  `resolveWasmMode` 的 `0 > force > experimental > 自适应` 优先级，以及 `NOISE_BENCH_SAMPLE`
+  逐值等于生成器真实调用组合。脚本先跑 `test:snapshot`，再用 Node 直接执行
+  `test/wasm-backend-choice-check.cjs`。
+- **test:mesh-typed-arrays**（`npm run test:mesh-typed-arrays`，**不挂 `verify`**）：`packMesh`
+  对预分配 typed array 只打包 `GeoArrays.used` 标出的前缀，尾部容量不入几何，且与 `number[]`
+  版本逐字节一致；防止几何输出护栏被 typed-array 化破坏。
 - **services-check**：服务容器、事件服务、插件生命周期、权限裁剪（emit 门禁 / 通道归属 /
   manifest 防篡改）、级联停用、存档校验。
 - **diagnostics-check**：健康快照 + 注入异常后对应 `issue.id` 必须出现（含

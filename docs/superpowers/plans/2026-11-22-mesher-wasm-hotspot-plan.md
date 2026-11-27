@@ -205,3 +205,11 @@
 - Spec 覆盖：B.1/B.2 → Task 3；B.3 → Task 3 Step 4（条件性）；B.4 → Task 1；C 的基准/决策 → Task 4，接线 → Task 5；输出护栏 → Task 2；文档 → Task 3/5。
 - 任务独立：Task 1-3（B）与 Task 4-5（C）无相互依赖；Task 2 依赖 Task 1 的 packMesh 兼容。
 - 未把 `verify` 跑法写入任务：本环境浏览器组无法启动 Chromium，任务 5 只跑 Node 链，报告中须如实标注。
+- **B.4 范围缩减（文档裁定，Fix round 1）**：Spec B.4 点名的 `newGeo()` 容量翻倍 typed array 预分配 GC 手段
+  **本计划有意未采用**——Task 1 只放宽了 `GeoArrays` / `packMesh` 契约（typed array 可入、按 `used` 截前缀），
+  生产 `mesher.ts` 仍用普通 `number[] + push` 收集，`newGeo()` 未改。保留的 `GeoArrays.used` 是给未来
+  真正切换到预分配 typed array 的调用方用的；本计划内没有调用方填写它（除回归测试的显式构造）。
+  不要据此认为已拿到消除收集期 GC 的收益。
+- **提速结论（如实记录）**：标量化 + 条件性 B.3 对照后，meshChunk 实测加速比约 **1.0×**，
+  **未达 ≥1.5× 目标**；输出逐字节一致优先于提速，故保留语义等价的标量化版本并停止继续改语义。
+  `docs/ARCHITECTURE.md` §8.3.3 同步了这一裁定。

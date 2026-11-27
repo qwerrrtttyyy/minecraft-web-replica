@@ -70,7 +70,10 @@ clang --target=wasm32 -O2 -ffreestanding -nostdlib -fno-exceptions \
 ```
 能力检测 → 同步加载内联内核 → magic / import / 导出 / ABI / 指纹校验
   → 等价性对拍（多 seed × 采样点 × 5 类函数 + 批量）
-  → 通过：installNoiseBackend(工厂) → 之后 new Noise() 持有独立 WASM 实例
+  → 通过：自适应基准（生成器真实逐点调用组合，JS vs WASM 对称计时）
+       → chooseNoiseBackend（wasm 必须明显更快：wasmMs < jsMs * 0.9）
+       → 选 WASM：installNoiseBackend(工厂) → new Noise() 持有独立 WASM 实例
+       → 选 JS：不安装后端，保持 v1.4.3 纯 JS 路径
   → 失败：卸载后端、记 lastError、发 wasm:fallback，全程纯 JS
 ```
 
@@ -79,19 +82,46 @@ clang --target=wasm32 -O2 -ffreestanding -nostdlib -fno-exceptions \
 - 后端方法带 `guard`：WASM 抛错 → 该实例永久降级到同一份 JS 参考，并上报 runtime；
   runtime 卸载全局后端且状态落 `fallback`，诊断不会看到「ready 但已失效」的矛盾状态。
 - 状态机：`disabled`（`?wasm=0` / 手动关闭）→ `unavailable` / `fallback` / `ready`。
+  `ready` 只表示内核已通过自检，**不保证**已安装 WASM 后端——自适应可能判定 JS 更快而保持纯 JS，
+  实际生效后端见 `stats().backend`。
 - 事件：`wasm:ready { abi, bytes, sha256, samples }`、`wasm:fallback { reason, code? }`。
+
+### 自适应安装与参数优先级
+
+安装决策在自检通过之后、`installNoiseBackend` 之前完成，只跑一次（不复用 `benchmark()`，
+后者要求 `ready` 且只测 `mc_fbm2_batch` 批量路径）。基准使用生成器的真实调用组合
+`NOISE_BENCH_SAMPLE = { noise2:5, fbm2:4, ridged2:1, noise3:2, fbm3:0 }`
+（`fbm2`/`ridged2` 为 octaves=3），以固定 perm / 坐标序列让 JS 与 WASM 跑同样次数；
+两侧对称预热并取多次试跑的最小值，抵消 JIT 与调度噪声。
+
+URL 参数优先级（由 `resolveWasmMode(param, experimental)` 统一解析）：
+
+| 参数 | 实验性关闭 | 实验性开启 | 行为 |
+| --- | --- | --- | --- |
+| `?wasm=0` | off | off | **始终强制关闭**，不加载内核、不安装后端 |
+| `?wasm=force` | force | force | 跳过基准直接安装 WASM（调试 / A/B 覆盖） |
+| 无参数 / 其他值 | off | adaptive | 走自适应基准，仅在 WASM 明显更快时安装 |
+
+`?wasm=0` 始终能强制关闭；`?wasm=force` 在实验性关闭时也生效；设置页开关打开默认走自适应，
+不强迫 WASM。`main.ts` 把 `qs.get('wasm')` 作为 `wasmParam` 传给构造函数，
+运行期开关 `setEnabled(v)` 只改变实验性位，off/force 优先级仍由运行时结合 `wasmParam` 解析。
 
 ### 可观测性
 
 ```js
 CraftAPI.wasm.status()          // 'ready' | 'fallback' | ...
 CraftAPI.wasm.stats()           // 自检样本 / 调用数 / 回退数 / 模块数 / lastError
-CraftAPI.wasm.benchmark(2000)   // JS vs WASM 同负载基准（含逐位 correct 判定）
+                                // + backend / benchJsMs / benchWasmMs（v1.5.4）
+CraftAPI.wasm.benchmark(2000)   // JS vs WASM 批量基准（含逐位 correct 判定，低频诊断用）
 CraftAPI.wasm.setEnabled(false) // 运行时关闭（需 wasm:use 权限，插件视图）
+window.__mc.wasm.stats()        // 内部调试钩子：同一个 WasmRuntime 实例的 stats()
 ```
 
+`stats().backend` 为 `'pending'`（尚未决策）/ `'js'`（保持 JS 参考）/ `'wasm'`（已安装后端）；
+`benchJsMs` / `benchWasmMs` 是自适应基准耗时，force 模式跳过基准故保持 0。
 `?wasm=0` 可强制关闭 WASM，用于 A/B 对比或排查；F3 诊断新增
-`wasm.status` / `wasm.abi` / `wasm.fallback` / `wasm.selfcheck` 四项检查。
+`wasm.status` / `wasm.abi` / `wasm.fallback` / `wasm.selfcheck` 四项检查（v1.5.4 追加
+`wasm.backend` / `wasm.bench`，旧快照缺字段时跳过）。
 
 ## 5. 性能：诚实的数据
 
@@ -109,6 +139,11 @@ CraftAPI.wasm.setEnabled(false) // 运行时关闭（需 wasm:use 权限，插�
   **一次调用处理一批数据**；
 - 不同浏览器 / 设备上倍率会变，`CraftAPI.wasm.benchmark()` 可在目标环境现测，
   代码不把任何倍率写成阈值或断言。
+
+自适应安装用的是**逐点混合负载**（不是上表的批量路径）：按 `NOISE_BENCH_SAMPLE` 的
+真实调用组合对称计时。本机（Node 24 / V8）实测 JS 约 3~5 ms、WASM 约 4~7 ms，
+即 WASM 更慢，因此默认走纯 JS；该结论只反映本机，其他环境由 `chooseNoiseBackend`
+现测现判。想强制接管用 `?wasm=force`，并用 `window.__mc.wasm.stats()` 看两侧耗时。
 
 ## 6. 插件扩展点
 
@@ -159,4 +194,7 @@ api.wasm.callModule('example:math', 'add', 2, 3);
 `npm run test:wasm`（24 项）覆盖：内联二进制完整性、零 import / 14 导出、ABI/指纹、
 1705 项等价性对拍、伪造内核检出、运行期异常回退、ready/fallback/disabled 状态机、
 `setEnabled`、`benchmark`、`callKernel`、CRC32/AO、自定义模块准入与调用、权限裁剪。
-`test/diagnostics-check.cjs` 另覆盖 4 个 WASM 诊断检查项。
+`test/diagnostics-check.cjs` 另覆盖 4 个 WASM 诊断检查项，并对 v1.5.4 新增的
+`wasm.backend` / `wasm.bench` 做注入式回归（非法值被捕获、旧快照缺字段时跳过）。
+`npm run test:wasm-choice`（不挂 `verify`）覆盖后端选择纯函数与参数优先级；
+`?wasm=force` 跳过基准直接安装、`?wasm=0` 始终关闭由运行时集成保证。

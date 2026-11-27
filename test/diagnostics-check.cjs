@@ -49,6 +49,10 @@ const base = () => ({
   survival: { health: 20, hunger: 20, breath: 15, dead: false },
   entities: 5,
   plant: { tracked: 12, avgEnergy: 64, invalidEnergy: 0 },
+  wasm: {
+    status: 'disabled', abi: 0, fallbackCount: 0, selfCheckMismatches: 0,
+    backend: 'js', benchJsMs: 10, benchWasmMs: 15,
+  },
   save: { dirty: false, lastOkAt: 1_700_000_000_000 },
 });
 
@@ -238,6 +242,27 @@ console.log('运行时诊断组回归');
     delete s.chunks.maxResident;
   }));
   ok('旧快照缺少驻留字段时跳过该检查', !has(absent, 'chunks.residentCap'));
+  // v1.5.4：WASM 自适应后端 / 基准耗时的注入回归
+  const healthy = runRuntimeDiagnostics(base());
+  ok('健康 WASM 快照不产生新检查项',
+    !has(healthy, 'wasm.backend') && !has(healthy, 'wasm.bench'), ids(healthy).join(','));
+  {
+    const r = runRuntimeDiagnostics(clone((s) => { s.wasm.backend = 'bogus'; }));
+    ok('非法 WASM backend 被捕获', has(r, 'wasm.backend'), ids(r).join(','));
+  }
+  {
+    const r = runRuntimeDiagnostics(clone((s) => { s.wasm.benchWasmMs = -1; }));
+    ok('非法 WASM 基准耗时被捕获', has(r, 'wasm.bench'), ids(r).join(','));
+  }
+  {
+    const r = runRuntimeDiagnostics(clone((s) => {
+      delete s.wasm.backend;
+      delete s.wasm.benchJsMs;
+      delete s.wasm.benchWasmMs;
+    }));
+    ok('旧快照缺 WASM 新字段时跳过相关检查',
+      !has(r, 'wasm.backend') && !has(r, 'wasm.bench'), ids(r).join(','));
+  }
 }
 
 console.log(`\nPASS 运行时诊断组：${passed} 组断言全部通过`);
