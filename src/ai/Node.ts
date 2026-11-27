@@ -37,3 +37,20 @@ export abstract class Node {
   abstract tick(ctx: TickContext): NodeStatus;
   reset(): void {}
 }
+
+/**
+ * 节点构造函数签名：首参为 JSON 配置对象（部分内置节点兼容位置参数形态），产出 Node 实例。
+ * 首参声明为可选的宽类型，使「必传 config」「带额外位置参数」的构造签名都能自然赋值过来。
+ */
+export type NodeCtor = new (config?: Record<string, unknown>) => Node;
+
+/**
+ * 从节点配置里读取字段：仅当 config 是非数组普通对象且包含该键时生效，否则回退默认值。
+ * 条件 / 动作节点的构造统一走这里，避免各处重复 typeof 判断与 any 断言。
+ */
+export function cfg<T>(config: unknown, key: string, fallback: T): T {
+  if (config && typeof config === 'object' && !Array.isArray(config) && key in config) {
+    return (config as Record<string, unknown>)[key] as T;
+  }
+  return fallback;
+}

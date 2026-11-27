@@ -1,11 +1,16 @@
-import { Node, NodeStatus, TickContext } from './Node';
+import type { NodeConfig } from './BehaviorTree';
+import { cfg, Node, NodeStatus } from './Node';
+import type { TickContext } from './Node';
 
-type AnyApi = { [key: string]: any };
-function apiOf(ctx: TickContext): AnyApi { return (ctx.api as AnyApi) ?? {}; }
-function cfg<T>(config: any, key: string, fallback: T): T {
-  if (config && typeof config === 'object' && !Array.isArray(config) && key in config) return config[key] as T;
-  return fallback;
-}
+/** 节点可挂载的 CraftAPI 视图：按权限裁剪，方法缺失时静默跳过（api 为 unknown，此处集中一次收窄）。 */
+type ApiView = Partial<{
+  spawnEntity(typeId: string, offset: Vec3, chance: number): void;
+  breakBlock(x: number, y: number, z: number): void;
+  placeBlock(x: number, y: number, z: number, blockId: number): void;
+  playSound(sound: string, volume: number): void;
+}>;
+interface Vec3 { x: number; y: number; z: number; }
+function apiOf(ctx: TickContext): ApiView { return (ctx.api as ApiView) ?? {}; }
 
 /** 面向玩家并向前移动；距离 ≤ stopDist 时返回 Success，否则 Running。 */
 export class ChasePlayer extends Node {
@@ -14,11 +19,11 @@ export class ChasePlayer extends Node {
   readonly speedFar?: number;
   readonly speedClose?: number;
   readonly closeDist: number;
-  constructor(config: any = {}, stopDist?: number) {
+  constructor(config: NodeConfig | number = {}, stopDist?: number) {
     super();
     if (typeof config === 'object' && config !== null) {
       this.speed = cfg(config, 'speed', 1); this.stopDist = cfg(config, 'stopDist', 2);
-      this.speedFar = config.speedFar; this.speedClose = config.speedClose; this.closeDist = cfg(config, 'closeDist', 2.2);
+      this.speedFar = cfg<number | undefined>(config, 'speedFar', undefined); this.speedClose = cfg<number | undefined>(config, 'speedClose', undefined); this.closeDist = cfg(config, 'closeDist', 2.2);
     } else { this.speed = config; this.stopDist = stopDist ?? 2; this.closeDist = 2.2; }
   }
   tick(ctx: TickContext): NodeStatus {
@@ -44,7 +49,7 @@ export class FleeFrom extends Node {
   readonly target: string;
   readonly speed: number;
   readonly minDist: number;
-  constructor(config: any = {}, speed?: number, minDist?: number) {
+  constructor(config: NodeConfig | string = 'player', speed?: number, minDist?: number) {
     super();
     if (typeof config === 'object' && config !== null) { this.target = cfg(config, 'target', 'player'); this.speed = cfg(config, 'speed', 1); this.minDist = cfg(config, 'minDist', 8); }
     else { this.target = config; this.speed = speed ?? 1; this.minDist = minDist ?? 8; }
@@ -61,7 +66,7 @@ export class AttackPlayer extends Node {
   readonly cooldown: number;
   readonly attackRange: number;
   private attackTimer = 0;
-  constructor(config: any = {}, cooldown?: number, attackRange?: number) {
+  constructor(config: NodeConfig | number = 3, cooldown?: number, attackRange?: number) {
     super();
     if (typeof config === 'object' && config !== null) { this.damage = cfg(config, 'damage', 3); this.cooldown = cfg(config, 'cooldown', 1.05); this.attackRange = cfg(config, 'attackRange', 1.8); }
     else { this.damage = config; this.cooldown = cooldown ?? 1.05; this.attackRange = attackRange ?? 1.8; }
@@ -93,7 +98,7 @@ export class Wander extends Node {
   readonly speed: number; readonly idleMin: number; readonly idleMax: number; readonly walkMin: number; readonly walkMax: number;
   private state: 'idle' | 'walk' = 'idle';
   private timer = 0;
-  constructor(config: any = {}, idleMin?: number, idleMax?: number, walkMin?: number, walkMax?: number) {
+  constructor(config: NodeConfig | number = 1, idleMin?: number, idleMax?: number, walkMin?: number, walkMax?: number) {
     super();
     if (typeof config === 'object' && config !== null) {
       this.speed = cfg(config, 'speed', 1); this.idleMin = cfg(config, 'idleMin', 1.5); this.idleMax = cfg(config, 'idleMax', 3.5);
@@ -123,7 +128,7 @@ export class Wander extends Node {
 export class LookAt extends Node {
   readonly target: string; readonly duration: number;
   private timer = 0;
-  constructor(config: any = {}, duration?: number) {
+  constructor(config: NodeConfig | string = 'player', duration?: number) {
     super();
     if (typeof config === 'object' && config !== null) { this.target = cfg(config, 'target', 'player'); this.duration = cfg(config, 'duration', 1); }
     else { this.target = config; this.duration = duration ?? 1; }
@@ -136,7 +141,7 @@ export class LookAt extends Node {
 export class Wait extends Node {
   readonly seconds: number;
   private timer = 0;
-  constructor(config: any = 1) { super(); this.seconds = typeof config === 'object' && config !== null ? cfg(config, 'seconds', 1) : config; }
+  constructor(config: NodeConfig | number = 1) { super(); this.seconds = typeof config === 'object' && config !== null ? cfg(config, 'seconds', 1) : config; }
   tick(ctx: TickContext): NodeStatus { this.timer += ctx.dt; return this.timer >= this.seconds ? NodeStatus.Success : NodeStatus.Running; }
   reset(): void { this.timer = 0; }
 }
@@ -144,7 +149,7 @@ export class Wait extends Node {
 /** 发送游戏事件后返回 Success。 */
 export class EmitEvent extends Node {
   readonly event: string; readonly payload: unknown;
-  constructor(config: any = '', payload?: unknown) {
+  constructor(config: NodeConfig | string = '', payload?: unknown) {
     super();
     if (typeof config === 'object' && config !== null) { this.event = cfg(config, 'event', ''); this.payload = cfg(config, 'payload', undefined); }
     else { this.event = config; this.payload = payload; }
@@ -166,7 +171,7 @@ export class SetBlackboard extends Node {
 /** 按 chance 概率生成实体（经 api.spawnEntity，需 world:write 权限）。 */
 export class SpawnEntity extends Node {
   readonly typeId: string; readonly offset: { x: number; y: number; z: number }; readonly chance: number;
-  constructor(config: any = '', offset?: any, chance?: number) {
+  constructor(config: NodeConfig | string = '', offset?: Vec3, chance?: number) {
     super();
     if (typeof config === 'object' && config !== null) { this.typeId = cfg(config, 'typeId', ''); this.offset = cfg(config, 'offset', { x: 0, y: 0, z: 0 }); this.chance = cfg(config, 'chance', 1); }
     else { this.typeId = config; this.offset = offset ?? { x: 0, y: 0, z: 0 }; this.chance = chance ?? 1; }
