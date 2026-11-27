@@ -1,7 +1,7 @@
 id: A00
 title: AI 系统契约校验器与设计文档落地
 description: docs/agent/validate.py 为 AI 系统 outputs 补机械检查；写入设计文档；修复 validate.py 预存在的 git 合并冲突，使校验器可运行。
-touch: { allow: [docs/agent/validate.py, docs/agent/tasks/A0*.yaml, docs/superpowers/specs/2026-11-21-ai-system-design.md], deny: [src/**, test/**] }
+touch: { allow: [docs/agent/validate.py, docs/agent/tasks/A0*.yaml, docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md], deny: [src/**, test/**] }
 outputs:
   - ai core: src/ai/Node.ts 导出 NodeStatus 与 TickContext 接口
   - ai composites: Selector / Sequence / Parallel / RandomSelector 存在

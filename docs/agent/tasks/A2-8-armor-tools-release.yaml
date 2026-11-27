@@ -1,7 +1,7 @@
 id: A2-8
 title: 护甲/工具闭环浏览器实景 + 文档 + 版本推进 1.5.5
 description: |
-  设计见 docs/superpowers/specs/2026-11-22-armor-tools-closure-design.md §7。依赖 A2-6、A2-7。
+  设计见 docs/archive/2026-11/superpowers/specs/2026-11-22-armor-tools-closure-design.md §7。依赖 A2-6、A2-7。
   smoke 增加实景路径；同步 README / CHANGELOG / TESTING / ARCHITECTURE；
   VERSION 推进到 1.5.5（决策 4，维护者已确认），RELEASE 维持 v1，待联机 M3 后再推进 v2。
 touch:

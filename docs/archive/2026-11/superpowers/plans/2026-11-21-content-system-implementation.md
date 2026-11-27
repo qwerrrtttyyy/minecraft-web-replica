@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.6 + three.js 0.170（唯一运行时依赖）；测试为手写 CJS 断言脚本 + tsc 现场编译快照。
 
-**Spec:** `docs/superpowers/specs/2026-11-21-content-system-design.md`（与本文同目录树，执行者必须同时阅读）
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-21-content-system-design.md`（与本文同目录树，执行者必须同时阅读）
 
 ## Global Constraints
 
@@ -37,7 +37,7 @@
 **Files:**
 - Modify: `docs/agent/validate.py`
 - Create: `docs/agent/tasks/C00.yaml` … `C05.yaml`（6 张）
-- Spec already landed: `docs/superpowers/specs/2026-11-21-content-system-design.md`
+- Spec already landed: `docs/archive/2026-11/superpowers/specs/2026-11-21-content-system-design.md`
 
 **Interfaces:**
 - Produces: `validate.py` CHECKS 新增 5 个关键词：`tuning center` / `drop system` / `animal breeding` / `coal torch` / `test:drop`。阶段 A 的谓词只检查关键词出现在任务卡文本中；Tasks 2–5 各自收紧为真实符号检查。
@@ -58,7 +58,7 @@ Expected: `0 FAIL / 0 WARN`，exit 0。
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/agent/validate.py docs/agent/tasks/C0*.yaml docs/superpowers/specs/2026-11-21-content-system-design.md
+git add docs/agent/validate.py docs/agent/tasks/C0*.yaml docs/archive/2026-11/superpowers/specs/2026-11-21-content-system-design.md
 git commit -m "docs(content): 落地内容体系设计与任务卡，扩展契约校验器"
 ```
 

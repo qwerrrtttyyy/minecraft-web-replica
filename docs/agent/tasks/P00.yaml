@@ -10,8 +10,8 @@ touch:
   allow:
     - docs/agent/validate.py
     - docs/agent/tasks/P0*.yaml
-    - docs/superpowers/specs/*.md
-    - docs/superpowers/plans/*.md
+    - docs/archive/2026-11/superpowers/specs/*.md
+    - docs/archive/2026-11/superpowers/plans/*.md
   deny:
     - src/**
     - test/**

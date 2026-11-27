@@ -1,7 +1,7 @@
 id: C00
 title: 内容体系契约校验器扩展
 description: docs/agent/validate.py 为本轮 outputs 补机械检查；写入设计文档；分两阶段（A 关键词存在 / B 随实现卡收紧为符号真实存在）。
-touch: { allow: [docs/agent/validate.py, docs/agent/tasks/C0*.yaml, docs/superpowers/specs/2026-11-21-content-system-design.md], deny: [src/**, test/**] }
+touch: { allow: [docs/agent/validate.py, docs/agent/tasks/C0*.yaml, docs/archive/2026-11/superpowers/specs/2026-11-21-content-system-design.md], deny: [src/**, test/**] }
 outputs:
   - tuning center: tuning.ts 存在且导出 BREED_FOODS / DROPS / POPULATION
   - drop system: dropLogic.ts 与 droppedItem.ts 存在且 DropManager 暴露 spawn/update/clear

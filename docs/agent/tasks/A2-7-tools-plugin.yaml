@@ -1,7 +1,7 @@
 id: A2-7
 title: core:tools 工具档位（挖掘倍率 + 采集等级 + 剑伤害 + 手持耐久 + 耐久条）
 description: |
-  设计见 docs/superpowers/specs/2026-11-22-armor-tools-closure-design.md §5。依赖 A2-5，可与 A2-6 并行。
+  设计见 docs/archive/2026-11/superpowers/specs/2026-11-22-armor-tools-closure-design.md §5。依赖 A2-5，可与 A2-6 并行。
   规则表放在 src/player/toolRules.ts（按方块 sound 材质推断镐/斧/锹 + 少量按名覆写 harvestTier），
   核心方块定义不加字段、方块 id 不变。
   未达标工具挖矿：耗时 ×3.3 且无掉落（决策 2），受实验性开关 requireCorrectTool 控制（默认开）。

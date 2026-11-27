@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.6 strict、three.js 0.170（仅渲染侧）、Node CJS 测试快照、已有 WebAssembly 内核（不重新编译）。
 
-**Spec:** `docs/superpowers/specs/2026-11-22-mesher-wasm-hotspot-design.md`
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-22-mesher-wasm-hotspot-design.md`
 
 ## Global Constraints
 

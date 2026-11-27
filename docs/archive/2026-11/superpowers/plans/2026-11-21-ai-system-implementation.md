@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript（strict，tsc --noEmit 必须 0 error），Vite，运行时唯一依赖 three.js；确定性随机走 `mulberry32`（`src/core/types.ts`）；测试通过 `test:snapshot` 现场编译 CJS 快照，新增 `test:ai` 组挂进 `verify` 长链。
 
-**Spec:** `docs/superpowers/specs/2026-11-21-ai-system-design.md`（已批准）
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md`（已批准）
 
 ## Global Constraints
 
@@ -62,7 +62,7 @@
 | `package.json` | 新增 `"test:ai"` 脚本，挂进 `verify` 长链 | A01 |
 | `docs/agent/validate.py` | `CHECKS` 新增 AI 系统关键词 | A00 |
 | `docs/agent/tasks/A0*.yaml` | 九张任务卡 | A00–A09 |
-| `docs/superpowers/specs/2026-11-21-ai-system-design.md` | 设计文档（已存在，A00 落地确认） | A00 |
+| `docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md` | 设计文档（已存在，A00 落地确认） | A00 |
 | `src/core/version.ts` / `README.md` / `CHANGELOG.md` | 版本 bump 与文档同步 | A09 |
 | `src/diagnostics/RuntimeDiagnostics.ts` | AI 实体数 / 运行中行为树数计数（可选） | A09 |
 
@@ -77,7 +77,7 @@
 **Files:**
 - Create: `docs/agent/tasks/A00.yaml`
 - Modify: `docs/agent/validate.py`（`CHECKS` 新增 AI 关键词）
-- Modify: `docs/superpowers/specs/2026-11-21-ai-system-design.md`（确认定稿，落地到仓库）
+- Modify: `docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md`（确认定稿，落地到仓库）
 
 **Interfaces:**
 - Consumes: 设计文档已批准的内容
@@ -89,7 +89,7 @@
 
 - [ ] **Step 2: 创建 `docs/agent/tasks/A00.yaml`**
 
-输出关键词对应 A00 段落，`touch.allow` 限定 `docs/agent/validate.py`、`docs/agent/tasks/A0*.yaml`、`docs/superpowers/specs/2026-11-21-ai-system-design.md`，`deny: [src/**, test/**]`。
+输出关键词对应 A00 段落，`touch.allow` 限定 `docs/agent/validate.py`、`docs/agent/tasks/A0*.yaml`、`docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md`，`deny: [src/**, test/**]`。
 
 - [ ] **Step 3: 运行校验器确认不报错**
 
@@ -99,7 +99,7 @@ Expected: 0 FAIL/WARN，AI 关键词均被覆盖
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/agent/validate.py docs/agent/tasks/A00.yaml docs/superpowers/specs/2026-11-21-ai-system-design.md
+git add docs/agent/validate.py docs/agent/tasks/A00.yaml docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md
 git commit -m "feat(ai): A00 契约校验器与设计文档落地"
 ```
 
@@ -557,7 +557,7 @@ npm run typecheck && npm run test:snapshot && npm run test:ai && npm run test:lo
 
 ---
 
-**Plan complete and saved to `docs/superpowers/plans/2026-11-21-ai-system-implementation.md`.**
+**Plan complete and saved to `docs/archive/2026-11/superpowers/plans/2026-11-21-ai-system-implementation.md`.**
 
 请审阅此计划。计划是否如你所期待？如无调整，你可选择执行方式：
 

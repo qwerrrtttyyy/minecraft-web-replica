@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.6 strict、three.js 0.170（仅渲染侧）、Node CJS 快照测试（`npm run test:snapshot`）、seed 派生的 Noise。
 
-**Spec:** `docs/superpowers/specs/2026-11-22-new-biomes-expansion-design.md`
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-22-new-biomes-expansion-design.md`
 **任务卡:** `docs/agent/tasks/N01.yaml`、`N02.yaml`、`N03.yaml`
 
 ## Global Constraints

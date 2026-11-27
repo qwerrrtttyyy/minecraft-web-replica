@@ -1,6 +1,6 @@
 # 实体 AI 系统 — 设计文档（定稿待审）
 
-> 状态：**仅设计 / 任务卡草案，不含实现**。本文件写在 `/workspace/minecraft-web-replica-tuning/docs/superpowers/specs/`；仓库文件未改动。要落地到 `docs/` 与 `docs/agent/tasks/*.yaml`，需按 AGENTS.md 工作流提交。
+> 状态：**仅设计 / 任务卡草案，不含实现**。本文件写在 `/workspace/minecraft-web-replica-tuning/docs/archive/2026-11/superpowers/specs/`；仓库文件未改动。要落地到 `docs/` 与 `docs/agent/tasks/*.yaml`，需按 AGENTS.md 工作流提交。
 >
 > 需求来源：用户要求“为 minecraft-web-replica 写一个完整而可扩展的 AI 系统”，已选定方案 A（数据驱动行为树）。
 
@@ -289,7 +289,7 @@ export class AIService implements Disposable {
 id: A00
 title: AI 系统契约校验器与设计文档落地
 description: docs/agent/validate.py 为 AI 系统 outputs 补机械检查；写入设计文档。
-touch: { allow: [docs/agent/validate.py, docs/agent/tasks/A0*.yaml, docs/superpowers/specs/2026-11-21-ai-system-design.md], deny: [src/**, test/**] }
+touch: { allow: [docs/agent/validate.py, docs/agent/tasks/A0*.yaml, docs/archive/2026-11/superpowers/specs/2026-11-21-ai-system-design.md], deny: [src/**, test/**] }
 outputs:
   - ai core: src/ai/Node.ts / Blackboard.ts / TickContext 存在且导出 NodeStatus
   - ai composites: Selector / Sequence / Parallel / RandomSelector 存在

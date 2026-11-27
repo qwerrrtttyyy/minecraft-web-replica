@@ -9,9 +9,9 @@ brief, binding spec, and targeted source reads at HEAD. **No files edited; full 
 Inputs used:
 - Implementer report: the original `/tmp/opencode/biome-report.md` (read in full before the tmp cleanup;
   `SDD-REPORT.md` was not present at review time, so its claims are cross-checked against git/diff).
-- Review package: regenerated to `SDD-REVIEW.txt` via the prescribed git command (773 lines).
-- Brief: `docs/superpowers/plans/2026-11-22-new-biomes-expansion.md`.
-- Spec: `docs/superpowers/specs/2026-11-22-new-biomes-expansion-design.md`.
+- Review package: regenerated to `docs/archive/2026-11/sdd/SDD-REVIEW.txt` via the prescribed git command (773 lines).
+- Brief: `docs/archive/2026-11/superpowers/plans/2026-11-22-new-biomes-expansion.md`.
+- Spec: `docs/archive/2026-11/superpowers/specs/2026-11-22-new-biomes-expansion-design.md`.
 
 ---
 

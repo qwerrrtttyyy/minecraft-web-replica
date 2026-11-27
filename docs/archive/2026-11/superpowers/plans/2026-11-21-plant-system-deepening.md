@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript strict + three.js（唯一运行时依赖）+ Node CJS 快照测试 + Vitest 风格断言脚本。
 
-**Spec:** `docs/superpowers/specs/2026-11-21-plant-system-deepening-design.md`
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-21-plant-system-deepening-design.md`
 **任务卡:** `docs/agent/tasks/P00.yaml` … `P06.yaml`
 
 ## Global Constraints
@@ -36,7 +36,7 @@
 
 **Files:**
 - Modify: `docs/agent/validate.py`
-- Create: `docs/superpowers/specs/2026-11-21-plant-system-deepening-design.md`, `docs/superpowers/plans/2026-11-21-plant-system-deepening.md`, `docs/agent/tasks/P00.yaml` … `P06.yaml`
+- Create: `docs/archive/2026-11/superpowers/specs/2026-11-21-plant-system-deepening-design.md`, `docs/archive/2026-11/superpowers/plans/2026-11-21-plant-system-deepening.md`, `docs/agent/tasks/P00.yaml` … `P06.yaml`
 
 **Interfaces:**
 - Produces: `validate.py` 的 CHECKS 含 6 个新关键词，逐个检查真实源码符号；7 张任务卡可被 `outputs_of` 解析。

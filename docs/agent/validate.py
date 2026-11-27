@@ -365,7 +365,7 @@ CHECKS = [
         lambda: (ROOT / "test/mesher-hotspot-baseline.json").exists()
         and "hash" in read("test/mesher-hotspot-baseline.json")
         and "msPerChunk" in read("test/mesher-hotspot-baseline.json")
-        and "p95" in read("docs/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md"),
+        and "p95" in read("docs/archive/2026-11/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md"),
     ),
     (
         "typed arrays",

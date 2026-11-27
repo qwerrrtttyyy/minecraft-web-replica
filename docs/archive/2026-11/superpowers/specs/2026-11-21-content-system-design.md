@@ -1,6 +1,6 @@
 # 内容体系完善 — 设计文档（定稿）
 
-> 状态：**设计 / 任务卡已落地仓库**，实现按 `docs/superpowers/plans/2026-11-21-content-system-implementation.md` 的 C00–C05 顺序推进。
+> 状态：**设计 / 任务卡已落地仓库**，实现按 `docs/archive/2026-11/superpowers/plans/2026-11-21-content-system-implementation.md` 的 C00–C05 顺序推进。
 >
 > 需求来源：用户四轮输入 + 三轮 grilling 确认（方案 A1+B1+C1+D1+、动物全部可繁殖、掉落物不进存档、繁殖食物用现有植物且一种生物支持多种、上限以后可能放松、水中"模拟现实掉入"、熔炉明日再议）。
 
@@ -242,7 +242,7 @@ export const NEW_ITEMS = { /*  food：beef 7 / rabbit_meat 5 / egg 3；其余不
 id: C00
 title: 内容体系契约校验器扩展
 description: docs/agent/validate.py 为本轮 outputs 补机械检查；写入设计文档；分两阶段（A 关键词存在 / B 随实现卡收紧为符号真实存在）。
-touch: { allow: [docs/agent/validate.py, docs/agent/tasks/C0*.yaml, docs/superpowers/specs/2026-11-21-content-system-design.md], deny: [src/**, test/**] }
+touch: { allow: [docs/agent/validate.py, docs/agent/tasks/C0*.yaml, docs/archive/2026-11/superpowers/specs/2026-11-21-content-system-design.md], deny: [src/**, test/**] }
 outputs:
   - tuning center: tuning.ts 存在且导出 BREED_FOODS / DROPS / POPULATION
   - drop system: dropLogic.ts 与 droppedItem.ts 存在且 DropManager 暴露 spawn/update/clear

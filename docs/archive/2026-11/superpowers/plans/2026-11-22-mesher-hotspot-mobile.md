@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.6 strict、three.js 0.170（仅渲染侧）、Node CJS 快照测试、`node:crypto` sha256。
 
-**Spec:** `docs/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md`
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md`
 **任务卡:** `docs/agent/tasks/M01.yaml`、`M02.yaml`、`M03.yaml`、`M04.yaml`
 
 ## Global Constraints

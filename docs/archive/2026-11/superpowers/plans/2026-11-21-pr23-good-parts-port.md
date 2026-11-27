@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript + Vite；浏览器回归用 puppeteer-core（`test/options-check.mjs`）；风格用 Biome/ESLint。
 
-**Spec:** `docs/superpowers/specs/2026-11-21-pr23-good-parts-port-design.md`
+**Spec:** `docs/archive/2026-11/superpowers/specs/2026-11-21-pr23-good-parts-port-design.md`
 
 ## Global Constraints
 
