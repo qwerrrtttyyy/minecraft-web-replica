@@ -47,7 +47,8 @@ export interface GameEvents {
   'entity:dead': { type: string; id: number };
   'entity:hurt': { type: string; id: number; hp: number; maxHp: number };
   /** 生存模式：任何来源的掉血 */
-  'survival:damage': { amount: number; health: number; cause: string };
+  /** kind 为伤害类型（attack / explosion / fall / drown / starve / other），旧订阅者可忽略 */
+  'survival:damage': { amount: number; health: number; cause: string; kind?: string };
   /** 生存模式：死亡 */
   'survival:death': { cause: string; itemsLost?: number; keepInventory?: boolean };
   /** 生存模式：重生 */

@@ -54,6 +54,8 @@ import {
 import { boxIntersectsBlock } from './player/physics';
 import { createCraftAPI } from './api';
 import { createServices, TOKENS } from './services';
+import { PluginSaveBag } from './services/plugins/saveBag';
+import { PanelHost } from './services/ui/PanelHost';
 import { WasmRuntime } from './wasm/runtime';
 import type { BuiltinDeps } from './plugins/builtin/deps';
 import { builtinPlugins } from './plugins/builtin';
@@ -293,6 +295,7 @@ async function boot() {
   // 弓箭投射物：复用实体射线判定，命中走 Entity.hurt；网格几何共享，命中即回收
   const arrows = new ArrowManager(engine.scene, atlas, world, entities, events, particles);
   player.arrowManager = arrows;
+  player.extensions = extensions;
   const botany = new Botany(world, registry, seed, events, { isMobile });
   player.setBotany(botany);
   // 沙 / 沙砾重力：破坏 / 放置 / 爆炸 / 落地的方块更新都走 triggerColumn
@@ -384,6 +387,13 @@ async function boot() {
   };
 
   // ---- 存档逻辑 ----
+  // 插件数据袋：核心不认识其中字段，只负责随世界存档读写
+  const pluginBag = new PluginSaveBag(extensions);
+  container.provide(TOKENS.PluginSaveBag, pluginBag);
+  const collectPluginData = () => {
+    const data = pluginBag.collect();
+    return Object.keys(data).length > 0 ? data : undefined;
+  };
   const collectSave = (): SaveData => ({
     version: 2,
     seed,
@@ -398,6 +408,8 @@ async function boot() {
     dayCount: sky.dayCount,
     botany: botany.serializeEcology(),
     furnaces: { v: 1, cells: smelting.serialize() },
+    // 标题界面尚未进入世界，数据袋未 load：沿用已读入存档的插件数据，避免导出丢失
+    plugins: mode === 'title' ? saved?.plugins : collectPluginData(),
     savedAt: Date.now(),
   });
   const saveNow = () => {
@@ -497,7 +509,7 @@ async function boot() {
     const dist = player.pos.distanceTo(blastCenter);
     player.shake(clamp(0.75 * (1 - dist / 12), 0, 0.75));
     if (survival.isSurvival && dist < r * 1.6 && hasLineOfSight(player.pos)) {
-      survival.damage(Math.round(9 * (1 - dist / (r * 1.6))), '爆炸');
+      survival.damage(Math.round(9 * (1 - dist / (r * 1.6))), '爆炸', true, 'explosion');
     }
     for (const e of entities.entities) {
       const d = e.pos.distanceTo(blastCenter);
@@ -1038,6 +1050,7 @@ async function boot() {
       (p) => hud.setLoading(p));
     // 生态状态在区块就绪后恢复：恢复函数会逐条校验当前方块是否仍是该植物
     if (cont && saved?.botany) botany.restoreEcology(saved.botany);
+    pluginBag.load(cont ? saved?.plugins : undefined);
     // 死亡存档继续游戏时必须复活，否则 player.update 会永久冻结
     ensureAlive();
     // 防止卡在方块里（换地形算法后的旧存档尤其需要）
@@ -1410,6 +1423,33 @@ async function boot() {
   };
   container.provide(TOKENS.BuiltinDeps, builtinDeps);
 
+  // 插件 UI 宿主：面板与合成 / 方块库同属暂停态，关闭后回到来源（菜单或游戏）
+  const panelHost = new PanelHost({
+    addMenuButton: (label, onClick) => hud.addMenuButton(label, onClick),
+    showPanel: (title, root, onClose) => {
+      hud.showMenu(false);
+      hud.showPluginPanel(title, root, onClose);
+    },
+    hidePanel: () => hud.hidePluginPanel(),
+    anchor: (name) => hud.anchor(name),
+    addSlotDecorator: (fn) => hud.addSlotDecorator(fn),
+    enter: () => {
+      if (mode !== 'playing') return;
+      mode = 'paused';
+      input.enabled = false;
+      input.reset();
+      input.exitLock();
+      events.emit('game:pause', { paused: true });
+    },
+    leave: (from) => {
+      if (from === 'menu') hud.showMenu(true);
+      else resumeGame();
+    },
+    isSurvival: () => survival.isSurvival,
+    toast: (msg) => hud.toast(msg),
+  });
+  container.provide(TOKENS.PanelHost, panelHost);
+
   const api = createCraftAPI({
     engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
     wasm, extensions,
@@ -1493,6 +1533,7 @@ async function boot() {
             if (hud.keybindOpen) hud.showKeybinds(false);
             else if (hud.helpOpen) hud.showHelp(false);
             else if (hud.craftingOpen) closeCrafting();
+            else if (panelHost.openId) panelHost.close();
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
           }
@@ -1606,7 +1647,7 @@ async function boot() {
           daylight: sky.daylight,
           playerDead: survival.dead,
           playing: mode === 'playing',
-          hurtPlayer: (amount, cause) => survival.damage(amount, cause),
+          hurtPlayer: (amount, cause, kind) => survival.damage(amount, cause, true, kind),
           explode: (x, y, z, radius) => explode(x, y, z, radius),
         });
         // 篮球走近自动拾取（无地面掉落物系统的降级方案，Q3）

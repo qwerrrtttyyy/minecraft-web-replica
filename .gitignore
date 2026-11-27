@@ -19,19 +19,19 @@ test/terrain-logic/
 .mcp.json
 
 # 工作区遗留材料（非项目源码，不纳入 lint / 版本控制）
-.agents/
-.chainguard/
-.claude/
-.kilo/
-.ef-plan.*
-agent/
-core/
-lua-5.5.0/
-lua55_bench.lua
-mcr-dl/
-preview/
-preview-voxel/
-teach/
-skills-lock.json
-MinecraftTS-*.zip
-minecraft-web-replica问题分析_精简版.txt
+/.agents/
+/.chainguard/
+/.claude/
+/.kilo/
+/.ef-plan.*
+/agent/
+/core/
+/lua-5.5.0/
+/lua55_bench.lua
+/mcr-dl/
+/preview/
+/preview-voxel/
+/teach/
+/skills-lock.json
+/MinecraftTS-*.zip
+/minecraft-web-replica问题分析_精简版.txt

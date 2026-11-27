@@ -5,6 +5,7 @@ import {
 } from '../player/survival';
 import { isKnownMaterial } from '../player/smelting';
 import { type PlantSaveV1, type PlantSaveV2 } from '../world/botany';
+import { isPlainRecord } from '../services/plugins/saveBag';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -41,6 +42,8 @@ export interface SaveData {
     v: 1;
     cells: FurnaceSaveData[];
   };
+  /** 插件数据袋：键为插件 id，内容由插件自理（旧档缺省即无插件数据） */
+  plugins?: Record<string, unknown>;
   savedAt: number;
 }
 
@@ -196,6 +199,7 @@ export function validateSave(data: unknown): data is SaveData {
   if (d.botany !== undefined && !isBotanySave(d.botany)) return false;
   // 熔炉字段为可选，旧档缺省仍通过
   if (d.furnaces !== undefined && !isFurnaceSave(d.furnaces)) return false;
+  if (d.plugins !== undefined && !isPlainRecord(d.plugins)) return false;
   return finite(d.savedAt);
 }
 

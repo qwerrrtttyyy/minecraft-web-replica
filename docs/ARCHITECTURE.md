@@ -582,6 +582,22 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 `PlantRule.priority?: number` 让 `ruleFor()` 按 `(priority, id)` 双键稳定排序（同优先级按
 id 字典序），`list()` 暴露 priority。内置扩展包现含 4 条规则（含雨天水生补能演示）。
 
+## 玩家行为扩展点与插件宿主（A2-5）
+
+护甲 / 工具 / 后续联机插件只经以下通用接口接入，核心自身零处理器，无插件时行为与旧版逐项相等：
+
+| 接口 | 语义 | 说明 |
+|---|---|---|
+| `survival.damage(amount, cause, iframes, kind)` | — | `DamageKind = attack / explosion / fall / drown / starve / other`，缺省 `other`；透传进 `combat:damage-incoming` 载荷与 `survival:damage` 事件 |
+| `player:use-item` | 管道 | 右键使用手持物前，返回 `{ handled: true }` 截断默认放置 / 进食 |
+| `player:mining` | 管道 | 生存模式开始挖一个方块时改写 `time` / `harvest`（桌面 `mineTick` 与移动端 `tapBreak` 共用 `beginMining`） |
+| `player:attack` | 管道 | 生存模式近战命中前改写 `amount`（预填 3） |
+| `player:used-tool` | 通知 | 手持工具完成一次挖掘 / 攻击，供耐久结算 |
+| `save:collect` / `save:restore` | 通知 | `PluginSaveBag`（`TOKENS.PluginSaveBag`）按世界读写 `SaveData.plugins[插件 id]`；停用插件的数据原样保留 |
+| `PanelHost`（`TOKENS.PanelHost`） | 服务 | `register` 暂停菜单面板（与合成面板同一暂停态，关闭回来源）、`anchor` 取快捷栏上方锚点、`decorateSlot` 装饰快捷栏格 |
+
+纯逻辑适配层在 `src/player/playerHooks.ts`，Player 只调用其中函数，玩法全部留给插件。
+
 **确定性掉落接缝**：`rollDrops(specs, ctx)` 是掉落判定的唯一接缝——测试直接对纯函数
 断言概率 / 区间 / 条件，玩家与实体只是两个 adapter（分别以 `b:x,y,z` 与 `e:id:serial`
 为来源标识），新增掉落来源不必改判定逻辑。

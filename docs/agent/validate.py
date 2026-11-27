@@ -389,6 +389,94 @@ CHECKS = [
             "mesher baseline", "typed arrays", "mesher hotspot",
         )),
     ),
+    # ---- 护甲/工具闭环（A2-5~A2-8 / 1.5.5）----
+    # 阶段 A：谓词只检查关键词出现在声明它的任务卡中；各实现卡落地时收紧为真实符号检查。
+    # A2-5 已落地：以下五项收紧为真实符号检查
+    (
+        "damage kind",
+        "护甲/工具闭环：damage kind（DamageKind 透传 combat:damage-incoming，五类调用方补参）",
+        lambda: "export type DamageKind" in read("src/services/plugins/extensions.ts")
+        and "kind: DamageKind = 'other'" in read("src/player/survival.ts")
+        and all(k in read("src/player/survival.ts") for k in ("'drown'", "'starve'"))
+        and "'fall'" in read("src/player/player.ts")
+        and "'explosion'" in read("src/main.ts")
+        and "'attack'" in read("src/entity/entity.ts"),
+    ),
+    (
+        "player hooks",
+        "护甲/工具闭环：player hooks（四个扩展点 + Player 经 playerHooks 接线）",
+        lambda: all(k in read("src/services/plugins/extensions.ts") for k in (
+            "'player:use-item'", "'player:mining'", "'player:attack'", "'player:used-tool'",
+        )) and all(k in read("src/player/player.ts") for k in (
+            "resolveUseItem(", "resolveMining(", "resolveAttack(", "notifyUsedTool(",
+        )),
+    ),
+    (
+        "plugin save bag",
+        "护甲/工具闭环：plugin save bag（SaveData.plugins? + save:collect / save:restore）",
+        lambda: "plugins?: Record<string, unknown>" in read("src/save/save.ts")
+        and "d.plugins" in read("src/save/save.ts")
+        and all(k in read("src/services/plugins/extensions.ts") for k in ("'save:collect'", "'save:restore'"))
+        and "pluginBag.load(" in read("src/main.ts") and "pluginBag.collect()" in read("src/main.ts"),
+    ),
+    (
+        "panel host",
+        "护甲/工具闭环：panel host（PanelHost 服务 + HUD 挂点 + 组装根接线）",
+        lambda: "export class PanelHost" in read("src/services/ui/PanelHost.ts")
+        and all(k in read("src/ui/hud.ts") for k in ("addMenuButton(", "addSlotDecorator(", "anchor(name"))
+        and "TOKENS.PanelHost" in read("src/main.ts"),
+    ),
+    (
+        "test:hooks",
+        "护甲/工具闭环：test:hooks（hooks-check 挂 verify 链）",
+        lambda: "npm run test:hooks" in read("package.json")
+        and "src/player/playerHooks.ts" in read("scripts/build-test-snapshot.mjs"),
+    ),
+    (
+        "armor equip",
+        "护甲/工具闭环：armor equip（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor equip" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "armor survival rules",
+        "护甲/工具闭环：armor survival rules（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor survival rules" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "armor world save",
+        "护甲/工具闭环：armor world save（阶段 A：关键词在 A2-6-armor-closure.yaml 中声明）",
+        lambda: "armor world save" in read("docs/agent/tasks/A2-6-armor-closure.yaml"),
+    ),
+    (
+        "tool rules",
+        "护甲/工具闭环：tool rules（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool rules" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "tool harvest gate",
+        "护甲/工具闭环：tool harvest gate（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool harvest gate" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "tool durability",
+        "护甲/工具闭环：tool durability（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "tool durability" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "test:tools",
+        "护甲/工具闭环：test:tools（阶段 A：关键词在 A2-7-tools-plugin.yaml 中声明）",
+        lambda: "test:tools" in read("docs/agent/tasks/A2-7-tools-plugin.yaml"),
+    ),
+    (
+        "armor smoke",
+        "护甲/工具闭环：armor smoke（阶段 A：关键词在 A2-8-armor-tools-release.yaml 中声明）",
+        lambda: "armor smoke" in read("docs/agent/tasks/A2-8-armor-tools-release.yaml"),
+    ),
+    (
+        "release 1.5.5",
+        "护甲/工具闭环：release 1.5.5（阶段 A：关键词在 A2-8-armor-tools-release.yaml 中声明）",
+        lambda: "release 1.5.5" in read("docs/agent/tasks/A2-8-armor-tools-release.yaml"),
+    ),
 ]
 
 

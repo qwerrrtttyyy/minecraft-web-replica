@@ -62,12 +62,71 @@ export const EXTENSION_POINTS = {
   COMBAT_DAMAGE_INCOMING: 'combat:damage-incoming',
   /** 通知语义：装备耐久变化（slot 为 null 表示背包装备） */
   EQUIPMENT_DURABILITY: 'equipment:durability',
+  /** 管道语义：右键使用手持物品前；返回 { handled: true } 截断默认流程 */
+  PLAYER_USE_ITEM: 'player:use-item',
+  /** 管道语义：生存模式开始挖一个方块时改写耗时 / 是否掉落 */
+  PLAYER_MINING: 'player:mining',
+  /** 管道语义：生存模式近战命中实体前改写伤害 */
+  PLAYER_ATTACK: 'player:attack',
+  /** 通知语义：手持工具完成一次挖掘 / 攻击（供耐久结算） */
+  PLAYER_USED_TOOL: 'player:used-tool',
+  /** 通知语义：写存档前收集插件数据，处理器把自己的数据写进 payload.data[插件 id] */
+  SAVE_COLLECT: 'save:collect',
+  /** 通知语义：进入世界时下发该世界的插件数据（新世界为空对象） */
+  SAVE_RESTORE: 'save:restore',
 } as const;
+
+/** 伤害类型：核心按来源分类，插件据此决定是否参与（如护甲只减免攻击 / 爆炸） */
+export type DamageKind = 'attack' | 'explosion' | 'fall' | 'drown' | 'starve' | 'other';
 
 /** combat:damage-incoming 的载荷：处理器返回 { amount } 覆写本次伤害 */
 export interface DamageIncomingPayload {
   amount: number;
   source: string;
+  kind: DamageKind;
+}
+
+/** 扩展点载荷里的物品栈（结构等价于 player/survival 的 Stack，避免反向依赖） */
+export interface HookStack {
+  kind: 'block' | 'item';
+  id: number | string;
+}
+
+/** player:use-item 的载荷 */
+export interface UseItemPayload {
+  stack: HookStack;
+  /** 背包键（b:<id> / i:<name>） */
+  key: string;
+  handled: boolean;
+}
+
+/** player:mining 的载荷：time 预填核心的徒手耗时，harvest 预填 true */
+export interface MiningPayload {
+  block: string;
+  hardness: number;
+  sound: string;
+  toolId: string | null;
+  time: number;
+  harvest: boolean;
+}
+
+/** player:attack 的载荷：amount 预填核心的徒手伤害 */
+export interface AttackPayload {
+  amount: number;
+  toolId: string | null;
+  target: string;
+}
+
+/** player:used-tool 的载荷 */
+export interface UsedToolPayload {
+  toolId: string;
+  key: string;
+  action: 'mine' | 'attack';
+}
+
+/** save:collect / save:restore 的载荷 */
+export interface PluginSavePayload {
+  data: Record<string, unknown>;
 }
 
 /** worldgen:column 的载荷：直接暴露区块数据，生成期写入不记存档差分 */

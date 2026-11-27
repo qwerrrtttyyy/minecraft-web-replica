@@ -110,6 +110,12 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   固定种子 / 相机 / 区块集合，换最小系统组并冻结水面与天空相位，同页翻转变量后比对
   帧率 / draw call / 逐通道 mesh 与顶点字节 / 归一化像素签名；自带 12 项有效性闸门
   （含「噪声底必须为零」），失败非零退出。设置与数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
+- **hooks-check**（`npm run test:hooks`，A2-5）：护甲 / 工具闭环的核心通用接口。
+  `DamageKind` 透传到 `combat:damage-incoming` 与 `survival:damage`（溺水 / 饥饿内部标注）；
+  `player:use-item / mining / attack / used-tool` 无插件时逐项等于旧值（挖掘 `max(0.06, hardness×1.1)`、
+  徒手伤害 3、不截断右键），注册可改写、卸载复原、异常处理器隔离；`SaveData.plugins?`
+  旧档 / 新档校验与 `PluginSaveBag` 的 `save:collect / save:restore` 往返；`PanelHost`
+  注册 / 打开 / 关闭回源 / 注销与创造模式拒开。
 - **experiment-gameplay**（`npm run test:experiment-gameplay`，**不挂 `verify`**）：玩法/生存机制实验（node 实景）：
   生存状态机经济与死亡阈值 / 生态随机刻节奏 / 实体攻击+射线 / 确定性掉落 / 脱困解算。
   脚本 `test/experiment-gameplay.cjs`，设置与实测数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。

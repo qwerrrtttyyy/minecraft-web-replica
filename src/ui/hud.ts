@@ -6,6 +6,7 @@ import type { HotbarState, MiningState } from '../player/player';
 import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
 import { CraftingPanel, type CraftingHost } from './crafting';
 import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
+import type { HudAnchor, SlotDecorator } from '../services/ui/PanelHost';
 
 /**
  * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
@@ -149,6 +150,14 @@ export class HUD {
   private hotbarEl!: HTMLElement;
   private slotEls: HTMLElement[] = [];
   private slotCounts: HTMLElement[] = [];
+  // 插件 UI 宿主（PanelHost）的底层挂点：菜单按钮行 / HUD 锚点 / 快捷栏装饰器 / 通用面板
+  private menuBtnRow!: HTMLElement;
+  private anchors = new Map<HudAnchor, HTMLElement>();
+  private slotDecorators = new Set<SlotDecorator>();
+  private pluginOverlay!: HTMLElement;
+  private pluginTitle!: HTMLElement;
+  private pluginBody!: HTMLElement;
+  private pluginOnClose: (() => void) | null = null;
   private itemName!: HTMLElement;
   private debugEl!: HTMLElement;
   private hintEl!: HTMLElement;
@@ -250,6 +259,7 @@ export class HUD {
     // 合成面板独立于 HUD 其余部分，但同样挂在 hud-root 下以复用遮罩与层级
     this.crafting = new CraftingPanel(opts.craftingHost, opts.atlas, opts.registry);
     this.root.appendChild(this.crafting.root);
+    this.buildPluginPanel();
   }
 
   private icon(stack: Stack): string {
@@ -463,6 +473,13 @@ export class HUD {
     const hotbarWrap = h('div', 'hotbar-wrap');
     this.itemName = h('div', 'item-name');
     hotbarWrap.appendChild(this.itemName);
+    const anchorRow = h('div', 'hud-anchor-row');
+    for (const name of ['above-hotbar-left', 'above-hotbar-right'] as const) {
+      const el = h('div', `hud-anchor hud-anchor-${name}`);
+      this.anchors.set(name, el);
+      anchorRow.appendChild(el);
+    }
+    hotbarWrap.appendChild(anchorRow);
     this.hotbarEl = h('div', 'hotbar');
     for (let i = 0; i < 9; i++) {
       const slot = h('div', 'hotbar-slot');
@@ -542,7 +559,62 @@ export class HUD {
       this.slotCounts[i].textContent = cnt > 1 ? String(cnt) : '';
       this.slotEls[i].classList.toggle('selected', i === index);
       this.slotEls[i].classList.toggle('empty', !stack || (survival && cnt <= 0));
+      for (const fn of this.slotDecorators) {
+        try {
+          fn(this.slotEls[i], stack, i);
+        } catch (err) {
+          console.error('[hud] 快捷栏装饰器异常', err);
+        }
+      }
     }
+  }
+
+  // ---------- 插件 UI 挂点（经 PanelHost 暴露给插件） ----------
+
+  anchor(name: HudAnchor): HTMLElement {
+    const el = this.anchors.get(name);
+    if (!el) throw new Error(`[hud] 未知锚点: ${name}`);
+    return el;
+  }
+
+  addSlotDecorator(fn: SlotDecorator): () => void {
+    this.slotDecorators.add(fn);
+    this.updateHotbar();
+    return () => {
+      if (this.slotDecorators.delete(fn)) this.updateHotbar();
+    };
+  }
+
+  addMenuButton(label: string, onClick: () => void): () => void {
+    const b = this.mcButton(label, onClick);
+    this.menuBtnRow.appendChild(b);
+    return () => b.remove();
+  }
+
+  private buildPluginPanel() {
+    this.pluginOverlay = h('div', 'overlay plugin-panel-overlay');
+    const panel = h('div', 'mc-panel plugin-panel');
+    const head = h('div', 'crafting-head');
+    this.pluginTitle = h('div', 'panel-title');
+    head.append(this.pluginTitle, this.mcButton('关闭', () => this.pluginOnClose?.(), 'mc-btn-small'));
+    this.pluginBody = h('div', 'plugin-panel-body');
+    panel.append(head, this.pluginBody);
+    this.pluginOverlay.appendChild(panel);
+    this.pluginOverlay.style.display = 'none';
+    this.root.appendChild(this.pluginOverlay);
+  }
+
+  showPluginPanel(title: string, root: HTMLElement, onClose: () => void) {
+    this.pluginTitle.textContent = title;
+    this.pluginBody.replaceChildren(root);
+    this.pluginOnClose = onClose;
+    this.pluginOverlay.style.display = '';
+  }
+
+  hidePluginPanel() {
+    this.pluginOverlay.style.display = 'none';
+    this.pluginBody.replaceChildren();
+    this.pluginOnClose = null;
   }
 
   showItemName(label: string) {
@@ -681,6 +753,7 @@ export class HUD {
     btnRow.appendChild(this.mcButton('工作台', () => this.opts.onCraftOpen('menu')));
     btnRow.appendChild(this.mcButton('按键设置', () => this.showKeybinds(true)));
     panel.appendChild(btnRow);
+    this.menuBtnRow = btnRow;
 
     const saveRow = h('div', 'menu-row');
     saveRow.appendChild(this.mcButton('导出存档', () => this.opts.onExportSave(), 'mc-btn-small'));

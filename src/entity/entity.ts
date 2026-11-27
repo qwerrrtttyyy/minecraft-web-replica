@@ -51,7 +51,7 @@ export interface EntityType {
 export interface EntityContext {
   playerPos: THREE.Vector3;
   /** 对玩家造成伤害，返回是否命中 */
-  hurtPlayer(amount: number, cause: string): boolean;
+  hurtPlayer(amount: number, cause: string, kind?: 'attack'): boolean;
   /** 0~1 日照强度 */
   daylight: number;
   playerDead: boolean;
@@ -202,7 +202,12 @@ export class Entity implements PhysicsBody {
       if (ai.blackboard.get<boolean>('wantAttack') === true && ctx && !ctx.playerDead) {
         const dy = Math.abs(ctx.playerPos.y - this.pos.y);
         const dist = Math.hypot(ctx.playerPos.x - this.pos.x, ctx.playerPos.z - this.pos.z);
-        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
+        if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
+          this.attackCooldown = 1.05;
+          ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
+          this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+          this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+        }
         ai.blackboard.set('wantAttack', false);
       }
     } else {
@@ -215,7 +220,13 @@ export class Entity implements PhysicsBody {
           moving = true;
           speed = this.type.speed * (dist > 2.2 ? 1.45 : 1.1);
           const dy = Math.abs(ctx.playerPos.y - this.pos.y);
-          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9) this.strike(ctx);
+          if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
+            this.attackCooldown = 1.05;
+            ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
+            // 攻击前扑
+            this.vel.x += (-Math.sin(this.yaw)) * 2.2;
+            this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+          }
         }
       }
     }
