@@ -177,6 +177,8 @@ src/
 
 ## 6. 文档索引
 
+当前口径只认下表列出的活文档；其余历史 spec / plan、验收报告与旧专题文档都在归档区。
+
 | 文件 | 管什么 |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 分层设计、三大服务契约、插件生命周期、网格化管线、地形管线、缺陷修复原理 |
@@ -186,6 +188,7 @@ src/
 | [docs/agent/RUNBOOK.md](docs/agent/RUNBOOK.md) | 运作手册：开发流程、基线命令、运行时诊断、常见问题 |
 | [docs/agent/tasks/*.yaml](docs/agent/tasks/) | 任务卡（`touch.allow` / `outputs` 契约），用 `python3 docs/agent/validate.py` 校验 |
 | [README.md](README.md) | 对外说明、版本沿革、快速开始 |
+| [docs/archive/README.md](docs/archive/README.md) | 历史 spec/plan、SDD 验收报告与旧专题文档（历史快照，非当前口径） |
 
 非官方学习项目，与 Mojang / Microsoft 无关。所有纹理均为代码逐像素绘制，不含任何原版资源。
 
