@@ -45,7 +45,7 @@ npm run verify
 | 30 | `npm run test:crafting:vitest` | 合成系统 Vitest | — |
 | 31 | `npm run test:equipment` | 装备（武器 / 工具 / 护甲）回归 | ✓ |
 | 32 | `npm run test:smelting` | 远端熔炉烧炼 35 项 | ✓ |
-| 33 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端）125 项 | — |
+| 33 | `npm run test:smoke` | Chromium 实景（桌面 + 移动端）139 项 | — |
 | 34 | `npm run test:options` | 设置页与选项持久化 / 行为回归 67 项 | — |
 | 35 | `npm run test:mobile` | 移动端组合：网格 / 旋转引导 / 手感 / 裂纹覆盖层 | ✓ |
 | 36 | `npm run test:visual` | 像素级视觉回归（昼夜 / 火光 / 方块墙 / 移动端 UI 21 项） | — |
@@ -178,6 +178,11 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 - **experiment-gameplay**（`npm run test:experiment-gameplay`，**不挂 `verify`**）：玩法/生存机制实验（node 实景）：
   生存状态机经济与死亡阈值 / 生态随机刻节奏 / 实体攻击+射线 / 确定性掉落 / 脱困解算。
   脚本 `test/experiment-gameplay.cjs`，设置与实测数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
+- **experiment-perf**（`npm run test:experiment-perf`，**不挂 `verify`**）：帧预算调度器的受控 A/B。
+  同页用 `window.__mc.scheduler.setBudget(ms)` 翻转预算，四相位 A(0)→B(12)→A′(0)→C(0.05)，
+  逐相位前 `mc.perf.reset()` 隔离采样窗口；观测帧时 avg/p95、逐系统 CPU p50 与 background
+  执行率，自带 5 条闸门（含噪声底 + 计时量子）与单边 critical 判据，失败非零退出。
+  脚本 `test/experiment-perf-scheduler.mjs`，设置与实测数据见 [EXPERIMENTS.md](EXPERIMENTS.md)。
 - **options-check**：桌面 + 移动端两标签页；覆盖设置入口与关闭回源、音效 / 音量 / 渲染距离 /
   FOV / 灵敏度 / 反转 Y、画质档位（映射 `engine.qualityScale`）、粒子 / 视角摇晃 / 自动跳跃 /
   Greedy / 网格化线程（主线程 ↔ Worker 池）/ 自动保存间隔 / 调试信息常显，以及设置导出

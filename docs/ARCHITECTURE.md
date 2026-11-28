@@ -199,6 +199,13 @@ manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是
 
 纯逻辑回归见 `test/perf-services-check.cjs`（31 项），诊断注入回归见 `test/diagnostics-check.cjs`。
 
+**定位说明（实测，见 [EXPERIMENTS.md](EXPERIMENTS.md) §11 / E18）**：稳态下 15 个业务系统的 CPU
+合计 p50 仅约 **0.2ms/帧**，默认 12ms 软预算**永不触发**（`skipped=0`、background 执行率 100%），
+因此本体系**不是 FPS 加速器**，帧时收益 ≈ 0；预算关闭时 `enforce=false` 与原扁平循环逐帧等价，
+**零开销、零行为改变**。它的价值在 **①可观测性**（F3 性能行 / `perfReport()` 热点排序 /
+`systemErrors` 把调度器静默隔离的系统异常翻出来）与 **②启动 / 区块翻涌期的安全阀**
+（后台系统主动让位；强制低预算实验证明让位只落在 background、`critical` 不受影响）。
+
 ---
 
 ## 4. 插件开发示例

@@ -45,7 +45,7 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 54 组 |
 | `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 99 项 |
 | `test:smelting` | 远端熔炉烧炼纯逻辑 35 项（配方 / 燃料 / `putFuelFrom` / tick / 序列化） |
-| `test:smoke` | Chromium 实景（桌面 + 移动端）125 项，产物写 `test/artifacts/` |
+| `test:smoke` | Chromium 实景（桌面 + 移动端）139 项，产物写 `test/artifacts/` |
 | `test:mobile` | 移动端组合：mesher + 旋转引导 + 手感 + 裂纹覆盖层 |
 | `test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块墙 / 天穹 |
 

@@ -64,6 +64,7 @@
     "test:experiment-light": "npm run build && node test/experiment-light-layout.mjs",
     "test:experiments3d": "npm run test:snapshot && node test/3d-experiments-check.cjs",
     "test:experiment-gameplay": "node test/experiment-gameplay.cjs",
+    "test:experiment-perf": "npm run build && node test/experiment-perf-scheduler.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
     "wasm:check": "node scripts/build-wasm.mjs --check",
     "test:wasm": "node test/wasm-check.cjs",

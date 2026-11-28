@@ -502,3 +502,75 @@ npm run test:experiments3d
 - 导入 `assets/minecraft/textures/block/grass_block_top.png`、`oak_planks.png` 与 Bedrock `textures/blocks/log_oak.png` 后，三张图集 tile 的实际平均色均发生变化，状态显示 3 张纹理。
 - `?lighting=float2` 可回到 2×float32 路径（8 B/顶点），用于对照。
 - 页面无运行时错误。
+
+---
+
+## 11. 第 5 轮：帧预算调度器的实际收益（E18，2026-11-28）
+
+v1.6 的高性能服务体系（§[ARCHITECTURE 3.4](ARCHITECTURE.md)）到底带来多少帧时收益，
+按硬规则 #14 做成**同页受控实验**：性能类指标跨页不可比（区块集合 / 帧率会漂移），
+必须在同一页内翻转预算并单测噪声底。
+
+- 假设：软预算（默认 12ms）在稳态下**不会触发裁剪**（系统 CPU 总和远低于预算），
+  收益不在稳态帧率，而在①可观测性、②启动 / 区块翻涌期的让位安全阀。
+- 工具：`test/experiment-perf-scheduler.mjs`，命令 `npm run test:experiment-perf`
+  （**不挂 `verify`**，是测量工具不是门禁）。产物 `test/artifacts/experiment-perf-scheduler.json`。
+- 翻转方式：运行时钩子 `window.__mc.scheduler.setBudget(ms)`（已有 API），每个相位前
+  `mc.perf.reset()` 清空采样窗口以隔离相位。
+
+| 相位 | budget | 角色 |
+| --- | --- | --- |
+| A | 0 | 软预算关（逐帧等价，对照） |
+| B | 12 | 默认软预算 |
+| A′ | 0 | 再翻回，单独作**噪声底**（证明「无差异」不是测量失效） |
+| C | 0.05 | 强制极低预算，逼让位机制生效（证明机制是真的在跑） |
+
+**度量**：帧时 avg / p95（墙钟）与**逐系统 CPU p50 之和**（p50 抗单次尖峰）；
+`background 执行率` = 每 bg 系统每帧实际执行次数（1.0 = 每帧都跑）。`background` 组 =
+`botany / particles / weatherParticles`。
+
+**判据（脚本自带，失败即 exit 1）**：
+1. 预算回读须为 `0 / 12 / 0 / 0.05`；
+2. 稳态（A/B/A′）bg 执行率 ≈ 1 —— 默认 12ms 未触发裁剪；
+3. C 相位 bg 执行率 < 1 且累计跳过 > 0 —— 让位机制生效；
+4. C 相位 critical CPU p50 **未高于** A + 噪声底 + 计时量子 —— 关键系统不因裁剪变慢
+   （单边判据：软件渲染下 `performance.now` 量化约 0.1ms，一次抽样里 12 个 critical
+   系统 p50 之和会在量化步长内抖动，「减负导致的下降」不算回归）；
+5. 全程无运行时错误。
+
+**原始数据（实测 120 帧/相位，seed 2026 survival，headless + SwiftShader）**：
+
+| 相位 | budget | 帧 avg(ms) | 帧 p95(ms) | 系统CPU p50(ms) | 系统CPU p95(ms) | bg 执行率 | crit p50(ms) | 累计跳过 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A | 0 | 157.0 | 332.7 | 0.200 | 2.50 | 100.0% | 0.200 | 0 |
+| B | 12 | 157.2 | 271.0 | 0.200 | 2.80 | 100.0% | 0.200 | 0 |
+| A′ | 0 | 155.3 | 262.9 | 0.100 | 2.30 | 100.0% | 0.100 | 0 |
+| C | 0.05 | 154.0 | 249.5 | 0.100 | 2.50 | **30.6%** | 0.100 | **250** |
+
+- 噪声底 A vs A′：系统CPU p50 差 = 0.100ms（正好一个计时量子），帧 avg 差 = 1.7ms。
+- critical CPU 差 C − A = **−0.100ms**（阈值 = 噪声底 + 量子 = 0.200ms）→ 通过。
+
+**结论（诚实标注）**：
+- **稳态帧时收益 ≈ 0**。稳态下 15 个业务系统的 CPU 合计 p50 仅 **0.2ms/帧**，默认 12ms 软预算
+  **永不触发**（B 相位 `skipped=0`、bg 执行率 100%）——这也是**零开销、零行为改变**：
+  预算关闭（A，budget=0）时 `enforce=false`，与旧扁平循环逐帧等价。
+- 机制是真的在跑（由 C 证明）：预算压到 0.05ms 时 bg 执行率降到 **30.6%**、累计跳过 **250** 次，
+  而 critical 的 CPU 差为 **−0.1ms**（未被拖慢）——让位只发生在 background，关键系统不受影响。
+- 因此体系的价值定位是 **①可观测性**（F3 性能行 / `perfReport()` 热点排序 / `systemErrors`
+  把调度器静默吞掉的系统异常翻出来）与 **②安全阀**（启动 / 区块翻涌期后台系统主动让位），
+  **不是 FPS 加速器**。本环境是软件渲染（GPU-bound），未构造 CPU 密集负载，
+  因此不给「能省 X ms」的数字——那会是空头承诺。
+
+> 说明：SwiftShader 下帧时受渲染填充主导（~150ms/帧），系统 CPU（<3ms）淹没其中，
+> 所以本实验**不把帧时差当成体系收益**，只看「bg 执行率 / 跳过次数 / critical 不受影响」
+> 这三个能真正区分「让位开 / 关」的信号。判据 4 早期写成绝对差曾误报一次 FAIL，
+> 改为单边后即通过——记此以说明量化步长必须内建进阈值。
+
+复现：
+
+```bash
+npm run build
+npm run test:experiment-perf                       # 默认 120 帧/相位
+MC_PERF_FRAMES=240 npm run test:experiment-perf    # 换相位帧数
+MC_GL=desktop CHROME_PATH=/path/to/chrome npm run test:experiment-perf
+```
