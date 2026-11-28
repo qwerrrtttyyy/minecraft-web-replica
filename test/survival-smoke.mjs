@@ -468,14 +468,17 @@ try {
   await page.evaluate(() => window.__mc.resumeGame());
   await sleep(150);
 
+  await page.keyboard.press('KeyP');
+  await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
+  // 基线必须在摄影模式已激活后取：按 P 与 waitForFunction 之间仍会跑正常游戏帧，
+  // 若拿按键前的状态做基线，重力/时间推进会被误判成摄影预览的污染。
+  // 时刻/天数直接用 PhotoMode 进入时冻结的快照，与 collectSave 的口径一致。
   const beforePhoto = await page.evaluate(() => ({
-    dayTime: window.__mc.sky.dayTime,
-    dayCount: window.__mc.sky.dayCount,
+    dayTime: CraftAPI.photo.savedDayTime ?? window.__mc.sky.dayTime,
+    dayCount: CraftAPI.photo.savedDayCount ?? window.__mc.sky.dayCount,
     pos: { ...window.__mc.player.pos },
     cam: { ...window.__mc.engine.camera.position },
   }));
-  await page.keyboard.press('KeyP');
-  await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
   const inPhoto = await page.evaluate(() => {
     const overlay = document.querySelector('#photo-overlay');
     const style = getComputedStyle(overlay);
