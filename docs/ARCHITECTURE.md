@@ -163,8 +163,9 @@ manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是
 改写自己的 `permissions`。`ctx.services` 与 `ctx.api.engine` 仍是受信内部对象，
 权限是护栏不是沙箱。
 
-**停用级联**：`disable(A)` 会先递归停用所有依赖 A 的下游插件（依赖方先 teardown），
-避免出现「B 仍 enabled 但它依赖的 A 已停用」的悬浮依赖。
+**停用与级联**：`disable(A)` / `unload(A)` 默认做反向依赖保护——若仍有启用中的插件依赖 A
+则抛错，要求先停用依赖方；显式传 `force=true`（含 `reload(A)`、`dispose()`）才会递归停用
+依赖 A 的下游插件（依赖方先 teardown），避免出现「B 仍 enabled 但 A 已停用」的悬浮依赖。
 
 ---
 
@@ -628,7 +629,7 @@ UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出
 `test/survival-saturation.test.ts` / `test/campfire.test.ts`（Vitest）；
 `test/smelting-check.cjs` 覆盖熔炉配方 / 燃料 / 状态机 / 存档往返，并扩展兔肉配方与
 `crafting_table` / `bookshelf` 燃料；`terrain-system-check` / `botany-rules-check` 的
-方块总数 152→156。`check:version` 校验 `VERSION=1.5.4` / `RELEASE=v1` 三处一致。
+方块总数 152→156。`check:version` 校验 `VERSION` / `RELEASE` 在唯一版本源与三处声明中一致（现行值见 `src/core/version.ts`）。
 
 ## 9. 后续路线（带验收标准）
 
@@ -646,7 +647,7 @@ UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出
 | v1.4.4 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
 | v2.0 | 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
 
-> 编号说明：表中 `v1.6.0 花海扩充 + 植被表现力` 与其他历史 `v1.6.0` 标题均沿用早期规划编号；现行项目版本统一为 **1.5.4 非正式版**（§8.9 火光与饥饿，`VERSION=1.5.4`、`RELEASE=v1`），旧标题仅作历史记录保留，现行版本号以 `src/core/version.ts` 为准。
+> 编号说明：表中 `v1.6.0 花海扩充 + 植被表现力` 与其他历史 `v1.6.0` 标题均沿用早期规划编号，仅作历史记录保留；现行版本号以 `src/core/version.ts` 的 `VERSION` / `RELEASE` 为准。
 
 **当前建议**：不要先上合成/护甲/更多怪物。地形生成已收敛为可测试的阶段管线，
 下一步做透明排序与 AABB 脱困。

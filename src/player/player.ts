@@ -664,7 +664,11 @@ export class Player implements System, PhysicsBody {
     this.particles.burst(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, color, 22, 0.4, 3.4);
     this.sound.dig(def.sound, def.hardness);
     if (this.mineHarvest) this.collectDrops(def, hit.x, hit.y, hit.z);
-    if (bonus) this.survival.addDrop(bonus.item, bonus.count);
+    if (bonus) {
+      this.survival.addDrop(bonus.item, bonus.count);
+      // 品系附加产出与右键采集一致：挖掘同样应获得花蜜 / 甜浆果
+      if (bonus.extra) this.survival.addDrop(bonus.extra.item, bonus.extra.count);
+    }
     // 上方失支撑方块随之处理：沙类转下落实体、植物连带掉落（FallingSystem）；
     // 未注入重力系统时保留旧的植物连带行为
     if (this.falling) {
@@ -952,6 +956,9 @@ export class Player implements System, PhysicsBody {
       this.tmpDir.y * BALL.THROW_SPEED + BALL.THROW_LIFT,
       this.tmpDir.z * BALL.THROW_SPEED,
     );
+    // 投掷附带侧旋：马格努斯效应让高速投篮走出可观测弧线
+    ball.spin.x = this.tmpDir.z * BALL.MAX_SPIN * 0.2;
+    ball.spin.z = -this.tmpDir.x * BALL.MAX_SPIN * 0.2;
     ball.pickupCooldown = BALL.PICKUP_COOLDOWN;
     this.survival.consume(stack, 1); // 创造恒 true 不扣，生存扣 1
     this.sound.throwBall();
@@ -969,6 +976,9 @@ export class Player implements System, PhysicsBody {
     ball.vel.x = ball.vel.x * 0.3 + this.tmpDir.x * BALL.PAT_SPEED;
     ball.vel.z = ball.vel.z * 0.3 + this.tmpDir.z * BALL.PAT_SPEED;
     ball.vel.y = Math.max(ball.vel.y, 0) + BALL.PAT_LIFT;
+    // 拍打同样注入侧旋，连拍能累积出弧线
+    ball.spin.x += this.tmpDir.z * BALL.MAX_SPIN * 0.15;
+    ball.spin.z -= this.tmpDir.x * BALL.MAX_SPIN * 0.15;
     // 拍完短暂延长冷却，避免球刚停稳就被玩家自己捡回
     ball.pickupCooldown = Math.max(ball.pickupCooldown, BALL.PICKUP_COOLDOWN * 0.35);
     this.swing();
@@ -1010,7 +1020,9 @@ export class Player implements System, PhysicsBody {
       const old = this.hotbar.slots[i];
       if (old) {
         const empty = this.hotbar.slots.indexOf(null);
-        if (empty >= 0) this.hotbar.slots[empty] = old;
+        // 快捷栏已满时宁可不替换，也不能静默丢弃原持有物
+        if (empty < 0) return;
+        this.hotbar.slots[empty] = old;
       }
       this.hotbar.slots[i] = { kind: 'block', id };
     }

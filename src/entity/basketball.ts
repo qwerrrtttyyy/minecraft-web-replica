@@ -1,4 +1,5 @@
 import type { EntityManager, EntityType } from './entity';
+import { clamp, type Vec3Like } from '../core/types';
 
 /**
  * 篮球物理常量与纯逻辑。
@@ -37,6 +38,19 @@ export const BALL = {
   PAT_LIFT: 5.5,
   /** 拍打节流，单位秒 */
   PAT_COOLDOWN: 0.28,
+  // ---- 物理增强（四季与天候更新）：只追加，旧 15 项默认值一个不动 ----
+  /** 飞行段空气阻力系数：速度缩放 = exp(-AIR_DRAG * |v| * dt) */
+  AIR_DRAG: 0.045,
+  /** 自旋指数衰减系数（帧率无关） */
+  SPIN_DECAY: 0.8,
+  /** 马格努斯系数：a = ω × v * MAGNUS */
+  MAGNUS: 0.015,
+  /** 落地反弹时切向速度转为自旋的比例 */
+  BOUNCE_SPIN_TRANSFER: 0.12,
+  /** 地面滚动时切向速度转为自旋的比例 */
+  GROUND_SPIN_TRANSFER: 0.35,
+  /** 自旋分量上限，防止数值爆炸 */
+  MAX_SPIN: 40,
 } as const;
 
 /**
@@ -79,4 +93,42 @@ export function registerBasketball(
     health: Infinity,
     build,
   });
+}
+
+/** 飞行段空气阻力：返回速度缩放因子。v=0 / dt=0 时为 1，两个半步 ≈ 一个整步 */
+export function airDragFactor(v: number, dt: number): number {
+  return Math.exp(-BALL.AIR_DRAG * Math.abs(v) * Math.max(0, dt));
+}
+
+/** 自旋指数衰减（帧率无关、单调趋零） */
+export function spinDecay(spin: number, dt: number): number {
+  return spin * Math.exp(-BALL.SPIN_DECAY * Math.max(0, dt));
+}
+
+/** 马格努斯加速度 a = ω × v * MAGNUS；ω=0 时严格返回零向量 */
+export function magnusAcceleration(omega: Vec3Like, vel: Vec3Like): Vec3Like {
+  const x = omega.y * vel.z - omega.z * vel.y;
+  const y = omega.z * vel.x - omega.x * vel.z;
+  const z = omega.x * vel.y - omega.y * vel.x;
+  return { x: x * BALL.MAGNUS, y: y * BALL.MAGNUS, z: z * BALL.MAGNUS };
+}
+
+/** 自旋分量钳制到 ±MAX_SPIN（幂等） */
+export function clampSpin(omega: Vec3Like): Vec3Like {
+  const m = BALL.MAX_SPIN;
+  return { x: clamp(omega.x, -m, m), y: clamp(omega.y, -m, m), z: clamp(omega.z, -m, m) };
+}
+
+/**
+ * 落地反弹时由切向水平速度注入自旋。
+ * 纯滚动对应关系 ω = (vz/R, 0, -vx/R)，按 transfer 比例注入并钳制。
+ */
+export function bounceSpin(
+  omega: Vec3Like,
+  vx: number,
+  vz: number,
+  transfer: number = BALL.BOUNCE_SPIN_TRANSFER,
+): Vec3Like {
+  const scale = transfer / BALL.RADIUS;
+  return clampSpin({ x: omega.x + vz * scale, y: omega.y, z: omega.z - vx * scale });
 }

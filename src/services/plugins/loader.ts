@@ -25,9 +25,12 @@ export interface PluginSourceOptions {
 }
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{1,63}$/i;
+// 必须与 PLUGIN_PERMISSIONS（PluginContext.ts）保持一致：install() 与 register()
+// 接受同一套权限，否则同一份插件定义经两条入口会出现一成功一报错。
 const VALID_PERMISSIONS: ReadonlySet<string> = new Set<PluginPermission>([
   'world:write', 'player:write', 'save:write', 'api:emit',
-  'blocks:register', 'botany:register', 'wasm:use', 'plugins:manage',
+  'blocks:register', 'botany:register',
+  'time:write', 'settings:write', 'wasm:use', 'plugins:manage', 'events:subscribe',
 ]);
 
 export function loadPluginDefinition(

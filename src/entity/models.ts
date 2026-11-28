@@ -130,7 +130,8 @@ export class PlayerModel {
 
 export interface MobModel {
   group: THREE.Group;
-  animate(phase: number, moving: boolean): void;
+  /** 第三参仅篮球使用：自旋角速度，用于分格线的轻微摆动 */
+  animate(phase: number, moving: boolean, spin?: { x: number; y: number; z: number }): void;
 }
 
 /** 猪 */
@@ -579,8 +580,11 @@ export function buildBasketball(): MobModel {
   group.add(ball);
   return {
     group,
-    animate() {
-      // 滚动由 updateBounce 直接旋转 group，球体无需逐帧待机动画
+    animate(_phase, _moving, spin) {
+      // 主滚动由 updateBounce 旋转 group；这里用自旋让分格线有轻微摆动
+      if (spin && (spin.x || spin.y || spin.z)) {
+        ball.rotation.z = Math.sin(spin.x * 0.1) * 0.04;
+      }
     },
   };
 }

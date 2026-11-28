@@ -1,5 +1,5 @@
 import { clamp, type BlockId, type GameMode } from '../core/types';
-import { WARMTH } from '../core/tuning';
+import { WARMTH, COLD } from '../core/tuning';
 import type { MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
 import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
@@ -67,6 +67,8 @@ export interface HUDOptions {
   onBlockGravity: (v: boolean) => void;
   /** 实验性玩法：火焰蔓延 */
   onFireSpread: (v: boolean) => void;
+  /** 实验性玩法：天气与季节 */
+  onWeather: (v: boolean) => void;
   /** 实验性玩法：透明通道距离排序 */
   onSortTransparent: (v: boolean) => void;
   /** 原版界面风格开关（默认开启，设置页「视频」分组） */
@@ -232,6 +234,7 @@ export class HUD {
   private cloudsRow?: HTMLButtonElement;
   private gravityRow?: HTMLButtonElement;
   private fireSpreadRow?: HTMLButtonElement;
+  private weatherRow?: HTMLButtonElement;
   private sortRow?: HTMLButtonElement;
   private vanillaUIRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
@@ -252,7 +255,7 @@ export class HUD {
   /** N5：自动保存提示单一定时器，连续触发不堆叠 */
   private savedNoteTimer = 0;
   private pips: HTMLElement[] = [];
-  private lastStats = { health: -1, hunger: -1, saturation: -1, breath: -1, warmth: -1, mode: '' as string };
+  private lastStats = { health: -1, hunger: -1, saturation: -1, breath: -1, warmth: -1, mode: '' as string, weather: '' as string };
   private selectedMode: GameMode = 'survival';
 
   constructor(opts: HUDOptions) {
@@ -718,7 +721,12 @@ export class HUD {
   // ---------- 生存状态 ----------
 
   /** 每帧调用；内部做变化检测，避免频繁重排 DOM */
-  setSurvival(s: { health: number; hunger: number; saturation: number; breath: number; warmth: number; mode: GameMode; dead: boolean } | null) {
+  setSurvival(s: {
+    health: number; hunger: number; saturation: number; breath: number; warmth: number;
+    mode: GameMode; dead: boolean;
+    /** 当前天气形态，用于低温暖时叠加冷色调（可选，旧调用方零改动） */
+    weather?: 'clear' | 'rain' | 'snow' | 'thunder';
+  } | null) {
     const survival = !!s && s.mode === 'survival';
     this.statsWrap.style.display = survival && !this.hudHidden ? '' : 'none';
     if (!s || !survival) {
@@ -730,10 +738,10 @@ export class HUD {
     if (s.health === this.lastStats.health && s.hunger === this.lastStats.hunger &&
       s.saturation === this.lastStats.saturation &&
       s.breath === this.lastStats.breath && s.warmth === this.lastStats.warmth &&
-      s.mode === this.lastStats.mode) return;
+      s.mode === this.lastStats.mode && (s.weather ?? '') === this.lastStats.weather) return;
     this.lastStats = {
       health: s.health, hunger: s.hunger, saturation: s.saturation,
-      breath: s.breath, warmth: s.warmth, mode: s.mode,
+      breath: s.breath, warmth: s.warmth, mode: s.mode, weather: s.weather ?? '',
     };
 
     // 温暖表现：屏幕暖光强度 + 火焰细条 + 达标高亮（阈值来自 tuning）
@@ -742,6 +750,9 @@ export class HUD {
     this.warmthMeter.classList.toggle('show', warmth > 0.5);
     this.warmthFill.style.width = `${warmth}%`;
     this.warmthMeter.classList.toggle('warm', warmth >= WARMTH.regenThreshold);
+    // 恶劣天气 + 低温暖：屏幕叠一层冷色，提示该靠近热源了
+    const cold = warmth < COLD.warmthThreshold && !!s.weather && s.weather !== 'clear';
+    this.warmthGlow.classList.toggle('cold', cold);
 
     // 饱和度视觉：有缓冲时暖色微光，耗尽时鸡腿变暗（互斥）
     this.hungerRow.classList.toggle('satiated', s.saturation > 0);
@@ -1045,6 +1056,11 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     gamerules.appendChild(this.fireSpreadRow);
+    this.weatherRow = this.optionRow('天气与季节', () => {
+      this.opts.onWeather(!this.opts.getOptions().weather);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.weatherRow);
     this.sortRow = this.optionRow('透明排序', () => {
       this.opts.onSortTransparent(!this.opts.getOptions().sortTransparent);
       this.syncOptions(this.opts.getOptions());
@@ -1164,6 +1180,7 @@ export class HUD {
     if (this.cloudsRow) this.setRowVal(this.cloudsRow, o.showClouds ? '开' : '关', !o.showClouds);
     if (this.gravityRow) this.setRowVal(this.gravityRow, o.blockGravity ? '开' : '关', !o.blockGravity);
     if (this.fireSpreadRow) this.setRowVal(this.fireSpreadRow, o.fireSpread ? '开' : '关', !o.fireSpread);
+    if (this.weatherRow) this.setRowVal(this.weatherRow, o.weather ? '开' : '关', !o.weather);
     if (this.sortRow) this.setRowVal(this.sortRow, o.sortTransparent ? '开' : '关', !o.sortTransparent);
     if (this.vanillaUIRow) this.setRowVal(this.vanillaUIRow, o.vanillaUI ? '开' : '关', !o.vanillaUI);
   }

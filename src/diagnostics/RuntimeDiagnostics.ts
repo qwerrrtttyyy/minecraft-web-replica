@@ -1,5 +1,6 @@
 import { VERSION } from '../core/version';
 import type { GameMode } from '../core/types';
+import { parseDependency } from '../services/plugins/semver';
 
 /**
  * 运行时诊断组（v1.3.2）。
@@ -64,6 +65,19 @@ export interface DiagnosticSnapshot {
     avgEnergy: number;
     /** 恢复后发现的能量越界条目数，正常应为 0 */
     invalidEnergy: number;
+  };
+  /** 四季与天候快照（可选，旧快照缺字段时跳过相关检查） */
+  weather?: {
+    kind: string;
+    form: string;
+    intensity: number;
+    darkness: number;
+    /** 由实际写入值反推的方块光天气因子 */
+    chunkDarkness: number;
+    /** 由实际写入值反推的实体光天气因子 */
+    entityDarkness: number;
+    flash: number;
+    rainLevel: number;
   };
   /** v1.5.0：WASM 运行时快照（可选，旧快照不含此字段时跳过相关检查） */
   wasm?: {
@@ -171,8 +185,11 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
   check('plugins.failed', failed.length === 0,
     `插件初始化失败：${failed.map((pl) => pl.id).join(', ')}`);
   const byId = new Map(s.plugins.map((pl) => [pl.id, pl]));
+  // dependencies 允许 `id@^1.2.0` 形式；必须用与 PluginService 相同的解析取出裸 id，
+  // 否则版本限定的依赖会被误判为「未启用」。
   const dangling = s.plugins.filter(
-    (pl) => pl.state === 'enabled' && (pl.dependencies ?? []).some((dep: string) => byId.get(dep)?.state !== 'enabled'),
+    (pl) => pl.state === 'enabled' && (pl.dependencies ?? []).some((dep: string) =>
+      byId.get(parseDependency(dep)?.id ?? dep)?.state !== 'enabled'),
   );
   check('plugins.dependency', dangling.length === 0,
     `启用中的插件缺少已启用的依赖：${dangling.map((pl) => `${pl.id}→${(pl.dependencies ?? []).join(',')}`).join('；')}`);
@@ -237,6 +254,26 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
         finite(w.benchJsMs) && w.benchJsMs >= 0 &&
         finite(w.benchWasmMs) && w.benchWasmMs >= 0,
         `WASM 基准耗时非法：js=${w.benchJsMs} wasm=${w.benchWasmMs}`);
+    }
+  }
+
+  // ---- 四季与天候 ----
+  const weatherSnap = s.weather;
+  if (weatherSnap) {
+    check('weather.factor',
+      finite(weatherSnap.darkness) && weatherSnap.darkness >= 0 && weatherSnap.darkness <= 1 &&
+      finite(weatherSnap.flash) && weatherSnap.flash >= 0 && weatherSnap.flash <= 1,
+      `天气因子非法：darkness=${weatherSnap.darkness} flash=${weatherSnap.flash}`);
+    check('weather.intensity',
+      finite(weatherSnap.intensity) && weatherSnap.intensity >= 0 && weatherSnap.intensity <= 1 &&
+      finite(weatherSnap.rainLevel) && weatherSnap.rainLevel >= 0 && weatherSnap.rainLevel <= 1,
+      `降水强度非法：intensity=${weatherSnap.intensity} rainLevel=${weatherSnap.rainLevel}`);
+    // 闪电瞬间两套通道存在一帧相位差，跳过该帧避免误报
+    if (weatherSnap.flash < 0.01) {
+      check('weather.channels',
+        finite(weatherSnap.chunkDarkness) && finite(weatherSnap.entityDarkness) &&
+        Math.abs(weatherSnap.chunkDarkness - weatherSnap.entityDarkness) < 1e-3,
+        `两套光照通道天气因子不一致：chunk=${weatherSnap.chunkDarkness} entity=${weatherSnap.entityDarkness}`);
     }
   }
 

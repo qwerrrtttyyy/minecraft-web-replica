@@ -251,6 +251,9 @@ log('植物内在能量体系回归（代谢 / 蓄能 / 开花 / 采集 / 根系
     berries && berries.item === 'item:sweet_berries' && berries.count === 2,
     JSON.stringify(berries));
   ok('采集后浆果丛回到未成熟状态', get(t, 11, 21, 12) === t.id('sweet_berry_bush'));
+  ok('采集后扣除的储能按新方块 id 保留（不回退到初始值）',
+    t.botany.energyAt(11, 21, 12) > 50,
+    `energy=${t.botany.energyAt(11, 21, 12)}`);
 }
 
 // 8) 能量不足时禁止生长；蓄满后允许

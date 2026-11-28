@@ -277,3 +277,46 @@ export const WARMTH = {
   coldHunger: 18,
   exhaustionScale: 0.8,
 } as const;
+
+/**
+ * 天候系统数值中心（四季与天候内容更新）：
+ * - snowTemperature：温度低于该值（0~1）时降水转为雪；
+ * - thunderChance：雨天转为雷暴的概率；
+ * - lightningChance / lightningInterval：闪电节拍（秒）与触发概率；
+ * - blend：天气状态指数逼近系数（帧率无关）；
+ * - darkness：各天气的环境亮度因子（唯一变暗源的基准）；
+ * - intensity：各天气的降水强度（0 表示无降水）；
+ * - rainBudget / snowBudget：降水粒子容量上限。
+ */
+export const WEATHER = {
+  snowTemperature: 0.35,
+  thunderChance: 0.3,
+  lightningChance: 0.35,
+  lightningInterval: 6,
+  blend: 2.5,
+  darkness: { clear: 1, rain: 0.72, snow: 0.8, thunder: 0.58 },
+  intensity: { clear: 0, rain: 0.6, snow: 0.5, thunder: 0.9 },
+  rainBudget: 220,
+  snowBudget: 140,
+} as const;
+
+/**
+ * 寒冷数值中心（四季与天候内容更新）：
+ * - rainPenalty / snowPenalty / stormPenalty：各天气每秒温暖惩罚；
+ * - winterPenalty / nightPenalty / nightDaylight：冬季与夜晚附加惩罚及夜晚判定；
+ * - shelterMultiplier：有遮蔽（头顶实心）时惩罚缩放；
+ * - warmthThreshold：低于该温暖值才可能冻伤；
+ * - damageInterval / damage：冻伤节拍（秒）与每次伤害。
+ */
+export const COLD = {
+  rainPenalty: 4,
+  snowPenalty: 8,
+  stormPenalty: 10,
+  winterPenalty: 3,
+  nightPenalty: 3,
+  nightDaylight: 0.2,
+  shelterMultiplier: 0.25,
+  warmthThreshold: 15,
+  damageInterval: 4,
+  damage: 1,
+} as const;

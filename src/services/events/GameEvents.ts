@@ -1,4 +1,5 @@
 import type { BlockId, Vec3Like } from '../../core/types';
+import type { WeatherSnapshot } from '../../world/weather';
 
 /**
  * 游戏事件表：事件服务的唯一契约。
@@ -95,6 +96,11 @@ export interface GameEvents {
   'basketball:bounce': { id: number; x: number; y: number; z: number; strength: number };
   /**走近拾取篮球 */
   'basketball:pickup': { x: number; y: number; z: number };
+  // ---- 四季与天候 ----
+  /** 天气形态切换（kind/form 原子切换，darkness/intensity 为平滑值） */
+  'weather:change': WeatherSnapshot;
+  /** 雷暴闪光触发（用于雷声 / 粒子反馈） */
+  'weather:lightning': { x: number; y: number; z: number };
   // ---- 内容更新：弓箭 ----
   /** 玩家射出箭矢（发射点，非落点） */
   'bow:shoot': { x: number; y: number; z: number };

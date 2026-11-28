@@ -265,4 +265,22 @@ console.log('运行时诊断组回归');
   }
 }
 
+{
+  // 版本限定依赖必须按裸 id 解析，不能误判为「缺少依赖」
+  const r = runRuntimeDiagnostics(clone((s) => {
+    s.plugins = [
+      { id: 'core:base', state: 'enabled' },
+      { id: 'core:leaf', state: 'enabled', dependencies: ['core:base@^1.0.0'] },
+    ];
+  }));
+  ok('版本限定的已启用依赖不误报', !has(r, 'plugins.dependency'), ids(r).join(','));
+  const bad = runRuntimeDiagnostics(clone((s) => {
+    s.plugins = [
+      { id: 'core:base', state: 'disabled' },
+      { id: 'core:leaf', state: 'enabled', dependencies: ['core:base@^1.0.0'] },
+    ];
+  }));
+  ok('版本限定的依赖确实缺失时被捕获', has(bad, 'plugins.dependency'), ids(bad).join(','));
+}
+
 console.log(`\nPASS 运行时诊断组：${passed} 组断言全部通过`);

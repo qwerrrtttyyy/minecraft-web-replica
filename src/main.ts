@@ -14,9 +14,13 @@ import { DefaultGenerator } from './world/generator';
 import { World } from './world/world';
 import { Botany } from './world/botany';
 import { seasonAt, weatherAt } from './world/ecology';
+import { weatherFactor, type WeatherKind } from './world/weather';
+import { WeatherSystem } from './world/weatherSystem';
+import { ColdSystem, environmentPenalty } from './world/cold';
 import { ChunkManager } from './world/chunkManager';
 import { Sky } from './gfx/sky';
 import { Particles } from './gfx/particles';
+import { WeatherParticles } from './gfx/weatherParticles';
 import { BlockHighlight } from './gfx/highlight';
 import { CrackOverlay, quantizeCrackStage } from './gfx/crackOverlay';
 import { Player, type HotbarState } from './player/player';
@@ -102,6 +106,7 @@ async function boot() {
   const sound = new SoundEngine();
   const isMobile = engine.isMobile;
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
+  const weatherParticles = new WeatherParticles(engine.scene, engine.camera, isMobile);
 
   const idOf = (n: string) => registry.byNameGet(n)!.id;
   // 创造栏固定 9 格（HUD 只渲染 9 格）：8 个常用方块 + 篮球物品
@@ -226,7 +231,8 @@ async function boot() {
   };
 
   // ---- 世界 ----
-  const world = new World(registry, new DefaultGenerator(seed, registry), events, extensions);
+  const generator = new DefaultGenerator(seed, registry);
+  const world = new World(registry, generator, events, extensions);
   if (saved) world.loadEdits(saved.edits);
   // 熔炉方块实体：载入存档时恢复各炉的槽位与燃烧 / 进度状态；
   // 跳过坐标上已不是熔炉的条目（edits 可能已把该方块改掉），避免幽灵炉继续 tick
@@ -335,6 +341,14 @@ async function boot() {
   events.on('fire:extinguish', () => {
     // 内置侧无音效；此订阅供插件观察火焰熄灭（如生态统计）。
   });
+  // 雷暴闪光：低频轰鸣复用爆炸音色，叠一记高频裂帛
+  events.on('weather:lightning', () => { sound.thunder(); });
+  // 头顶有实心方块视为有遮蔽：寒冷惩罚大幅衰减（靠近营火 / 进屋都能保暖）
+  const isSheltered = (): boolean => {
+    const p = player.pos;
+    const by = Math.floor(p.y + 2);
+    return by < 80 && registry.get(world.getBlock(Math.floor(p.x), by, Math.floor(p.z))).solid;
+  };
   // 温暖系统（PR5）：靠近热源积累温暖，提供轻量回血增益与视觉表现。
   // 热源判定在此集中：火 / 营火 / 灯笼 / 蜡烛，或燃烧中的熔炉（不写回 warmth.ts）。
   const warmth = new WarmthSystem({
@@ -344,6 +358,28 @@ async function boot() {
       return isHeatBlock(name) || name === 'lantern' || name === 'candle' ||
         smelting.cell(x, y, z).burn > 0;
     },
+    environmentPenalty: () => environmentPenalty(
+      weather.current.kind, seasonAt(sky.dayCount), sky.daylight, isSheltered()),
+  });
+  // 天候系统（四季与天候内容更新）：确定性天气 + 统一变暗真源。
+  // 当前快照写在 weather.current 上，方块光 / 实体光 / 寒冷 / 粒子共用同一份。
+  const weather = new WeatherSystem({
+    seed,
+    getTime: () => ({ dayCount: sky.dayCount, daylight: sky.daylight }),
+    getFocus: () => player.pos,
+    temperatureAt: (x, z) => generator.columnInfo?.(x, z)?.temperature ?? 0.5,
+    events,
+  });
+  // 寒冷系统：恶劣天气降低温暖；低温暖触发冻伤。护甲按 kind 过滤（见 armor.ts）。
+  const cold = new ColdSystem({
+    survival,
+    observe: () => ({
+      kind: weather.current.kind,
+      season: seasonAt(sky.dayCount),
+      daylight: sky.daylight,
+      sheltered: isSheltered(),
+    }),
+    hurt: (amount, cause, kind) => { survival.damage(amount, cause, false, kind); },
   });
   // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
@@ -387,6 +423,7 @@ async function boot() {
   sky.setCloudsEnabled(settings.showClouds);
   falling.enabled = settings.blockGravity;
   fire.enabled = settings.fireSpread;
+  weather.enabled = settings.weather;
   chunks.transparentSortEnabled = settings.sortTransparent;
 
   const tntList: PrimedTnt[] = [];
@@ -752,6 +789,13 @@ async function boot() {
       settings.fireSpread = v;
       fire.enabled = v;
       hud.toast(v ? '火焰蔓延：开启' : '火焰蔓延：关闭（已有火焰将自然燃尽）');
+      persistOptions(settings);
+      markDirty();
+    },
+    onWeather: (v) => {
+      settings.weather = v;
+      weather.enabled = v;
+      hud.toast(v ? '天气与季节：开启' : '天气与季节：关闭（天气将转晴）');
       persistOptions(settings);
       markDirty();
     },
@@ -1473,6 +1517,17 @@ async function boot() {
         breath: survival.breath, dead: survival.dead,
       },
       entities: entities.entities.length,
+      weather: {
+        kind: weather.current.kind,
+        form: weather.current.form,
+        intensity: weather.current.intensity,
+        darkness: weather.current.darkness,
+        // 从实际写入值反推因子，真正验证两处都没有漏乘天气
+        chunkDarkness: chunks.lightUniform.value / Math.max(1e-6, 0.16 + 0.84 * sky.daylight),
+        entityDarkness: sky.sunLight.intensity / Math.max(1e-6, 0.18 + sky.daylight * 1.0),
+        flash: weather.current.flash,
+        rainLevel: weather.current.form === 'rain' ? weather.current.intensity : 0,
+      },
       plant: (() => {
         const stats = botany.stats(player.pos.x, player.pos.z);
         let invalidEnergy = 0;
@@ -1697,7 +1752,7 @@ async function boot() {
       `准星: ${targetStr}`,
       `已网格化区块: ${chunks.meshCount}  实体: ${entities.entities.length}  火焰: ${fire.trackedCount}`,
       `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy} / 土壤 ${plants.soilAvg}`,
-      `季节: ${seasonAt(sky.dayCount)} / 天气: ${weatherAt(seed, sky.dayCount)} / 第 ${sky.dayCount} 天`,
+      `季节: ${seasonAt(sky.dayCount)} / 天气: ${weather.current.kind} / 形态: ${weather.current.form} / 亮度: ${weather.current.darkness.toFixed(2)} / 第 ${sky.dayCount} 天`,
       `运行时诊断: ${diagStr}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
@@ -1715,6 +1770,19 @@ async function boot() {
     update: (dt, t) => {
       // 暂停 / 死亡 / 加载时不推进昼夜，避免回到游戏后时间跳变
       if (mode === 'playing' || mode === 'title') sky.update(dt, t);
+    },
+  });
+  engine.addSystem({
+    name: 'weather',
+    update: (dt, t) => {
+      if (mode !== 'playing') return;
+      weather.update(dt, t);
+      // 写入 sky 供实体光 / 云雾使用：sky.update 在上一帧已读过前一份快照，
+      // 天气以 0.4s 量级平滑变化，一帧延迟无感。
+      sky.weather = weather.current;
+      weatherParticles.setWeather(weather.current);
+      sound.setRainLevel(weather.current.form === 'rain' ? weather.current.intensity : 0);
+      fire.rainTick(weather.current.form === 'rain' ? weather.current.intensity : 0);
     },
   });
   engine.addSystem({
@@ -1794,6 +1862,7 @@ async function boot() {
     },
   });
   engine.addSystem(particles);
+  engine.addSystem(weatherParticles);
   engine.addSystem({
     name: 'fire',
     update: (dt) => {
@@ -1811,10 +1880,18 @@ async function boot() {
     },
   });
   engine.addSystem({
+    name: 'cold',
+    update: (dt) => {
+      // 暂停 / 死亡 / 加载时不推进寒冷
+      if (mode !== 'playing') return;
+      cold.update(dt);
+    },
+  });
+  engine.addSystem({
     name: 'ui',
     update: (dt) => {
-      // 昼夜强度写进区块 shader；手持物按眼睛所在格的光照变暗/变亮
-      const daylight = 0.16 + 0.84 * sky.daylight;
+      // 昼夜强度写进区块 shader；天气变暗因子与 sky.ts 的实体光共用同一函数
+      const daylight = (0.16 + 0.84 * sky.daylight) * weather.darknessFactor();
       chunks.lightUniform.value = daylight;
       chunks.sunTint.value.copy(sky.sunTint);
       const eyeX = Math.floor(player.pos.x);
@@ -1837,7 +1914,7 @@ async function boot() {
       // 天空的水下大气：暂停时保持入水状态（sky.update 暂停期间不推进），回档后不闪烁
       sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
-        hud.setSurvival(survival);
+        hud.setSurvival({ ...survival, weather: weather.current.kind });
         const mining = mode === 'playing' && player.miningProgress !== null && player.miningBlock
           ? {
             progress: player.miningProgress,
@@ -1944,7 +2021,9 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling, arrows, fire, smelting,
+    botany, falling, arrows, fire, smelting, weather, cold, weatherParticles,
+    /** 测试钩子：强制天气（null 恢复历法推导） */
+    weatherSetForced: (kind: WeatherKind | null) => { weather.forced = kind; },
     services: container, events, plugins, api, wasm,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
     dispose: teardown,

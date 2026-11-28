@@ -14,6 +14,11 @@ export class SoundEngine {
   private noiseBuf: AudioBuffer | null = null;
   private eatTimeout: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  /** 常驻循环雨声：单实例噪声源，避免反复 start 叠加成噪音 */
+  private rainSrc: AudioBufferSourceNode | null = null;
+  private rainFilter: BiquadFilterNode | null = null;
+  private rainGain: GainNode | null = null;
+  private rainLevel = 0;
 
   /** 必须在用户手势中调用一次以解锁音频 */
   async unlock(): Promise<void> {
@@ -33,6 +38,17 @@ export class SoundEngine {
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noiseBuf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      // 常驻雨声底噪：噪声源 → lowpass → 增益；setRainLevel 淡入淡出
+      this.rainSrc = this.ctx.createBufferSource();
+      this.rainSrc.buffer = this.noiseBuf;
+      this.rainSrc.loop = true;
+      this.rainFilter = this.ctx.createBiquadFilter();
+      this.rainFilter.type = 'lowpass';
+      this.rainFilter.frequency.value = 2600;
+      this.rainGain = this.ctx.createGain();
+      this.rainGain.gain.value = 0;
+      this.rainSrc.connect(this.rainFilter).connect(this.rainGain).connect(this.master);
+      this.rainSrc.start();
     } catch {
       this.ctx = null;
       this.master = null;
@@ -43,6 +59,19 @@ export class SoundEngine {
   setEnabled(v: boolean) {
     this.enabled = v;
     if (this.master) this.master.gain.value = v ? this.volume : 0;
+    this.applyRain();
+  }
+
+  /** 雨声强度 0~1，淡入淡出；无上下文时静默 no-op（CI / 未解锁音频） */
+  setRainLevel(level: number): void {
+    this.rainLevel = clamp(level, 0, 1);
+    this.applyRain();
+  }
+
+  private applyRain(): void {
+    if (!this.ctx || !this.rainGain) return;
+    const target = this.enabled ? this.rainLevel * 0.12 : 0;
+    this.rainGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.08);
   }
 
   /** 音量 0~100（设置页滑杆值），立即生效 */
@@ -58,6 +87,13 @@ export class SoundEngine {
       clearTimeout(this.eatTimeout);
       this.eatTimeout = null;
     }
+    if (this.rainSrc) {
+      try { this.rainSrc.stop(); } catch { /* 已停止 */ }
+      this.rainSrc.disconnect();
+      this.rainSrc = null;
+    }
+    this.rainFilter = null;
+    this.rainGain = null;
     if (this.ctx) {
       this.ctx.close().catch(() => {});
       this.ctx = null;
@@ -193,6 +229,12 @@ export class SoundEngine {
     this.burst(this.vary(180, 0.12), 0.7, 0.9, 'lowpass', 0.5);
     this.burst(this.vary(60, 0.1), 0.9, 0.8, 'lowpass', 0.4);
     this.tone(this.vary(110, 0.08), 0.6, 0.5, 'sine', 30);
+  }
+
+  /** 雷声：复用爆炸的低频轰鸣，叠一记高频裂帛 */
+  thunder() {
+    this.explosion();
+    this.burst(this.vary(1800, 0.2), 0.25, 0.16, 'highpass', 0.8);
   }
 
   click(freq = 660) {
