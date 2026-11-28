@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+## [1.6.0-beta.1] - 2026-11-28
+
+### 多 PR 收敛
+- **单一 PR #35**：把开放的 #34（AI 节点类型收紧）、#20（画面 / UI 还原开关）、#23（Java 1.20 HUD / 横屏）合并为一个 PR 后合入 main；#26 已随早前的 consolidate 合入 main，单独关闭。
+- **冲突处理**：#20 / #23 的多数内容已被 main 的后续实现吸收，冲突统一保留当前分支较新实现；按「大二进制不入库」硬规则未纳入 #23 的 4 张截图（其中 1 张 >1 MB）及重复说明文档。
+- **AI 类型修复**：合并后 `conditions.ts` 两处构造分支改为按 `string` / `number` 窄化，typecheck 恢复 0 error。
+
+### 审查修复与测试
+- **天候开关**：`ColdSystem` 新增 `enabled` 上下文，关闭「天气与季节」后冬季 / 夜晚惩罚也一并停止，不再继续触发冻伤。
+- **冷色提示**：低温暖 + 恶劣天气时给 `#warmth-glow` 设置可见度下限，避免在最需要提示时因透明度接近 0 而看不见。
+- **覆盖补齐**：新增 `test:weather`（26 组：确定性派生 / 变暗因子 / 闪电 / 指数逼近 / 环境惩罚 / 冻伤节拍 / ColdSystem 开关），诊断组新增 3 组天气因子与双通道一致性注入回归；两者挂入 `verify` 与 `verify:node`。
+
+### 验证
+- `npm run check:version` 一致；`python3 docs/agent/validate.py` 30 张任务卡 FAIL 0；`npm run verify:node` EXIT 0；CI `verify` 双轨通过。
+- 浏览器实景组仍受限于本环境无可用 Chromium，未在 release 前本地执行。
+
 ## [1.6.0-alpha.1] - 2026-11-27
 
 ### 四季与天候
