@@ -35,6 +35,23 @@ import type { PlantTrait } from '../world/plantTraits';
 import type { PlantRule, PlantRuleInfo } from '../world/plantRules';
 
 /**
+ * 摄影模式对外视图。组装根注入运行时实例，门面只做转发：
+ * 时间 / 天气预览不写存档，截图只留在 lastDataUrl 里。
+ */
+export interface PhotoAPI {
+  readonly active: boolean;
+  readonly savedDayTime: number | null;
+  lastDataUrl: string;
+  enter(): boolean;
+  exit(): void;
+  update(dt: number): void;
+  requestCapture(withStamp: boolean): void;
+  setTimePreset(): void;
+  cycleWeather(): void;
+  toggleStamp(): void;
+}
+
+/**
  * 公开扩展门面（挂载到 window.CraftAPI）。
  *
  * v1.2.0 起它不再自己实现扩展机制，而只是「服务层」的薄适配：
@@ -118,6 +135,9 @@ export interface CraftAPI {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
   };
+
+  /** 摄影模式：相机 / 覆盖层 / 同帧截图（运行时视图，不写存档） */
+  photo: PhotoAPI;
 
   world: {
     seed(): number;
@@ -270,6 +290,7 @@ export interface APIDeps {
     run(): DiagnosticReport;
     last(): DiagnosticReport | null;
   };
+  photo: PhotoAPI;
 }
 
 export function createCraftAPI(d: APIDeps): CraftAPI {
@@ -345,6 +366,7 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       run: () => d.diagnostics.run(),
       last: () => d.diagnostics.last(),
     },
+    photo: d.photo,
     world: {
       seed: () => d.world.generator.seed,
       getBlock: (x, y, z) => d.world.getBlock(x, y, z),

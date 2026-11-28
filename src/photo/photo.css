@@ -1,0 +1,70 @@
+/* 摄影模式覆盖层：独立 DOM，不属于游戏 HUD；容器不吃指针，只有按钮可点 */
+#photo-overlay.photo-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 18px 22px;
+  pointer-events: none;
+  color: #f2f2f2;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  text-shadow: 1px 1px 0 #1a1a1a;
+}
+#photo-overlay .mc-panel {
+  align-self: flex-start;
+  max-width: min(560px, 92vw);
+  padding: 10px 14px;
+  border: 2px solid #373737;
+  border-top-color: #7a7a7a;
+  border-left-color: #5a5a5a;
+  background: rgba(18, 18, 22, 0.72);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+#photo-overlay .photo-title {
+  color: #f8d44f;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+#photo-overlay .photo-line { line-height: 1.65; }
+#photo-overlay .photo-actions {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  align-self: auto;
+  max-width: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+#photo-overlay .photo-actions button {
+  pointer-events: auto;
+  min-width: 56px;
+  padding: 7px 11px;
+  border: 2px solid #373737;
+  border-top-color: #7a7a7a;
+  border-left-color: #5a5a5a;
+  background: #6b6b6b;
+  color: #ffffff;
+  font: inherit;
+  text-shadow: 1px 1px 0 #303030;
+  cursor: pointer;
+}
+#photo-overlay .photo-actions button:hover { background: #838383; }
+#photo-overlay .photo-actions button:active { background: #555555; }
+#photo-overlay .photo-hints {
+  align-self: center;
+  text-align: center;
+  line-height: 1.6;
+  color: #dddddd;
+}
+@media (pointer: coarse) {
+  #photo-overlay.photo-overlay { padding: 12px 14px; font-size: 12px; }
+  #photo-overlay .photo-actions { top: 12px; right: 14px; max-width: 60vw; }
+  #photo-overlay .photo-actions button { min-width: 64px; min-height: 44px; padding: 10px 12px; }
+}

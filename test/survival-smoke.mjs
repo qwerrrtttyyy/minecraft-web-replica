@@ -394,6 +394,100 @@ try {
   });
   ok('输入禁用期间 keyup 仍会清理按键', stuckKeys.length === 0, stuckKeys.join(','));
 
+  // ---- 摄影模式（P）：暂停态不可进入 / 冻结玩家 / 同帧 PNG ----
+  await page.evaluate(() => window.__mc.openMenu());
+  await page.keyboard.press('KeyP');
+  await sleep(150);
+  const pausedPhoto = await page.evaluate(() => ({
+    active: CraftAPI.photo.active,
+    display: getComputedStyle(document.querySelector('#photo-overlay')).display,
+    mode: window.__mc.mode,
+  }));
+  ok('暂停态按 P 不进入摄影模式',
+    !pausedPhoto.active && pausedPhoto.display === 'none' && pausedPhoto.mode === 'paused',
+    JSON.stringify(pausedPhoto));
+  await page.evaluate(() => window.__mc.resumeGame());
+  await sleep(150);
+
+  const beforePhoto = await page.evaluate(() => ({
+    dayTime: window.__mc.sky.dayTime,
+    pos: { ...window.__mc.player.pos },
+    cam: { ...window.__mc.engine.camera.position },
+  }));
+  await page.keyboard.press('KeyP');
+  await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
+  const inPhoto = await page.evaluate(() => {
+    const overlay = document.querySelector('#photo-overlay');
+    return {
+      active: CraftAPI.photo.active,
+      display: getComputedStyle(overlay).display,
+      visible: overlay.offsetParent !== null,
+      hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
+      owner: window.__mc.engine.cameraOwner,
+    };
+  });
+  ok('按 P 进入摄影模式：覆盖层可见 / HUD 隐藏 / 相机归属 photo',
+    inPhoto.active && inPhoto.visible && inPhoto.display !== 'none' &&
+      inPhoto.hudHidden && inPhoto.owner === 'photo', JSON.stringify(inPhoto));
+
+  // 按住 W：玩家绝不能移动（否则会标脏、挪动区块中心、污染存档坐标），相机应自由平移
+  await page.keyboard.down('KeyW');
+  for (let i = 0; i < 6; i++) await sleep(150);
+  await page.keyboard.up('KeyW');
+  const photoMove = await page.evaluate((before) => {
+    const p = window.__mc.player.pos;
+    const c = window.__mc.engine.camera.position;
+    return {
+      player: Math.hypot(p.x - before.pos.x, p.z - before.pos.z),
+      camera: Math.hypot(c.x - before.cam.x, c.z - before.cam.z),
+    };
+  }, beforePhoto);
+  ok('摄影模式冻结玩家坐标', photoMove.player < 1e-6, `位移 ${photoMove.player}`);
+  ok('摄影模式自由相机可平移', photoMove.camera > 0.5, `位移 ${photoMove.camera.toFixed(2)}`);
+
+  await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
+  await page.keyboard.press('Enter');
+  await page.waitForFunction('CraftAPI.photo.lastDataUrl.length > 0', { timeout: 10000 }).catch(() => {});
+  const shot = await page.evaluate(async () => {
+    const url = CraftAPI.photo.lastDataUrl || '';
+    const png = url.startsWith('data:image/png;base64');
+    if (!png) return { prefix: url.slice(0, 32), png, colors: 0, length: url.length };
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+    const c = document.createElement('canvas');
+    c.width = 16; c.height = 16;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16).data;
+    const colors = new Set();
+    for (let i = 0; i < data.length; i += 4) colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    return { prefix: url.slice(0, 22), png, colors: colors.size, length: url.length };
+  });
+  ok('摄影模式回车导出非空 PNG 截图',
+    shot.png && shot.colors > 1 && shot.length > 2000,
+    JSON.stringify(shot));
+
+  await page.keyboard.press('KeyP');
+  await page.waitForFunction('CraftAPI.photo.active === false', { timeout: 10000 }).catch(() => {});
+  const afterPhoto = await page.evaluate((before) => ({
+    active: CraftAPI.photo.active,
+    display: getComputedStyle(document.querySelector('#photo-overlay')).display,
+    owner: window.__mc.engine.cameraOwner,
+    hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
+    timeDelta: Math.abs(window.__mc.sky.dayTime - before.dayTime),
+    posDelta: Math.hypot(
+      window.__mc.player.pos.x - before.pos.x,
+      window.__mc.player.pos.z - before.pos.z,
+    ),
+  }), beforePhoto);
+  ok('按 P 退出摄影模式：覆盖层隐藏 / 相机与 HUD 恢复',
+    !afterPhoto.active && afterPhoto.display === 'none' && afterPhoto.owner === null &&
+      !afterPhoto.hudHidden, JSON.stringify(afterPhoto));
+  ok('摄影预览未污染时刻与玩家坐标',
+    afterPhoto.timeDelta < 0.01 && afterPhoto.posDelta < 1e-6,
+    `dt=${afterPhoto.timeDelta} dp=${afterPhoto.posDelta}`);
+  await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
+
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
   const mineCell = await page.evaluate(() => {
     const mc = window.__mc;
