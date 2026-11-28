@@ -52,6 +52,7 @@ npm run verify
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
 | 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
+| 39 | `npm run test:structure` | 静态结构：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性 21 项 | ✓ |
 
 ## 当前内容口径
 
@@ -96,6 +97,7 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
 | 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
+| 39 | `npm run test:structure` | 静态结构：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性 21 项 | ✓ |
 - **botany**：平坦测试世界里的随机刻规则：甘蔗 / 仙人掌 / 竹子 / 海带长高上限、
   小麦三阶段、浆果成熟、三种树苗长成对应树种、草方块同化泥土、花草与睡莲 / 藤蔓 /
   南瓜藤 / 发光地衣的蔓延、失去支撑后的整列枯萎、`plant:grow` 事件与未加载区块隔离。
@@ -118,6 +120,7 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
 | 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
+| 39 | `npm run test:structure` | 静态结构：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性 21 项 | ✓ |
 - **light-check**：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收。
 - **mesher-check**：`MeshSnapshot` 保真、Greedy 面覆盖与光照逐格等价、quad 下降比例。
 - **vitest**：直接消费 `src` TS 源码的 Vitest 全量（`fire` / `warmth` / `campfire` /
@@ -233,3 +236,4 @@ Chromium 的触控合成（`touchscreen.touchStart/Move/End`）与 `screen.orien
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
 | 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
+| 39 | `npm run test:structure` | 静态结构：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性 21 项 | ✓ |

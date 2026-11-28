@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### 内容更新（静态结构探索）
+- **三类结构**：`src/world/structures.ts` 纯数据模板 + 16 群系村庄配色板；`DefaultGenerator` 新增第 5 阶段 `structures`，按世界网格哈希生成村庄小屋 / 废弃矿井 / 地牢，跨区块裁剪沿用树木的确定性做法。
+- **硬规则保持**：0 新方块 id（总数仍 165、最大 id 177）、0 新依赖、无矿石 / glowstone 入结构、Worker 由 `workerConfig` 自动逐位复刻；群系与出生点按整座结构判定，避免海岸 / 接缝半座。
+- **回归**：新增 `test:structure`（21 项：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性），挂入 `verify` 与 `verify:node`。
+
 ## [1.6.0-beta.1] - 2026-11-28
 
 ### 多 PR 收敛
