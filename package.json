@@ -1,7 +1,7 @@
 {
   "name": "minecraft-ts",
   "private": true,
-  "version": "1.6.0-beta.1",
+  "version": "1.6.0-beta.2",
   "type": "module",
   "description": "TypeScript + three.js 的 Minecraft 基础复刻（体素引擎）· 服务化架构",
   "scripts": {
@@ -80,11 +80,20 @@
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "eslint": "^9.39.5",
     "jsdom": "^25.0.1",
-    "puppeteer-core": "^23.11.1",
+    "puppeteer-core": "25.19.0",
     "typescript": "5.6.3",
-    "vite": "5.4.11",
-    "vite-plugin-pwa": "0.20.5",
-    "vite-plugin-singlefile": "2.0.3",
-    "vitest": "^2.1.9"
+    "vite": "6.4.6",
+    "vite-plugin-pwa": "1.1.0",
+    "vite-plugin-singlefile": "2.3.4",
+    "vitest": "5.1.2"
+  },
+  "overrides": {
+    "basic-ftp": "6.2.6",
+    "tinypool": "2.2.0",
+    "zod": "4.6.7",
+    "braces": "3.0.3",
+    "extract-zip": "2.0.1",
+    "picomatch": "4.0.7",
+    "@isaacs/nonrecursive-glob-match": "1.1.0"
   }
 }

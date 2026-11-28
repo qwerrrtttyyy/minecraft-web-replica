@@ -11,6 +11,22 @@
 - **硬规则保持**：0 新方块 id（总数仍 165、最大 id 177）、0 新依赖、无矿石 / glowstone 入结构、Worker 由 `workerConfig` 自动逐位复刻；群系与出生点按整座结构判定，避免海岸 / 接缝半座。
 - **回归**：新增 `test:structure`（21 项：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性），挂入 `verify` 与 `verify:node`。
 
+## [1.6.0-beta.2] - 2026-11-28
+
+### 性能优化（PR #36）
+- **渲染调度三段优先级**：`ChunkManager` 派发拆为首次网格化 → 视野内边界刷新 → 视野外刷新（每帧限 2），视锥外派发占比 62% → 24%，缓解移动时 pop-in。
+- **地形生成 Worker 化**：独立 gen 池只算 `data`，光照初始化留主线程；同 seed 89 区块逐位哈希 0 差异，单区块落地 3.35 → 1.15 ms。
+- **帧预算 governor**：近窗 p75 判定、降快升慢、探测实测刷新率；设置页新增「动态分辨率 / 目标帧率 / 生成线程」，`高/均衡/省电` 三档仍固定倍率不参与。
+- **实测**（SwiftShader 高速移动）：chunks 系统 14.45 → 4.41 ms/帧，建几何 0.62 → 0.13 ms/帧，派发快照 p50 0.50 ms（p99 17 → 11 ms）。
+
+### 依赖安全升级
+- 直接依赖升级：vite 5.4.11 → 6.4.6、vitest 2.1.9 → 5.1.2、puppeteer-core 23.11.1 → 25.19.0，配套插件 `vite-plugin-singlefile` 2.3.4 / `vite-plugin-pwa` 1.1.0；`package.json` 新增 `overrides` 锁定传递依赖。
+- `npm audit` 高危 / 严重漏洞清零（剩 3 个中危来自 workbox 链，需强制降级才能消除，保持现状）；vite 6 构建、vitest 5 全量 173 项、`verify:node` 均通过。
+
+### CI 修复
+- `verify` workflow 拆为 7 个命名阶段，改用镜像自带 google-chrome / Chrome for Testing，弃用不稳定的 snap `chromium-browser`。
+- 修复阶段 7 的 Xvfb 作用域 bug：整条浏览器测试链包进同一个 `xvfb-run` 会话，避免 `test:options/mobile/visual` 丢失 `$DISPLAY`。
+
 ## [1.6.0-beta.1] - 2026-11-28
 
 ### 多 PR 收敛
