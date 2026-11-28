@@ -1,0 +1,143 @@
+/**
+ * 摄影模式纯逻辑回归（需先 npm run test:snapshot）。
+ *
+ * 覆盖：FOV 钳制 / 时刻档位表与回绕 / 天气循环 / 相机水平半径钳制（保留 y） /
+ * 元数据文件名清洗与格式化 / 单行水印文案 / 玩家相机写入守卫。
+ */
+const assert = require('node:assert');
+const {
+  PHOTO_FOV_MIN,
+  PHOTO_FOV_MAX,
+  TIME_PRESETS,
+  TIME_PRESET_VALUES,
+  nextTimePreset,
+  WEATHER_CYCLE,
+  nextWeather,
+  clampFov,
+  clampPhotoPosition,
+  photoFileName,
+  photoCaption,
+  canWritePlayerCamera,
+} = require('./logic/photo/photoFrames.js');
+
+let passed = 0;
+const ok = (name, cond, extra = '') => {
+  assert.ok(cond, `${name}${extra ? ' — ' + extra : ''}`);
+  passed++;
+  console.log(`  ✓ ${name}${extra ? ' — ' + extra : ''}`);
+};
+const same = (name, actual, expected) => {
+  ok(
+    name,
+    assert.deepStrictEqual(actual, expected) === undefined,
+    `actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`,
+  );
+};
+
+console.log('摄影模式纯逻辑回归');
+
+// 1) FOV 边界
+ok('FOV 常量为 20 / 100', PHOTO_FOV_MIN === 20 && PHOTO_FOV_MAX === 100);
+ok('低于下限钳到 20', clampFov(10) === 20);
+ok('区间内原样返回', clampFov(50) === 50);
+ok('高于上限钳到 100', clampFov(200) === 100);
+ok('边界值不被改动', clampFov(20) === 20 && clampFov(100) === 100);
+
+// 2) 时刻档位配置表
+same('时刻档位顺序固定', [...TIME_PRESETS], ['dawn', 'day', 'dusk', 'night']);
+same('时刻档位数值与 sky.sunDirection 对齐', { ...TIME_PRESET_VALUES }, { dawn: 0.25, day: 0.5, dusk: 0.75, night: 0 });
+ok(
+  '时刻档位逐项回绕',
+  nextTimePreset('dawn') === 'day' &&
+    nextTimePreset('day') === 'dusk' &&
+    nextTimePreset('dusk') === 'night' &&
+    nextTimePreset('night') === 'dawn',
+);
+
+// 3) 天气循环配置表
+same('天气循环顺序固定', [...WEATHER_CYCLE], ['clear', 'rain', 'snow', 'thunder']);
+ok(
+  '天气循环逐项回绕',
+  nextWeather('clear') === 'rain' &&
+    nextWeather('rain') === 'snow' &&
+    nextWeather('snow') === 'thunder' &&
+    nextWeather('thunder') === 'clear',
+);
+
+// 4) 相机位置钳制：仅水平 x/z，y 永不动
+{
+  const clamped = clampPhotoPosition({ x: 100, y: 30, z: 0 }, { x: 0, y: 20, z: 0 }, 16);
+  ok('超出半径的 x 被钳到 16', clamped.x === 16, `x=${clamped.x}`);
+  ok('相机 y 原样保留（不用玩家 y）', clamped.y === 30, `y=${clamped.y}`);
+  ok('z 未越界则不动', clamped.z === 0, `z=${clamped.z}`);
+
+  const inside = clampPhotoPosition({ x: 3, y: 77, z: -4 }, { x: 0, y: 20, z: 0 }, 16);
+  same('半径内坐标不被改动', inside, { x: 3, y: 77, z: -4 });
+
+  const zero = clampPhotoPosition({ x: 100, y: 30, z: -50 }, { x: 7, y: 20, z: -9 }, 0);
+  same('radius=0 时水平回到玩家、y 仍保留', zero, { x: 7, y: 30, z: -9 });
+  const negative = clampPhotoPosition({ x: 100, y: 30, z: -50 }, { x: 7, y: 20, z: -9 }, -4);
+  same('负半径等同 0', negative, { x: 7, y: 30, z: -9 });
+
+  const diagonal = clampPhotoPosition({ x: 30, y: 5, z: 40 }, { x: 0, y: 0, z: 0 }, 25);
+  ok('斜向按水平距离成比例钳制', diagonal.x === 15 && diagonal.z === 20, `x=${diagonal.x} z=${diagonal.z}`);
+  const origin = clampPhotoPosition({ x: 0, y: 5, z: 0 }, { x: 0, y: 0, z: 0 }, 16);
+  same('相机与玩家重合时安全返回', origin, { x: 0, y: 5, z: 0 });
+}
+
+// 5) 文件名：清洗 biome、取整坐标、时间戳
+{
+  const meta = {
+    biome: 'snowy taiga',
+    season: 'winter',
+    weather: 'snow',
+    time: '08:00',
+    x: 12,
+    y: 40,
+    z: -8,
+    date: new Date(2026, 10, 28, 16, 30, 0),
+  };
+  const name = photoFileName(meta);
+  ok('biome 空格替换为下划线', name.startsWith('mc-photo-snowy_taiga-'), name);
+  ok('文件名格式与时间戳', /^mc-photo-.*-x-?\d+-y-?\d+-z-?\d+-\d{8}-\d{6}\.png$/.test(name), name);
+  ok('完整文件名逐字一致', name === 'mc-photo-snowy_taiga-x12-y40-z-8-20261128-163000.png', name);
+  ok(
+    '坐标取整后写入文件名',
+    photoFileName({ ...meta, x: 12.6, y: -3.6, z: 7.2 }) === 'mc-photo-snowy_taiga-x13-y-4-z7-20261128-163000.png',
+  );
+  ok(
+    '非法 biome 字符全量清洗为下划线',
+    photoFileName({ ...meta, biome: 'snowy/taiga!' }).startsWith('mc-photo-snowy_taiga_-'),
+  );
+  ok(
+    '合法数字 / 下划线 / 连字符保持不变',
+    photoFileName({ ...meta, biome: 'snowy_taiga-2' }).startsWith('mc-photo-snowy_taiga-2-'),
+  );
+}
+
+// 6) 水印文案：单行、含全部信息
+{
+  const caption = photoCaption({
+    biome: 'plains',
+    season: 'spring',
+    weather: 'rain',
+    time: '18:45',
+    x: 12.7,
+    y: 40.2,
+    z: -8.4,
+    date: new Date(2026, 10, 28, 16, 30, 0),
+  });
+  ok('水印是单行', !caption.includes('\n') && !caption.includes('\r'), caption);
+  ok('水印含 biome', caption.includes('plains'), caption);
+  ok('水印含 season', caption.includes('spring'), caption);
+  ok('水印含 weather', caption.includes('rain'), caption);
+  ok('水印含 time', caption.includes('18:45'), caption);
+  ok('水印含整数坐标三元组', caption.includes('(13, 40, -8)'), caption);
+}
+
+// 7) 玩家相机写入守卫：仅无主（null）时可写
+ok('无主相机可写', canWritePlayerCamera(null) === true);
+ok('摄影模式占用时不可写', canWritePlayerCamera('photo') === false);
+ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false);
+
+console.log(`\n${passed} 项通过`);

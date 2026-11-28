@@ -93,6 +93,8 @@ const entries = [
   // 内容更新：行为树配置与箭矢投射物（纯逻辑，不触碰 DOM）
   'src/ai/behaviors.ts',
   'src/entity/projectile.ts',
+  // 摄影模式：FOV / 时刻 / 天气 / 元数据格式化（纯逻辑，不触碰 DOM）
+  'src/photo/photoFrames.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');
