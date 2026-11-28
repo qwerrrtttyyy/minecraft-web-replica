@@ -296,6 +296,18 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** 注册期的 manifest 静态校验：错误在组装阶段暴露，不拖到 enable */
+/** 注册时拷贝 manifest 的可变字段，避免调用方事后改写权限 / 配置 */
+function cloneManifest(m: PluginManifest): PluginManifest {
+  // 只拷贝「合法形状」的值；非法值保持原样，交给 validateManifest 正常报错
+  const out: PluginManifest = { ...m };
+  if (Array.isArray(m.permissions)) out.permissions = [...m.permissions];
+  if (Array.isArray(m.dependencies)) out.dependencies = [...m.dependencies];
+  if (Array.isArray(m.optionalDependencies)) out.optionalDependencies = [...m.optionalDependencies];
+  if (Array.isArray(m.capabilities)) out.capabilities = [...m.capabilities];
+  if (m.config && isPlainObject(m.config)) out.config = { ...m.config };
+  return out;
+}
+
 function validateManifest(manifest: PluginManifest, apiVersion: string): void {
   if (manifest.apiVersion !== undefined && !satisfies(apiVersion, manifest.apiVersion)) {
     throw new Error(
@@ -425,6 +437,7 @@ export class PluginService implements Disposable {
         dependencies: r.def.manifest.dependencies ? [...r.def.manifest.dependencies] : undefined,
         optionalDependencies: r.def.manifest.optionalDependencies ? [...r.def.manifest.optionalDependencies] : undefined,
         capabilities: r.def.manifest.capabilities ? [...r.def.manifest.capabilities] : undefined,
+        config: r.def.manifest.config ? { ...r.def.manifest.config } : undefined,
       },
       state: r.state,
       error: r.error,
@@ -434,8 +447,14 @@ export class PluginService implements Disposable {
     };
   }
 
-  register(def: PluginDefinition): PluginRecord {
+  register(source: PluginDefinition): PluginRecord {
     if (this.disposed) throw new Error('[plugins] 服务已销毁');
+    // manifest 可变字段（数组 / config）必须在入库时拷贝：否则调用方事后改写
+    // permissions 就能绕过注册期校验，多个插件也会共享同一份 config 默认值。
+    const def: PluginDefinition = {
+      ...source,
+      manifest: source.manifest ? cloneManifest(source.manifest) : source.manifest,
+    };
     const id = def.manifest?.id;
     if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9._:-]{1,63}$/i.test(id)) {
       throw new Error(`[plugins] 非法插件 id: ${String(id)}`);
@@ -493,26 +512,33 @@ export class PluginService implements Disposable {
    * 2. setup 尚未完成时 disable，回调返回后只清理、不回写 enabled。
    */
   private async enableInternal(id: string, stack: Set<string>): Promise<void> {
-    if (this.disposed) throw new Error('[plugins] 服务已销毁');
-    const rec = this.records.get(id);
-    if (!rec) throw new Error(`[plugins] 插件未注册: ${id}`);
-    if (rec.state === 'enabled') return;
-    // 只沿当前递归链判断循环；跨调用并发启用是合法的
-    if (stack.has(id)) throw new Error(`[plugins] 循环依赖: ${id}`);
+    // 每次等待结束后都回到循环顶部重新读取 pending / state。
+    // 旧实现只在 await 前捕获一次 pending：当在途 setup 被 disable 取消时，
+    // 多个等待者会同时判定「可以重新初始化」，各自调用 runEnable，导致重复
+    // setup、重复订阅，且互相 drain 掉对方注册的 teardown。
+    for (;;) {
+      if (this.disposed) throw new Error('[plugins] 服务已销毁');
+      const rec = this.records.get(id);
+      if (!rec) throw new Error(`[plugins] 插件未注册: ${id}`);
+      if (rec.state === 'enabled') return;
+      // 只沿当前递归链判断循环；跨调用并发启用是合法的
+      if (stack.has(id)) throw new Error(`[plugins] 循环依赖: ${id}`);
 
-    const running = this.pending.get(id);
-    if (running) {
-      await running;
-      if (this.disposed || (rec.state as PluginState) === 'enabled') return;
-      // 上一次初始化被取消或失败：允许当前调用重新初始化
-    }
+      const running = this.pending.get(id);
+      if (running) {
+        await running;
+        // 另一个等待者可能已安装新的初始化任务；回到顶部重新检查
+        continue;
+      }
 
-    const task = this.runEnable(rec, stack);
-    this.pending.set(id, task);
-    try {
-      await task;
-    } finally {
-      if (this.pending.get(id) === task) this.pending.delete(id);
+      const task = this.runEnable(rec, stack);
+      this.pending.set(id, task);
+      try {
+        await task;
+      } finally {
+        if (this.pending.get(id) === task) this.pending.delete(id);
+      }
+      return;
     }
   }
 
@@ -725,6 +751,11 @@ export class PluginService implements Disposable {
     this.unload(id, true);
     this.register(def);
     await this.enable(id);
+    // enable 会把 setup 失败隔离为 failed 而不抛出；重载失败时不能谎报成功。
+    const after = this.records.get(id);
+    if (!after || after.state !== 'enabled') {
+      throw new Error(`[plugins] 插件 ${id} 重载失败（${after?.state ?? 'missing'} ${after?.error ?? ''}）`);
+    }
     this.events.emit('plugin:reloaded', { id });
   }
 

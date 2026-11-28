@@ -8,8 +8,10 @@ dist/
 test/artifacts/
 test/logic/
 test/terrain-logic/
+.test-build/
 
 # 杂项
+.codebuddy/
 *.log
 .DS_Store
 .env

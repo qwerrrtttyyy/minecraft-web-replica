@@ -30,14 +30,17 @@ export const armorPlugin: PluginDefinition = {
     ctx.events.on('save:done', () => ctx.storage.set('equipment', equipment.serialize()));
 
     // 减伤：管道语义，读当前护甲点数改写 amount
-    ctx.extensions.register(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING, 'core:armor', (payload: { amount: number }) => {
+    ctx.extensions.register(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING, 'core:armor', (payload: { amount: number; kind?: string }) => {
+      // 冻伤是环境伤害，不是物理打击：护甲不减免，否则靠近营火也会被冻死
+      if (payload.kind === 'freeze') return undefined;
       const points = Math.min(20, equipment.armorPoints);
       if (points <= 0) return undefined;
       return { amount: payload.amount * (1 - 0.04 * points) };
     });
 
-    // 受击后每个甲槽扣 1 点耐久
-    ctx.events.on('survival:damage', () => {
+    // 受击后每个甲槽扣 1 点耐久（冻伤不扣，环境伤害不该磨损装备）
+    ctx.events.on('survival:damage', ({ kind }) => {
+      if (kind === 'freeze') return;
       equipment.damageArmor(1);
     });
   },

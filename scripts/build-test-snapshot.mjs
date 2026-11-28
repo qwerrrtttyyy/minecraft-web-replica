@@ -52,6 +52,10 @@ const entries = [
   'src/world/plantStrains.ts',
   'src/world/plantRules.ts',
   'src/plugins/builtin/botanyContent.ts',
+  // 四季与天候：纯天气历法 / 天候状态机 / 寒冷惩罚（零 three/DOM，测试直接 require）
+  'src/world/ecology.ts',
+  'src/world/weather.ts',
+  'src/world/cold.ts',
   'src/world/trees.ts',
   'src/world/light.ts',
   'src/world/world.ts',

@@ -12,7 +12,9 @@ import { dropHash, rollDrops } from '../world/drops';
 import { ANIMALS, BREED, NEW_MOBS, POPULATION } from '../core/tuning';
 import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
-import { BALL, bounceVy, rollFriction } from './basketball';
+import {
+  BALL, bounceVy, rollFriction, airDragFactor, spinDecay, magnusAcceleration, bounceSpin,
+} from './basketball';
 import { isFireNear } from '../world/fire';
 
 /**
@@ -89,6 +91,8 @@ export class Entity implements PhysicsBody {
   private hurtFlash = 0;
   /** 拾取冷却：spawn 后延迟，防「刚投出即被捡回」 */
   pickupCooldown = 0;
+  /** 篮球自旋角速度（仅 bounce 物理使用），投掷 / 拍打注入，受空气阻力与摩擦衰减 */
+  spin = { x: 0, y: 0, z: 0 };
   private state: 'idle' | 'walk' = 'idle';
   private timer = 1 + Math.random() * 2;
   private phase = 0;
@@ -325,6 +329,23 @@ export class Entity implements PhysicsBody {
     } else {
       this.vel.y = Math.max(this.vel.y - BALL.GRAVITY * dt, -BALL.TERMINAL);
     }
+    // 飞行段：二次空气阻力 + 马格努斯效应（自旋产生可观测弧线）。
+    // 阻力只作用在速度上，不改 rollFriction 本体（保住帧率无关断言）。
+    // onGround 此时还是上一帧状态（moveBody 之前），刚起跳会 Skip 一帧，无感。
+    // 水中已有独立阻尼（每帧 ×0.6 + 上浮速度钳制 2.2），不叠加空气阻力。
+    if (!this.onGround && !inWater) {
+      const speed = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+      const drag = airDragFactor(speed, dt);
+      this.vel.x *= drag;
+      this.vel.y *= drag;
+      this.vel.z *= drag;
+      if (this.spin.x || this.spin.y || this.spin.z) {
+        const a = magnusAcceleration(this.spin, this.vel);
+        this.vel.x += a.x * dt;
+        this.vel.y += a.y * dt;
+        this.vel.z += a.z * dt;
+      }
+    }
     this.vel.x = rollFriction(this.vel.x, dt);
     this.vel.z = rollFriction(this.vel.z, dt);
 
@@ -341,11 +362,16 @@ export class Entity implements PhysicsBody {
       this.vel.y = vy; // 0 = 静止；>0 = 弹起
       this.vel.x *= 0.92;
       this.vel.z *= 0.92;
+      // 落地切向速度转为自旋：球会因拍打 / 侧旋走出弧线
+      this.spin = bounceSpin(this.spin, this.vel.x, this.vel.z);
       if (vy > 0) {
         this.events.emit('basketball:bounce', {
           id: this.id, x: this.pos.x, y: this.pos.y, z: this.pos.z, strength: Math.abs(impactVy),
         });
       }
+    } else if (this.onGround) {
+      // 地面滚动持续注入自旋（比例更高），让停球前的末段轨迹也有弧线
+      this.spin = bounceSpin(this.spin, this.vel.x, this.vel.z, BALL.GROUND_SPIN_TRANSFER);
     }
     // 撞墙轻微反弹：moveBody 已归零该轴，这里用入射值补回一点
     if (res.hitX) this.vel.x = -hitXIn * BALL.WALL_RESTITUTION;
@@ -359,6 +385,16 @@ export class Entity implements PhysicsBody {
       ROLL_AXIS.set(dz, 0, -dx).normalize();
       this.model.group.rotateOnWorldAxis(ROLL_AXIS, dist / BALL.RADIUS);
     }
+    // 自旋的额外视觉：绕自旋轴轻微旋转，让马格努斯弧线"看得见"
+    const spinMag = Math.hypot(this.spin.x, this.spin.y, this.spin.z);
+    if (spinMag > 1e-4) {
+      ROLL_AXIS.set(this.spin.x, this.spin.y, this.spin.z).normalize();
+      this.model.group.rotateOnWorldAxis(ROLL_AXIS, spinMag * dt * 0.12);
+    }
+    // 自旋指数衰减（帧率无关）
+    this.spin.x = spinDecay(this.spin.x, dt);
+    this.spin.y = spinDecay(this.spin.y, dt);
+    this.spin.z = spinDecay(this.spin.z, dt);
 
     // (6) 同步模型：pos 是脚底，球心需上移一个半径
     this.model.group.position.copy(this.pos);

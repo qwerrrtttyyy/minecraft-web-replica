@@ -545,7 +545,13 @@ export class Botany {
     if (st.energy < trait.bloom) return null;
     st.energy = Math.max(NIGHT_ENERGY_FLOOR, st.energy - HARVEST_ENERGY_COST);
     if (mode === 'use' && id === this.id.berryBushRipe) {
-      this.set(x, y, z, this.id.berryBush, 'harvest');
+      // setBlock 会经 block:place → forgetAnchor 清掉旧 id 的储能记录。
+      // 把扣减后的能量以新方块 id 重新登记，否则下一次 stateAt 会因 id 不匹配
+      // 从 START_PLANT_ENERGY 重建，刚扣的能量等于白扣。
+      if (this.set(x, y, z, this.id.berryBush, 'harvest')) {
+        st.id = this.id.berryBush;
+        this.remember(blockKey(x, y, z), st);
+      }
     }
     // 破坏结算把一半生长养分归还土壤（季节 / 雨天 modifier 生效）
     const nutrient = trait.growthNutrient ?? Math.ceil(trait.growthCost / 3);

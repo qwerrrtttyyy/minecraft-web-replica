@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Noise } from '../world/noise';
 import { clamp, lerp, smoothstep, mulberry32, type System } from '../core/types';
 import type { EventService } from '../services/events';
+import { weatherFactor, type WeatherSnapshot } from '../world/weather';
 
 /** 水下环境色：天穹整体压向这一色相，与 HUD 的水下叠层共同构成水下氛围 */
 const UNDERWATER_SKY = 0x0e2f5e;
@@ -22,6 +23,8 @@ export class Sky implements System {
   advanceTime = true;
   /** 实验性玩法「体素云层」：false 时隐藏云并跳过云几何重建（省电） */
   showClouds = true;
+  /** 当前天气快照（由 WeatherSystem 每帧写入）；天气变暗的唯一真源 */
+  weather: WeatherSnapshot | null = null;
 
   /** 累计游戏日（从 0 开始）；季节 / 天气历法由此推导 */
   get dayCount(): number {
@@ -308,6 +311,9 @@ export class Sky implements System {
       fogNear: this.fog.near,
       fogFar: this.fog.far,
       daylight: this.daylight,
+      weatherKind: this.weather?.kind ?? 'clear',
+      weatherDarkness: this.weather ? weatherFactor(this.weather.kind, this.weather.flash) : 1,
+      weatherFlash: this.weather?.flash ?? 0,
     };
   }
 
@@ -326,6 +332,9 @@ export class Sky implements System {
     this.sub += (subTarget - this.sub) * Math.min(1, dt * 8);
     if (Math.abs(this.sub - subTarget) < 0.005) this.sub = subTarget;
     const sub = this.sub;
+    // 天气变暗因子：方块光（main.ts 的 lightUniform）与本处实体光 / 云雾
+    // 必须乘同一个纯函数结果，否则会出现"地块暗、实体亮"。
+    const wf = this.weather ? weatherFactor(this.weather.kind, this.weather.flash) : 1;
 
     this.tmpTop.copy(this.cNightTop).lerp(this.cDayTop, this.daylight);
     this.tmpHorizon.copy(this.cNightHorizon).lerp(this.cDayHorizon, this.daylight);
@@ -389,7 +398,7 @@ export class Sky implements System {
     cloudMat.color.copy(this.tmpHorizon).lerp(this.cWhite, 0.5 + this.daylight * 0.5);
     cloudMat.color.lerp(this.tmpSun, dusk * 0.15);
     // 夜间云压到接近天穹底色，避免纯灰横条漂浮感
-    cloudMat.color.multiplyScalar(0.28 + this.daylight * 0.72);
+    cloudMat.color.multiplyScalar((0.28 + this.daylight * 0.72) * wf);
     cloudMat.opacity = (0.28 + this.daylight * 0.6) * (1 - sub * 0.9);
     this.clouds.visible = this.showClouds && sub < 0.99;
 
@@ -397,6 +406,7 @@ export class Sky implements System {
     const R = this.getRenderDistance() * 16;
     this.fog.color.copy(this.tmpHorizon).lerp(this.cUnderFog, sub);
     this.fog.color.lerp(this.tmpSun, dusk * 0.045 * (1 - sub));
+    this.fog.color.multiplyScalar(lerp(wf, 1, sub));
     // 远景更早雾化，海面与天穹之间不再硬切
     this.fog.near = lerp(R * 0.42, 2, sub);
     this.fog.far = lerp(R * 0.92, R * 0.42, sub);
@@ -404,9 +414,9 @@ export class Sky implements System {
     // 实体光照
     this.sunLight.position.copy(cam).addScaledVector(sunDir, 120);
     this.sunLight.target.position.copy(cam);
-    this.sunLight.intensity = 0.18 + this.daylight * 1.0;
+    this.sunLight.intensity = (0.18 + this.daylight * 1.0) * wf;
     this.sunLight.color.set(0xffffff).lerp(this.cWarm, dusk * 0.5);
-    this.hemi.intensity = 0.32 + this.daylight * 0.5;
+    this.hemi.intensity = (0.32 + this.daylight * 0.5) * wf;
     this.hemi.color.copy(this.tmpTop).lerp(this.cWhite, 0.4);
 
     this.emitAcc += dt;

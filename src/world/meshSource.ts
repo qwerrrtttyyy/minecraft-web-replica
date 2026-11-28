@@ -181,9 +181,16 @@ export class WorldMeshSource implements MeshSource {
     return this.world.getBlockLight(this.x0 + lx, y, this.z0 + lz);
   }
 
-  /** 直接读活世界，不存在「快照来源未知」的情况 */
-  isKnown(_lx: number, _y: number, _lz: number): boolean {
-    return true;
+  /**
+   * N4：活世界侧同样要区分「未生成区块的空气占位」与真实空气。
+   * 快照路径按 known 位图判断；这里用区块是否 generated 判断，
+   * 保证 worker 失败回退主线程时液体面几何与 worker 路径一致。
+   */
+  isKnown(lx: number, y: number, lz: number): boolean {
+    if (y < 0 || y >= H) return true;
+    const cx = Math.floor((this.x0 + lx) / CS);
+    const cz = Math.floor((this.z0 + lz) / CS);
+    return this.world.getChunk(cx, cz)?.generated === true;
   }
 
   uv(tile: string): UVRect {

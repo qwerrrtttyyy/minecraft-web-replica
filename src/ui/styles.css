@@ -793,6 +793,10 @@ img { image-rendering: pixelated; }
   background: radial-gradient(ellipse at center, rgba(255, 150, 50, 0) 42%, rgba(255, 140, 40, .55) 100%);
   transition: opacity .3s;
 }
+/* 恶劣天气 + 低温暖：冷蓝色边缘提示靠近热源 */
+#warmth-glow.cold {
+  background: radial-gradient(ellipse at center, rgba(90, 150, 255, 0) 38%, rgba(70, 130, 230, .7) 100%);
+}
 
 .mining-bar {
   position: absolute; left: 50%; top: calc(50% + 30px);

@@ -77,7 +77,7 @@ export const EXTENSION_POINTS = {
 } as const;
 
 /** 伤害类型：核心按来源分类，插件据此决定是否参与（如护甲只减免攻击 / 爆炸） */
-export type DamageKind = 'attack' | 'explosion' | 'fall' | 'drown' | 'starve' | 'other';
+export type DamageKind = 'attack' | 'explosion' | 'fall' | 'drown' | 'starve' | 'freeze' | 'other';
 
 /** combat:damage-incoming 的载荷：处理器返回 { amount } 覆写本次伤害 */
 export interface DamageIncomingPayload {

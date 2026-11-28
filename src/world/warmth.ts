@@ -42,6 +42,8 @@ export interface WarmthSystemOptions {
   survival: SurvivalState;
   /** 热源判定（注入）：火 / 营火 / 灯笼 / 蜡烛或燃烧中的熔炉 */
   isHeatAt: (x: number, y: number, z: number) => boolean;
+  /** 天气 / 寒冷对温暖目标的惩罚（0 表示无惩罚）；不传时行为逐值不变 */
+  environmentPenalty?: () => number;
 }
 
 export class WarmthSystem implements System {
@@ -49,11 +51,13 @@ export class WarmthSystem implements System {
 
   private readonly survival: SurvivalState;
   private readonly isHeatAt: (x: number, y: number, z: number) => boolean;
+  private readonly environmentPenalty?: () => number;
   private timer = 0;
 
   constructor(opts: WarmthSystemOptions) {
     this.survival = opts.survival;
     this.isHeatAt = opts.isHeatAt;
+    this.environmentPenalty = opts.environmentPenalty;
   }
 
   /**
@@ -88,7 +92,8 @@ export class WarmthSystem implements System {
       }
     }
 
-    const target = warmthTarget(nearest);
+    const penalty = this.environmentPenalty?.() ?? 0;
+    const target = Math.max(0, warmthTarget(nearest) - penalty);
     const current = this.survival.warmth;
     this.survival.setWarmth(approach(current, target, step, target > current));
   }

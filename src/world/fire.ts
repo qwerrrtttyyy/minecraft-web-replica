@@ -330,6 +330,18 @@ export class FireSystem implements System {
     this.tracked.delete(key);
   }
 
+  /** 雨天灭火：雨相当于持续的水，熄灭暴露的 fire；营火免疫（本就不在 tracked 里） */
+  rainTick(intensity: number): void {
+    if (!(intensity > 0)) return;
+    for (const [key, f] of [...this.tracked]) {
+      if (this.world.getBlock(f.x, f.y, f.z) !== this.fireId) {
+        this.tracked.delete(key);
+        continue;
+      }
+      this.extinguish(f.x, f.y, f.z, 'water');
+    }
+  }
+
   /** 玩家 / 实体灼烧伤害节拍 */
   private applyDamage(): void {
     const p = this.playerPos;

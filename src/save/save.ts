@@ -191,7 +191,8 @@ export function validateSave(data: unknown): data is SaveData {
   }
   if (!finite(d.dayTime) || d.dayTime < 0 || d.dayTime > 1 || !Array.isArray(d.hotbar) ||
       d.hotbar.length !== 9 || !d.hotbar.every(isStack)) return false;
-  if (!finite(d.slot) || d.slot < 0 || d.slot > 8) return false;
+  // slot 用作 hotbar.slots 的数组下标：小数会读出 undefined 并清空手持物
+  if (!intIn(d.slot, 0, 8)) return false;
   const st = d.settings;
   if (!st || typeof st.sound !== 'boolean' || !finite(st.renderDistance) ||
       !finite(st.sensitivity) || !finite(st.fov)) return false;

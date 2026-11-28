@@ -62,6 +62,8 @@ export interface Options {
   blockGravity: boolean;
   /** 实验性玩法：火焰蔓延（关闭后火源不再引燃，已有火焰自然燃尽） */
   fireSpread: boolean;
+  /** 实验性玩法：天气与季节（关闭后平滑回晴，停降水/变暗/雷暴/寒冷） */
+  weather: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
   /** 原版界面风格（默认开启；已持久化的老用户配置仍被尊重） */
@@ -99,6 +101,7 @@ export const DEFAULT_OPTIONS: Options = {
   showClouds: true,
   blockGravity: true,
   fireSpread: true,
+  weather: true,
   sortTransparent: true,
   vanillaUI: true,
 };
@@ -163,6 +166,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       showClouds: bool(o.showClouds, base.showClouds),
       blockGravity: bool(o.blockGravity, base.blockGravity),
       fireSpread: bool(o.fireSpread, base.fireSpread),
+      weather: bool(o.weather, base.weather),
       sortTransparent: bool(o.sortTransparent, base.sortTransparent),
       vanillaUI: bool(o.vanillaUI, base.vanillaUI),
     };
@@ -208,6 +212,7 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     showClouds: bool(base.showClouds, DEFAULT_OPTIONS.showClouds),
     blockGravity: bool(base.blockGravity, DEFAULT_OPTIONS.blockGravity),
     fireSpread: bool(base.fireSpread, DEFAULT_OPTIONS.fireSpread),
+    weather: bool(base.weather, DEFAULT_OPTIONS.weather),
     sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
     vanillaUI: bool(base.vanillaUI, DEFAULT_OPTIONS.vanillaUI),
   };

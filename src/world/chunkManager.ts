@@ -246,6 +246,8 @@ export class ChunkManager implements System {
   private configRevision = 0;
   private generation = 0;
   private inFlight = new Map<string, InFlight>();
+  /** 视距外的脏标记暂存区：驻留网格可能在 R+2..R+8，配置失效后仍需靠近时重网格化 */
+  private deferredDirty = new Set<string>();
   private pendingResults: WorkerResponse[] = [];
   private totals: MeshStats & { chunks: number } = { quads: 0, vertices: 0, merged: 0, ms: 0, chunks: 0 };
 
@@ -683,6 +685,9 @@ export class ChunkManager implements System {
       }
       this.transparentOrderCache = [];
     } else if (this.transparentSortEnabled) {
+      // 从关闭切回开启时强制重排：否则相机未移动 0.25 格时 sortTransparent 会早退，
+      // 透明网格一直停在关闭时写入的固定 renderOrder=2。
+      if (!this.sortWasEnabled) this.sortDirty = true;
       this.sortWasEnabled = true;
       this.sortAcc += dt;
       if (this.sortAcc >= 0.1) {
@@ -696,7 +701,16 @@ export class ChunkManager implements System {
     const cz = this.centerZ;
     const margin = R + 1;
 
-    // 0) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的区块重新入队
+    // 0) 远处脏标记回队：之前 discard 会让驻留网格永久保留旧配置 / 旧方块数据
+    for (const key of this.deferredDirty) {
+      const [x, z] = parseChunkKey(key);
+      if (Math.abs(x - cx) <= margin && Math.abs(z - cz) <= margin) {
+        this.deferredDirty.delete(key);
+        this.world.dirty.add(key);
+      }
+    }
+
+    // 0a) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的区块重新入队
     for (const [key, chunk] of this.world.chunks) {
       if (!chunk.generated) continue;
       if (Math.abs(chunk.cx - cx) > margin || Math.abs(chunk.cz - cz) > margin) continue;
@@ -732,8 +746,10 @@ export class ChunkManager implements System {
       for (const key of this.world.dirty) {
         const [x, z] = parseChunkKey(key);
         if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
-          // 远处脏标记直接丢弃，避免长期累积；靠近时会由第 0 步重新入队
+          // 远处脏标记暂存而非丢弃：invalidateConfig / 光照 flush 会标记缓冲区里的驻留
+          // 网格，直接丢弃会让它们一直用旧几何，走近也不会修复（已有网格不触发自愈）。
           this.world.dirty.delete(key);
+          this.deferredDirty.add(key);
           continue;
         }
         list.push([x, z]);
@@ -780,6 +796,7 @@ export class ChunkManager implements System {
       this.world.light.invalidate(chunk.cx, chunk.cz);
       this.world.unloadChunk(key);
       this.world.dirty.delete(key);
+      this.deferredDirty.delete(key);
       this.events.emit('chunk:unloaded', { cx: chunk.cx, cz: chunk.cz });
     }
   }
@@ -801,6 +818,7 @@ export class ChunkManager implements System {
     this.disposed = true;
     for (const rec of this.inFlight.values()) rec.resolve();
     this.inFlight.clear();
+    this.deferredDirty.clear();
     this.pendingResults.length = 0;
     for (const [key, m] of this.meshes) {
       this.disposeMeshes(m);

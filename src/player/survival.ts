@@ -244,10 +244,8 @@ export class SurvivalState {
 
   damage(amount: number, cause = '未知', useIframes = true, kind: DamageKind = 'other') {
     if (!this.isSurvival || this.dead || amount <= 0) return false;
-    if (useIframes) {
-      if (this.iframes > 0) return false;
-      this.iframes = 0.32;
-    }
+    // 先检查已有无敌帧；写入推迟到减伤管道之后，完全吸收的攻击不应赠送无敌窗口
+    if (useIframes && this.iframes > 0) return false;
     // 管道扩展点（如护甲减伤）在落账前改写伤害；无处理器时零行为变化
     if (this.extensions?.has(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING)) {
       const { payload } = this.extensions.reduce(EXTENSION_POINTS.COMBAT_DAMAGE_INCOMING, {
@@ -256,8 +254,9 @@ export class SurvivalState {
         kind,
       });
       amount = Math.max(0, payload.amount);
-      if (amount <= 0) return false;
     }
+    if (amount <= 0) return false;
+    if (useIframes) this.iframes = 0.32;
     this.health = Math.max(0, this.health - amount);
     this.events.emit('survival:damage', { amount, health: this.health, cause, kind });
     if (this.health <= 0) this.die(cause);
