@@ -2102,7 +2102,7 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     startupRadius,
-    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
+    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival, drops,
     botany, falling, arrows, fire, smelting, weather, cold, weatherParticles,
     /** 测试钩子：强制天气（null 恢复历法推导） */
     weatherSetForced: (kind: WeatherKind | null) => { weather.forced = kind; },

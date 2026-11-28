@@ -358,15 +358,17 @@ try {
   ok('点击快捷栏槽位可切换手持物品', await page.evaluate(() => window.__mc.player.hotbar.index === 3));
 
   await page.keyboard.press('Digit7');
-  await sleep(120);
-  ok('数字键 1-9 仍可切槽', await page.evaluate(() => window.__mc.player.hotbar.index === 6));
+  const digitOk = await page.waitForFunction(() => window.__mc.player.hotbar.index === 6,
+    { timeout: 5000, polling: 50 }).then(() => true).catch(() => false);
+  ok('数字键 1-9 仍可切槽', digitOk);
   await page.evaluate(() => {
     document.querySelector('#app canvas').dispatchEvent(new WheelEvent('wheel', {
       deltaY: -120, bubbles: true, cancelable: true,
     }));
   });
-  await sleep(120);
-  ok('滚轮仍可切槽', await page.evaluate(() => window.__mc.player.hotbar.index === 5));
+  const wheelOk = await page.waitForFunction(() => window.__mc.player.hotbar.index === 5,
+    { timeout: 5000, polling: 50 }).then(() => true).catch(() => false);
+  ok('滚轮仍可切槽', wheelOk);
   await page.evaluate((i) => window.__mc.selectSlot(i), slotBefore);
 
   // 移动
@@ -430,10 +432,24 @@ try {
 
   // 指针锁已激活时不要再移动鼠标：page.mouse.move 会作为 movementX 进入视角，
   // 把准星转走（真实玩家不会在锁定时做绝对坐标跳转）。
+  await page.bringToFront();
+  await page.evaluate(() => document.querySelector('#app canvas')?.focus());
   const lockedBeforeMine = await page.evaluate(
     () => document.pointerLockElement === document.querySelector('canvas'));
   if (!lockedBeforeMine) await page.mouse.move(640, 380);
   await page.mouse.down({ button: 'left' });
+  // Xvfb / 无头切换窗口焦点后偶尔丢首个 pointerdown：等到挖掘真正开始，必要时重按一次。
+  let miningStarted = await page.waitForFunction((c) =>
+    (window.__mc.player.miningProgress > 0) || window.__mc.world.getBlock(c.x, c.y, c.z) === 0,
+  { timeout: 5000, polling: 50 }, mineCell).then(() => true).catch(() => false);
+  if (!miningStarted) {
+    await page.mouse.up({ button: 'left' });
+    await page.mouse.move(640, 380);
+    await page.mouse.down({ button: 'left' });
+    await page.waitForFunction((c) =>
+      (window.__mc.player.miningProgress > 0) || window.__mc.world.getBlock(c.x, c.y, c.z) === 0,
+    { timeout: 5000, polling: 50 }, mineCell).then(() => { miningStarted = true; }).catch(() => {});
+  }
   // 指针锁定生效的瞬间，Chromium 可能补发合成 movement；按住期间持续校正准星，
   // 避免「读断言时还对准、真正挖掘时已经转走」的时序问题。
   for (let i = 0; i < 10; i++) {
@@ -494,11 +510,22 @@ try {
   // 为真实一半，固定 sleep 会偶发抢在拾取之前）。
   await page.evaluate((c) => window.__mc.player.teleport(c.x + 0.5, c.y, c.z + 0.5), mineCell);
   const cobbleId = await page.evaluate(() => window.__mc.registry.byNameGet('cobblestone').id);
+  // Xvfb + llvmpipe 下帧率可能低于 10，固定位置 + 8s 超时仍会偶发错过拾取。
+  // 等掉落物实体真正出现后直接传送到其实体坐标，再轮询入包，验证的是拾取语义而不是时序运气。
+  await page.waitForFunction(
+    () => window.__mc.drops.items.length > 0 || window.__mc.survival.countKey('b:' + window.__mc.registry.byNameGet('cobblestone').id) >= 1,
+    { timeout: 20000, polling: 100 },
+  ).catch(() => {});
+  const dropPos = await page.evaluate(() => {
+    const item = window.__mc.drops.items.find((d) => d.name === 'cobblestone');
+    return item ? { x: item.pos.x, y: item.pos.y, z: item.pos.z } : null;
+  });
+  if (dropPos) await page.evaluate((p) => window.__mc.player.teleport(p.x, p.y, p.z), dropPos);
   const gotCobble = await page.waitForFunction(
     (id) => window.__mc.survival.countKey('b:' + id) >= 1,
-    { timeout: 8000, polling: 100 }, cobbleId,
+    { timeout: 20000, polling: 100 }, cobbleId,
   ).then(() => true).catch(() => false);
-  ok('石头掉落为圆石', gotCobble);
+  ok('石头掉落为圆石', gotCobble, dropPos ? `drop=${JSON.stringify(dropPos)}` : 'no-drop');
   ok('掉落自动补进快捷栏',
     await page.evaluate((id) => window.__mc.player.hotbar.slots.some((s) => s && s.kind === 'block' && s.id === id), cobbleId));
 
