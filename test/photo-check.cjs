@@ -2,7 +2,8 @@
  * 摄影模式纯逻辑回归（需先 npm run test:snapshot）。
  *
  * 覆盖：FOV 钳制 / 时刻档位表与回绕 / 天气循环 / 相机水平半径钳制（保留 y） /
- * 元数据文件名清洗与格式化 / 单行水印文案 / 玩家相机写入守卫。
+ * 元数据文件名清洗与格式化 / 单行水印文案 / 玩家相机写入守卫 /
+ * 引擎同帧截图钩子与相机归属的源码契约。
  */
 const assert = require('node:assert');
 const {
@@ -139,5 +140,15 @@ ok(
 ok('无主相机可写', canWritePlayerCamera(null) === true);
 ok('摄影模式占用时不可写', canWritePlayerCamera('photo') === false);
 ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false);
+
+// 8) 引擎同帧截图钩子契约（源码守卫；像素行为由 Task 4 浏览器冒烟验证）
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const engineSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'engine.ts'), 'utf8');
+  ok('引擎声明 onAfterRender 钩子', engineSource.includes('onAfterRender'));
+  ok('引擎声明 cameraOwner 归属字段', engineSource.includes('cameraOwner'));
+  ok('引擎不启用 preserveDrawingBuffer', !engineSource.includes('preserveDrawingBuffer'));
+}
 
 console.log(`\n${passed} 项通过`);

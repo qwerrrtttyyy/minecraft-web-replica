@@ -53,6 +53,10 @@ export class Engine {
   private fpsCount = 0;
   /** 每帧原始（未钳制）帧耗时回调：供动态分辨率等观察者使用，不受 50ms 上限影响 */
   onRawFrame: ((dtSeconds: number) => void) | null = null;
+  /** 同帧截图钩子：紧随 renderer.render 调用，让 readPixels/toDataURL 取到当前帧画面 */
+  onAfterRender: (() => void) | null = null;
+  /** 相机归属者：null = 玩家可写；非空（如 'photo'）时玩家侧须让出相机控制 */
+  cameraOwner: string | null = null;
   /** 保存监听器引用，dispose 时解绑，避免组件化复用时累积泄漏 */
   private readonly onWindowResize: () => void;
   private readonly onOrientation: () => void;
@@ -157,6 +161,7 @@ export class Engine {
       }
       if (this.contextLost) return; // 上下文丢失：不渲染，恢复后自动继续
       this.renderer.render(this.scene, this.camera);
+      this.onAfterRender?.(); // 截图必须在 render 之后的同一帧、同一次 rAF 内取画面
     };
     loop();
   }
