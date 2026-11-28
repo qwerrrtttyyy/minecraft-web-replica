@@ -20,6 +20,11 @@ const {
   photoCaption,
   canWritePlayerCamera,
 } = require('./logic/photo/photoFrames.js');
+const {
+  ACTION_LABELS,
+  ACTION_KEYS,
+  DEFAULT_BINDINGS,
+} = require('./logic/input/keybindings.js');
 
 let passed = 0;
 const ok = (name, cond, extra = '') => {
@@ -149,6 +154,13 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   ok('引擎声明 onAfterRender 钩子', engineSource.includes('onAfterRender'));
   ok('引擎声明 cameraOwner 归属字段', engineSource.includes('cameraOwner'));
   ok('引擎不启用 preserveDrawingBuffer', !engineSource.includes('preserveDrawingBuffer'));
+}
+
+// 9) 摄影模式按键：可重绑定动作、默认键位与边缘事件源
+{
+  ok('DEFAULT_BINDINGS.photo 默认 KeyP', DEFAULT_BINDINGS.photo === 'KeyP', `photo=${DEFAULT_BINDINGS.photo}`);
+  ok('ACTION_KEYS 自动包含 photo', ACTION_KEYS.includes('photo'), `keys=${JSON.stringify(ACTION_KEYS)}`);
+  ok('ACTION_LABELS.photo 为 摄影模式', ACTION_LABELS.photo === '摄影模式', `label=${ACTION_LABELS.photo}`);
 }
 
 console.log(`\n${passed} 项通过`);
