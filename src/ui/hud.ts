@@ -746,12 +746,14 @@ export class HUD {
 
     // 温暖表现：屏幕暖光强度 + 火焰细条 + 达标高亮（阈值来自 tuning）
     const warmth = clamp(s.warmth ?? 0, 0, 100);
-    this.warmthGlow.style.opacity = (warmth / 100 * 0.35).toFixed(3);
+    // 恶劣天气 + 低温暖：屏幕叠一层冷色，提示该靠近热源了
+    const cold = warmth < COLD.warmthThreshold && !!s.weather && s.weather !== 'clear';
+    // 冷色提示必须可见： warmth 越低原暖光透明度越接近 0，直接复用会恰好在最该提示时看不见
+    const glowOpacity = warmth / 100 * 0.35;
+    this.warmthGlow.style.opacity = (cold ? Math.max(glowOpacity, 0.3) : glowOpacity).toFixed(3);
     this.warmthMeter.classList.toggle('show', warmth > 0.5);
     this.warmthFill.style.width = `${warmth}%`;
     this.warmthMeter.classList.toggle('warm', warmth >= WARMTH.regenThreshold);
-    // 恶劣天气 + 低温暖：屏幕叠一层冷色，提示该靠近热源了
-    const cold = warmth < COLD.warmthThreshold && !!s.weather && s.weather !== 'clear';
     this.warmthGlow.classList.toggle('cold', cold);
 
     // 饱和度视觉：有缓冲时暖色微光，耗尽时鸡腿变暗（互斥）

@@ -378,6 +378,7 @@ async function boot() {
       season: seasonAt(sky.dayCount),
       daylight: sky.daylight,
       sheltered: isSheltered(),
+      enabled: settings.weather,
     }),
     hurt: (amount, cause, kind) => { survival.damage(amount, cause, false, kind); },
   });
