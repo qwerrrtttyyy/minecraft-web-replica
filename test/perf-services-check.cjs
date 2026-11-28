@@ -205,6 +205,8 @@ console.log('高性能服务体系回归');
   ok('调度器把耗时喂给 PerfService', names.includes('a') && names.includes('b'));
   const b = rep.offenders.find((o) => o.name === 'b');
   ok('采样值等于系统实际耗时', b.last === 4, `b.last=${b.last}`);
+  s.setBudget(16);
+  ok('软预算下推给 PerfService（预算单一来源）', perfSvc.budget === 16, `budget=${perfSvc.budget}`);
 }
 
 {

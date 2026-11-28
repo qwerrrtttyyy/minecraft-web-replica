@@ -183,7 +183,8 @@ manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是
 - `record(name, ms)` 逐系统写入定长环形窗口（`WINDOW=120`，约 2s@60fps），热路径零分配；
   只有 `report()` / `stats()` 这类低频调用才排序算 p50 / p95 / max。
 - `report()` 按 p95 降序给出热点（同值按名字字典序，跨环境确定性）；`format()` 供 F3 单行摘要。
-- `endFrame(ms)` 记录整帧墙钟耗时；`setBudget` 后可统计超预算帧数。
+- `endFrame(ms)` 记录整帧墙钟耗时；软预算由 `FrameScheduler.setBudget` 下推（预算单一来源），
+  据此统计超预算帧数（`overBudgetFrames`）。
 
 **组装根接线（main.ts）**
 - `createServices()` 先建 `PerfService` → 用其构造 `FrameScheduler` → 注入容器（`TOKENS.Perf` / `TOKENS.Scheduler`）。
@@ -197,7 +198,7 @@ manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是
 **静默隔离的系统异常**翻出来（单看主循环「没崩」不能说明系统健康）。调试钩子 `__mc.perf` /
 `__mc.scheduler` / `__mc.perfReport()` / `__mc.schedulerStats()` 暴露给自动化与控制台。
 
-纯逻辑回归见 `test/perf-services-check.cjs`（31 项），诊断注入回归见 `test/diagnostics-check.cjs`。
+纯逻辑回归见 `test/perf-services-check.cjs`（32 项），诊断注入回归见 `test/diagnostics-check.cjs`。
 
 **定位说明（实测，见 [EXPERIMENTS.md](EXPERIMENTS.md) §11 / E18）**：稳态下 15 个业务系统的 CPU
 合计 p50 仅约 **0.2ms/帧**，默认 12ms 软预算**永不触发**（`skipped=0`、background 执行率 100%），

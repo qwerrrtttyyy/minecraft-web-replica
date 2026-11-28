@@ -33,7 +33,7 @@ npm run verify
 | 19 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益、slab / candle 盒几何、N4 未知来源液面 | ✓ |
 | 20 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 59 项（含可选生态 / 熔炉字段与坏档隔离） | ✓ |
 | 21 | `npm run test:diagnostics` | 运行时诊断 48 组（健康快照 + 异常注入，含植物能量 / 摄影相机归属 / 性能服务快照） | ✓ |
-| 21a | `npm run test:perf-services` | 高性能服务体系纯逻辑 31 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 | ✓ |
+| 21a | `npm run test:perf-services` | 高性能服务体系纯逻辑 32 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 | ✓ |
 | 22 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 23 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 24 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
@@ -159,7 +159,8 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   与 `endFrame` 超预算帧统计、`report()` 按 p95 降序与同分名字典序确定性、`reset` / `enabled` /
   `dispose`；`FrameScheduler` 的阶段→优先级→注册序稳定排序、软预算 0 逐帧等价、超预算仅
   `background` 让位、`maxDeferFrames` 防饿死、`intervalFrames` 门控、系统异常隔离与抛错计数、
-  耗时喂给 `PerfService`。耗时用「可控时钟」替换 `performance.now`，不依赖真实墙钟。
+  耗时喂给 `PerfService`、软预算下推给 `PerfService`（预算单一来源）。耗时用「可控时钟」
+  替换 `performance.now`，不依赖真实墙钟。
 - **weather-check**：天候纯逻辑 26 组——确定性派生 / 降水形态 / 变暗因子 / 闪电哈希 /
   指数逼近帧率无关性、环境惩罚（冬季夜间叠加、遮蔽缩放、「天气与季节」关闭后彻底停寒冷）、
   冻伤节拍与 `ColdSystem` 开关集成。

@@ -34,7 +34,7 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
 | `test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
 | `test:diagnostics` | 运行时诊断 48 组（健康快照 + 异常注入，含摄影相机归属 / 性能服务快照） |
-| `test:perf-services` | 高性能服务体系纯逻辑 31 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 |
+| `test:perf-services` | 高性能服务体系纯逻辑 32 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 |
 | `test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
 | `test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 18 群系、104 组 |

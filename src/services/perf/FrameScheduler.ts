@@ -114,6 +114,8 @@ export class FrameScheduler implements Disposable {
   } = {}) {
     this.perf = opts.perf ?? null;
     this.budgetMs = opts.budgetMs && opts.budgetMs > 0 ? opts.budgetMs : 0;
+    // 软预算同时是观测层「整帧超预算」的判据，构造时下推一次，避免两处预算漂移
+    this.perf?.setBudget(this.budgetMs);
     this.onError = opts.onError ??
       ((name, error) => console.error(`[scheduler] 系统 "${name}" 抛错`, error));
   }
@@ -154,9 +156,10 @@ export class FrameScheduler implements Disposable {
     if (slot) slot.enabled = enabled;
   }
 
-  /** 运行时改软帧预算；<=0 关闭裁剪（回到逐帧等价） */
+  /** 运行时改软帧预算；<=0 关闭裁剪（回到逐帧等价）。预算下推给观测层，保持单一来源。 */
   setBudget(ms: number): void {
     this.budgetMs = ms > 0 ? ms : 0;
+    this.perf?.setBudget(this.budgetMs);
   }
 
   get budget(): number {
