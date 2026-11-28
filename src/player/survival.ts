@@ -102,6 +102,12 @@ export const ITEMS: Record<string, ItemDefinition> = {
   lapis: { name: 'lapis', label: '青金石', tile: 'lapis' },
   redstone: { name: 'redstone', label: '红石粉', tile: 'redstone' },
   emerald: { name: 'emerald', label: '绿宝石', tile: 'emerald' },
+  // 矿产扩充：银 / 锡粗矿烧炼成锭，紫水晶直接作宝石
+  raw_silver: { name: 'raw_silver', label: '粗银', tile: 'raw_silver' },
+  raw_tin: { name: 'raw_tin', label: '粗锡', tile: 'raw_tin' },
+  silver_ingot: { name: 'silver_ingot', label: '银锭', tile: 'silver_ingot' },
+  tin_ingot: { name: 'tin_ingot', label: '锡锭', tile: 'tin_ingot' },
+  amethyst: { name: 'amethyst', label: '紫水晶', tile: 'amethyst' },
   charcoal: { name: 'charcoal', label: '木炭', tile: 'charcoal' },
   ...EQUIP_ITEMS,
 };

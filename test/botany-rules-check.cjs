@@ -124,10 +124,10 @@ function fakeApi() {
 log('\n[1] 扩展植物 id 契约');
 {
   const t = makeWorld();
-  ok('内置方块为 165 种（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4），插件未挤占内置表',
-    t.reg.all().length === 165, `${t.reg.all().length}`);
-  ok('内置最大 id 为 177（red_sandstone，159~164 留给插件植物）',
-    Math.max(...t.reg.all().map((d) => d.id)) === 177);
+  ok('内置方块为 168 种（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4 + 矿产扩充 3），插件未挤占内置表',
+    t.reg.all().length === 168, `${t.reg.all().length}`);
+  ok('内置最大 id 为 180（紫水晶矿石，159~164 留给插件植物）',
+    Math.max(...t.reg.all().map((d) => d.id)) === 180);
   ok('砂岩家族 id 170~173 末位追加且不挤占插件植物',
     ['smooth_sandstone', 'chiseled_sandstone', 'cut_sandstone', 'red_sandstone']
       .every((name, i) => t.reg.byNameGet(name)?.id === 170 + i));
@@ -344,7 +344,7 @@ log('\n[7] 内置生态不受影响');
   ok('未安装插件时规则表为空', t.botany.listRules().length === 0);
   t.world.setBlock(5, 21, 5, t.id('poppy'));
   ok('内置花卉仍走原分支且不会抛错', typeof t.botany.tickAt(5, 21, 5, 1) === 'boolean');
-  ok('内置方块总数未变', t.reg.all().length === 165);
+  ok('内置方块总数未变', t.reg.all().length === 168);
 }
 
 log('\n[8] 插件植物接入 7 个新群系（spawn 权重）');
