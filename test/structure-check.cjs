@@ -5,7 +5,7 @@
  * 禁止矿石与 glowstone。生成级断言由后续任务补入。
  */
 const assert = require('node:assert');
-const { DefaultGenerator } = require('./terrain-logic/world/generator.js');
+const { DefaultGenerator, blockIdSource } = require('./terrain-logic/world/generator.js');
 const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
 const { CHUNK_SIZE: CS, WORLD_HEIGHT: H } = require('./terrain-logic/core/types.js');
 const {
@@ -30,6 +30,11 @@ const BANNED = [
   'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'copper_ore',
   'redstone_ore', 'lapis_ore', 'emerald_ore', 'glowstone',
 ];
+// 只把自然地形绝不会产出的方块当作结构标记
+const MARKERS = new Set([
+  'oak_planks', 'spruce_planks', 'birch_planks', 'acacia_planks', 'cherry_planks',
+  'glass', 'furnace', 'crafting_table', 'bookshelf', 'lantern', 'glow_torch', 'torch',
+]);
 
 console.log('静态结构模板回归');
 
@@ -103,11 +108,6 @@ ok('矿井 / 地牢固定配色分别为木梁圆石与苔石石砖',
     gen.generateChunk(cx, cz, data);
     return data;
   };
-  // 只把自然地形绝不会产出的方块当作结构标记
-  const MARKERS = new Set([
-    'oak_planks', 'spruce_planks', 'birch_planks', 'acacia_planks', 'cherry_planks',
-    'glass', 'furnace', 'crafting_table', 'bookshelf', 'lantern', 'glow_torch', 'torch',
-  ]);
   const planted = [...MARKERS].every((n) => STRUCTURE_BLOCK_NAMES.has(n));
   ok('结构标记全部来自模板方块集合', planted);
 
@@ -158,6 +158,56 @@ ok('矿井 / 地牢固定配色分别为木梁圆石与苔石石砖',
   const repeat = chunk(b2.gen, -4, 3);
   ok('跨区块结构的重复生成逐字节一致',
     Buffer.compare(Buffer.from(repeat), Buffer.from(chunk(a.gen, -4, 3))) === 0);
+}
+
+// 6) 约束守卫：群系 / 出生点 / Worker 逐位一致
+{
+  const idx = (x, y, z) => (y * CS + z) * CS + x;
+  const make = (seed, ids) => {
+    const reg = new BlockRegistry();
+    registerBuiltinBlocks(reg);
+    return { reg, gen: new DefaultGenerator(seed, ids ? blockIdSource(ids) : reg) };
+  };
+  const chunk = (gen, cx, cz) => {
+    const data = new Uint8Array(CS * CS * H);
+    gen.generateChunk(cx, cz, data);
+    return data;
+  };
+  const a = make(777);
+  const byId = new Map(a.reg.all().map((block) => [block.id, block.name]));
+  const badBiome = [];
+  const badSpawn = [];
+  for (let cx = -3; cx <= 3; cx++) {
+    for (let cz = -3; cz <= 3; cz++) {
+      const data = chunk(a.gen, cx, cz);
+      for (let y = 0; y < H; y++) {
+        for (let lz = 0; lz < CS; lz++) {
+          for (let lx = 0; lx < CS; lx++) {
+            const name = byId.get(data[idx(lx, y, lz)]);
+            if (!MARKERS.has(name)) continue;
+            const wx = cx * CS + lx;
+            const wz = cz * CS + lz;
+            const biome = a.gen.biomeAt(wx, wz);
+            if (biome === 'ocean' || biome === 'beach') badBiome.push(`${wx},${y},${wz}:${biome}`);
+            if (Math.hypot(wx, wz) <= 16) badSpawn.push(`${wx},${y},${wz}:${name}`);
+          }
+        }
+      }
+    }
+  }
+  ok('ocean / beach 世界列不出现结构方块', badBiome.length === 0,
+    `${badBiome.length} first=${badBiome[0] ?? ''}`);
+  ok('出生点 16 格半径内不出现结构方块', badSpawn.length === 0,
+    `${badSpawn.length} first=${badSpawn[0] ?? ''}`);
+
+  // 复刻 chunkManager：Worker 拿到的是全量注册表 id 表，不是 workerConfig.ids 的规范名子集
+  const fullIds = Object.fromEntries(a.reg.all().map((block) => [block.name, block.id]));
+  const workerStyle = make(777, fullIds);
+  for (const [cx, cz] of [[0, 0], [2, -1], [-4, 3]]) {
+    ok(`Worker 口径生成器与主线程逐字节一致 (${cx},${cz})`,
+      Buffer.compare(Buffer.from(chunk(workerStyle.gen, cx, cz)),
+        Buffer.from(chunk(a.gen, cx, cz))) === 0);
+  }
 }
 
 console.log(`\n${passed} 项通过`);
