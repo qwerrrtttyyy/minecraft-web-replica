@@ -12,7 +12,7 @@ import {
 } from './keybindings';
 
 export interface InputEdge {
-  type: 'slot' | 'camera' | 'debug' | 'palette' | 'pause' | 'fly' | 'pick' | 'tapBreak' | 'hud';
+  type: 'slot' | 'camera' | 'debug' | 'palette' | 'pause' | 'fly' | 'pick' | 'tapBreak' | 'hud' | 'jei';
   value?: number;
   absolute?: boolean;
 }
@@ -220,6 +220,7 @@ export class Input {
       case 'camera': this.edges.push({ type: 'camera' }); break;
       case 'debug': this.edges.push({ type: 'debug' }); break;
       case 'palette': this.edges.push({ type: 'palette' }); break;
+      case 'jei': this.edges.push({ type: 'jei' }); break;
       case 'fly': this.edges.push({ type: 'fly' }); break;
       case 'hud': this.edges.push({ type: 'hud' }); break;
     }

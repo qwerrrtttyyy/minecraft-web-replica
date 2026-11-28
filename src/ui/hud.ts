@@ -77,6 +77,8 @@ export interface HUDOptions {
   onWeather: (v: boolean) => void;
   /** 实验性玩法：透明通道距离排序 */
   onSortTransparent: (v: boolean) => void;
+  /** 实验性玩法：JEI 物品管理器 */
+  onJei: (v: boolean) => void;
   /** 原版界面风格开关（默认开启，设置页「视频」分组） */
   onVanillaUI: (v: boolean) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
@@ -263,6 +265,7 @@ export class HUD {
   private fireSpreadRow?: HTMLButtonElement;
   private weatherRow?: HTMLButtonElement;
   private sortRow?: HTMLButtonElement;
+  private jeiRow?: HTMLButtonElement;
   private vanillaUIRow?: HTMLButtonElement;
   private ioOverlay!: HTMLElement;
   private ioTitle!: HTMLElement;
@@ -1104,7 +1107,12 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     gamerules.appendChild(this.sortRow);
-    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；后四项为渲染/玩法特性对照，全部立即生效并自动保存。'));
+    this.jeiRow = this.optionRow('JEI 物品管理器', () => {
+      this.opts.onJei(!this.opts.getOptions().jei);
+      this.syncOptions(this.opts.getOptions());
+    });
+    gamerules.appendChild(this.jeiRow);
+    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；其余为渲染/玩法特性对照，全部立即生效并自动保存。'));
 
     // ---- 开发者 ----
     const dev = group('开发者');
@@ -1226,6 +1234,7 @@ export class HUD {
     if (this.fireSpreadRow) this.setRowVal(this.fireSpreadRow, o.fireSpread ? '开' : '关', !o.fireSpread);
     if (this.weatherRow) this.setRowVal(this.weatherRow, o.weather ? '开' : '关', !o.weather);
     if (this.sortRow) this.setRowVal(this.sortRow, o.sortTransparent ? '开' : '关', !o.sortTransparent);
+    if (this.jeiRow) this.setRowVal(this.jeiRow, o.jei ? '开' : '关', !o.jei);
     if (this.vanillaUIRow) this.setRowVal(this.vanillaUIRow, o.vanillaUI ? '开' : '关', !o.vanillaUI);
   }
 

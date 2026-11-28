@@ -45,6 +45,7 @@
     "test:crossbreed": "node test/plant-crossbreed-check.cjs",
     "test:crafting": "node test/crafting-check.cjs",
     "test:crafting:vitest": "vitest run test/crafting.test.ts",
+    "test:jei:vitest": "vitest run test/jei.test.ts",
     "test:equipment": "node test/armor-check.cjs",
     "test:hooks": "node test/hooks-check.cjs",
     "test:smelting": "node test/smelting-check.cjs",

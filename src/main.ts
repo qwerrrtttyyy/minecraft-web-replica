@@ -34,6 +34,7 @@ import {
   type MaterialId,
 } from './player/crafting';
 import type { CraftingHost, CraftingMaterial } from './ui/crafting';
+import { JeiPanel } from './ui/jei';
 import { Input } from './input/input';
 import { TouchControls } from './input/touch';
 import { EntityManager } from './entity/entity';
@@ -854,6 +855,13 @@ async function boot() {
       persistOptions(settings);
       markDirty();
     },
+    onJei: (v) => {
+      settings.jei = v;
+      if (!v) closeJei();
+      hud.toast(v ? 'JEI 物品管理器：开启（按 J 打开）' : 'JEI 物品管理器：关闭');
+      persistOptions(settings);
+      markDirty();
+    },
     onVanillaUI: (v) => {
       settings.vanillaUI = v;
       applyVanillaUI(v);
@@ -1348,6 +1356,36 @@ async function boot() {
     else resumeGame();
   }
 
+  // ---- JEI 物品管理器（实验性玩法开关；只读索引，不参与合成） ----
+  let jeiPanel: JeiPanel | null = null;
+
+  function openJei() {
+    if (!settings.jei) return;
+    if (!jeiPanel) {
+      jeiPanel = new JeiPanel({ onClose: () => closeJei() }, atlas, registry);
+      document.body.appendChild(jeiPanel.root);
+    }
+    if (mode === 'playing') {
+      mode = 'paused';
+      input.enabled = false;
+      input.reset();
+      input.exitLock();
+      events.emit('game:pause', { paused: true });
+    }
+    jeiPanel.show();
+  }
+
+  function closeJei() {
+    if (!jeiPanel?.isOpen) return;
+    jeiPanel.hide();
+    resumeGame();
+  }
+
+  function toggleJei() {
+    if (jeiPanel?.isOpen) closeJei();
+    else openJei();
+  }
+
   /**
    * 打开营火「直接烤」界面。
    *
@@ -1729,6 +1767,7 @@ async function boot() {
             if (hud.keybindOpen) hud.showKeybinds(false);
             else if (hud.helpOpen) hud.showHelp(false);
             else if (hud.craftingOpen) closeCrafting();
+          else if (jeiPanel?.isOpen) closeJei();
             else if (panelHost.openId) panelHost.close();
             else if (hud.paletteOpen) closePalette();
             else if (hud.menuOpen) resumeGame();
@@ -1737,6 +1776,10 @@ async function boot() {
         case 'palette':
           if (mode === 'playing') openPalette('game');
           else if (mode === 'paused' && hud.paletteOpen) closePalette();
+          break;
+        case 'jei':
+          if (mode === 'playing' && settings.jei) toggleJei();
+          else if (jeiPanel?.isOpen) closeJei();
           break;
         case 'slot':
           if (mode === 'playing') selectSlot(e.absolute ? (e.value ?? 0) : hotbar.index + (e.value ?? 0));

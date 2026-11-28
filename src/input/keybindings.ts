@@ -23,6 +23,7 @@ export const ACTION_LABELS = {
   debug: '调试信息',
   hud: '显示 / 隐藏界面',
   pause: '暂停 / 菜单',
+  jei: 'JEI 物品管理器',
 } as const;
 
 export type GameAction = keyof typeof ACTION_LABELS;
@@ -42,6 +43,7 @@ export interface KeyBindings {
   debug: string;
   hud: string;
   pause: string;
+  jei: string;
 }
 
 export const DEFAULT_BINDINGS: KeyBindings = {
@@ -58,6 +60,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   debug: 'F3',
   hud: 'F1',
   pause: 'Escape',
+  jei: 'KeyJ',
 };
 
 const STORAGE_KEY = 'minecraft-ts-keybindings-v1';
@@ -68,10 +71,22 @@ export function codeLabel(code: string): string {
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Numpad')) return `小键盘${code.slice(6)}`;
   const named: Record<string, string> = {
-    Space: '空格', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-    ShiftLeft: '左Shift', ShiftRight: '右Shift', ControlLeft: '左Ctrl', ControlRight: '右Ctrl',
-    AltLeft: '左Alt', AltRight: '右Alt', Escape: 'Esc', Enter: '回车',
-    Backspace: '退格', Tab: 'Tab', CapsLock: '大写锁定',
+    Space: '空格',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ShiftLeft: '左Shift',
+    ShiftRight: '右Shift',
+    ControlLeft: '左Ctrl',
+    ControlRight: '右Ctrl',
+    AltLeft: '左Alt',
+    AltRight: '右Alt',
+    Escape: 'Esc',
+    Enter: '回车',
+    Backspace: '退格',
+    Tab: 'Tab',
+    CapsLock: '大写锁定',
   };
   if (named[code]) return named[code];
   if (/^F\d+$/.test(code)) return code;

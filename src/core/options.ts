@@ -73,6 +73,8 @@ export interface Options {
   weather: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
+  /** 实验性玩法：JEI 物品管理器（J 键打开物品 / 配方 / 用途索引面板） */
+  jei: boolean;
   /** 动态分辨率：auto 画质下允许 governor 按帧耗时升降渲染分辨率（桌面/移动端均可，默认开） */
   dynamicResolution: boolean;
   /** 目标帧率档：决定 governor 的预算（auto = 跟随屏幕实测刷新率） */
@@ -116,6 +118,7 @@ export const DEFAULT_OPTIONS: Options = {
   fireSpread: true,
   weather: true,
   sortTransparent: true,
+  jei: false,
   dynamicResolution: true,
   frameTarget: 'auto',
   genThreads: 'auto',
@@ -130,10 +133,8 @@ const RANDOM_TICK_SPEEDS: readonly RandomTickSpeed[] = [0, 1, 2, 3];
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const bool = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def);
-const num = (v: unknown, def: number, min: number, max: number) =>
-  finite(v) ? clamp(v, min, max) : def;
-const pick = <T>(v: unknown, allowed: readonly T[], def: T): T =>
-  allowed.includes(v as T) ? (v as T) : def;
+const num = (v: unknown, def: number, min: number, max: number) => (finite(v) ? clamp(v, min, max) : def);
+const pick = <T>(v: unknown, allowed: readonly T[], def: T): T => (allowed.includes(v as T) ? (v as T) : def);
 
 /** 画质档位对应的渲染分辨率倍率；auto 返回 null，由引擎按帧率自适应 */
 export function qualityScale(mode: QualityMode): number | null {
@@ -196,6 +197,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       fireSpread: bool(o.fireSpread, base.fireSpread),
       weather: bool(o.weather, base.weather),
       sortTransparent: bool(o.sortTransparent, base.sortTransparent),
+      jei: bool(o.jei, base.jei),
       dynamicResolution: bool(o.dynamicResolution, base.dynamicResolution),
       frameTarget: pick(o.frameTarget, FRAME_TARGETS, base.frameTarget),
       genThreads: pick(o.genThreads, GEN_THREAD_OPTIONS, base.genThreads),
@@ -245,6 +247,7 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     fireSpread: bool(base.fireSpread, DEFAULT_OPTIONS.fireSpread),
     weather: bool(base.weather, DEFAULT_OPTIONS.weather),
     sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
+    jei: bool(base.jei, DEFAULT_OPTIONS.jei),
     dynamicResolution: bool(base.dynamicResolution, DEFAULT_OPTIONS.dynamicResolution),
     frameTarget: pick(base.frameTarget, FRAME_TARGETS, DEFAULT_OPTIONS.frameTarget),
     genThreads: pick(base.genThreads, GEN_THREAD_OPTIONS, DEFAULT_OPTIONS.genThreads),
