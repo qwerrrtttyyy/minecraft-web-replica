@@ -180,4 +180,37 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
     /dayTime:\s*photo\?\.active\s*&&\s*photo\.savedDayTime\s*!==\s*null\s*\?\s*photo\.savedDayTime\s*:\s*sky\.dayTime/.test(mainSource));
 }
 
+// 11) 覆盖层显示态 / 伪 pause 窗口 / teardown：源码契约（像素行为由浏览器冒烟验证）
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const modeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'PhotoMode.ts'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.ts'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'photo.css'), 'utf8');
+  ok('CSS 默认隐藏覆盖层，.photo-visible 才切回 flex',
+    /#photo-overlay\.photo-overlay\s*\{[\s\S]*?display:\s*none;/.test(css) &&
+    /\.photo-visible\s*\{\s*display:\s*flex;/.test(css));
+  ok('CSS 保留纵向分栏与 hints 居中',
+    /flex-direction:\s*column/.test(css) && /justify-content:\s*space-between/.test(css) &&
+    /#photo-overlay\s+\.photo-hints\s*\{[\s\S]*?align-self:\s*center/.test(css));
+  ok('PhotoMode 不再用 inline display 切换覆盖层',
+    !/overlay\.style\.display/.test(modeSource) &&
+    /overlay\.classList\.add\('photo-visible'\)/.test(modeSource) &&
+    /overlay\.classList\.remove\('photo-visible'\)/.test(modeSource));
+  ok('伪 pause 吞掉带短窗口，超时后真实 Esc 不被吞',
+    /LOCK_PAUSE_GRACE_MS\s*=\s*\d+/.test(modeSource) &&
+    /swallowLockPauseUntil\s*=\s*this\.savedLocked\s*\?\s*performance\.now\(\)\s*\+\s*LOCK_PAUSE_GRACE_MS\s*:\s*0/.test(modeSource) &&
+    /performance\.now\(\)\s*<=\s*this\.swallowLockPauseUntil/.test(modeSource));
+  ok('PhotoMode.dispose 移除五条全局监听并归还引擎状态',
+    /dispose\(\): void/.test(modeSource) &&
+    /removeEventListener\('keydown', this\.onKeyDown\)/.test(modeSource) &&
+    /removeEventListener\('mousemove', this\.onMouseMove\)/.test(modeSource) &&
+    /removeEventListener\('mouseup', this\.onMouseUp\)/.test(modeSource) &&
+    /this\.canvas\.removeEventListener\('wheel', this\.onWheel\)/.test(modeSource) &&
+    /this\.canvas\.removeEventListener\('mousedown', this\.onMouseDown, \{ capture: true \}\)/.test(modeSource) &&
+    /this\.exit\(false\)/.test(modeSource));
+  ok('main 的 teardown 调用 photo.dispose()',
+    /const teardown = \(\) => \{[\s\S]*?photo\?\.dispose\(\)/.test(mainSource));
+}
+
 console.log(`\n${passed} 项通过`);

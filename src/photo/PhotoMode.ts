@@ -57,6 +57,8 @@ const LOOK_SENSITIVITY = 0.0022;
 const MOVE_SPEED = 7;
 const FAST_SPEED = 14;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
+/** enter() 后仅在此窗口内吞掉 exitPointerLock 的伪 pause 边沿；超时后真实 Esc 必须照常退出 */
+const LOCK_PAUSE_GRACE_MS = 200;
 
 /** 取最接近当前 dayTime 的档位，第一次按 T 会切到下一档 */
 function presetFor(dayTime: number): TimePreset {
@@ -84,6 +86,7 @@ export class PhotoMode implements System {
   lastDataUrl = '';
 
   private readonly opts: PhotoModeOptions;
+  private readonly canvas: HTMLCanvasElement;
   private readonly overlay: HTMLElement;
   private readonly infoCoords: HTMLElement;
   private readonly infoPlace: HTMLElement;
@@ -104,6 +107,9 @@ export class PhotoMode implements System {
   private pendingCapture: boolean | null = null;
   /** 进入时主动 exitPointerLock 会产生一次 pause 边沿，吞掉这一条以免立刻退出 */
   private swallowLockPause = false;
+  /** 上述吞掉的截止时刻（performance.now()）；伪边沿不来时过期即失效 */
+  private swallowLockPauseUntil = 0;
+  private disposed = false;
   private timePreset: TimePreset = 'day';
   private weatherPreset: PhotoWeather = 'clear';
   private stamp = true;
@@ -116,10 +122,11 @@ export class PhotoMode implements System {
 
   constructor(opts: PhotoModeOptions) {
     this.opts = opts;
+    this.canvas = opts.engine.renderer.domElement;
     this.overlay = document.createElement('div');
     this.overlay.id = 'photo-overlay';
     this.overlay.className = 'photo-overlay';
-    this.overlay.style.display = 'none';
+    // 显示态交给 CSS：默认 display:none，enter() 加 .photo-visible 才切回 flex
     this.overlay.innerHTML = `
       <div class="photo-info mc-panel">
         <div class="photo-title">摄影模式</div>
@@ -164,10 +171,9 @@ export class PhotoMode implements System {
 
     // T / Y / S / 回车走轻量监听，不占用 gameplay 按键表；仅摄影模式激活时生效。
     addEventListener('keydown', this.onKeyDown);
-    const canvas = opts.engine.renderer.domElement;
-    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
     // 拖动转向自己处理：不能让 Input 的 mousedown 重新申请指针锁（摄影模式已主动释放）。
-    canvas.addEventListener('mousedown', this.onMouseDown, { capture: true });
+    this.canvas.addEventListener('mousedown', this.onMouseDown, { capture: true });
     addEventListener('mousemove', this.onMouseMove);
     addEventListener('mouseup', this.onMouseUp);
   }
@@ -199,6 +205,7 @@ export class PhotoMode implements System {
     this.pendingCapture = null;
     this.lastDataUrl = '';
     this.swallowLockPause = this.savedLocked;
+    this.swallowLockPauseUntil = this.savedLocked ? performance.now() + LOCK_PAUSE_GRACE_MS : 0;
     this.yaw = camera.rotation.y;
     this.pitch = camera.rotation.x;
     this.infoAcc = 0;
@@ -211,7 +218,7 @@ export class PhotoMode implements System {
     input.reset();
     input.exitLock();
     engine.onAfterRender = () => this.flushCapture();
-    this.overlay.style.display = 'block';
+    this.overlay.classList.add('photo-visible');
     this.refreshOverlay();
     return true;
   }
@@ -240,9 +247,10 @@ export class PhotoMode implements System {
     camera.fov = this.savedFov;
     camera.updateProjectionMatrix();
 
-    this.overlay.style.display = 'none';
+    this.overlay.classList.remove('photo-visible');
     this.pendingCapture = null;
     this.swallowLockPause = false;
+    this.swallowLockPauseUntil = 0;
     this.savedDayTime = null;
     this.savedDayCount = null;
     this.dragging = false;
@@ -250,11 +258,38 @@ export class PhotoMode implements System {
     if (restoreLock && this.savedLocked) input.requestLock();
   }
 
-  /** 组装根用于忽略进入时 exitPointerLock 产生的那一条伪 pause 边沿 */
+  /**
+   * 组装根用于忽略进入时 exitPointerLock 产生的那一条伪 pause 边沿。
+   * 仅在 enter() 后的短窗口内有效：伪边沿根本不来时，之后的真实 Esc 不会被吞掉。
+   */
   consumeLockPause(): boolean {
     if (!this.swallowLockPause) return false;
     this.swallowLockPause = false;
-    return true;
+    const withinGrace = performance.now() <= this.swallowLockPauseUntil;
+    this.swallowLockPauseUntil = 0;
+    return withinGrace;
+  }
+
+  /** 顶层 teardown：移除自己注册的全局监听并归还仍被摄影模式占用的引擎状态（幂等） */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    removeEventListener('keydown', this.onKeyDown);
+    this.canvas.removeEventListener('wheel', this.onWheel);
+    this.canvas.removeEventListener('mousedown', this.onMouseDown, { capture: true });
+    removeEventListener('mousemove', this.onMouseMove);
+    removeEventListener('mouseup', this.onMouseUp);
+    if (this.active) {
+      // restoreLock=false：页面卸载 / 释放资源时不再重新申请指针锁
+      this.exit(false);
+      return;
+    }
+    // 已退出但归属残留时也兜底归还（exit() 正常情况下已清空这两处）
+    if (this.opts.engine.cameraOwner === 'photo') this.opts.engine.cameraOwner = null;
+    if (this.previousAfterRender !== null) {
+      this.opts.engine.onAfterRender = this.previousAfterRender;
+      this.previousAfterRender = null;
+    }
   }
 
   /** System 回调：摄影模式激活时驱动自由相机（玩家已被组装根冻结） */

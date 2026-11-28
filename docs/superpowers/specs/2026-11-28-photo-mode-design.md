@@ -1,0 +1,161 @@
+# 摄影模式（Photo Mode）· 设计文档
+
+日期：2026-11-28
+状态：待审批（brainstorming 收敛结果）
+适用项目：`minecraft-web-replica` / `minecraft-ts`
+
+## 1. 意图与为什么
+
+用户要把这个世界做成**风景化的、以探索为目的**的世界：玩家的价值来自"看见"和"留下痕迹"，
+而不是战斗、经济或数值成长。本轮先交付留下痕迹的方式——**摄影模式**：玩家能脱离角色、
+自由取景、调整光照与天气，把眼前的一帧导出为 PNG。
+
+这是一项内容更新，但刻意**不改变世界本身**：地形生成算法、群系、方块 id、存档结构全部保持原样。
+用户明确要求"不能破坏算法的纯洁性"。
+
+## 2. 目标 / 非目标 / 反目标
+
+### 目标
+- 从游玩态进入/退出摄影模式，不污染世界状态与存档。
+- 自由相机：脱离玩家，WASD 平移、鼠标拖动转向、滚轮调 FOV，无重力；活动范围限制在已加载
+  区块内（不改动区块加载中心）。
+- 隐藏游戏 HUD，显示一层极简摄影覆盖层（信息 + 操作提示 + 拍摄/退出按钮）。
+- 取景时可调**时刻**与**天气**；两者在退出摄影模式时恢复原值。
+- 单帧导出 PNG，文件名含群系 / 坐标 / 时间；水印可切换。
+- 桌面与移动端都能用（复用现有触控输入）。
+- 单文件离线产物（`file://`）可用；0 新依赖、0 新方块 id、0 地形改动。
+
+### 非目标
+- 不做自然地标 / 地貌改造（方案 B，用户已否）。
+- 不做游戏内相册 / 游记（方案 C，留待后续）。
+- 不做滤镜、后期调色、照片编辑。
+- 不做任务、经验、交易、战斗改动。
+
+### 反目标（做了就算失败）
+- 改变了地形生成结果、群系判定、方块 id 分配或 Worker 逐位一致性。
+- 摄影模式退出后世界的时间 / 天气 / HUD / 指针锁定状态与进入前不一致。
+- 为了截图永久打开 `preserveDrawingBuffer`，造成常态性能与显存损失。
+
+## 3. 约束（来自当前代码勘察）
+
+| 约束 | 证据 | 影响 |
+|---|---|---|
+| `WebGLRenderer` 未设 `preserveDrawingBuffer` | `src/core/engine.ts:72-75` | 帧外 `canvas.toDataURL()` 会得到空白。必须在 `renderer.render()` 之后**同一帧**取像素。 |
+| 主循环渲染点唯一 | `src/core/engine.ts:159` | 在此后加 `onAfterRender` 钩子即可截图；不要改渲染顺序。 |
+| `engine.camera` 与玩家共用 | `player.ts` 每帧写相机 | 摄影模式期间必须有明确的相机归属，玩家侧跳过写入，否则相机会被每帧覆盖。 |
+| HUD 已有隐藏开关 | `src/ui/hud.ts:743` `toggleHudHidden()` | 可复用隐藏游戏 HUD，但摄影覆盖层是独立 DOM，不塞进游戏 HUD。 |
+| 天气已有 `forced` 覆盖 | `src/world/weatherSystem.ts:34`，`CraftAPI.weatherSetForced` 见 `main.ts:2069` | 直接复用，不新增天气通路。 |
+| 昼夜时间已有 setter | `src/gfx/sky.ts:35` `setTime(dayTime, dayCount)` | 复用；摄影模式内冻结循环推进，退出恢复。 |
+| 按键表是可扩展契约 | `src/input/keybindings.ts`：`ACTION_LABELS` / `KeyBindings` / `DEFAULT_BINDINGS` / `ACTION_KEYS` | 新增 `photo` 动作必须四处同步，并核对 HUD 设置面板枚举。 |
+| 输入状态机硬规则 | 项目经验 #9 | 进入/退出摄影模式要正确处理指针锁定与 `input.reset()`；`keyup` 仍无条件处理。 |
+| 版本双轨单一来源 | 项目经验 #1 | bump `VERSION` 必须与 package.json / README / CHANGELOG / 测试断言同 commit。 |
+| 纯逻辑测试需快照先行 | AGENTS.md §1 / §4 | 新增纯逻辑入口要加进 `scripts/build-test-snapshot.mjs` 的 `entries`。 |
+| 高风险不变量进诊断 | 项目经验 #13 | 相机归属冲突属于高风险，加入 `RuntimeDiagnostics` 与注入式回归。 |
+
+## 4. 方案取舍（已定）
+
+- **A. 只做摄影模式（选中）**：相机 + UI + 导出，不碰生成。风险最低，完全满足"算法纯洁性"。
+- **B. 自然地标 + 摄影模式（否）**：会在生成阶段加地标，触碰 `TERRAIN_STAGES` 与 Worker 逐位复刻，用户明确反对。
+- **C. 摄影游记 / 游戏内相册（延后）**：localStorage 容量与存档格式要重新设计；先做 A，验证哪些景值得拍后再加。
+
+## 5. 设计（已决定的部分）
+
+### 5.1 模块划分
+
+| 文件 | 职责 | 依赖 |
+|---|---|---|
+| `src/photo/photoFrames.ts` | **纯逻辑**：FOV 钳制、时刻档位表、天气循环顺序、元数据文本与文件名生成（非法字符清洗） | 无 three / DOM，进测试快照 |
+| `src/photo/PhotoMode.ts` | **运行时 System**：相机接管、覆盖层 DOM、取景状态机、触发导出 | three / DOM / engine / sky / weather |
+| `src/photo/photo.css`（或并入现有 UI 样式） | 摄影覆盖层样式，沿用 Java 1.20 面板风格 | 无 |
+
+`photoFrames.ts` 加入 `scripts/build-test-snapshot.mjs` 的 `entries`。
+
+### 5.2 引擎改动（最小面）
+
+1. `Engine` 增加 `onAfterRender: (() => void) | null`，在 `engine.ts:159` 的 `renderer.render(...)` **之后立即调用**。
+2. `Engine` 增加相机归属字段 `cameraOwner: string | null`（默认 `null`）。玩家相机更新点加守卫：
+   `if (engine.cameraOwner === 'photo') return;`
+3. 不设置 `preserveDrawingBuffer`；不在帧外截图。
+
+### 5.3 状态机与生命周期
+
+- 进入条件：当前 `mode === 'playing'` 且没有打开的菜单 / 合成 / 方块库 / 面板，玩家未死亡。
+- 进入时保存：相机 pose（`position` / `quaternion` / `fov`）、`sky` 时刻与昼夜循环开关、`weather.forced`、
+  HUD 隐藏状态、指针锁定状态。
+- 离开时恢复以上全部；调用 `input.reset()`；恢复指针锁定（若进入前已锁定）。
+- 摄影模式期间**不暂停世界模拟**，只冻结昼夜循环推进；这样不必替换 `engine.systems` 闭包，
+  也不会改变任何玩法/生态状态。
+- **冻结玩家，而非冻结世界**（已确认）：保持 `mode === 'playing'` 让世界系统继续跑，但跳过
+  `player.update()` 与玩家侧的相机写入；WASD / 方向键只驱动自由相机。否则玩家会一边被相机
+  拖着走一边发 `player:move` 标脏、移动区块中心、改掉存档坐标，直接违背"脱离玩家 / 不污染存档"。
+- **时间 / 天气调整只改运行时状态**，退出即还原，**不写存档**、不标脏；autosave 若在摄影
+  期间触发，序列化时刻取快照值而非当前预览值。
+
+### 5.9 自由相机的活动边界（已确认）
+
+- 相机被限制在以玩家为中心、按当前渲染距离算出的半径内：`radius = (renderDistance − 1) × CHUNK_SIZE`。
+  超出时钳制回边界（不是硬停），避免飞进未加载区块看到空画面。
+- **不让区块加载 / AI 焦点跟随相机**：`chunks.setCenter` 与实体 / 掉落 / 火焰焦点继续跟玩家，
+  否则会卸载玩家脚下区块、改变存档坐标并引发加载抖动。
+- 相机活动范围作为一条操作提示显示在覆盖层底部（`自由相机：已加载区域内`）。
+
+### 5.4 操作映射
+
+| 操作 | 桌面 | 移动端 |
+|---|---|---|
+| 进入 / 退出 | `P`（退出也可 `Esc`，此时吞掉暂停菜单） | 覆盖层按钮 |
+| 平移相机 | WASD / 方向键 | 虚拟摇杆推满 = 加速 |
+| 升降 | 空格 / Shift | 跳跃 / 下降按钮复用 |
+| 转向 | 按住鼠标拖动（进入时释放指针锁） | 右侧空白拖动 |
+| FOV | 滚轮（20–100） | 覆盖层 `+ / −` 按钮 |
+| 时刻 | `T` 轮换 黎明 / 白昼 / 黄昏 / 夜晚 | 覆盖层按钮 |
+| 天气 | `Y` 轮换 晴 / 雨 / 雪 / 雷暴（走 `weather.forced`） | 覆盖层按钮 |
+| 水印开关 | `S` | 覆盖层按钮 |
+| 拍摄 | 回车 / 覆盖层按钮 | 覆盖层按钮 |
+
+新按键 `photo` 加入 `keybindings.ts` 四处结构；默认 `KeyP`。设置面板若枚举 `ACTION_KEYS` 会自动出现。
+
+### 5.5 截图管线
+
+1. 玩家按拍摄 → 设置 `photo.pendingCapture = { withStamp }`，不立即读像素。
+2. `Engine.onAfterRender` 回调在**同一帧** `renderer.render()` 后触发：
+   - 建离屏 2D canvas（尺寸 = 渲染画布的 drawingBuffer 尺寸）。
+   - `ctx.drawImage(renderer.domElement, 0, 0)` 取得画面。
+   - 若开启水印，在角落画半透明底 + 文字（群系 / 坐标 / 季节 / 天气 / 时刻）。
+   - `toDataURL('image/png')`，建 `<a download>` 点击导出，文件名由 `photoFrames.ts` 生成。
+   - 失败时 `hud.toast('截图失败')`，不抛异常、不中断主循环。
+3. 同一帧只服务一次请求；请求在执行前置空，避免重复导出。
+4. 不把图片写进 localStorage / 存档。
+
+### 5.6 覆盖层 UI
+
+- 独立 DOM 层 `#photo-overlay`，仅摄影模式激活时显示。
+- 左上：标题「摄影模式」+ 坐标 / 群系 / 季节 / 天气 / 时刻实时信息。
+- 右上：拍摄 / 水印 / 退出按钮；底部：操作提示。
+- 覆盖层本身 `pointer-events: none`，只有按钮 `pointer-events: auto`，保证拖动转向不被拦截。
+- 移动端按钮加大，沿用现有 `pointer:coarse` 适配习惯。
+
+### 5.7 测试与诊断
+
+- `test/photo-check.cjs`（新增，约 15 项）：文件名清洗、时刻档位映射、天气循环顺序、FOV 钳制、
+  元数据文本格式；纯逻辑，依赖快照。
+- `test:photo` 挂进 `verify` 与 `verify:node`（放在 `test:snapshot` 之后）。
+- 浏览器实景：在 `test/survival-smoke.mjs` 增加断言：按 `P` 后覆盖层出现、触发拍摄得到 `data:image/png`
+  前缀、退出后游戏 HUD 与 `cameraOwner` 恢复。
+- `RuntimeDiagnostics` 增加不变量：摄影模式激活时 `cameraOwner === 'photo'`，玩家侧不得同时写相机；
+  `test/diagnostics-check.cjs` 加一条注入式回归。
+
+### 5.8 版本与文档
+
+- `VERSION` bump 至 **`1.6.0-beta.3`**（已确认）；同 commit 同步 `package.json` / `README.md` /
+  `CHANGELOG.md` / 所有动态读取版本的测试断言，禁止硬编码版本字面量。
+- `CHANGELOG.md` 的 `[Unreleased]` 增加「摄影模式」条目，注明"0 新方块 / 0 地形改动 / 0 新依赖"。
+
+## 6. 留给 builder 的决定
+
+- 摄影模式的具体热键若与用户重绑定冲突，按 `keybindings.ts` 的既有流程处理即可。
+- 截图分辨率是否跟随动态分辨率倍率：默认跟随当前画布（所见即所得），如需原分辨率可后续加设置项。
+- 覆盖层样式放在独立 CSS 文件还是并入现有 UI 样式表，按当前构建方式选择。
+- 版本号已定为 `1.6.0-beta.3`，不属于留给 builder 的决定。
+- 移动端操作若现有输入层无法复用，可先做桌面版并给出明确的"暂不支持触屏"提示；这是范围收缩，
+  不算违背目标 6，但需在提交说明中写明。

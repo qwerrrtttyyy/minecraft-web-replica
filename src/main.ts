@@ -2094,6 +2094,7 @@ async function boot() {
   // M05：顶层资源释放（Worker / 网格几何 / 材质 / 渲染器）。
   // bfcache 恢复的页面仍需要这些资源，因此 persisted=true 的 pagehide 不释放。
   const teardown = () => {
+    photo?.dispose(); // 先归还相机 / 渲染钩子并移除摄影模式的全局监听
     diagnostics.dispose();
     chunks.dispose();
     engine.dispose();

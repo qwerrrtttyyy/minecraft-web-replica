@@ -3,7 +3,7 @@
   position: absolute;
   inset: 0;
   z-index: 20;
-  display: flex;
+  display: none;
   flex-direction: column;
   justify-content: space-between;
   padding: 18px 22px;
@@ -13,6 +13,8 @@
   font-size: 13px;
   text-shadow: 1px 1px 0 #1a1a1a;
 }
+/* 显示态由类切换：flex 布局 / 上下分栏 / hints 居中只在可见时生效 */
+#photo-overlay.photo-overlay.photo-visible { display: flex; }
 #photo-overlay .mc-panel {
   align-self: flex-start;
   max-width: min(560px, 92vw);

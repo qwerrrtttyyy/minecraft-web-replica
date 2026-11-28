@@ -419,9 +419,15 @@ try {
   await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
   const inPhoto = await page.evaluate(() => {
     const overlay = document.querySelector('#photo-overlay');
+    const style = getComputedStyle(overlay);
+    const info = overlay.querySelector('.photo-info').getBoundingClientRect();
+    const hints = overlay.querySelector('.photo-hints').getBoundingClientRect();
     return {
       active: CraftAPI.photo.active,
-      display: getComputedStyle(overlay).display,
+      display: style.display,
+      flexDirection: style.flexDirection,
+      justifyContent: style.justifyContent,
+      hintsBelowInfo: hints.top > info.bottom,
       visible: overlay.offsetParent !== null,
       hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
       owner: window.__mc.engine.cameraOwner,
@@ -430,6 +436,9 @@ try {
   ok('按 P 进入摄影模式：覆盖层可见 / HUD 隐藏 / 相机归属 photo',
     inPhoto.active && inPhoto.visible && inPhoto.display !== 'none' &&
       inPhoto.hudHidden && inPhoto.owner === 'photo', JSON.stringify(inPhoto));
+  ok('摄影覆盖层 flex 生效：上下分栏且操作提示在底部',
+    inPhoto.display === 'flex' && inPhoto.flexDirection === 'column' &&
+      inPhoto.justifyContent === 'space-between' && inPhoto.hintsBelowInfo, JSON.stringify(inPhoto));
 
   // 按住 W：玩家绝不能移动（否则会标脏、挪动区块中心、污染存档坐标），相机应自由平移
   await page.keyboard.down('KeyW');
