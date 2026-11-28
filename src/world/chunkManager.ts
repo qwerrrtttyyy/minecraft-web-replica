@@ -1,19 +1,39 @@
 import * as THREE from 'three';
 import MeshWorker from './mesh.worker?worker&inline';
 import { createWorkerPool } from './workerPool';
-import { CHUNK_SIZE, chunkKey, parseChunkKey, type System } from '../core/types';
+import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, parseChunkKey, type System } from '../core/types';
 import type { EventService } from '../services/events';
 import type { World } from './world';
 import type { TextureAtlas } from '../gfx/atlas';
 import { meshChunk } from './mesher';
 import { buildMeshConfig, buildMeshSnapshot, WorldMeshSource } from './meshSource';
 import { installTiledAtlas } from './tiledAtlas';
+import type { IWorldGenerator, TerrainOptions } from './generator';
+import type { GenThreads } from '../core/options';
 import {
   MESH_CHANNELS, isStaleConfigRevision, packMesh,
-  type MeshConfig, type MeshStats, type PackedGeo, type PackedMesh,
+  type GenResult, type MeshConfig, type MeshStats, type PackedGeo, type PackedMesh,
   type WorkerResponse,
 } from './meshTypes';
 import { selectEvictions } from './chunkRetention';
+
+/**
+ * world.generator 可被 Worker 逐位复刻时的结构标记。
+ * 自定义生成器（CraftAPI.setGenerator / 插件）没有这个标记，仍走主线程同步生成。
+ */
+interface WorkerGeneratable {
+  readonly supportsWorkerGeneration: true;
+  readonly workerConfig: { seed: number; ids: Record<string, number>; options: TerrainOptions };
+}
+
+/** 生成通道回传：结果或错误 */
+type GenResponse = GenResult | Extract<WorkerResponse, { type: 'error' }>;
+
+/** 结构识别「可被 Worker 复刻」的生成器；自定义生成器返回 null，保持主线程同步 */
+function asWorkerGeneratable(gen: IWorldGenerator): WorkerGeneratable | null {
+  const g = gen as Partial<WorkerGeneratable>;
+  return g.supportsWorkerGeneration === true && g.workerConfig ? (g as WorkerGeneratable) : null;
+}
 
 interface ChunkMeshes {
   opaque?: THREE.Mesh;
@@ -27,14 +47,36 @@ interface InFlight {
   generation: number;
   /** M06：派发时的配置版本，用于丢弃 configRevision 之后到达的旧结果 */
   configRevision: number;
+  /** 只有等待完成的调用方（预载）才需要 Promise；流式调度路径为 null，避免每帧白建 Promise */
+  promise: Promise<void> | null;
+  resolve: () => void;
+}
+
+/** 在途生成任务：key -> 代次与 Promise（异步生成路径） */
+interface PendingGen {
+  generation: number;
   promise: Promise<void>;
   resolve: () => void;
 }
 
-/** 每帧数据生成的时间预算（ms） */
+/** 每帧数据生成的时间预算（ms）：仅主线程同步回退路径适用 */
 const GEN_BUDGET_MS = 4;
+/** 每帧向生成池派发的区块数（Worker 路径开销极小，限流只为控制 pending 规模） */
+const MAX_GEN_DISPATCH_PER_FRAME = 3;
+/** 在途生成任务上限：超过后暂停派发新生成，优先让已有结果落地 */
+const MAX_PENDING_GEN = 24;
 /** 每帧最多派发多少个网格任务（Worker 化后主线程只做快照与通信） */
 const MAX_DISPATCH_PER_FRAME = 6;
+/** 每帧允许派发的「视野外」刷新任务上限：玩家背对的方向给首次网格化让路 */
+const MAX_OFFVIEW_DISPATCH_PER_FRAME = 2;
+/**
+ * 每帧「边界刷新」类派发总上限（不分视野）。
+ * 生成一个新区块会回脏最多 8 个已网格化的邻居（边界面 AO / 角点光要重算），
+ * 实测移动时这类刷新占了派发量的 ~71%，把首次网格化挤到排队 —— 限流保新鲜内容优先。
+ */
+const MAX_REFRESH_DISPATCH_PER_FRAME = 2;
+/** 视野判定：区块中心相对相机的方向与视线点积高于此值视为视野内 */
+const VIEW_DOT_THRESHOLD = 0.2;
 /** dirty + 在途任务积压上限：超过后暂停生成，优先消化网格队列 */
 export const BACKLOG_LIMIT = 24;
 /** initialLoad 等待 Worker 的兜底超时（ms），超时自动降级主线程 */
@@ -55,6 +97,8 @@ export interface ChunkManagerOptions {
   mergeEmissive?: boolean;
   /** 网格化 Worker 池大小覆盖（默认按 navigator.hardwareConcurrency 推断，?workers=N 传入） */
   workers?: number;
+  /** 地形生成 Worker 池大小覆盖（默认取 min(2, 网格池-1)，?genWorkers=N 传入；0 = 不启用） */
+  genWorkers?: number;
   /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
   camera?: THREE.Camera;
   /** 驻留区块总上限（视距内优先保留），默认 512；URL ?maxChunks=N */
@@ -64,6 +108,12 @@ export interface ChunkManagerOptions {
   /** 区块最短驻留秒数（缓冲区 LRU 淘汰前置条件），默认 10 */
   minResidencySec?: number;
 }
+
+/**
+ * 区块网格的解析包围球半径：所有顶点都在本地 16×H×16 盒内，
+ * 取盒的外接球（中心 8,H/2,8）比 computeBoundingSphere 逐顶点扫描更快，且对剔除而言足够紧。
+ */
+const CHUNK_BOUND_RADIUS = Math.hypot(CHUNK_SIZE / 2, WORLD_HEIGHT / 2, CHUNK_SIZE / 2);
 
 const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   const g = new THREE.BufferGeometry();
@@ -80,7 +130,11 @@ const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
   // 每个顶点的风摆权重（0~1）：底部 0 / 顶部随植物高度，只对十字面植物生效
   g.setAttribute('aSway', new THREE.BufferAttribute(p.sways, 1));
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
-  g.computeBoundingSphere();
+  // 解析包围球（局部坐标）：替代逐顶点 computeBoundingSphere，移动场景每次重网格都省一次 O(顶点数) 扫描
+  g.boundingSphere = new THREE.Sphere(
+    new THREE.Vector3(CHUNK_SIZE / 2, WORLD_HEIGHT / 2, CHUNK_SIZE / 2),
+    CHUNK_BOUND_RADIUS,
+  );
   return g;
 };
 
@@ -248,6 +302,18 @@ export class ChunkManager implements System {
   private inFlight = new Map<string, InFlight>();
   /** 视距外的脏标记暂存区：驻留网格可能在 R+2..R+8，配置失效后仍需靠近时重网格化 */
   private deferredDirty = new Set<string>();
+
+  // ---- 地形生成 Worker 池（与网格化池相互独立，避免互相抢活）----
+  private genWorkers: Worker[] = [];
+  /** 每个生成 Worker 当前在途任务数，用于 least-busy 派发 */
+  private genBusy: number[] = [];
+  /** main = 同步回退（自定义生成器 / 池构造失败 / 运行期错误） */
+  private genMode: 'worker' | 'main' = 'main';
+  /** 复刻生成器所需配置（构造期一次性取自 world.generator） */
+  private genConfig: WorkerGeneratable['workerConfig'] | null = null;
+  /** world.generator 是否可被 Worker 复刻（自定义生成器为 false，永远走主线程） */
+  private genSupported = false;
+  private pendingGen = new Map<string, PendingGen>();
   private pendingResults: WorkerResponse[] = [];
   private totals: MeshStats & { chunks: number } = { quads: 0, vertices: 0, merged: 0, ms: 0, chunks: 0 };
 
@@ -337,6 +403,19 @@ export class ChunkManager implements System {
       this.spawnWorkers(ChunkManager.decidePoolSize(options.workers));
     }
     this.getConfig(); // 建立低频配置并向所有 Worker 下发
+    // 地形生成池：仅当 world.generator 可被 Worker 逐位复刻且未强制主线程时启用；
+    // 自定义生成器（插件替换）没有标记，保持主线程同步生成，行为完全不变。
+    const generatable = asWorkerGeneratable(this.world.generator);
+    this.genSupported = !!generatable;
+    if (!options.forceMainThread && generatable) {
+      // ids 必须给全量表：构造器除 30 个规范名外，群系 profile 还会按名查 surface /
+      // filler / plants / strata 等，只带 this.ids 会让这些查询在 Worker 里退化成 0
+      const cfg = generatable.workerConfig;
+      const ids: Record<string, number> = {};
+      for (const b of this.world.registry.all()) ids[b.name] = b.id;
+      this.genConfig = { seed: cfg.seed, ids, options: cfg.options };
+      this.spawnGenWorkers(ChunkManager.decideGenPoolSize(options.genWorkers, this.workers.length));
+    }
   }
 
   /** 建立 Worker 池；构造不完整时整体回退主线程，不留「部分 Worker」残池 */
@@ -359,6 +438,74 @@ export class ChunkManager implements System {
       this.busy.push(0);
       this.workerConfig.push(-1);
     }
+  }
+
+  /** 推断生成 Worker 池规模：默认从网格池里匀出 1~2 个，避免小核机开太多线程 */
+  private static decideGenPoolSize(override: number | undefined, meshWorkers: number): number {
+    if (override !== undefined) return Math.max(0, Math.min(4, Math.floor(override)));
+    return Math.max(1, Math.min(2, Math.max(1, meshWorkers - 1)));
+  }
+
+  /** 建立生成 Worker 池；构造不完整时整体回退主线程同步生成（不影响网格化池） */
+  private spawnGenWorkers(want: number): void {
+    if (want <= 0) return;
+    const pool = createWorkerPool(MeshWorker, want);
+    if (pool.partial) {
+      console.warn('[worldgen] 生成 Worker 池构造不完整，回退主线程同步生成');
+      return;
+    }
+    this.genMode = 'worker';
+    const cfg = this.genConfig as WorkerGeneratable['workerConfig'];
+    for (const w of pool.workers) {
+      // 两个池共用 pendingResults 缓冲，靠消息上的 channel 分流
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+      w.onerror = (e) => {
+        console.warn('[worldgen] 生成 Worker 运行失败，回退主线程同步生成：', e.message);
+        this.fallbackGenToMain();
+      };
+      this.genWorkers.push(w);
+      this.genBusy.push(0);
+    }
+    for (let i = 0; i < this.genWorkers.length; i++) {
+      this.genWorkers[i].postMessage({ type: 'genConfig', config: cfg, wid: i });
+    }
+  }
+
+  /**
+   * 运行期调整地形生成线程（设置页）：
+   * auto 按当前网格池规模推断，0 = 主线程同步。切换会先结算在途任务再重建池。
+   */
+  setGenThreads(spec: GenThreads): void {
+    this.teardownGenWorkers();
+    this.genMode = 'main';
+    if (!this.genSupported || !this.genConfig) return;
+    const want = spec === 'auto'
+      ? ChunkManager.decideGenPoolSize(undefined, Math.max(1, this.workers.length))
+      : spec;
+    if (want <= 0) return;
+    this.spawnGenWorkers(want);
+  }
+
+  /** 销毁生成池；在途生成任务立即结算，区块由同步路径重新认领 */
+  private teardownGenWorkers(): void {
+    for (const w of this.genWorkers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    this.genWorkers = [];
+    this.genBusy = [];
+    // 只丢弃生成通道的回传，网格池的消息必须保留
+    this.pendingResults = this.pendingResults.filter((m) => {
+      if (m.type === 'genResult') return false;
+      if (m.type === 'error' && m.channel === 'gen') return false;
+      return true;
+    });
+    for (const rec of this.pendingGen.values()) rec.resolve();
+    this.pendingGen.clear();
+  }
+
+  /** 生成池整体失效：后续区块改由主线程同步生成 */
+  private fallbackGenToMain(): void {
+    if (this.genMode === 'main') return;
+    this.genMode = 'main';
+    this.teardownGenWorkers();
   }
 
   /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
@@ -412,6 +559,12 @@ export class ChunkManager implements System {
   get mesherMode(): 'worker' | 'main' { return this.mode; }
   get workerCount(): number { return this.workers.length; }
   get inFlightCount() { return this.inFlight.size; }
+  /** 在途地形生成任务数（诊断 / 基准用） */
+  get genPendingCount() { return this.pendingGen.size; }
+  /** 生成 Worker 池规模（诊断用；0 = 未启用 / 已回退） */
+  get genWorkerCount() { return this.genWorkers.length; }
+  /** 地形生成通道：worker = 异步，main = 主线程同步回退 */
+  get generationMode(): 'worker' | 'main' { return this.genMode; }
   get meshStats() { return { ...this.totals }; }
   /** 运行时诊断：所有 Worker 是否都已确认当前配置 */
   get configReady(): boolean {
@@ -513,15 +666,18 @@ export class ChunkManager implements System {
     return list;
   }
 
-  /** 请求一个区块的网格；同一 key 在途时复用同一 Promise（代次去重） */
-  private requestMesh(cx: number, cz: number): Promise<void> {
+  /**
+   * 请求一个区块的网格；同一 key 在途时复用记录（代次去重）。
+   * wantPromise=false（流式调度的常态）时不分配 Promise，只有预载等待才要。
+   */
+  private requestMesh(cx: number, cz: number, wantPromise = false): Promise<void> | null {
     const key = chunkKey(cx, cz);
     const existing = this.inFlight.get(key);
-    if (existing) return existing.promise;
+    if (existing) return wantPromise ? (existing.promise ?? this.adoptInFlight(existing)) : null;
     const generation = ++this.generation;
     const configRevision = this.configRevision;
-    let resolve!: () => void;
-    const promise = new Promise<void>((r) => { resolve = r; });
+    let resolve: () => void = () => {};
+    const promise = wantPromise ? new Promise<void>((r) => { resolve = r; }) : null;
     this.inFlight.set(key, { generation, configRevision, promise, resolve });
     // 网格调度是"有意义访问"：刷新 LRU 时钟，让缓冲区保留玩家真正看过的区块
     this.world.touchChunk(cx, cz);
@@ -542,13 +698,103 @@ export class ChunkManager implements System {
       this.getConfig();
       const wid = this.pickWorker();
       const snapshot = buildMeshSnapshot(this.world, cx, cz);
+      // known 为 null（9 格全已知）时不转移，Worker 侧按全已知处理
+      const transfer = [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer];
+      if (snapshot.known) transfer.push(snapshot.known.buffer);
       this.workers[wid].postMessage(
         { type: 'mesh', cx, cz, generation, configRevision, snapshot, wid },
         // N4：known 位图与 data 同步转移，避免 Worker 侧收到丢失/复制的来源信息
-        [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer, snapshot.known.buffer],
+        transfer,
       );
     }
     return promise;
+  }
+
+  /** 给已在途但没有 Promise 的记录补一个等待者（预载与流式派发撞车时） */
+  private adoptInFlight(rec: InFlight): Promise<void> {
+    let done!: () => void;
+    const promise = new Promise<void>((r) => { done = r; });
+    const prev = rec.resolve;
+    rec.resolve = () => { prev(); done(); };
+    rec.promise = promise;
+    return promise;
+  }
+
+  /**
+   * 尝试派发一个脏区块（三段优先级循环共用）。
+   * 未生成 / 已在途的保留脏标记等下一帧；返回是否真正发出。
+   */
+  private tryDispatch(cx: number, cz: number): boolean {
+    const key = chunkKey(cx, cz);
+    // 未生成的区块保留脏标记等下一帧
+    if (!this.world.getChunk(cx, cz)?.generated) return false;
+    if (this.inFlight.has(key)) return false;
+    this.world.dirty.delete(key);
+    this.requestMesh(cx, cz);
+    return true;
+  }
+
+  /**
+   * 请求一个区块的地形数据。Worker 模式异步入队；同步回退直接 ensureChunk。
+   * 同一 key 在途时复用 Promise（代次去重）。
+   */
+  private requestGenerate(cx: number, cz: number): Promise<void> {
+    const key = chunkKey(cx, cz);
+    const existing = this.pendingGen.get(key);
+    if (existing) return existing.promise;
+    if (this.genMode !== 'worker') {
+      try {
+        this.world.ensureChunk(cx, cz);
+      } catch (e) {
+        console.error(`[worldgen] 主线程同步生成失败 (${cx}, ${cz})：`, e);
+      }
+      return Promise.resolve();
+    }
+    const generation = ++this.generation;
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    this.pendingGen.set(key, { generation, promise, resolve });
+    const wid = this.pickGenWorker();
+    this.genWorkers[wid].postMessage({ type: 'gen', cx, cz, generation, wid });
+    return promise;
+  }
+
+  /** 选最空闲的生成 Worker（在途任务数最少），并记一笔在途 */
+  private pickGenWorker(): number {
+    let best = 0;
+    for (let i = 1; i < this.genBusy.length; i++) if (this.genBusy[i] < this.genBusy[best]) best = i;
+    this.genBusy[best]++;
+    return best;
+  }
+
+  /**
+   * 处理生成通道回传：落地 data / 丢弃过期与已卸载区块 / 失败回退主线程补算。
+   * 结果与请求跨帧配对，因此过期代次直接丢，不能沿用网格通道的“重排 dirty”策略。
+   */
+  private drainGen(msg: GenResponse): void {
+    if (msg.wid != null && this.genBusy[msg.wid] > 0) this.genBusy[msg.wid]--;
+    const key = chunkKey(msg.cx, msg.cz);
+    const rec = this.pendingGen.get(key);
+    if (!rec || rec.generation !== msg.generation) {
+      // genConfig 初始化失败的广播错误（合成坐标 0,0）：整体回退主线程生成
+      if (msg.type === 'error' && msg.cx === 0 && msg.cz === 0) this.fallbackGenToMain();
+      return;
+    }
+    this.pendingGen.delete(key);
+    if (msg.type === 'genResult') {
+      // 已被同步路径抢先生成（回退窗口）：丢弃 Worker 结果，避免重复初始化
+      if (this.world.chunks.has(key)) { rec.resolve(); return; }
+      try {
+        this.world.acceptGeneratedChunk(msg.cx, msg.cz, msg.data);
+      } catch (e) {
+        console.error(`[worldgen] 生成结果落地失败 (${msg.cx}, ${msg.cz})，主线程补算：`, e);
+        try { this.world.ensureChunk(msg.cx, msg.cz); } catch { /* 已记录，跳过该区块 */ }
+      }
+    } else {
+      console.error('[worldgen] 区块生成失败，主线程补算：', msg.message);
+      try { this.world.ensureChunk(msg.cx, msg.cz); } catch { /* 已记录，跳过该区块 */ }
+    }
+    rec.resolve();
   }
 
   /** 收割 Worker 回传：丢弃过期代次与已卸载区块 */
@@ -563,6 +809,8 @@ export class ChunkManager implements System {
         if (this.workerConfig[msg.wid] !== undefined) this.workerConfig[msg.wid] = msg.revision;
         continue;
       }
+      // 生成通道：独立队列与在途表，先行分流
+      if (msg.channel === 'gen') { this.drainGen(msg); continue; }
       // 每条回传消息都对应一次派发计数：无论结果是否过期都要回退，
       // 否则「区块卸载后旧结果晚到」会让 busy 计数永久偏高（v1.3.2 修复）。
       if (msg.wid != null && this.busy[msg.wid] > 0) this.busy[msg.wid]--;
@@ -710,11 +958,16 @@ export class ChunkManager implements System {
       }
     }
 
-    // 0a) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的区块重新入队
+    // 0a) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的区块重新入队。
+    // 已在 dirty 里的不重复 add：移动时每帧全量扫描驻留区块，重复 add 是白费的哈希写入。
     for (const [key, chunk] of this.world.chunks) {
       if (!chunk.generated) continue;
       if (Math.abs(chunk.cx - cx) > margin || Math.abs(chunk.cz - cz) > margin) continue;
-      if (!this.meshes.has(key) && !this.inFlight.has(key)) this.world.dirty.add(key);
+      // 已在生成在途表里的不重复入队：结果落地时会自行入脏
+      if (!this.meshes.has(key) && !this.inFlight.has(key) && !this.pendingGen.has(key) &&
+          !this.world.dirty.has(key)) {
+        this.world.dirty.add(key);
+      }
     }
 
     // 1) 数据生成（背压：dirty + 在途网格任务积压时停止继续生成）
@@ -728,21 +981,43 @@ export class ChunkManager implements System {
       }
     } else {
       const genStart = performance.now();
+      let genDispatched = 0;
       for (const [dx, dz] of this.spiral(R)) {
         const key = chunkKey(cx + dx, cz + dz);
         const chunk = this.world.getChunk(cx + dx, cz + dz);
-        if (!chunk?.generated) {
-          this.world.ensureChunk(cx + dx, cz + dz);
-          this.world.dirty.add(key);
-          if (this.world.dirty.size + this.inFlight.size >= BACKLOG_LIMIT) break;
-          if (performance.now() - genStart > GEN_BUDGET_MS) break;
-        }
+        if (chunk?.generated) continue;
+        if (this.pendingGen.has(key)) continue;   // 异步在途，等回传
+        if (genDispatched >= MAX_GEN_DISPATCH_PER_FRAME) break;
+        if (this.pendingGen.size >= MAX_PENDING_GEN) break;
+        this.requestGenerate(cx + dx, cz + dz);
+        genDispatched++;
+        // Worker 路径只发消息不吃主线程预算；同步回退仍守时间预算
+        if (this.genMode !== 'worker' && performance.now() - genStart > GEN_BUDGET_MS) break;
+        if (this.world.dirty.size + this.inFlight.size >= BACKLOG_LIMIT) break;
       }
     }
 
-    // 2) 派发网格任务（近处优先，每帧限量，避免消息风暴）
+    // 2) 派发网格任务：三段优先级 + 每帧限量，避免消息风暴。
+    //    实测（SwiftShader 浏览器探针）：移动时 71% 的派发是「已网格化的边界刷新」
+    //    （ensureChunk 生成新块后会回脏 8 个邻居重算边界面 AO/角点光），
+    //    其中 62% 还在视锥外 —— 它们挤占了真正的新区块，造成近处 pop-in。
+    //    因此顺序固定为：① 首次网格化（视野内外皆可，按距离）
+    //                    ② 视野内的边界刷新
+    //                    ③ 视野外的边界刷新（每帧至多 MAX_OFFVIEW 个）
     if (this.world.dirty.size > 0) {
-      const list: [number, number][] = [];
+      // 视线水平分量（缺相机时退化为全视野）
+      let fwdX = 0;
+      let fwdZ = -1;
+      if (this.camera) {
+        const dir = this.camera.getWorldDirection(this.sortTmp);
+        const len = Math.hypot(dir.x, dir.z);
+        if (len > 1e-6) { fwdX = dir.x / len; fwdZ = dir.z / len; }
+      }
+      const camX = this.camera ? this.camera.position.x : 0;
+      const camZ = this.camera ? this.camera.position.z : 0;
+
+      interface DirtyEntry { x: number; z: number; d2: number; refresh: boolean; out: boolean }
+      const list: DirtyEntry[] = [];
       for (const key of this.world.dirty) {
         const [x, z] = parseChunkKey(key);
         if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
@@ -752,20 +1027,50 @@ export class ChunkManager implements System {
           this.deferredDirty.add(key);
           continue;
         }
-        list.push([x, z]);
+        // 视野判定：区块中心（+8 偏移指块中心）与视线方向的点积
+        const dx = x * CHUNK_SIZE + 8 - camX;
+        const dz = z * CHUNK_SIZE + 8 - camZ;
+        const dist = Math.hypot(dx, dz);
+        const dot = dist > 1e-6 ? (dx * fwdX + dz * fwdZ) / dist : 1;
+        list.push({
+          x, z,
+          d2: (x - cx) ** 2 + (z - cz) ** 2,
+          refresh: this.meshes.has(key),
+          out: dot < VIEW_DOT_THRESHOLD,
+        });
       }
       list.sort((a, b) =>
-        (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - ((b[0] - cx) ** 2 + (b[1] - cz) ** 2));
+        (a.refresh ? 1 : 0) - (b.refresh ? 1 : 0) ||
+        (a.out ? 1 : 0) - (b.out ? 1 : 0) ||
+        a.d2 - b.d2);
+
       let dispatched = 0;
-      for (const [x, z] of list) {
+      let refresh = 0;
+      let offview = 0;
+      // ① 首次网格化最优先（不区分视野，保证流式加载不断档）
+      for (const it of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME) break;
-        const key = chunkKey(x, z);
-        // 未生成的区块保留脏标记等下一帧
-        if (!this.world.getChunk(x, z)?.generated) continue;
-        if (this.inFlight.has(key)) continue;
-        this.world.dirty.delete(key);
-        this.requestMesh(x, z);
+        if (it.refresh) continue;
+        if (!this.tryDispatch(it.x, it.z)) continue;
         dispatched++;
+      }
+      // ② 视野内的边界刷新
+      for (const it of list) {
+        if (dispatched >= MAX_DISPATCH_PER_FRAME || refresh >= MAX_REFRESH_DISPATCH_PER_FRAME) break;
+        if (!it.refresh || it.out) continue;
+        if (!this.tryDispatch(it.x, it.z)) continue;
+        dispatched++;
+        refresh++;
+      }
+      // ③ 视野外的边界刷新：双重限流，玩家回头前还有第 0 步兜底重排
+      for (const it of list) {
+        if (dispatched >= MAX_DISPATCH_PER_FRAME || refresh >= MAX_REFRESH_DISPATCH_PER_FRAME ||
+          offview >= MAX_OFFVIEW_DISPATCH_PER_FRAME) break;
+        if (!it.refresh || !it.out) continue;
+        if (!this.tryDispatch(it.x, it.z)) continue;
+        dispatched++;
+        refresh++;
+        offview++;
       }
     }
 
@@ -786,6 +1091,9 @@ export class ChunkManager implements System {
       if (!chunk) continue;
       const rec = this.inFlight.get(key);
       if (rec) { this.inFlight.delete(key); rec.resolve(); }
+      // 生成在途的区块被卸载：结算 Promise，Worker 晚到的结果由 drainGen 丢弃
+      const grec = this.pendingGen.get(key);
+      if (grec) { this.pendingGen.delete(key); grec.resolve(); }
       const m = this.meshes.get(key);
       if (m) {
         this.disposeMeshes(m);
@@ -819,6 +1127,7 @@ export class ChunkManager implements System {
     for (const rec of this.inFlight.values()) rec.resolve();
     this.inFlight.clear();
     this.deferredDirty.clear();
+    this.teardownGenWorkers();
     this.pendingResults.length = 0;
     for (const [key, m] of this.meshes) {
       this.disposeMeshes(m);
@@ -842,20 +1151,33 @@ export class ChunkManager implements System {
       const cx = this.centerX;
       const cz = this.centerZ;
       const list = this.spiral(radius);
+      // 生成阶段：Worker 模式一次把整圈请求发出去（等回传）；同步回退逐块 ensureChunk
+      const genPromises: Promise<void>[] = [];
       for (let i = 0; i < list.length; i++) {
         const [dx, dz] = list[i];
-        this.world.ensureChunk(cx + dx, cz + dz);
+        genPromises.push(this.requestGenerate(cx + dx, cz + dz));
         if (i % 3 === 2) {
           onProgress?.((i + 1) / list.length * 0.5);
           await new Promise((r) => setTimeout(r, 0));
         }
       }
+      const genDeadline = performance.now() + LOAD_TIMEOUT_MS;
+      while (this.pendingGen.size > 0 && performance.now() < genDeadline) {
+        this.drainResults();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      if (this.pendingGen.size > 0) {
+        console.warn('[worldgen] 预载生成等待超时，回退主线程同步生成');
+        this.fallbackGenToMain();
+      }
+      await Promise.all(genPromises);
 
       const promises: Promise<void>[] = [];
       for (const [dx, dz] of list) {
         const key = chunkKey(cx + dx, cz + dz);
         this.world.dirty.delete(key);
-        promises.push(this.requestMesh(cx + dx, cz + dz));
+        // 预载需要等待完成：显式要 Promise
+        promises.push(this.requestMesh(cx + dx, cz + dz, true) as Promise<void>);
       }
       let done = 0;
       for (const p of promises) {

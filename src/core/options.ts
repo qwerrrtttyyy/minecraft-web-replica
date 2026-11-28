@@ -8,10 +8,17 @@ import { clamp } from './types';
  * main 启动时以本模块为准，改动即写回，并同步进世界存档的 settings 字段。
  */
 
-/** 画质档位：auto = 移动端按帧率自适应；其余为固定渲染分辨率倍率 */
+/**
+ * 画质档位：auto = 交给帧预算 governor 按帧耗时分档（桌面 / 移动同一套逻辑）；
+ * 其余为固定渲染分辨率倍率，governor 停用。
+ */
 export type QualityMode = 'auto' | 'high' | 'balanced' | 'power';
 /** 网格化线程：auto 按核数推断，main 走主线程同步，其余为固定 Worker 数量 */
 export type MesherThreads = 'auto' | 'main' | 1 | 2 | 4;
+/** 目标帧率：auto = min(设置档, 屏幕实测刷新率) */
+export type FrameTarget = 'auto' | 30 | 60 | 120;
+/** 地形生成线程：auto 从网格池匀出，0 = 不启用（主线程同步），其余为固定数量 */
+export type GenThreads = 'auto' | 0 | 1 | 2 | 4;
 
 export interface Options {
   /** 音效总开关 */
@@ -66,6 +73,12 @@ export interface Options {
   weather: boolean;
   /** 实验性玩法：透明通道按距离排序（关闭后玻璃/水偶有叠加穿帮） */
   sortTransparent: boolean;
+  /** 动态分辨率：auto 画质下允许 governor 按帧耗时升降渲染分辨率（桌面/移动端均可，默认开） */
+  dynamicResolution: boolean;
+  /** 目标帧率档：决定 governor 的预算（auto = 跟随屏幕实测刷新率） */
+  frameTarget: FrameTarget;
+  /** 开发者：地形生成线程（Worker 只算 data；0/主线程为同步回退） */
+  genThreads: GenThreads;
   /** 原版界面风格（默认开启；已持久化的老用户配置仍被尊重） */
   vanillaUI: boolean;
 }
@@ -103,11 +116,16 @@ export const DEFAULT_OPTIONS: Options = {
   fireSpread: true,
   weather: true,
   sortTransparent: true,
+  dynamicResolution: true,
+  frameTarget: 'auto',
+  genThreads: 'auto',
   vanillaUI: true,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];
 const MESHER_THREAD_OPTIONS: readonly MesherThreads[] = ['auto', 'main', 1, 2, 4];
+const FRAME_TARGETS: readonly FrameTarget[] = ['auto', 30, 60, 120];
+const GEN_THREAD_OPTIONS: readonly GenThreads[] = ['auto', 0, 1, 2, 4];
 const RANDOM_TICK_SPEEDS: readonly RandomTickSpeed[] = [0, 1, 2, 3];
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -128,6 +146,16 @@ export function qualityScale(mode: QualityMode): number | null {
 /** 网格化线程的合法取值（设置页循环行与导入校验共用） */
 export function isMesherThreads(v: unknown): v is MesherThreads {
   return MESHER_THREAD_OPTIONS.includes(v as MesherThreads);
+}
+
+/** 目标帧率的合法取值（设置页循环行与导入校验共用） */
+export function isFrameTarget(v: unknown): v is FrameTarget {
+  return FRAME_TARGETS.includes(v as FrameTarget);
+}
+
+/** 地形生成线程的合法取值（设置页循环行与导入校验共用） */
+export function isGenThreads(v: unknown): v is GenThreads {
+  return GEN_THREAD_OPTIONS.includes(v as GenThreads);
 }
 
 /**
@@ -168,6 +196,9 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       fireSpread: bool(o.fireSpread, base.fireSpread),
       weather: bool(o.weather, base.weather),
       sortTransparent: bool(o.sortTransparent, base.sortTransparent),
+      dynamicResolution: bool(o.dynamicResolution, base.dynamicResolution),
+      frameTarget: pick(o.frameTarget, FRAME_TARGETS, base.frameTarget),
+      genThreads: pick(o.genThreads, GEN_THREAD_OPTIONS, base.genThreads),
       vanillaUI: bool(o.vanillaUI, base.vanillaUI),
     };
   } catch {
@@ -214,6 +245,9 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     fireSpread: bool(base.fireSpread, DEFAULT_OPTIONS.fireSpread),
     weather: bool(base.weather, DEFAULT_OPTIONS.weather),
     sortTransparent: bool(base.sortTransparent, DEFAULT_OPTIONS.sortTransparent),
+    dynamicResolution: bool(base.dynamicResolution, DEFAULT_OPTIONS.dynamicResolution),
+    frameTarget: pick(base.frameTarget, FRAME_TARGETS, DEFAULT_OPTIONS.frameTarget),
+    genThreads: pick(base.genThreads, GEN_THREAD_OPTIONS, DEFAULT_OPTIONS.genThreads),
     vanillaUI: bool(base.vanillaUI, DEFAULT_OPTIONS.vanillaUI),
   };
 }
