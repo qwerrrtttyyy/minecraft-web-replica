@@ -24,6 +24,7 @@ export const ACTION_LABELS = {
   hud: '显示 / 隐藏界面',
   pause: '暂停 / 菜单',
   photo: '摄影模式',
+  jei: 'JEI 物品管理器',
 } as const;
 
 export type GameAction = keyof typeof ACTION_LABELS;
@@ -44,6 +45,7 @@ export interface KeyBindings {
   hud: string;
   pause: string;
   photo: string;
+  jei: string;
 }
 
 export const DEFAULT_BINDINGS: KeyBindings = {
@@ -61,6 +63,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   hud: 'F1',
   pause: 'Escape',
   photo: 'KeyP',
+  jei: 'KeyJ',
 };
 
 const STORAGE_KEY = 'minecraft-ts-keybindings-v1';

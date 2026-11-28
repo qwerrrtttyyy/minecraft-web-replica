@@ -9,7 +9,7 @@
   &nbsp;·&nbsp; <a href="#快速开始">本地运行</a>
   &nbsp;·&nbsp; <a href="docs/ARCHITECTURE.md">架构</a>
   &nbsp;·&nbsp; <a href="docs/TESTING.md">测试</a>
-  &nbsp;·&nbsp; <a href="#english-summary">English</a>
+  &nbsp;·&nbsp; <a href="README_EN.md">English</a>
 </p>
 
 <p align="center">
@@ -36,60 +36,21 @@
 
 **v1.6.0-beta.3 摄影模式（预发布）**：按 P 进入自由相机取景——世界继续模拟，玩家 / 昼夜时刻 / 天气预览被冻结，退出一律还原；覆盖层提供时段、天气、FOV 与水印开关，截图在渲染后同帧导出 PNG，不写存档、不标脏、不改区块加载中心。引擎新增同帧渲染后钩子与 `cameraOwner` 相机归属标识；组装根为存档固定 `dayTime` / `dayCount`，运行时诊断新增 `photo-camera-owner` 注入回归。摄影模式 0 新方块 / 0 地形改动 / 0 新依赖。详见 [CHANGELOG.md](CHANGELOG.md)。
 
-**v1.6.0-beta.2 性能与依赖安全升级（预发布）**：合入 PR #36——渲染调度三段优先级派发（视锥外派发占比 62% → 24%）、地形生成 Worker 化（单区块落地 3.35 → 1.15 ms）、帧预算 governor 与「动态分辨率 / 目标帧率 / 生成线程」设置项；`verify` 拆为 7 个命名阶段并改用稳定 Chromium，修复阶段 7 Xvfb 作用域 bug。依赖升级：vite 6.4.6 / vitest 5.1.2 / puppeteer-core 25.19.0 及配套插件，npm audit 高危与严重漏洞清零。详见 [CHANGELOG.md](CHANGELOG.md)。
+> **更新历史**：本 README 只描述项目**当前状态**，不收录版本沿革；完整更新历史见 [CHANGELOG.md](CHANGELOG.md)。
 
-**v1.6.0-beta.1 集成与审查收敛（预发布）**：把此前并行的 4 条未合并 PR 收敛成单一 PR #35 并合入 main——AI 行为树节点类型收紧（`NodeConfig` / `NodeCtor` / `cfg()`）、画面优化与原版 UI 开关、Java 1.20 HUD 与横屏适配，冲突统一按「保留当前主线较新实现」处理；审查后发现并修复 3 项 Important：关闭「天气与季节」后仍会冻伤、低温暖时冷色提示不可见、新增天候/寒冷系统缺少测试，补齐 `test:weather` 26 组与诊断注入 3 组；历史文档归档到 `docs/archive/2026-11/` 并修正全部引用。详见 [CHANGELOG.md](CHANGELOG.md)。
-
-**v1.6.0-alpha.1 四季与天候（预发布）**：确定性晴 / 雨 / 雪 / 雷暴按 seed + 天数 + 温度 + 季节派生并指数平滑切换，闪电节拍可复现；`WEATHER.darkness` 统一方块光 / 实体光 / 粒子的天气因子，运行时诊断交叉校验两套通道；新增寒冷与 `freeze` 冻伤（冬季 / 夜晚 / 恶劣天气按温暖值惩罚，有遮蔽减半，护甲按 `DamageKind` 过滤）；雨 / 雪 / 闪电粒子与 HUD 指示，设置页可关闭天气与季节。同版本包含一轮全项目审查修复：插件并发 enable 竞态与 teardown 丢失、manifest 防御性拷贝、主线程回退的液体 N4 一致性、视距外脏标记暂存、透明排序重开重排、浆果丛储能与品系附加产出、无敌帧 / 存档 slot / 依赖诊断修正，以及 >1MB 演示 WebP 压缩。详见 [CHANGELOG.md](CHANGELOG.md)。
-
-**v1.5.4 火光与饥饿（融合远端熔炉烧炼）**：在 v1.5.x 连续性能 / 渲染迭代之后回到内容，是「性能 → 内容」交替节奏中的内容版本，并与远端 1.5.3 的熔炉烧炼闭环融合——**火光方块地基**：新增营火 / 灯笼 / 蜡烛 / 火焰 4 个内置方块（显式 id 174~177 末位追加），`BlockShape` 扩出 `slab` / `candle`，`mesher.emitFace` 支持任意盒 `bounds` 并新增 `emitBox`，补齐此前缺失的 `furnace_top` / `furnace_side` 纹理；**完整饱和度**：进食叠加 0~20 饱和度且不超过当前饥饿值，消耗（exhaustion 每满 4）先扣饱和度再扣饥饿，回血额外要求饱和度 > 0，存档往返与旧档缺省满值，HUD 饥饿条 `satiated` / `drained` 视觉，数值集中在 `tuning.ts` 的 `FOOD_VALUES`（16 种可食物，`saturation = food × 0.6`）；**火焰系统**（`src/world/fire.ts`）：营火 / 火焰双热源，6 邻真实蔓延（邻格可燃直接引燃、正下方支撑除外；空气格下方实心可燃亦可引燃），寿命熄灭（默认 18s ±30%），失去支撑自熄，玩家与生物站在火 / 营火上每 0.5s 受 1 点伤害（实体由系统自管计时），刷怪落点 3 格内有火 / 营火则该次生成失败，火焰粒子与点燃 / 熄灭事件、`crackle()` 音效，可燃表 `FLAMMABLE` 103 条，设置项 `fireSpread` 默认开启、可在设置页「实验性玩法」关闭（关闭时只熄灭不蔓延，火焰与伤害仍在）；**熔炉与烹饪（融合）**：熔炉本体采用远端 `src/player/smelting.ts` + `src/ui/furnace.ts`（per-block 三槽状态 `input/fuel/output` + `burn/burnMax/progress`，10s 烧一件，燃料表 `FUEL_UNITS`，破坏 `take()` 掉落，状态入存档 `SaveData.furnaces.cells`），并扩展 `rabbit_meat → cooked_rabbit` 配方与 `crafting_table` / `bookshelf` 燃料；营火为无燃料「直接烤」（`src/ui/campfire.ts` 两槽面板，点输出即烤，可烤物判定与熔炉共用 `smeltOutputOf`）；熟肉数值统一到 `FOOD_VALUES`（熟牛 / 熟猪排 8、熟兔肉 7），新增配方「8 圆石 → 熔炉」「圆石×3 + 任意原木×3 + 煤×1 → 营火」；**温暖状态**（`src/world/warmth.ts`）：靠近热源（火 / 营火 / 灯笼 / 蜡烛 / 燃烧中的熔炉）温暖值 0~100 上升、远离下降，温暖 ≥50 时回血饥饿门槛 18 → 14，HUD 火焰细条 + 全屏暖光，存档往返。新增 `test/fire.test.ts` / `test/warmth.test.ts` / `test/survival-saturation.test.ts` / `test/campfire.test.ts`（Vitest），`test/smelting-check.cjs` 扩展兔肉配方与新燃料，`terrain-system-check` / `botany-rules-check` 方块总数 161 → 165。
-**内容更新（Unreleased）**：新增苦力怕 / 蜘蛛 / 鱿鱼三种生物（模型 + 行为树 + 自然生成 + 掉落）；新增弓与箭——右键射击、箭矢飞行 / 下坠 / 命中与消耗规则，燧石来自砂砾、线来自蜘蛛；砂岩家族扩充平滑 / 錾制 / 切制 / 红砂岩并在沙漠地层自然生成。
-
-**v1.5.4-alpha.2 审查清理（预发布）**：去除 `verify` 中重复的浏览器视觉回归，修正篮球事件的过期版本注释与移动端投掷键图标，创造模式下不再误报篮球拾取提示，并还原 PR #24 意外改动的文件权限。功能与 alpha.1 一致。
+> **当前进行中**：静态结构（村庄小屋 / 废弃矿井 / 地牢，第 5 生成阶段）已合入待发布；v2 路线图的护甲插件与联机协作草案继续推进。
 
 
 
-**v1.5.4-alpha.1 篮球物理与移动端原版体验（预发布，PR #24）**：世界内可拍可投的篮球（弹跳 / 滚动物理、走近拾取、程序化模型与音效，创造模式无限取用）；`vanillaUI` 默认开启的 Java 1.20 风格按钮与布局、PE 风格圆角方形触控按键与方形底盘摇杆；PWA 横屏锁定 + 竖屏引导兜底、10 阶段程序化挖掘裂纹覆盖层；修复区块边界水面穿透、背包 / 快捷栏点击穿透与自动保存提示遮挡快捷栏。
 
-**v1.5.3 实体 AI 系统（行为树）**：新增数据驱动行为树 AI 系统（`src/ai/`），节点只依赖 `TickContext` 接口，不 import three / World / DOM；支持 Selector/Sequence/Parallel/RandomSelector 复合节点、Inverter/Repeater/UntilFail/UntilSuccess 装饰器、条件与动作节点库、BehaviorTree JSON 编译与 NodeRegistry。`AIService` 每帧批量更新（2ms 分帧预算），实体 spawn/despawn 时 attach/detach AIComponent。内置猪/羊/僵尸/骷髅迁移到行为树 JSON，行为与 v1.4.9 等价。新增 `test:ai`（53 项断言）并挂进 `verify` 链；确定性 RNG 走 `mulberry32(hash(worldSeed, entityId, label))`。
 
-**v1.5.2 内容体系完善（正式版）**：在既有生存 / 生态体系之上补齐四类内容——**新动物与繁殖**：新增牛 / 鸡 / 兔三种被动动物，连同猪 / 羊共五种被动动物均可喂食进入求爱、双亲冷却后产幼崽，幼崽 120 秒长成（按实体 id 升序稳定择偶）；**可见悬浮掉落物**：新增 `DropManager` + `dropLogic`，方块 / 生物掉落以小方块实体弹出、浮动自转、0.8 格内同类合并（上限 999）、限时 / 掉出世界消失、入水终端下沉，拾取回背包且不进存档，散开与加权抽取全走 `dropHash`；**物品与配方闭环**：煤矿石改掉 `item:coal`，新增皮革 / 牛肉 / 鸡蛋 / 羽毛 / 兔肉 / 煤炭六种物品与图集纹理，补充「煤炭 + 木棍 → 4 火把」配方；数值集中在 `tuning.ts`。新增 `test:drop`（9 项）纯逻辑回归，方块总数 152（原 141 基线 + v1.7.0 内容植物扩充 11 种）、图集既有 tile 索引不变。
 
-> 版本编号说明：本条「内容体系完善」与下文「v1.6.0 高级与开发者设置」、[架构文档](docs/ARCHITECTURE.md) §9 的「v1.6.0 花海扩充 + 植被表现力」沿用早期规划标题；现行版本以 `src/core/version.ts` 的 `VERSION` / `RELEASE` 为唯一来源，旧标题仅作历史记录保留，不改写历史。
 
-**v1.5.2-beta.1 植物系统深化**：在 v1.4 生态 / 能量体系之上补齐四个方向——**6 日一季的季节与天气**按物种调制代谢（冬季抑制光合、雨天增强水生）；**确定性掉落系统**把玩家 / 实体掉落改为纯哈希判定，新增**土壤养分**与两种肥料（有机肥 / 骨粉）；**9 个堆肥桶方块**（id 110~118）把等级编码进 block id，借 `world.edits` 免费持久化，猪 / 羊掉肥料、骷髅掉骨粉；**插件扩展点**新增 `day/season/weather/soil` 上下文与规则优先级；**生态状态存档**让能量 / 养分 / 天数跨重载保持。新增 `src/world/ecology.ts` / `drops.ts` / `soil.ts` / `compost.ts` 四个纯数据模块。
-
-**V2 预备（进行中，自 1.5.2-alpha.1 起）**：v2.0 路线图两大支柱已启动——护甲以插件形式落地（`core:armor` 内置插件 +
-`combat:damage-incoming` 管道扩展点，原设计稿 `docs/DESIGN-V2-ARMOR.md`）；
-联机按「基础协作」里程碑出架构与协议草案（原设计稿 `docs/DESIGN-V2-MULTIPLAYER.md`）。
-
-**v1.5.1 渲染通道与顶点布局整理（第 2 轮 3D 优化）**：三个改动都做成了**受控实验**（假设 / 对照 / 翻转 / 判据，
-原始数据与复现步骤见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)）：
-
-- **顶点属性打包**：每顶点 60 B → **44 B**（`colors`(3) + `aTileRect`(4) → `aShade`(1) + `aTileOrigin`(2)），显存与带宽下降，画面零差异。
-- **抗锯齿分档** `?aa=off|msaa|ssaa`：MSAA 在创建 GL 上下文时开启硬件抗锯齿，SSAA 走像素比 ×1.5 超采样；默认关闭。
-- **自发光并入不透明通道**：萤石 / 南瓜灯 / 火把改用 `aTint=2` 复用不透明材质，shader 跳过光照与染色。
-  draw call 64 → 47、emissive mesh 49 → 0，**几何缓冲逐字节相同、15552 个像素采样零差异**；
-  `?emerge=0` 可切回并入前的独立 emissive 通道作对照。
-
-**v1.5.1 平滑光照**：光照从「整面一个值」改为**逐顶点**——每个角点取「空气侧」相邻 4 格光照的均值
-（原版同款模型）。墙面、地面、树干底部、洞口与火把周围不再是大片死平，接触阴影与光源衰减变成连续渐变。
-实现上不新增顶点属性、不改快照契约、不动 Worker 边界；代价是部分面退回逐面输出（quad +6%、网格化 CPU +5%），
-面覆盖与逐格亮度保持完全一致。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §8.3.1。
-
-**v1.5.2 植物扩充**：整合 28 种新植物（薰衣草 / 雪莲 / 荧光苔 / 月光花等，内置 id 120~147），含成片花圃、水生与洞穴发光生态、风摆动画；插件植物顺延 159~164（内置方块扩充后）。同期整合 v1.5.1 收尾修复与 WebP 演示资源。
-
-**v1.5.1 集成内容**：本版本自预发布 `1.5.1-alpha.1` 转正，整合了审查修复与新地貌——4 个新群系（恶地 / 沼泽 / 热带草原 / 樱花林）、12 个新方块（id 98~109）、跳跃输入缓冲与命中反馈，以及设置页「实验性玩法」的 7 个 gamerule 风格开关（随机刻速度 / 昼夜循环 / 死亡保留物品 / 生物生成 / 体素云层 / 方块重力 / 透明排序）。详见 [CHANGELOG.md](CHANGELOG.md) 的 `1.5.1-alpha.1` 条目。
-
-**v1.5.0 实验性内容与 WASM 内核（预发布系列）**：新增**实验性内容开关**（设置页可开/关，默认关闭）——开启后启用真实 WebAssembly 计算内核（噪声批量计算，带逐位等价性自检与自动回退）与插件三载体（js / wasm:module / wasm:host）；关闭即回到纯 JS 路径。插件 API 契约版本 `2.1.0` 与项目版本解耦；扩展点注册表支持世界生成与游戏循环扩展。v1.4.9 的设置页 / 合成 / PWA / 脱困等能力全部保留。
-
-**v1.4.9 整合发布**：统一版本并整合待合并改进（含插件体系强化、设置/选项页与导入导出、合成相关基础、体验优化与文档更新等）；具体细节见各 PR 与提交记录。
-
-## 实验性内容（v1.5.0）
+## 实验性内容
 
 设置页「实验性内容」分组提供 **WASM 内核 / 插件载体** 总开关，**默认关闭**：
 
-- 关闭：地形噪声走纯 JS 路径，WASM 插件载体（wasm:module / wasm:host）拒绝启用；行为与 v1.4.9 完全一致。
+- 关闭：地形噪声走纯 JS 路径，WASM 插件载体（wasm:module / wasm:host）拒绝启用。
 - 开启：启用真实 WebAssembly 计算内核（带逐位等价性自检、失败自动回退）与三种插件载体、扩展点注册表。
 - URL 参数 `?wasm=0` 可在实验性内容开启时强制关闭 WASM 后端（便于对照基准）。
 - 实验性功能的状态与统计可通过 `CraftAPI.wasm.status()/stats()` 与 F3 面板查看。
@@ -117,82 +78,7 @@
 - 所有标签统一带 `v` 前缀：正式版里程碑为 `vN`（`v1`、`v2`…），历史迭代标签为 `vX.Y.Z`（`v1.3.0`、`v1.3.1`）。
 - `npm run check:version` 机械校验双轨格式与一致性，并扫描 `src/**/*.ts` 禁止硬编码版本字面量。
 
-**v1.5.0 生存模式合成系统**：新增可用的工作台合成界面（3×3 材料网格 + 结果槽 + 背包区 +
-配方列表），生存模式下从暂停菜单「工作台」或**空手右键工作台方块**均可打开。内置最小闭环配方：
-原木 → 木板、4 木板 → 工作台、4 沙 → 砂岩、4 圆石 → 石砖、2 木板 → 4 木棍（新增物品）。
-新增 `test:crafting`（43 组）回归。
-
-**v1.4.2 合并光照/天空增强**：合并 `trae/agent-9z2CVz` 分支——天空光/方块光双通道 BFS 传播、
-44 种方块（光源/建材/植物/羊毛）、Greedy Meshing 光照通道、Web Worker 网格化池、
-8 相月贴图、双层星点异相闪烁。`test:light` / `test:visual` 回归通过。
-
-**v1.4.1 植物生态与能量体系**：追加 **35 种植物 / 树种方块**（id 57~91，仍为末位追加），
-新增 **随机刻生态引擎** `Botany` 与 **植物内在能量系统**：植物靠光照 / 水体 / 阴暗蓄能，
-能量决定生长、蔓延与开花；蓄满后开花（粒子反馈）、可采集花蜜，向日葵与发光地衣构成
-根系供能枢纽，蘑菇在火光旁会枯萎、水生植物离水会枯死。新增 `test:botany`（28 组）与
-`test:plant-energy`（29 组）回归。
-
-**还原工程第 1 批**：天穹精修（8 相月贴图、双层星点异相闪烁、日月地平线大气放大与染色、
-体素云扁平化、雾区间前移）、HUD 原版化（四臂镂空准星、凹陷物品槽、选中白框、状态图标描边）、
-新增南瓜与书架两种方块（id 55、56，末位追加）。`test:visual` 增至 13 项、
-`test:terrain-system` 增至 20 组。所有纹理仍为代码逐像素绘制，**不含任何原版资源**。
-
-**v1.4.0 方块与地形体系整合**：追加 **10 种方块**（铜 / 绿宝石 / 青金石 / 红石矿石、黏土、
-灰化土、仙人掌、甘蔗、蕨、花岗岩，id 45~54 仍为末位追加）；`DefaultGenerator` 重构为
-`columns → ores → trees → decorate` 四个显式阶段 + **群系配置表** `BIOME_PROFILES`，
-新方块全部由配置表驱动自然生成（浅海黏土、针叶林灰化土、沙漠仙人掌、临水甘蔗、高山绿宝石）。
-新增 `test:terrain-system`（18 组断言），测试体系文档化见 [docs/TESTING.md](docs/TESTING.md)。
-
-**v1.5.0 设置页**：新增独立 **Options 设置页**（标题屏「设置」/ 暂停菜单「设置」），
-把原先挤在暂停菜单里的渲染距离 / 灵敏度 / FOV 收拢进去，并补上**音量**与**反转 Y 轴**；
-新增 `core/options.ts` 作为设置的唯一权威来源，独立持久化到 localStorage（跨世界、跨存档），
-旧存档内嵌 settings 仅作无本地配置时的兜底；音效引擎与输入层相应支持音量与 Y 轴反转，
-`CraftAPI.settings` 扩展 `volume(v)` / `invertY(v)`。新增 `test:options`（24 项，含桌面 / 移动端 / 持久化）
-并纳入 `npm run verify`。
-
-**v1.6.0 高级与开发者设置**：设置页拆出 **视频** 与 **开发者** 两组，新增 **画质档位**
-（自动 / 高 / 均衡 / 省电，映射 `engine.setQualityScale()`，自动档仍交给自适应逐帧调整）、
-**粒子效果**、**视角摇晃**、**自动跳跃**、**触控灵敏度**（仅移动端显示），开发者组含
-**显示调试信息**（常显 F3 面板）、**Greedy 网格合并**、**网格化线程**（自动 / 主线程 / 1 / 2 / 4，
-运行期重建 Worker 池，在途任务由主线程补算）、**自动保存间隔**（关闭 / 8 / 15 / 30 秒）与
-**设置导入导出**（JSON 文本互拷，导入按已知字段过滤 + 规范化）。`ChunkManager` 新增
-`setWorkerPoolSize()` / `recommendedPoolSize()`，Worker 池重建期间到达的网格请求改为先排队、
-配置下发后补算，不再报「配置未就绪」。`CraftAPI.settings` 相应扩展 `quality` / `particles` /
-`viewBob` / `autoJump` / `touchSensitivity` / `debugOverlay` / `greedy` / `mesherThreads` /
-`autosaveInterval` / `exportOptions()` / `importOptions(json)`。`test:options` 增至 41 项
-（桌面 / 移动端 / 高级项 / 开发者项 / 导入导出 / 跨会话持久化）。
-
-**v1.1.0 新增**：完整可玩的**生存模式**（生命 / 饥饿 / 挖掘耗时 / 掉落背包 / 僵尸 / 死亡重生），
-以及面向手机的**性能与交互优化**（动态分辨率、更低渲染距离与粒子预算、触控震动反馈与大按钮布局）。
-
-**v1.3.0 渲染管线升级**：区块网格化整体迁入 **Web Worker 池**（`?worker&inline` Blob Worker，单文件
-`file://` 下可直接运行；默认 `min(hardwareConcurrency - 1, 4)` 个 Worker、least-busy 派发，
-构造或运行期任一 Worker 失败都整体回退主线程），并实现 **Greedy Meshing**——按面方向做 mask
-贪心合并，quad 数下降约 40%，且保证「每个面格的贴图与亮度完全不变」。
-
-**v1.3.0 光照升级**：移植**天空光 / 方块光**双通道（0~15），火把与南瓜灯能真正照亮洞穴；
-光照随顶点进入 shader，昼夜与点光源不增加 draw call，Greedy 只在光照一致的面之间合并。
-
-**v1.3.1 集成复核**：合并画面润色与光照 / 新方块 / 图集移植，并修掉移植带入的**天空光不回收**
-与**重复放置白扣背包**两处真实缺陷；`test:visual` 视觉回归纳入 `npm run verify` 与 CI，
-补上 MIT LICENSE。逐条改动见文末「v1.3.1 集成复核与修复记录」。
-
-**v1.3.2 运行时诊断与生命周期修复**：修复运行时注册方块后 Worker 配置不刷新、暂停/死亡期间
-按键卡住、菜单→方块库关闭后直接恢复游戏、入水后残留摔落伤害等缺陷；插件并发启用 / 初始化中
-停用与 `EventChannel.waitFor` 清理补齐代次机制。新增 **运行时诊断组**
-（`CraftAPI.diagnostics.run()`、F3 面板、每 10 秒自动采样）与 `test:diagnostics` 回归。
-逐条改动见文末「v1.3.2 运行时诊断与修复记录」。
-
-**v1.2.0 架构革新**：把**事件**与**插件**相关的 API 从 `main.ts` 中彻底独立为服务层
-（`ServiceContainer` + `EventService` + `PluginService`），`CraftAPI` 退化为薄门面，
-横切逻辑下沉为可启用/停用的一等公民插件；同时修复流式加载竞态与多项实测缺陷，
-并把浏览器实景测试纳入 `npm run verify` 与 CI。详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
 > 非官方学习项目，与 Mojang / Microsoft 无关。所有纹理均为代码逐像素绘制，不含任何原版资源。
-
-> **文档数字口径**：下文各版本「验证结果 / 实测」里的断言数、quad 数、耗时与体积均为
-> **当时环境的历次记录**，只作演进留档；当前验收一律以 `npm run verify` 的输出与
-> `test/artifacts/results.json` 为准，不要把旧数字当作阈值。
 
 ## 快速开始
 
@@ -255,9 +141,9 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 死亡重生 | 生命归零 → 死亡界面（死因 + 重生 / 返回标题），重生回到出生点、满血满饥饿，**背包保留** |
 | 存档 | v2 版存档记录模式、生存状态（生命/饥饿/氧气/背包）、快捷栏堆叠；旧 v1 存档自动升级并进入创造模式 |
 
-食物：苹果（+4 饥饿）、猪排（+6 饥饿）。生存模式初始携带 2 个苹果 + 8 支火把；生存模式下飞行被禁用。
+食物：共 16 种可食物（`src/core/tuning.ts` 的 `FOOD_VALUES`，含苹果 / 猪排 / 熟肉 / 浆果 / 花蜜 / 蒜香米饭等），进食同时叠加饱和度。生存模式初始携带 2 个苹果 + 8 支火把；生存模式下飞行被禁用。
 
-### 合成系统（v1.5.0）
+### 合成系统
 
 生存模式新增可用的工作台界面。两个入口：**暂停菜单里的「工作台」按钮**，或**空手右键已放置的工作台方块**。
 界面为 3×3 材料网格 + 右侧结果槽 + 底部背包区 + 配方列表：
@@ -283,9 +169,9 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 箭 | 燧石 + 木棍 + 羽毛（无序，2×2） | 4 箭 |
 | 弓 | 3 线 + 2 木棍（3×3 工作台） | 1 弓 |
 
-## 方块扩充与美术（v1.3.0 移植）
+## 方块与美术
 
-在原有 26 种方块之后追加 **18 种**（id 27 起，全部末尾追加，旧存档 `edits` 差分保持有效）：
+在原有 26 种基础方块之后追加的建材 / 光源 / 植物一批（id 27 起，全部末位追加，旧存档 `edits` 差分保持有效；当前内置方块共 **165** 种，最大 id 177）：
 
 | 类别 | 方块 |
 | --- | --- |
@@ -298,7 +184,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 所有新方块都走 `BlockRegistry` 数据驱动注册：创造模式方块库（E）直接可见，生存模式可用
 `CraftAPI.survival.give('obsidian')` 获取，破坏 / 放置 / 音效 / 掉落自动生效。
 
-### v1.4.0 再追加 10 种方块（id 45~54）
+### 矿物与地表方块（id 45~54）
 
 | 类别 | 方块 | 自然生成位置 |
 | --- | --- | --- |
@@ -306,13 +192,13 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 地表 / 建材 | 黏土、灰化土、花岗岩、仙人掌 | 黏土在浅海海床；灰化土是针叶林地表；花岗岩为地下岩脉；仙人掌在沙漠沙面成列 1~3 格 |
 | 植物 | 甘蔗、蕨 | 甘蔗在临水浅岸（1~2 格高）；蕨是草甸 / 森林 / 针叶林装饰 |
 
-图集从 8×8 扩到 **16×16（256 槽）**，内置纹理 64 张后仍可继续 `registerTile()`。
-方块 id 继续 append-only，`test:terrain-system` 会机械校验 45~54 与旧 id 44 不变。
+图集为 **16×16（256 槽）**，内置纹理 64 张，`registerTile()` 可继续扩展。
+方块 id append-only，`test:terrain-system` 会机械校验既有 id 不变。
 
 > 说明：天空光 / 方块光传播已在本版本接入 Worker + Greedy 管线（见下节）；逐方块色差
 > （`colorVariance`）与 Greedy 合并天然冲突，留待后续用逐顶点色实现。
 
-### v1.4.1 植物大扩充与能量体系（id 57~91）
+### 植物与生态（id 57~91）
 
 | 类别 | 方块 | 自然生成 / 机制 |
 | --- | --- | --- |
@@ -336,7 +222,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 | 枯萎 | 支撑方块被拆后植物自动脱落；甘蔗 / 竹子 / 仙人掌 / 海带整列枯萎 |
 | 事件 | 每次变化发出 `plant:grow`（`grow / spread / decay / ripen / harvest`），自动存档插件据此标记脏 |
 
-#### 植物内在能量（v1.4.1）
+#### 植物内在能量
 
 每株植物有 0~100 的内在能量，能量来源与物种特性由
 [`plantTraits.ts`](src/world/plantTraits.ts) 的数据表驱动，而不是统一的随机概率：
@@ -361,7 +247,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 种子与浆果通过 `ITEMS[*].plant` 声明「右键种植方块」：小麦种子种麦苗、甜浆果种浆果丛，
 生存模式消耗 1 个物品，创造模式无限。
 
-### 植物杂交与品系（minecraft-web-replica-botany）
+### 植物杂交与品系
 
 品系是挂在既有植物方块上的「数据层」（[`plantStrains.ts`](src/world/plantStrains.ts)），
 不新增方块与物品注册，差异只体现在数值：生长耗能、开花阈值、采收产出、耐阴。
@@ -379,7 +265,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 - **存档**：生态存档升级为 v2（追加 `strains` 表）；v1 旧档自动迁移为无品系，破坏植株品系即消失。
 - **确定性**：杂交判定全部走 Botany 的确定性 rng，同种子同操作序列必然同结果。
 
-## 光照系统（v1.3.0 移植）
+## 光照系统
 
 天空光 + 方块光双通道（0~15），由主线程 `LightEngine` 维护，区块加载与方块变化时增量更新：
 
@@ -405,7 +291,7 @@ npm run lint     # Biome 代码质量门禁（构建 / CI 前置）
 - **触控体验**：按钮加大（`pointer:coarse` 媒体查询）、摇杆推满疾跑、破坏键长按持续挖、放置键随手持物切换为“进食”图标、关键操作（受伤/破坏/放置/死亡）触发 `navigator.vibrate` 震动反馈、`env(safe-area-inset-*)` 适配刘海与手势条、560px 与横屏 520px 两套紧凑布局。
 - **交互修正**：拖动视角与按钮区域分离（右侧空白拖动），首次点击不会“只锁定指针不干活”。
 
-## 架构（v1.3.0）
+## 架构
 
 ```
 src/
@@ -453,23 +339,26 @@ src/
 - **流式加载背压 + 自愈**：dirty 积压超 24 暂停生成；视距内「已生成但无网格」的区块
   每帧自动重新入队；卸载按 `world.chunks` 遍历，杜绝幽灵区块与内存泄漏。
 - **性能预算**：像素比封顶、每帧限时生成与网格化、编辑差分按 chunkKey 分桶、粒子单 draw call。
+- **运行时诊断**：`CraftAPI.diagnostics.run()` / F3 面板 / 每 10 秒自动采样，覆盖 Worker 配置 ACK、
+  幽灵网格、插件依赖悬空、生存数值一致性、存档脏标记老化等不变量；高风险不变量配套注入式回归。
 - **存档差分 + 全量校验**：只记录玩家改动；`validateSave()` 一次校验所有字段，坏档当作无存档。
 
-## 地形生成（v1.1.2，v1.4.0 整合为阶段管线）
+## 地形生成
 
 `DefaultGenerator` 的全部特征都由「世界坐标 + seed」决定，**区块生成顺序不影响结果**。
 
-v1.4.0 起生成过程拆成固定四阶段 `columns → ores → trees → decorate`
+生成过程拆成固定五阶段 `columns → ores → trees → decorate → structures`
 （`TERRAIN_STAGES`，实例 `gen.stageNames` 可读）：矿石只替换石头，树木先于花草，
-装饰不覆盖树冠。地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗统一收进
+装饰不覆盖树冠，`structures` 阶段按世界网格哈希放置村庄小屋 / 废弃矿井 / 地牢等静态结构
+（跨区块确定性裁剪，Worker 逐位一致）。地表 / 填充 / 花草 / 浅滩黏土 / 仙人掌 / 甘蔗统一收进
 `BIOME_PROFILES` 一张表，新增群系或地表方块不再散落在 `if` 分支里。
 
 - **域扭曲**：先用低频噪声扰动采样坐标，消除值噪声的轴对齐方格感。
 - **大陆 / 海洋 + 脊线山脉 + 河道**：大陆度控制海陆，`ridged fBm` 生成连续山脊，`|n|≈0` 等值线切出蜿蜒河谷；河谷按「距海平面高度」平滑淡出，在海岸自然收口，不会在海床上拉出深沟；高度范围约 4~66，海平面 30。
-- **温度 × 湿度群系**：`ocean / beach / desert / plains / forest / taiga / alpine`。边界用噪声抖动打散；雪线、陡坡露石、沙滩与水下沙层由群系 + 坡度共同决定。
+- **温度 × 湿度群系**：共 18 个（`ocean / beach / desert / plains / forest / taiga / alpine` 与竹林 / 白桦林 / 樱花林 / 黑森林 / 丛林 / 恶地 / 蘑菇洞窟 / 热带草原 / 积雪针叶林 / 积雪冻原 / 沼泽）。边界用噪声抖动打散；雪线、陡坡露石、沙滩与水下沙层由群系 + 坡度共同决定。
 - **出生点保底陆地**：原点附近把低洼地形平滑抬到「海平面 + 3」，抬升半径带噪声扰动，岛岸不是正圆；40 个 seed 实测全部落在陆地。
 - **渐隐洞穴**：脊线隧道 + 团块洞穴两种 3D 噪声，按「距地表深度」渐隐；**水下地层完全不挖**，避免形成被海水压住的空气袋（地表塌陷坑 / 水下空洞都已排除）。
-- **分层矿脉**：煤（y≤52）/ 铁（≤40）/ 金（≤26）/ 钻石（≤16）/ 深层萤石晶洞；v1.4.0 增加
+- **分层矿脉**：煤（y≤52）/ 铁（≤40）/ 金（≤26）/ 钻石（≤16）/ 深层萤石晶洞；
   铜（≤50）/ 红石（≤22）/ 青金石（≤32）/ 花岗岩（≤44），绿宝石（≤42）只在高山且逐格校验群系边界。
   所有矿脉只替换石头，不会填回洞穴，统一受 `oreRichness` 控制。
 - **群系地表与装饰**：针叶林地表为灰化土（掉泥土），高山为雪，沙滩 / 沙漠 / 海床为沙；
@@ -494,9 +383,9 @@ new DefaultGenerator(seed, registry, {
 });
 ```
 
-> **旧存档提示**：地形算法变更后，v1.1.1 及更早存档的 `edits` 差分仍按坐标生效，但周围自然地形会变；载入时会自动把玩家抬到新地形之上，避免卡在方块里。方块 id 未变动（矿石追加在表尾）。
+> **旧存档提示**：地形算法变更后，旧存档的 `edits` 差分仍按坐标生效，但周围自然地形会变；载入时会自动把玩家抬到新地形之上，避免卡在方块里。
 
-## 生态扩展点与插件（v1.4.3）
+## 生态扩展点与插件
 
 `CraftAPI.botany` 是插件专用的生态扩展面，写操作需要 `botany:register` 权限
 （读操作 `listRules()` / `stats()` 始终可用）：
@@ -560,7 +449,7 @@ CraftAPI.entities.spawn('pig', 5, 40, 5);
 CraftAPI.setGenerator({ seed: 1, generateChunk(cx, cz, data) {...}, surfaceHeight(x, z) {...} });
 
 // 5. 世界 / 玩家 / 时间脚本
-CraftAPI.world.biomeAt(120, -40);    // 'ocean'|'beach'|'desert'|'plains'|'forest'|'taiga'|'alpine'
+CraftAPI.world.biomeAt(120, -40);    // 群系 id，共 18 个，见 BIOME_PROFILES
 CraftAPI.world.terrain(120, -40);    // { x, z, height, biome, temperature, humidity, slope }
 CraftAPI.world.setBlock(0, 45, 0, CraftAPI.blocks.byNameGet('glowstone').id);
 CraftAPI.player.teleport(0, 50, 0);
@@ -573,7 +462,7 @@ CraftAPI.tnt.ignite(2, 40, 2);
 CraftAPI.save.setProvider({ async load(){...}, async save(d){...}, async clear(){...} });
 const data = CraftAPI.save.export();
 
-// 7. 生存模式（v1.1.0）
+// 7. 生存模式
 CraftAPI.survival.mode();                   // 'survival' | 'creative'（函数）
 CraftAPI.survival.setMode('survival');      // 切换模式
 CraftAPI.survival.damage(4, '测试');         // 扣血，带无敌帧
@@ -589,11 +478,11 @@ CraftAPI.engine.addSystem({ update(dt, t) { /* 每帧调用 */ } });
 ```
 
 事件契约位于 `src/services/events/GameEvents.ts`（`src/core/events.ts` 保留兼容再导出）。
-除原有玩法事件外，v1.2.0 新增 `chunk:unloaded` / `stream:backpressure` / `service:ready` /
+除原有玩法事件外，还有 `chunk:unloaded` / `stream:backpressure` / `service:ready` /
 `plugin:registered` / `plugin:enabled` / `plugin:disabled` / `plugin:error`，
 并支持用 TypeScript 声明合并追加自定义事件类型。
 
-### v1.2.0：插件与事件成为独立服务
+### 插件与事件服务
 
 `CraftAPI` 之上新增两组服务入口（旧 22 项能力签名完全不变）：
 
@@ -634,14 +523,13 @@ CraftAPI.events.scope('demo:ns');           // 返回 EventChannel，dispose() �
 
 ### 已预留的未来方向
 
-- **光照**：天空光 / 方块光已落地（`src/world/light.ts`）；平滑光照（逐角点取空气侧 4 格均值）已在 v1.5.1 落地；后续可扩展彩色光源。
+- **光照**：天空光 / 方块光已落地（`src/world/light.ts`），平滑光照（逐角点取空气侧 4 格均值）已落地；后续可扩展彩色光源。
 - 合成 / 工具耐久 / 护甲 / 更多怪物：生存循环已跑通，可在 `src/player/survival.ts` 与
   `src/world/blocks.ts` 的 `drops` 字段上继续叠加（见 `CraftAPI.survival`）。
 - 更多生物群系 / 结构：实现 `IWorldGenerator` 即可整体替换。
 - 多人联机：世界读写集中在 `World`，编辑差分天然是同步消息格式。
 - 纹理包：`registerTile` 可运行时重绘图集，注册后自动刷新 Worker 配置。
-- **Worker 网格化已落地**（v1.3.0 Worker 池 + Greedy；本次修复补齐构造期失败的整体回滚）；
-  后续可做跨区块网格缓存或 GPU 侧合并。
+- **Worker 网格化已落地**（Worker 池 + Greedy）；后续可做跨区块网格缓存或 GPU 侧合并。
 
 ## 测试
 
@@ -659,22 +547,25 @@ npm run verify
 | `npm run lint` | Biome 静态检查（recommended 规则集，91 文件 ≈100ms）；`lint:fix` 自动修复 |
 | `npm run check` / `check:fix` | lint + format + import 排序一站式；`format` 仅格式化（可选） |
 | `npm run test:snapshot` | **从当前 TS 源码现场编译** `test/logic` / `test/terrain-logic`，杜绝手工同步漂移 |
-| `npm run test:logic` | 生存状态机 8 组 + 地形 23 组（性能基准、旧 22 方块 id 兼容） |
-| `npm run test:light` | 光照 21 组：天空光列、方块光衰减、跨区块传播、放置 / 破坏后的增量回收 |
-| `npm run test:mesher` | **网格等价与收益**：快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例 |
-| `npm run test:services` | 服务容器 / 事件服务 / 插件服务 / 存档校验 38 项 |
-| `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 各类异常注入） |
-| `npm run test:worker-pool` | Worker 池构造失败整体回滚的注入式回归 |
-| `npm run test:edits` | 编辑差分数值分桶：负坐标 / 边界 / 覆盖 / 存档导出 |
-| `npm run test:terrain-system` | **方块扩充 + 生成管线 + 群系配置表** 34 组：id 45~91、阶段顺序、35 种植物与自然生成位置 |
-| `npm run test:botany` | **植物生态随机刻** 28 组：生长 / 蔓延 / 枯萎 / 树种 / `plant:grow` 事件 |
-| `npm run test:plant-energy` | **植物内在能量** 29 组：日照蓄能 / 夜间下限 / 环境枯死 / 开花 / 采集 / 根系共享 |
-| `npm run test:crafting` | **合成系统** 43 组：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、2×2 与 3×3 尺寸差异、背包取放闭环 |
-| `npm run test:smoke` | Chromium 实景（桌面 + 移动端），结果与截图写入 `test/artifacts/` |
-| `npm run test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块展示墙 / 天穹状态断言（13 项） |
+| `npm run test:logic` | 生存状态机 9 组 + 地形基础 23 组 + 篮球弹跳 / 拾取 76 项 |
+| `npm run test:vitest` | Vitest 全量（直接消费 `src` TS）：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting |
+| `npm run test:light` | 天空光 / 方块光 21 项 |
+| `npm run test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例、slab / candle 盒几何、N4 未知来源液面 |
+| `npm run test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
+| `npm run test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
+| `npm run test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入） |
+| `npm run test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
+| `npm run test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
+| `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 11 群系、90 组 |
+| `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 / 攀爬 / 发光植物 34 组 |
+| `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 54 组 |
+| `npm run test:crafting` | 合成系统 94 项：配方表 / 有序与无序匹配 / 偏移摆放 / 材料组 / 背包取放闭环 |
+| `npm run test:smelting` | 远端熔炉烧炼纯逻辑 35 项（配方 / 燃料 / `putFuelFrom` / tick / 序列化） |
+| `npm run test:smoke` | Chromium 实景（桌面 + 移动端）125 项，产物写 `test/artifacts/` |
+| `npm run test:mobile` | 移动端组合：mesher + 旋转引导 + 手感 + 裂纹覆盖层 |
+| `npm run test:visual` | 像素级视觉回归：昼夜 / 火光 / 方块墙 / 天穹 |
 
-Linux 无 GPU 环境用软件渲染跑实景（v1.1.2 声称「本环境无法初始化 WebGL」其实是缺
-`--disable-gpu-sandbox` 与 `--enable-unsafe-swiftshader`）：
+Linux 无 GPU 环境用软件渲染跑实景（需要 `--disable-gpu-sandbox` 与 `--enable-unsafe-swiftshader` 两个 flag）：
 
 ```bash
 CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
@@ -687,9 +578,9 @@ CHROME_PATH=/usr/bin/chromium MC_HEADLESS=0 MC_GL=desktop \
 
 覆盖：模式选择、血量/鸡腿/氧气 HUD、挖掘进度与掉落入包补位、放置与消耗、伤害与死亡重生、
 进食、夜间僵尸生成与攻击、模式切换、存档 v2 与继续游戏、移动端摇杆/长按挖掘/按钮语义/安全区布局；
-v1.2.0 另加版本一致性、服务容器注册、内置插件启用、事件派发统计、插件热注册/停用清理，
-以及传送后「流式加载队列收敛且生成的区块都有网格」的轮询断言（取代固定 sleep）。
-v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益，以及 `?mesher=main&greedy=0`
+另覆盖版本一致性、服务容器注册、内置插件启用、事件派发统计、插件热注册/停用清理，
+以及传送后「流式加载队列收敛且生成的区块都有网格」的轮询断言（取代固定 sleep）；
+还包括网格化确实跑在 Worker、Greedy 生效且有合并收益，以及 `?mesher=main&greedy=0`
 的**降级路径仍能正常出网格**（Worker 在受限环境创建失败时的兜底）。
 
 ## 技术栈
@@ -698,362 +589,7 @@ v1.3.0 再补：网格化确实跑在 Worker、Greedy 生效且有合并收益�
 - three.js 0.170（唯一运行时依赖）
 - Vite 5 + vite-plugin-singlefile（构建为单文件 HTML）
 
-## 审查修复记录（v1.1.1）
 
-按源码审查报告落地的主要修复：
-
-- **P0** 标题页「生存 / 创造」选择真正写回状态机；有存档时「新的世界」也遵循所选模式。
-- **P0** 新生成区块自身入队网格化，未生成区块的脏标记不再被提前删除；生成 / 网格化改为「整帧累计限时 4ms / 6ms」。
-- **P1** 触控灵敏度不再被平方；暂停 / 死亡态冻结昼夜；Esc 与指针锁定丢失的 pause 边沿去重；进食先扣物品；模式切换按背包重建快捷栏；中键取样与方块库指派不再把物品覆盖成孤儿，方块库支持重新指派食物；`give('apple')` / `count('apple')` 可用；`entity:hurt` / `game:pause` 事件正式发出；`setFly` 遵守生存限制。
-- **P2** 树叶同材质内部面剔除、区块网格不再上传无用法线、图集容量溢出报错、DDA 起点零法线命中跳过、存档 v2 字段校验、粒子淡出与帧率无关、摔落阈值对齐「>3 格」、相机 far 随渲染距离收敛、动态分辨率仅在游玩时调整、受伤 / 破坏 / 放置 / 死亡补充震动反馈。
-- 测试新增 4 项回归断言：标题 UI 模式接线、两个事件可订阅、远距离传送后区块均完成网格化。
-
-> 仍待实施（本次源码复核）：透明通道按距离排序、AABB 脱困，详见「已知限制」。
-> `meshChunk` 搬入 Worker、Greedy Meshing、编辑差分按区块分桶三项已在 v1.2.0~v1.3.0 落地。
-
-## 地形升级记录（v1.1.2）
-
-- 重写 `DefaultGenerator`：域扭曲高度场、脊线山脉与河道、温度/湿度群系、雪线与陡坡露石。
-- 洞穴改为「随距地表深度渐隐」，新增分层矿脉与 4 种矿石方块/纹理（追加在注册表末尾，旧 id 不变）。
-- 树木改为世界坐标候选点 + 邻域裁剪，**跨区块树冠连续**（原报告的遗留项已完成）。
-- `World.surfaceHeight()` 与 `Player.spawn()` 改用地形高度，不再把树冠/草丛误判为地面；载入旧存档时自动抬升脱困。
-- `CraftAPI.world.biomeAt()` / `terrain()` 开放群系与列信息查询。
-- 出生岛抬升半径加噪声扰动，岸线不再是正圆；河道改为按陆地高度平滑淡出。
-- 新增 `test/terrain-check.cjs`（**23 组断言**：确定性、生成顺序无关、群系多样性、洞穴不穿地表、矿脉分层、±x 双向跨区块树冠、参数开关、性能基准，以及下方核验项）。
-
-### 收尾核验补修（同版本）
-
-专项核验用大范围采样发现并修复两个隐藏缺陷：
-
-| 问题 | 修复前 | 修复后 |
-|---|---|---|
-| 水下地层被洞穴挖出空气袋（46587 体素采样） | 9.20% | **0%** |
-| 河道切入深海床（远场 3471 列采样） | 141 列 | **0 列** |
-
-对应做法：水下地层 `fade = 0` 不挖洞穴；河道深度乘 `smoothstep(SEA_LEVEL-1, SEA_LEVEL+4, h)` 平滑淡出。两项均已固化为回归断言，另补充「40 个 seed 出生点均为陆地」「旧 22 方块 id 未变 / 矿石 id 23–26」「存在成片海洋」等兼容性断言。
-
-核验结果：`tsc --noEmit`（strict）0 error；`vite build` 通过；`logic-check.cjs` 8 组 + `terrain-check.cjs` 23 组全通过；图集 31/64 格未溢出。浏览器实景冒烟测试当时未执行——v1.2.0 已定位到真实原因（缺少 `--disable-gpu-sandbox` / `--enable-unsafe-swiftshader` 两个 flag，并非环境不支持 WebGL）并跑通。
-
-## v1.2.0 架构革新与修复记录
-
-### 架构
-
-| 变化 | 说明 |
-|---|---|
-| `services/ServiceContainer.ts` | 类型安全服务注册表（provide / require / 逆序 dispose） |
-| `services/events/` | EventService：错误隔离 / once / waitFor / onAny / stats / 递归深度保护；EventChannel 命名空间作用域 |
-| `services/plugins/` | PluginService：注册 / 依赖解析 / 权限裁剪 / 启停 / 生命周期事件；PluginContext 契约 |
-| `api/` | CraftAPI 退化为薄门面，新增 `plugins` / `events` 命名空间，旧 22 项能力签名完全不变 |
-| `plugins/builtin/` | `core:autosave`、`core:hud-feedback` 从 800 行 `boot()` 抽出，成为一等公民插件 |
-| `core/events.ts` | 兼容垫片（旧代码与纯逻辑测试快照仍可用） |
-| `main.ts` / `core/version.ts` | 前者退化为组装根；后者成为全项目唯一版本来源 |
-
-### 修复与优化
-
-| 项 | 内容 |
-|---|---|
-| 幽灵区块竞态 | 删除 `initialLoad()` 末尾的 `dirty.clear()`；预载期间主循环让开；每帧兜底把「已生成但无网格」的区块重新入队 |
-| 流式加载 | dirty 积压 > 24 触发背压暂停生成；卸载改按 `world.chunks` 遍历，未网格化区块同样释放 |
-| Pointer Lock | `requestPointerLock()` 返回的 Promise 加 `.catch()`；实现 iframe / 无头环境的拖拽视角降级（v1.1.2 里 `lockFailed`/`dragging` 是死代码） |
-| 版本一致性 | `version.ts` 单一来源 + `check-version` 机械校验，修复包名 / package.json / CraftAPI / F3 四处漂移 |
-| 存档 | `validateSave()` 全量字段校验，供 `load()` 与 `CraftAPI.save.import()` 共用 |
-| 存档差分 | `edits` 按 chunkKey 分桶，`ensureChunk()` 从 O(全档编辑数) 降到 O(本区块编辑数) |
-| UI / 状态机 | 有存档时标题模式高亮同步真实模式；`openPalette()` 补发 `game:pause` |
-| 测试工程化 | 快照自动从源码编译、`npm run verify`、31 项服务单测（v1.2.0 当时，v1.3.2 已扩到 38 项）、流式断言改轮询、CI 要求 100% PASS |
-
-## v1.3.0 渲染管线升级记录
-
-### Worker 化
-
-| 项 | 内容 |
-|---|---|
-| 数据契约 | `meshTypes.ts`：`MeshSource` 接口 + `MeshConfig`（方块元数据 + UV 表）+ `MeshSnapshot`（1 格 halo，18×80×18 `Uint8Array`）+ `PackedGeo`（Transferable） |
-| 同一份算法 | `mesher.ts` 只依赖 `MeshSource`；主线程 `WorldMeshSource` 与 Worker `SnapshotMeshSource` 共用，杜绝两套实现漂移 |
-| 调度 | `?worker&inline` Blob Worker；请求代次（generation）去重、在途结果丢弃、每帧只投递预算内任务 |
-| 降级 | Worker 创建/运行失败自动切主线程同步网格化；`?mesher=main` 可强制验证 |
-| 卸载 | 区块卸载时取消在途任务，避免回传已删除区块的几何 |
-
-### Greedy Meshing
-
-| 项 | 内容 |
-|---|---|
-| 合并条件 | 按面方向建 mask，key = 方块 id + AO 档位 + 天空光 + 方块光；**仅四角 AO 与光照完全相等才合并**，保证合并后双线性插值与原逐面结果一致（`flip` 恒为 false，三角化方向也不变） |
-| 特殊方块 | cross 植物、液体（水面降顶）、玻璃、自发光、AO 不均的面一律走原逐面路径 |
-| UV 平铺 | 合并面局部 UV 为 `0..w / 0..h`，`tiledAtlas.ts` 用 `onBeforeCompile` 注入 `fract(vMapUv)`，避免图集越界或拉伸 |
-| 对照开关 | `?greedy=0` 关闭合并，用于基准与回归对照 |
-
-### 实测
-
-| 核验 | 结果 |
-|---|---|
-| 面覆盖等价（3 种子 × 2 区块 × 4 通道） | 逐格一致，亮度差 `0.0e+0` |
-| 快照 vs 直读数据源 | 逐字节一致（两种 greedy 设置） |
-| quad 数 | 11,526 → 6,978（**-39.5%**），最大合并面 105 格（当时 A/B 环境的历史基准，随机型与场景浮动） |
-| 浏览器实景 | 网格化 `mesherMode=worker`，`gen=89 / mesh=89 / dirty=0`，无幽灵区块 |
-
-### 已知限制（带排期）
-
-- Greedy 使单区块网格化 CPU 增加约 40%（多一次按面扫描 + 每个可见面一次 AO 计算）；因已移出主线程，
-  渲染不再被阻塞。v1.3.0 已按 `navigator.hardwareConcurrency` 起 **Worker 池**（least-busy 派发，
-  `?workers=N` 可覆盖）解除单 Worker 吞吐上限，8 核环境流式加载收敛随核数线性提升。
-- 透明通道未按距离排序，重叠玻璃可能闪烁。
-- 光照为 15 级硬边（v1.5.1 起已改为逐角点插值，角点间仍有 1/15 台阶）；区块卸载期间边界旧光可能被邻块保留，
-  重新加载时偶尔出现一格偏亮，待后续用区块光照快照或边界重算解决。
-- 无 AABB 脱困：被方块挤住时需手动挖开。
-- 软件渲染下 FPS 约 10，引擎把 `dt` 钳制到 0.05 防穿墙，游戏时间流速约为真实的一半；
-  不影响真实浏览器，但自动化测试必须按条件轮询而非固定 sleep。
-
-## v1.3.0 网格化 Worker 池记录
-
-v1.3.0 把网格化搬进单个 Blob Worker，解除了主线程阻塞，但单 Worker 仍是流式加载吞吐的上限
-（多核机器只有一个核在干活）。v1.3.0 把单 Worker 升级为**多 Worker 池**：
-
-| 项 | 内容 |
-|---|---|
-| 池大小 | 默认 `min(navigator.hardwareConcurrency - 1, 4)`（留 1 核给主线程，至多 4）；`?workers=N` 可覆盖，夹紧 1..8，便于基准对照 |
-| 派发 | `pickWorker()` 选「在途任务数最少」的 Worker（least-busy），避免重区块堆积在某一核 |
-| 计数 | 请求带 `wid`，Worker 原样回显；`drainResults` 按 `wid` 回退在途计数，保证计数与派发一致 |
-| 降级 | 任一 Worker 构造或运行失败 → `fallbackToMain()` 终止整池并同步补算；`?mesher=main` 仍可强制 |
-| 零改动 | `mesher.ts` / `mesh.worker.ts` / 契约（`MeshSource` / `MeshSnapshot` / `PackedGeo`）完全不动，池只是调度层 |
-
-### 实测（v1.3.0 实景）
-
-| 核验 | 结果 |
-|---|---|
-| 网格化默认在 Worker 池 | `mesherMode=worker`，`workerCount=4`（8 核机） |
-| 流式收敛 | `gen=89 / mesh=89 / dirty=0`，无幽灵区块 |
-| Greedy 收益不受影响 | `quads=223546 / merged=169465`，亮度差 `0.0e+0` |
-| 降级路径 | `?mesher=main&greedy=0` 仍正常出网格（`mesh=89 / merged=0`），无运行时错误 |
-| 回归 | 版本一致 / tsc 0 error / 构建单文件 638KB / 逻辑 23 / mesher 43 / 服务 31 / 实景 87 全部 0 失败 |
-
-## v1.3.0 光照系统记录
-
-在 Worker 池与 Greedy 管线上接入天空光 / 方块光，输出契约与旧存档保持不变：
-
-| 项 | 内容 |
-|---|---|
-| 数据 | `Chunk.sky` / `Chunk.block`（`Uint8Array`，0~15）+ `lit` 标记；`World.getSkyLight` / `getBlockLight` 对未加载区块回退为「露天 / 全黑」 |
-| 传播 | 天空光按列初始化 + 影子边界 BFS；方块光从 `lightEmission > 0` 的方块出发；跨区块只在已点亮区块间传播 |
-| 增量 | 放置 / 破坏方块：清空受影响光、从边界重新扩散；光照变化的区块自动并入 `world.dirty` |
-| 种子过滤 | 初始化时只把「确实能提升另一侧」的边界格入队，49 区块基准中天空光种子从 16.2 万降到 1.7 万（-90%） |
-| 快照 | `buildMeshSnapshot` 一次拷贝 `data` / `sky` / `block` 三张 18×80×18 缓冲，随 Worker 消息 transfer |
-| Greedy | mask key = `id | ao<<8 | sky<<10 | block<<14`，光照不同不合并；回归测试同时比对每面格的贴图与天空光 / 方块光 |
-| 昼夜 | `uDaylight` 与 `uSunTint` 由 `Sky` 每帧写入；天空光乘昼夜，方块光取 `max`，`aTint=2` 的自发光顶点不参与 |
-| 回退 | 无 Worker 时主线程 `WorldMeshSource` 直接读 `World` 光照，输出与 Worker 路径一致 |
-
-### 实测
-
-| 核验 | 结果 |
-|---|---|
-| 光照单测 | 14 组断言：露天 / 地下 / 火把衰减 / 跨区块 / 移除回收 / 石头遮挡恢复 |
-| mesher 回归 | 43 项通过；面覆盖一致、亮度差 `0.0e+0`、逐字节快照保真（含光照） |
-| 光照初始化 | 单区块约 3~6 ms（Node，49 区块稳态基准）；单次方块光照更新约 1 ms |
-| Greedy 收益 | 实测区块 quad 减少 32%~50%，光照不同的面按预期保留为独立 quad |
-| 构建 | `dist/index.html` 657.89 kB（较方块阶段 +8.85 kB） |
-
-## v1.3.0 性能优化记录
-
-同一版本号下的纯性能优化：玩法、确定性、公共 API 与网格输出均不变。
-验收口径为「优化前后网格输出逐字节一致」——3 个种子 × 9 个区块 × greedy/legacy 两种配置，
-共 270/270 项哈希完全一致。
-
-| 优化点 | 内容 |
-|---|---|
-| `buildMeshSnapshot` | 中心 16×16 按 y 行整段 `set`，halo 直接读 3×3 邻居的 `chunk.data`，移除逐格 `world.getBlock` 的字符串 key 查找 |
-| 方块注册表 | 稠密 id 数组 + `opaque`/`solid` 字节标志快路径；自定义 id ≥ 65536 自动回退 `Map`，避免稀疏大数组 |
-| Worker 数据源 | `SnapshotMeshSource` 预计算 id → 遮光字节表，AO 每面 12 次采样不再走 `def()` 属性链 |
-| mesher 分配 | 逐面 / 逐顶点临时数组改为模块级 scratch，`pushQuad` 直接写入通道数组；AO 写入预分配 `Int32Array` |
-| 生成器缓存 | 超限时淘汰最旧 1/4，而不是 `clear()` 整表，消除邻区块复用时周期性重算尖峰 |
-| 天空 | 每帧不再 `new Vector3` / `new Color`，复用临时对象 |
-| 实体 | 离场时释放每个实例新建的 geometry / material / texture，修复反复刷新种群的 GPU 资源泄漏 |
-
-### A/B 基准
-
-5 轮交替执行取全局最小值；本机为 3 核共享环境，绝对值受负载影响，只看相对变化。
-
-| 项 | 优化前 | 优化后 | 变化 |
-|---|---:|---:|---:|
-| `buildMeshSnapshot` | 0.928 ms/区块 | 0.173 ms/区块 | **-81%** |
-| mesher 逐面（legacy） | 7.20 ms | 6.64 ms | -7.8% |
-| mesher greedy | 10.03 ms | 8.68 ms | -13.5% |
-| `BlockRegistry.isOpaque` | 25.1 ns | 8.1 ns | -68% |
-| `BlockRegistry.isSolid` | 25.2 ns | 6.7 ns | -73% |
-| `BlockRegistry.get` | 24.1 ns | 18.2 ns | -24% |
-| `World.isSolidAt` | 149.4 ns | 111.5 ns | -25% |
-| `World.getBlock` | 基本持平 | 基本持平 | — |
-
-### 回归结果
-
-| 项 | 结果 |
-|---|---|
-| 网格输出哈希 | 270/270 逐字节一致 |
-| 版本一致 / 类型检查 | `check:version` 通过，`tsc --noEmit` 0 error |
-| 逻辑 / mesher / 服务 | 23 / 43 / 31 项全部通过 |
-| 构建 | `dist/index.html` 641.05 kB（单文件） |
-
-## v1.3.0 画面润色记录（纯视觉，不改玩法与网格化）
-
-只动 `src/gfx/sky.ts` 与 `src/main.ts` 的一行接线，不触碰 world / mesher / worker，
-因此 `test:mesher` 的逐面等价断言与存档格式完全不受影响。
-
-| 改进 | 位置 | 效果 |
-|---|---|---|
-| 天穹渐变去色带 + 平滑曲线 | `Sky` 天穹 fragment shader | 用 smootherstep 曲线替换 `pow(h, 0.58)`，并叠加每像素哈希抖动，消除大面积天空上肉眼可见的同心色带 |
-| 地平线霞光带 | 同上 | 日出/日落的暖色被压向贴近地平线的窄带，并与太阳**方位**对齐（此前是全向泛光），黄昏天空不再整片糊成橙色 |
-| 体素云立体化 | `Sky.buildClouds()` | 逐面烘焙顶点色（顶亮 / 底暗 / 侧面区分 x、z 轴）并开启 `depthWrite`，云从半透明「华夫格纸片」读成有厚度的体素板；夜间按日照压暗、黄昏染向霞光色 |
-| 水下大气 | `Sky.update()` / `setUnderwater()`，`main.ts` 的 `ui` 系统接线 | 相机没入水中时，雾色切向深水蓝并收敛到 `near=2 / far=0.42R`，世界亮度乘上蓝色偏移，天穹与云同步压暗淡出；入/出水用约 0.2s 指数过渡，不硬切 |
-
-## v1.3.1 集成复核与修复记录（画面润色 + 光照移植）
-
-v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组画面润色、trae 分支的
-**光照 / 新方块 / 图集美术 / 视觉回归**移植，以及集成复核中修掉的真实缺陷收进一个可回归的版本；
-版本仍是单一来源（`package.json` / `src/core/version.ts` / `CraftAPI.version` / F3 / README），
-由 `scripts/check-version.mjs` 在 `npm run verify` 中机械校验。
-
-### 新增
-
-| 项 | 位置 | 说明 |
-|---|---|---|
-| 天空光 / 方块光双通道 | `src/world/light.ts`、`src/world/mesher.ts` | 0~15 双通道 BFS（列初始化 + 阴影边界播种 + 跨区块边界种子），火把与南瓜灯真正照亮洞穴；亮度按角点进顶点属性（v1.5.1 平滑光照），昼夜与点光源不增加 draw call，Greedy 只在贴图 / AO / 角点光照完全一致的面之间合并 |
-| 18 个新方块 | `src/world/blocks.ts` | 火把、南瓜灯、石砖系、苔石、黑曜石、砂砾、沙岩、冰、云杉 / 白桦木板、工作台、蘑菇、枯草、四色羊毛，**追加为 id 27~44**，1~26 不变，旧存档的编辑记录依旧有效 |
-| 图集美术重绘 | `src/gfx/atlas.ts` | 树叶簇、草 / 石 / 水 / 砖的逐像素重绘 + 新方块对应贴图；图集 8×8=64 槽位仍有富余，`registerTile()` 可注入自定义纹理 |
-| 视觉回归测试 | `test/visual-check.mjs`、`npm run test:visual` | headless Chromium + swiftshader 截图比对，9 项断言（白天非纯色 / 夜间明显变暗且仍有细节 / 火把方块光与邻格发光 / 移除后归零 / 火光区域更亮 / 方块展示墙颜色丰富 / 无运行时错误），已挂进 `verify` 与 CI |
-| MIT LICENSE | `LICENSE` | 明确授权与免责 |
-
-### 改进
-
-| 项 | 位置 | 效果 |
-|---|---|---|
-| 天穹去色带 | `src/gfx/sky.ts` | smootherstep 曲线替换 `pow(h, 0.58)` 并叠加逐像素哈希抖动，消除大面积天空上的同心色带 |
-| 地平线霞光方位化 | `src/gfx/sky.ts` | 日出 / 日落暖色压向贴近地平线的窄带并与**太阳方位**对齐，黄昏不再整片糊成橙色 |
-| 体素云立体化 | `src/gfx/sky.ts` | 逐面烘焙顶点色 + `depthWrite`，夜间按日照压暗、黄昏染向霞光色 |
-| 水下大气 | `src/gfx/sky.ts`、`src/main.ts` | 入水切深水蓝雾并收敛 `near/far`，天穹与云淡出，入 / 出水约 0.2s 指数过渡 |
-| 光照回归覆盖 | `test/light-check.cjs` | 断言 14 → 21：跨区块密封天窗、遮光回收、幂等往返；`test:snapshot` 把 `light.ts` 纳入快照编译 |
-| 生存初始配置 | `src/main.ts` | 创造栏补入火把，生存初始背包补 8 个火把，新方块开箱可用 |
-
-### 修复
-
-| 缺陷 | 位置 | 说明 |
-|---|---|---|
-| 堵死光源后天空光不回收 | `src/world/light.ts` | 旧实现只把本列清零再把水平邻居塞回队列：既漏掉光井里**等亮度**（相邻都是 15）的整列梯度，也漏掉回收后仍残留的水平依赖格。实测密封天窗封死后房间内残留 108 格亮光；树叶 / 水落进光井时因 `opacity` 同为 1，判据根本不触发。改为以「竖向衰减」`columnCost` 判据 + 沿列逐格 `removeLight` + BFS 出队时校验当前亮度丢弃陈旧种子 |
-| 重复放置同一方块白扣背包 | `src/player/player.ts` | 火把这类非实心方块不会被「目标格已实心」拦住，而 `setBlock` 对同 id 返回 false 什么都不做，`consume` 却已经扣过——实测 10 个火把对着火把放置后变 9 个、世界上没多出任何东西。放置前先拦住同 id 目标格 |
-| 方块 id 越界静默截断 | `src/world/blocks.ts` | 注册时校验 `1~255`，越界 id 会被 `Uint8Array` 截断成另一个方块，现在直接抛错 |
-| `world.dirty` 无界增长 | `src/world/chunkManager.ts` | 派发半径外的脏键直接丢弃，靠近时由自愈入队补回；实测 400 次远端编辑后键数仍有界 |
-| 存档写入失败被吞 | `src/save/save.ts`、`src/main.ts` | `save()` 返回写入字节数供 `save:done`，仅在写入成功后清脏标记、失败保留并重试；新建世界 / 导入存档后补挂 `beforeunload`，续档会复活已失效的存档 |
-| 模式切换双轨 | `src/main.ts`、`CraftAPI` | 菜单与 `CraftAPI.setMode` 统一走 `applyMode`，不再有两套各自维护的状态 |
-| 视角与指针锁 | `src/main.ts` | 指针锁在用户手势内申请；加载后丢弃残留的 look delta，避免进场瞬间视角甩动 |
-| 实体上下浮动 | `src/entity/` | 浮动写回的是偏移量而非绝对 Y；`player:move` 事件节流 |
-| 视觉检查火把取样歧义 | `test/visual-check.mjs` | 改在光照无歧义的邻格采样，消除偶发误判 |
-| 放置消耗断言偶发失败 | `test/survival-smoke.mjs` | 按住右键跨过 `placeTimer=0.24s` 连放 2 次是预期行为，断言放宽为「确实消耗」并补一条确定性回归 |
-
-### 复核结论（未发现问题之处）
-
-- 合并未残留冲突标记与重复代码；Worker 池、`meshSource` / `SnapshotMeshSource` 回退、`tiledAtlas`
-  与 `injectLight` 的 `onBeforeCompile` 链式接线（含 `customProgramCacheKey`）在移植后依旧自洽。
-- 负坐标区块的 `>>4` / `&15` 位运算、`costCache` 哨兵、跨区块边界播种几何、方块光回收路径复核无误。
-- 光照不落盘、按世界数据确定性重算：火把 / 南瓜灯等编辑重载后亮度一致，重载无页面错误。
-
-### 验证结果
-
-| 项 | 结果 |
-|---|---|
-| `check:version` / `typecheck` | 版本一致，`tsc --noEmit` 0 error |
-| `test:snapshot` / `test:logic` / `test:light` | 快照编译通过；logic + terrain 全绿；光照 21/21 |
-| `test:mesher` / `test:services` | 43 / 31 项全部通过（网格输出逐面等价，未受光照修复影响） |
-| `test:smoke`（实景） | 88/88，含新增的同 id 放置回归 |
-| `test:visual` | 9/9 |
-| `build` | `dist/index.html` 659 kB（单文件） |
-
----
-
-## v1.3.2 运行时诊断与修复记录
-
-### 修复
-
-| 缺陷 | 位置 | 说明 |
-|---|---|---|
-| 运行时注册方块后 Worker 配置不刷新 | `src/world/chunkManager.ts`、`mesh.worker.ts` | `invalidateConfig()` 旧实现把 config 置 null 后调用 `postConfig()`，后者因 config 为空直接返回；Worker 派发路径也不重建配置。现在立即重建、下发并重排全部网格，Worker 回传 `config-ack` 供诊断确认 |
-| Worker busy 计数泄漏 | `src/world/chunkManager.ts` | 区块卸载后旧结果晚到会跳过 `busy--`；现在每条回传先回退派发计数，再判断是否过期 |
-| 暂停 / 死亡期间按键卡住 | `src/input/input.ts`、`src/main.ts` | keyup 不再受 `enabled` 限制；暂停、死亡、返回标题、开始游戏时统一 `input.reset()` |
-| 菜单 → 方块库关闭后直接恢复游戏 | `src/ui/hud.ts`、`src/main.ts` | 菜单按钮改走 `onPaletteOpen('menu')`，`paletteReturn` 正确回到菜单 |
-| 入水 / 传送 / 切模式后残留摔落伤害 | `src/player/player.ts`、`src/main.ts` | 入水、`teleport()`、`spawn()`、切换飞行、模式切换均清零 `fallVy` |
-| 插件并发启用误报循环依赖 | `src/services/plugins/PluginService.ts` | 用 `pending` Promise 表复用进行中的初始化，循环检测只沿当前递归链 |
-| 初始化中 disable 后回写 enabled | `src/services/plugins/PluginService.ts` | 每次 enable/disable 递增 epoch；setup 返回后检测代次，只清理不回写 |
-| `EventChannel.waitFor` 不受作用域管理 | `src/services/events/EventChannel.ts` | 改为通道内 `once` + 定时器，dispose 时统一退订并 reject |
-| 权限可经 `blocks.register` 绕过 | `src/services/plugins/PluginService.ts` | 无 `blocks:register` 时暴露只读 Proxy；`tnt.ignite` / `entities.spawn` 归入 `world:write`，`survival` 写入口归入 `player:write` |
-| `api:emit` 被 `ctx.events.emit` 绕过 | `src/services/events/EventChannel.ts`、`src/services/plugins/PluginService.ts` | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
-| `api.on` 订阅在停用后仍存活 | `src/services/plugins/PluginService.ts` | `api.on / off`、`api.events.waitFor / onAny` 路由进插件通道，停用时随通道一起撤销 |
-| manifest 可被改写来自我提权 | `src/services/plugins/PluginService.ts` | `register` 时做防御性拷贝，`list() / get()` 返回的也是副本 |
-| 停用依赖后下游插件仍 enabled | `src/services/plugins/PluginService.ts` | `disable` 级联停用下游依赖，teardown 顺序为依赖方先释放 |
-| `time` / `settings` / 插件管理无权限约束 | `src/services/plugins/PluginService.ts` | 写入口集中登记在 `WRITE_CAPABILITIES` 表，新增 `time:write` / `settings:write` / `plugins:manage` |
-| 异步存档回调吞掉新编辑 | `src/main.ts` | 增加 `dirtyVersion` + `saveSeq`，只有最新保存且期间无新编辑时才清脏 |
-| 天空光列回收平方级开销 | `src/world/light.ts` | 旧实现沿列逐格 `removeLight`，在洞穴/悬崖上方放置方块会重复遍历同一依赖链；改为整列清零 + 多源 BFS，每格只处理一次 |
-| 云层每 96 格跳变 / 长时间挂机漂出视野 | `src/gfx/sky.ts` | 云块以世界格为锚点、按 1/4 网格宽度重建，漂移与移动均无接缝 |
-| `surfaceHeight` 向上找平台分支不可达 | `src/world/world.ts` | 向下扫到基岩后再向上寻找玩家搭建的平台 |
-| 最顶层放置白扣物品 | `src/player/player.ts` | 消耗背包前先校验 `1 <= y < WORLD_HEIGHT` |
-| 存档校验过松 | `src/save/save.ts` | 校验 edits 坐标格式 / 方块 id、背包 key / 数量、dayTime 范围、快捷栏整数 id |
-| 示例插件发光值溢出 | `src/plugins/example/welcome.ts` | `0.8` → `14`（0~15） |
-
-### 运行时诊断组
-
-- `CraftAPI.diagnostics.run()` / `.last()`：返回 `{ ok, checked, errors, warnings, issues, durationMs }`。
-- F3 面板增加「运行时诊断」一行；`__mc.diagnostics` 可在控制台直接调用。
-- 每 10 秒自动采样一次，异常集合变化时才输出 `console.groupCollapsed` 分组（warn 不触发
-  浏览器 `pageerror` 断言，因此可在实景测试中安全开启）。
-- 检查项：版本一致性、玩家坐标 / 摔落值、playing 输入状态、暂停态残留按键、Worker 配置 ACK、
-  Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、插件依赖悬空、
-  事件订阅、生存数值与死亡状态一致、实体数量、存档脏标记老化。
-
-### 验证
-
-| 项 | 结果 |
-|---|---|
-| `test:services` | 48 项（新增并发启用 / 初始化中停用 / waitFor 清理 / 只读 blocks 权限 / emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用） |
-| `test:diagnostics` | 22 组断言（健康快照 + 各类异常注入 + 插件依赖悬空） |
-| `test:smoke` | 95/95；新增诊断组、运行时注册方块 Config ACK、菜单方块库返回、keyup 清理断言；固定 seed=2026 + 条件轮询，消除地形随机性导致的假失败 |
-| `test:visual` | 9/9 |
-
----
-
-## v1.4.0 方块扩充与地形体系整合
-
-### 新增方块（id 45~54，末位追加）
-
-| id | 方块 | 说明 |
-|---|---|---|
-| 45 | 铜矿石 | 地下矿脉，深度 ≤50（含矿脉漂移） |
-| 46 | 绿宝石矿石 | 只在高山群系，逐格校验群系边界 |
-| 47 | 青金石矿石 | 地下矿脉，深度 ≤32 |
-| 48 | 红石矿石 | 地下矿脉，深度 ≤22 |
-| 49 | 黏土 | 浅海海床（海平面下 3 格内）按概率铺 |
-| 50 | 灰化土 | 针叶林地表，掉落泥土 |
-| 51 | 仙人掌 | 沙漠沙面成列 1~3 格 |
-| 52 | 甘蔗 | 临水浅岸 1~2 格高（十字面） |
-| 53 | 蕨 | 草甸 / 森林 / 针叶林装饰（十字面） |
-| 54 | 花岗岩 | 地下岩脉，深度 ≤44 |
-
-### 地形生成体系
-
-- **统一阶段管线**：`TERRAIN_STAGES = ['columns', 'ores', 'trees', 'decorate']`。
-  `generateChunk` 只负责构建一次列信息上下文并按序派发；阶段顺序是契约——
-  矿石只替换石头、树木先于花草、装饰不覆盖树冠。实例 `gen.stageNames` 可读，测试直接断言。
-- **群系配置表**：`BIOME_PROFILES` 统一描述 7 个群系的 `surface / filler / plants /
-  clayChance / cactusChance / caneChance`；构造时解析成方块 id，柱状与装饰阶段只读表。
-  新增群系或地表方块不再散落在 `if` 分支里。
-- **新自然生成**：铜 / 红石 / 青金石 / 花岗岩矿脉按深度分布，绿宝石限定高山；
-  黏土只铺浅海床，灰化土替换针叶林草皮，仙人掌只长沙漠沙面，甘蔗要求四邻有更低水面，
-  蕨按权重进入草甸 / 森林 / 针叶林。全部特征仍由「世界坐标 + seed」决定，生成顺序无关。
-- **图集扩容**：`GRID 8 → 16`（256 槽），内置纹理 64 张 + 运行时 `registerTile()` 仍有富余。
-
-### 验证
-
-| 项 | 结果 |
-|---|---|
-| `test:logic` | 生存 8 组 + 地形 23 组全通过 |
-| `test:terrain-system` | 18 组断言（id 45~54、阶段顺序、配置表覆盖、10 种新方块自然生成位置、oreRichness、顺序无关） |
-| `test:light` / `test:mesher` / `test:services` / `test:diagnostics` | 全通过 |
-| `test:smoke` | 95/95（版本断言更新为 1.4.0） |
-| `test:visual` | 9/9（方块展示墙加入 10 种新方块） |
 
 ## 关于本项目（诚实说明）
 
@@ -1092,45 +628,5 @@ v1.3.1 不改玩法、不改网格化算法，只把当天落到 main 的四组�
 - 🔒 发现安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告，**不要**公开提 Issue
 
 AI 辅助的贡献同样欢迎：请由提交者逐行核验、如实标注 `Co-authored-by`，并对照硬规则自查。
-
----
-
-## v1.5.0 插件体系强化
-
-### 修掉的确定性缺陷
-
-| 缺陷 | 根因 | 修法 |
-|---|---|---|
-| `api:emit` 被 `ctx.events.emit` 绕过 | `EventChannel.emit` 直接走总线，与权限表无关 | 通道按权限创建（`canEmit`），`ctx.events` 与 `api.events.scope()` 子通道共用同一门禁 |
-| `api:emit` 被 `api.events.scope(ns).emit` 绕过 | 插件可自建任意命名空间通道 | `scopeAPI` 的 `events.scope` 改为返回插件通道的**子通道**，随插件一起销毁 |
-| `api.on` 订阅在停用后仍存活 | `api.on` 继承自 base，订阅不归属通道 | `api.on / off`、`api.events.waitFor / onAny` 全部路由进插件通道 |
-| manifest 可被改写来自我提权 | manifest 按引用存储，`list()/get()` 原样返回 | `register` 时做防御性拷贝，`list() / get()` / `register()` 返回的都是再副本 |
-| 停用依赖后下游插件仍 enabled | `disable` 只处理目标插件 | 级联停用下游依赖，teardown 顺序为依赖方先释放 |
-
-### 权限体系
-
-- 写入口从散落的 `if` 收敛为 `WRITE_CAPABILITIES` 表（`world/player/save/api/blocks/
-  time/settings/plugins`），新增能力时只改一张表，不会漏拦截。
-- 新增 `time:write`（`time.set` / `setDayLength`）、`settings:write`（`settings.*`）、
-  `plugins:manage`（插件注册 / 启停 / 卸载，`list` 只读）三项权限。
-- `register` 期校验：`setup` 必须是函数、权限名必须在白名单内、依赖必须是非空 id 数组、
-  不能自依赖——拼错立即失败，而不是运行时静默拒绝。
-
-### 生命周期与诊断
-
-- `disable` 级联停用下游依赖插件；`unload` 同理，依赖方随后可重新 enable。
-- 新增诊断项 `plugins.dependency`：启用中的插件若依赖未启用（含被外部改写的注册表）即报错。
-- `EventChannel` 新增 `fork()`（子通道随父通道销毁）、`onAny()`（归属通道，随 dispose 撤销）。
-
-### 验证
-
-| 项 | 结果 |
-|---|---|
-| `test:services` | 48 项（新增 emit 门禁 / 通道归属 / manifest 防篡改 / 级联停用 / fork 与 onAny 共 10 项） |
-| `test:diagnostics` | 22 组断言（新增插件依赖悬空注入） |
-| `test:logic` / `test:light` / `test:mesher` / `test:worker-pool` / `test:edits` / `test:terrain-system` | 全通过 |
-| `test:smoke` / `test:visual` | 本机 Chromium 二进制 SIGBUS 无法启动，需在 CI（apt chromium + xvfb）跑 |
-
----
 
 内容由 AI 生成
