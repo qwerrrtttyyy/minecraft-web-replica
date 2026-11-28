@@ -11,6 +11,7 @@ import {
 import { QualityGovernor } from './gfx/qualityGovernor';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
+import { loadTexturePackInto } from './gfx/texturePack';
 import { DefaultGenerator } from './world/generator';
 import { World } from './world/world';
 import { Botany } from './world/botany';
@@ -106,6 +107,7 @@ async function boot() {
   const atlas = new TextureAtlas();
   const sound = new SoundEngine();
   const isMobile = engine.isMobile;
+  const startupRadius = isMobile ? 2 : 3;
 
   // ---- 帧预算 governor：跨端动态分辨率的大脑（桌面 / 移动同一套，仅起点与下限不同）----
   const qualityGovernor = new QualityGovernor({
@@ -212,6 +214,11 @@ async function boot() {
   });
   sound.setEnabled(settings.sound);
   plugins.setExperimental(settings.experimental);
+  if (qs.get('terrain') === 'density') settings.densityTerrain = true;
+  const packedLighting = qs.get('lighting') !== 'float2';
+  let activeTexturePackName = '经典（程序化）';
+  let texturePackImportSeq = 0;
+  let texturePackImportQueue = Promise.resolve();
 
   // ---- 实验性内容：我的世界 UI 还原（把原版 Java 版风格样式挂到 UI 根节点）----
   // 纯 CSS 主题切换：不改 HUD 的 DOM 逻辑，开关即时生效，导入设置后也会重新应用。
@@ -242,7 +249,7 @@ async function boot() {
   };
 
   // ---- 世界 ----
-  const generator = new DefaultGenerator(seed, registry);
+  const generator = new DefaultGenerator(seed, registry, { densityTerrain: settings.densityTerrain });
   const world = new World(registry, generator, events, extensions);
   if (saved) world.loadEdits(saved.edits);
   // 熔炉方块实体：载入存档时恢复各炉的槽位与燃烧 / 进度状态；
@@ -262,6 +269,8 @@ async function boot() {
     forceMainThread: qs.get('mesher') === 'main',
     greedy: qs.get('greedy') !== '0',
     mergeEmissive: qs.get('emerge') !== '0',
+    packedLighting,
+    mobile: isMobile,
     workers: workersParam != null ? Number(workersParam) : undefined,
     // 地形生成池：URL ?genWorkers=N 优先，其次看设置页 genThreads（0 = 不启用，主线程同步）
     genWorkers: genWorkersParam != null
@@ -790,6 +799,33 @@ async function boot() {
     },
     onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
     onExperimental: (v) => setExperimental(v),
+    onDensityTerrain: (v) => {
+      settings.densityTerrain = v;
+      persistOptions(settings);
+      hud.toast(v ? '3D 密度场地形：之后生成的区块将带岩檐与悬挑' : '3D 密度场地形：之后生成的区块恢复高度场地形');
+      markDirty();
+    },
+    onTexturePackImport: (files) => {
+      const seq = ++texturePackImportSeq;
+      const run = async () => {
+        if (seq !== texturePackImportSeq) return;
+        const res = await loadTexturePackInto(atlas, files, {
+          concurrency: isMobile ? 2 : 4,
+          shouldApply: () => seq === texturePackImportSeq,
+        });
+        if (seq !== texturePackImportSeq || res.superseded) return;
+        if (res.applied.length > 0) {
+          activeTexturePackName = `导入：${res.source}`;
+          hud.setTexturePackStatus(`当前材质包：${res.source}（${res.applied.length} 张纹理）`);
+          hud.rebuildPalette();
+          hud.toast(`材质包已导入：${res.applied.length} 张${res.missed.length ? `，${res.missed.length} 项未匹配` : ''}`);
+        } else {
+          hud.toast(`材质包未应用任何纹理${res.missed.length ? `（${res.missed.length} 项未匹配）` : ''}`);
+        }
+        if (res.errors.length > 0) hud.setTexturePackStatus(`材质包错误：${res.errors[0]}`);
+      };
+      texturePackImportQueue = texturePackImportQueue.then(run, run);
+    },
     // ---- 实验性玩法：即时生效 + 反馈 + 持久化 ----
     onRandomTickSpeed: (v: RandomTickSpeed) => {
       settings.randomTickSpeed = v;
@@ -921,6 +957,7 @@ async function boot() {
     }
   }, true);
   hud.setSound(settings.sound);
+  hud.setTexturePackStatus(`当前材质包：${activeTexturePackName}`);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
 
@@ -1190,7 +1227,7 @@ async function boot() {
       player.spawn();
       survival.spawn = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
     }
-    await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3),
+    await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, startupRadius),
       (p) => hud.setLoading(p));
     // 生态状态在区块就绪后恢复：恢复函数会逐条校验当前方块是否仍是该植物
     if (cont && saved?.botany) botany.restoreEcology(saved.botany);
@@ -1812,6 +1849,7 @@ async function boot() {
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
       `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
+      `实验: 地形 ${settings.densityTerrain ? 'density' : 'classic'} · 光照 ${chunks.lightingMode} (${chunks.vertexLightBytes} B/顶点) · 材质 ${activeTexturePackName}`,
     ].join('\n');
   }
 
@@ -2020,7 +2058,7 @@ async function boot() {
 
   // ---- 启动：预载出生点 → 标题全景 ----
   hud.setLoading(0, '生成地形…');
-  await chunks.initialLoad(0, 0, 3, (p) => hud.setLoading(p * 0.92));
+  await chunks.initialLoad(0, 0, startupRadius, (p) => hud.setLoading(p * 0.92));
   if (!saved) player.spawn();
   for (let i = 0; i < 5; i++) entities.trySpawnNear(player.pos);
   hud.setLoading(null);
@@ -2063,6 +2101,7 @@ async function boot() {
   (window as unknown as Record<string, unknown>).__mc = {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
+    startupRadius,
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
     botany, falling, arrows, fire, smelting, weather, cold, weatherParticles,
     /** 测试钩子：强制天气（null 恢复历法推导） */

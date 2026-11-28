@@ -79,6 +79,8 @@ export interface TerrainOptions {
   treeDensity: Partial<Record<BiomeId, number>>;
   /** 矿脉数量倍率，0 可关闭矿物 */
   oreRichness: number;
+  /** 3D 密度场地形：在近地表叠加体积雕刻与陡坡岩檐（默认关闭） */
+  densityTerrain?: boolean;
 }
 
 export const DEFAULT_TERRAIN: TerrainOptions = {
@@ -99,6 +101,7 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
     dark_forest: 0.45, birch_forest: 0.4, snowy_taiga: 0.3,
   },
   oreRichness: 1,
+  densityTerrain: false,
 };
 
 /**
@@ -562,6 +565,8 @@ export class DefaultGenerator implements IWorldGenerator {
   private readonly biomeJitter: Noise;
   private readonly cave: Noise;
   private readonly cave2: Noise;
+  private readonly densityA: Noise;
+  private readonly densityB: Noise;
   private readonly ids: Record<string, number>;
   private readonly profiles: Record<BiomeId, ResolvedProfile>;
 
@@ -605,6 +610,8 @@ export class DefaultGenerator implements IWorldGenerator {
     this.biomeJitter = n(0x85ebca6b);
     this.cave = n(0xc2b2ae35);
     this.cave2 = n(0x5bf03675);
+    this.densityA = n(0x4f1bbcdc);
+    this.densityB = n(0xa54ff53a);
 
     const id = (name: string) => ids.byNameGet(name)?.id ?? 0;
     this.ids = {
@@ -932,6 +939,38 @@ export class DefaultGenerator implements IWorldGenerator {
             id = top;
           }
           data[idx(lx, y, lz)] = id;
+        }
+
+        if (this.opt.densityTerrain && h >= SEA_LEVEL) {
+          // 3D 密度场：只改近地表，保留 h 顶面作为树木 / 花草的稳定落脚点。
+          // 下方形成透镜状空洞与悬挑，陡坡上方堆出岩檐 / 岩桥，轮廓不再局限于高度场。
+          for (let y = Math.max(4, h - 14); y < h - 2; y++) {
+            const d = this.densityA.fbm3(wx / 18, y / 13, wz / 18, 2);
+            const v = this.densityB.noise3(wx / 7.5 + y * 0.07, y / 5, wz / 7.5 - y * 0.05);
+            if (d * 0.72 + v * 0.28 > 0.23) data[idx(lx, y, lz)] = 0;
+          }
+          if (c.slope > 0.16 && h < H - 16) {
+            const hill = smoothstep(0.16, 0.58, c.slope);
+            const broad = this.densityA.fbm3(wx / 15 + 70, (h + 5) / 11, wz / 15 - 30, 2);
+            const detail = this.densityB.noise3(wx / 9, (h + 3) / 7, wz / 9);
+            const extra = Math.max(0, Math.floor((broad * 0.6 + detail * 0.4 + 0.24) * 7 * hill));
+            const topY = Math.min(H - 2, h + extra);
+            for (let y = h + 3; y <= topY; y++) {
+              data[idx(lx, y, lz)] = y === h + 3 ? top : I.stone;
+            }
+          }
+          if (h > SEA_LEVEL + 5) {
+            const island = this.densityA.fbm3(wx / 27 + 140, (h + 16) / 19, wz / 27 - 90, 3);
+            if (island > 0.47) {
+              const lift = 5 + Math.floor((island - 0.47) * 18);
+              const thick = 1 + Math.floor(this.densityB.noise3(wx / 8, (h + lift) / 6, wz / 8) * 2.2 + 2);
+              const baseY = Math.min(H - 4, h + lift);
+              const topY = Math.min(H - 2, baseY + thick);
+              for (let y = baseY; y <= topY; y++) {
+                data[idx(lx, y, lz)] = y === topY ? top : I.stone;
+              }
+            }
+          }
         }
 
         if (h < SEA_LEVEL) {

@@ -401,7 +401,7 @@ img { image-rendering: pixelated; }
 }
 
 .hotbar-wrap {
-  position: absolute; left: 50%; bottom: 8px;
+  position: absolute; left: 50%; bottom: calc(8px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   max-width: 100vw;
@@ -642,7 +642,7 @@ img { image-rendering: pixelated; }
 /* ============ 触控（N2：PE 风格圆角方形按钮 + 方形底盘摇杆） ============ */
 .touch-ui { position: absolute; inset: 0; pointer-events: none; }
 .joy-zone {
-  position: absolute; left: 16px; bottom: 108px;
+  position: absolute; left: 16px; bottom: calc(108px + env(safe-area-inset-bottom));
   width: 148px; height: 148px;
   pointer-events: auto; touch-action: none;
 }
@@ -692,11 +692,11 @@ img { image-rendering: pixelated; }
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .5), 0 1px 0 rgba(0, 0, 0, .6);
 }
 /* 分区：左下摇杆、右下动作簇；命中区全部 ≥44×44，且不压准星与快捷栏 */
-.tbtn-jump { right: 18px; bottom: 112px; width: 76px; height: 76px; }
-.tbtn-place { right: 108px; bottom: 122px; width: 58px; height: 58px; }
-.tbtn-break { right: 22px; bottom: 208px; width: 58px; height: 58px; }
-.tbtn-fly { right: 108px; bottom: 200px; width: 52px; height: 52px; }
-.tbtn-down { right: 172px; bottom: 122px; width: 52px; height: 52px; }
+.tbtn-jump { right: calc(18px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)); width: 76px; height: 76px; }
+.tbtn-place { right: calc(108px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); width: 58px; height: 58px; }
+.tbtn-break { right: calc(22px + env(safe-area-inset-right)); bottom: calc(208px + env(safe-area-inset-bottom)); width: 58px; height: 58px; }
+.tbtn-fly { right: calc(108px + env(safe-area-inset-right)); bottom: calc(200px + env(safe-area-inset-bottom)); width: 52px; height: 52px; }
+.tbtn-down { right: calc(172px + env(safe-area-inset-right)); bottom: calc(122px + env(safe-area-inset-bottom)); width: 52px; height: 52px; }
 
 /* ============ 滚动条 ============ */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -722,14 +722,14 @@ img { image-rendering: pixelated; }
   .title-inner { padding-top: 3vh; }
   .mc-logo { font-size: clamp(30px, 7vh, 52px); }
   .title-sub { margin: 6px 0 14px; }
-  .joy-zone { bottom: 70px; width: 120px; height: 120px; }
+  .joy-zone { bottom: calc(70px + env(safe-area-inset-bottom)); width: 120px; height: 120px; }
   .joy-base--pe { width: 104px; height: 104px; }
   .joy-knob--pe { width: 52px; height: 52px; }
-  .tbtn-jump { bottom: 74px; }
-  .tbtn-place { bottom: 84px; }
-  .tbtn-break { bottom: 164px; }
-  .tbtn-fly { bottom: 158px; }
-  .tbtn-down { bottom: 84px; }
+  .tbtn-jump { bottom: calc(74px + env(safe-area-inset-bottom)); }
+  .tbtn-place { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .tbtn-break { bottom: calc(164px + env(safe-area-inset-bottom)); }
+  .tbtn-fly { bottom: calc(158px + env(safe-area-inset-bottom)); }
+  .tbtn-down { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 
 /* ============ 生存状态 HUD ============ */
@@ -919,7 +919,6 @@ img { image-rendering: pixelated; }
 /* 安全区 */
 .top-buttons { top: calc(8px + env(safe-area-inset-top)); }
 .joy-zone { left: calc(14px + env(safe-area-inset-left)); }
-.tbtn-jump { right: calc(18px + env(safe-area-inset-right)); }
 
 /* ============ 横屏模式（实验性内容）============
    .landscape-mode 挂在 .hud-root 上；CSS 负责宽屏（高度受限）下的 HUD 重排。 */
@@ -945,7 +944,7 @@ img { image-rendering: pixelated; }
 .rotate-sub { font-size: 13px; line-height: 1.7; color: #c8c8c8; max-width: 340px; }
 
 /* 横屏 + 低高度：整体 HUD 向两侧收拢，中间留视野 */
-.landscape-mode .hotbar-wrap { bottom: 4px; }
+.landscape-mode .hotbar-wrap { bottom: calc(4px + env(safe-area-inset-bottom)); }
 .landscape-mode .stats-wrap { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .landscape-mode .xp-wrap { bottom: calc(50px + env(safe-area-inset-bottom)); }
 .landscape-mode .hint-bar { bottom: calc(112px + env(safe-area-inset-bottom)); }
