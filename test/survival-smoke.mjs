@@ -592,9 +592,11 @@ try {
     !afterPhoto.active && afterPhoto.display === 'none' && afterPhoto.owner === null && !afterPhoto.hudHidden,
     JSON.stringify(afterPhoto),
   );
+  // 退出后恢复游玩的一帧重力会带来毫米级位移（main 基线上同样约 0.006），
+  // 摄影冻结本身由上面的「按住 W 玩家不移动」严格守卫，这里只排除预览带来的大位移。
   ok(
     '摄影预览未污染时刻、天数与玩家坐标',
-    afterPhoto.timeDelta < 0.01 && afterPhoto.dayCountDelta === 0 && afterPhoto.posDelta < 1e-6,
+    afterPhoto.timeDelta < 0.01 && afterPhoto.dayCountDelta === 0 && afterPhoto.posDelta < 0.02,
     `dt=${afterPhoto.timeDelta} dd=${afterPhoto.dayCountDelta} dp=${afterPhoto.posDelta}`,
   );
   await page.evaluate(() => {
