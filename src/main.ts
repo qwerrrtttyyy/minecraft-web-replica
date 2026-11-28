@@ -1602,6 +1602,11 @@ async function boot() {
         }
         return { tracked: stats.tracked, avgEnergy: stats.avgEnergy, invalidEnergy };
       })(),
+      photo: {
+        active: photo?.active ?? false,
+        cameraOwner: engine.cameraOwner,
+        fov: engine.camera.fov,
+      },
       save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
     };
   };

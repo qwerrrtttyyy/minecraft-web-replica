@@ -4,7 +4,14 @@
 版本号遵循「双轨版本」约定：正式版 `vN`（里程碑）/ 迭代版 `X.Y.Z`（日常迭代），
 唯一来源为 `src/core/version.ts`。更详细的演进实录见 README 各版本记录章节。
 
-## [Unreleased]
+## [1.6.0-beta.3] - 2026-11-28
+
+### 摄影模式
+- **自由相机取景**：按 P 进入摄影模式，WASD / 方向键平移、空格 / Shift 升降、拖拽 / 鼠标转向、滚轮改 FOV；水平位置限制在已加载区域内。世界继续模拟，只冻结玩家与昼夜时刻 / 天气预览，退出一律还原，不写存档、不标脏、不改区块加载中心。
+- **覆盖层与截图**：HUD 隐藏并显示取景信息（坐标 / FOV / 群系 / 季节 / 天气 / 时刻），可切换时段预设、天气、水印；截图在引擎渲染后同帧经离屏 canvas 导出 PNG，`CraftAPI.photo` 暴露运行时状态，`lastDataUrl` 供控制台 / 自动化测试读取。
+- **引擎与存档**：新增同帧 `onAfterRender` 钩子与 `cameraOwner` 相机归属标识；摄影模式期间 `collectSave()` 用 `savedDayTime` / `savedDayCount` 快照，避免预览时刻串入存档。
+- **诊断**：`DiagnosticSnapshot.photo` 可选字段与 `photo-camera-owner` 检查；激活时相机归属必须是 `photo`，非激活时不得为 `photo`，旧快照缺字段时跳过。`test/diagnostics-check.cjs` 增加 4 组注入回归，`test:photo` 与浏览器实景断言覆盖运行时行为。
+- **口径**：摄影模式本身 0 新方块 / 0 地形改动 / 0 新依赖；`RELEASE` 保持 `v1`，版本单一来源仍为 `src/core/version.ts`。
 
 ### 内容更新（静态结构探索）
 - **三类结构**：`src/world/structures.ts` 纯数据模板 + 16 群系村庄配色板；`DefaultGenerator` 新增第 5 阶段 `structures`，按世界网格哈希生成村庄小屋 / 废弃矿井 / 地牢，跨区块裁剪沿用树木的确定性做法。
