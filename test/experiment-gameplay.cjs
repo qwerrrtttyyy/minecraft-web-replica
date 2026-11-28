@@ -34,7 +34,17 @@ registerBuiltinBlocks(reg);
 const id = (n) => reg.byNameGet(n).id;
 
 /** 空世界：generateChunk 不写数据，全部为空气 */
-const makeEmptyWorld = () => new World(reg, { generateChunk() {}, surfaceHeight() { return 32; } }, new EventBus());
+const makeEmptyWorld = () =>
+  new World(
+    reg,
+    {
+      generateChunk() {},
+      surfaceHeight() {
+        return 32;
+      },
+    },
+    new EventBus(),
+  );
 
 /** 扁平世界：地面 y=20（botany-check 的 makeWorld 模式） */
 function makeFlatWorld(seed = 20261115) {
@@ -74,42 +84,62 @@ log('E9 生存状态机：饥饿消耗率 / 饱食回血 / 饥饿掉血 / 伤害
     return { points, rate: points / T, healthLost: 20 - s.health };
   };
   const walk = drainRate(true, false, false);
-  ok('运动消耗：walk ≈ 0.06/s（200s）',
-    walk.rate >= 0.008 && walk.rate <= 0.03, `rate=${walk.rate.toFixed(4)}/s`);
+  ok('运动消耗：walk ≈ 0.06/s（200s）', walk.rate >= 0.008 && walk.rate <= 0.03, `rate=${walk.rate.toFixed(4)}/s`);
   const sprint = drainRate(true, true, false);
-  ok('运动消耗：sprint ≈ 0.20/s（200s）',
-    sprint.rate >= 0.028 && sprint.rate <= 0.072, `rate=${sprint.rate.toFixed(4)}/s`);
+  ok(
+    '运动消耗：sprint ≈ 0.20/s（200s）',
+    sprint.rate >= 0.028 && sprint.rate <= 0.072,
+    `rate=${sprint.rate.toFixed(4)}/s`,
+  );
   const mining = drainRate(false, false, true);
-  ok('运动消耗：mining ≈ 0.09/s（200s）',
-    mining.rate >= 0.012 && mining.rate <= 0.033, `rate=${mining.rate.toFixed(4)}/s`);
-  ok('运动消耗：无死亡/饥饿副作用（health 不减）',
+  ok(
+    '运动消耗：mining ≈ 0.09/s（200s）',
+    mining.rate >= 0.012 && mining.rate <= 0.033,
+    `rate=${mining.rate.toFixed(4)}/s`,
+  );
+  ok(
+    '运动消耗：无死亡/饥饿副作用（health 不减）',
     walk.healthLost === 0 && sprint.healthLost === 0 && mining.healthLost === 0,
-    `${walk.healthLost}/${sprint.healthLost}/${mining.healthLost}`);
+    `${walk.healthLost}/${sprint.healthLost}/${mining.healthLost}`,
+  );
 
   {
     const s = mkSurv();
-    s.health = 10; s.hunger = 19;
+    s.health = 10;
+    s.hunger = 19;
     const heals = [];
     const origHeal = s.heal.bind(s);
-    s.heal = (a) => { heals.push(a); origHeal(a); };
+    s.heal = (a) => {
+      heals.push(a);
+      origHeal(a);
+    };
     for (let i = 0; i < 400; i++) s.tick(0.1, idleCtx);
     ok('饱食回血：触发（heals ≥ 1）', heals.length >= 1, `heals=${heals.length}`);
     // 饱和度缓冲回血消耗：health 回满，hunger 保持 19 不掉
-    ok('饱食回血：health 回满，hunger 不掉（饱和度缓冲）',
+    ok(
+      '饱食回血：health 回满，hunger 不掉（饱和度缓冲）',
       s.health === 20 && s.hunger === 19,
-      `health=${s.health} hunger=${s.hunger} saturation=${s.saturation}`);
+      `health=${s.health} hunger=${s.hunger} saturation=${s.saturation}`,
+    );
   }
   {
     const s = mkSurv();
-    s.health = 5; s.hunger = 0; s.saturation = 0; // 饱和度清空，隔离饥饿掉血路径
+    s.health = 5;
+    s.hunger = 0;
+    s.saturation = 0; // 饱和度清空，隔离饥饿掉血路径
     const damages = [];
     const origDamage = s.damage.bind(s);
-    s.damage = (a, c, u) => { damages.push(c); return origDamage(a, c, u); };
+    s.damage = (a, c, u) => {
+      damages.push(c);
+      return origDamage(a, c, u);
+    };
     for (let i = 0; i < 400; i++) s.tick(0.1, idleCtx);
     const n = damages.filter((c) => c === '饥饿').length;
-    ok('饥饿掉血：每 4s 一次 -1，死亡（T=40s）',
+    ok(
+      '饥饿掉血：每 4s 一次 -1，死亡（T=40s）',
       n >= 4 && n <= 7 && s.dead === true && s.health === 0,
-      `damages=${n} health=${s.health} dead=${s.dead}`);
+      `damages=${n} health=${s.health} dead=${s.dead}`,
+    );
   }
   {
     const s = mkSurv();
@@ -119,9 +149,11 @@ log('E9 生存状态机：饥饿消耗率 / 饱食回血 / 饥饿掉血 / 伤害
     const d3 = s.damage(1, 'test');
     s.tick(0.3, idleCtx);
     const d4 = s.damage(1, 'test');
-    ok('伤害免疫：免疫 0.32s 内生效（d1=true, d2=false, d3=false, d4=true, health=9）',
+    ok(
+      '伤害免疫：免疫 0.32s 内生效（d1=true, d2=false, d3=false, d4=true, health=9）',
       d1 === true && d2 === false && d3 === false && d4 === true && s.health === 9,
-      `health=${s.health}`);
+      `health=${s.health}`,
+    );
   }
 }
 
@@ -132,10 +164,19 @@ log('E10 生态随机刻节奏：Botany.setTickSpeed(0/1/2/3) 的 randomAttempt 
     const world = makeFlatWorld();
     const botany = new Botany(world, world.registry, 20261115, new EventBus(), {});
     botany.setTickSpeed(tier);
-    for (const [x, z] of [[5, 5], [9, 9], [13, 13], [17, 17]]) world.setBlock(x, 21, z, id('wheat_seedling'));
+    for (const [x, z] of [
+      [5, 5],
+      [9, 9],
+      [13, 13],
+      [17, 17],
+    ])
+      world.setBlock(x, 21, z, id('wheat_seedling'));
     let calls = 0;
     const origGet = world.getBlock.bind(world);
-    world.getBlock = (x, y, z) => { calls++; return origGet(x, y, z); };
+    world.getBlock = (x, y, z) => {
+      calls++;
+      return origGet(x, y, z);
+    };
     for (let i = 0; i < 300; i++) botany.update(0.1, 5, 5, 1);
     return calls;
   };
@@ -144,8 +185,11 @@ log('E10 生态随机刻节奏：Botany.setTickSpeed(0/1/2/3) 的 randomAttempt 
   const c2 = tierCalls(2);
   const c3 = tierCalls(3);
   ok('随机刻节奏：tier 0 → 0 次 randomAttempt（暂停档）', c0 === 0, `calls=${c0}`);
-  ok('随机刻节奏：tier 3 / tier 2 比例 ≈ scale 2.2（在 [1.85, 2.75]）',
-    c3 / c2 >= 1.85 && c3 / c2 <= 2.75, `ratio=${(c3 / c2).toFixed(2)} (${c3}/${c2})`);
+  ok(
+    '随机刻节奏：tier 3 / tier 2 比例 ≈ scale 2.2（在 [1.85, 2.75]）',
+    c3 / c2 >= 1.85 && c3 / c2 <= 2.75,
+    `ratio=${(c3 / c2).toFixed(2)} (${c3}/${c2})`,
+  );
   ok('随机刻节奏：tier 2 > tier 1（标准 56 > 慢档 ~20）', c2 > c1, `${c2} > ${c1}`);
 }
 
@@ -177,14 +221,24 @@ log('E11 实体攻击：hurt 语义 + 敌对攻击节奏 + 弹道射线命中');
     // daylight=0：夜间，否则僵尸的 burnInDay 白天灼烧会给 zombie 扣血（见 Entity.update）
     mgr.update(0.1, {
       playerPos: z.pos,
-      hurtPlayer: (amount, cause) => { hits.push({ amount, cause }); return true; },
-      daylight: 0, playerDead: false,
+      hurtPlayer: (amount, cause) => {
+        hits.push({ amount, cause });
+        return true;
+      },
+      daylight: 0,
+      playerDead: false,
     });
   }
-  ok('实体：敌对攻击节奏 ≈ 1/1.05s（10s，攻击次数在 [8, 13]）',
-    hits.length >= 8 && hits.length <= 13, `hits=${hits.length}`);
-  ok('实体：攻击伤害 = 僵尸 damage=3',
-    hits.length > 0 && hits.every((h) => h.amount === 3), `first=${hits[0]?.amount}`);
+  ok(
+    '实体：敌对攻击节奏 ≈ 1/1.05s（10s，攻击次数在 [8, 13]）',
+    hits.length >= 8 && hits.length <= 13,
+    `hits=${hits.length}`,
+  );
+  ok(
+    '实体：攻击伤害 = 僵尸 damage=3',
+    hits.length > 0 && hits.every((h) => h.amount === 3),
+    `first=${hits[0]?.amount}`,
+  );
 }
 {
   const world = makeEmptyWorld();
@@ -193,9 +247,11 @@ log('E11 实体攻击：hurt 语义 + 敌对攻击节奏 + 弹道射线命中');
   const origin = { x: 4, y: 10, z: 12 };
   const dir = { x: 1, y: 0, z: 0 };
   const hit = world.raycast(origin, dir, 6);
-  ok('实体射线：穿过石墙命中（hit.x=8）',
+  ok(
+    '实体射线：穿过石墙命中（hit.x=8）',
     hit && hit.block === stone && Math.abs(hit.x - 8) < 1e-6,
-    `hit=${hit ? `x=${hit.x} dist=${hit.dist}` : 'null'}`);
+    `hit=${hit ? `x=${hit.x} dist=${hit.dist}` : 'null'}`,
+  );
   const N = 1000;
   const t0 = performance.now();
   for (let i = 0; i < N; i++) world.raycast(origin, dir, 6);
@@ -215,9 +271,11 @@ log('E13 脱困解算：resolvePenetration 在嵌入中的迭代与位移');
   const r = resolvePenetration(pos, 0.6, 1.9, isSolid);
   const displacement = Math.abs(r.dx) + Math.abs(r.dy) + Math.abs(r.dz);
   ok('脱困：resolved=true, moved=true', r.resolved === true && r.moved === true, JSON.stringify(r));
-  ok('脱困：迭代 ≤ 上限(10)，位移有界(0, 4]',
+  ok(
+    '脱困：迭代 ≤ 上限(10)，位移有界(0, 4]',
     r.iterations <= 10 && displacement > 0 && displacement <= 4,
-    `iterations=${r.iterations} displacement=${displacement.toFixed(3)}`);
+    `iterations=${r.iterations} displacement=${displacement.toFixed(3)}`,
+  );
   const t0 = performance.now();
   for (let i = 0; i < 200; i++) resolvePenetration(pos, 0.6, 1.9, isSolid);
   const ms = (performance.now() - t0) / 200;
@@ -244,8 +302,11 @@ log('E12 确定性掉落：rollDrops 率 / 可复现性 / 过滤');
     const sigma = Math.sqrt(p * (1 - p) * N);
     const tol = (5 * sigma) / N;
     const r = rate(name);
-    ok(`掉落率 ${name} ≈ ${p}（|Δ| ≤ 5σ，σ=${sigma.toFixed(0)}）`,
-      Math.abs(r - p) <= tol, `measured=${r.toFixed(4)} expected=${p}`);
+    ok(
+      `掉落率 ${name} ≈ ${p}（|Δ| ≤ 5σ，σ=${sigma.toFixed(0)}）`,
+      Math.abs(r - p) <= tol,
+      `measured=${r.toFixed(4)} expected=${p}`,
+    );
   };
   expectRate('item:apple', 0.35);
   expectRate('item:iron_ingot', 0.15);
@@ -256,7 +317,10 @@ log('E12 确定性掉落：rollDrops 率 / 可复现性 / 过滤');
   ok('掉落判定可复现：同参数两次相同', JSON.stringify(a) === JSON.stringify(b), JSON.stringify(a));
   let varied = false;
   for (const s of ['e:1:0', 'e:1:1', 'e:1:2', 'e:1:3', 'e:1:4', 'e:1:6', 'e:1:7', 'e:1:8', 'e:1:9']) {
-    if (JSON.stringify(rollDrops(spec, { seed: 7, source: s })) !== JSON.stringify(a)) { varied = true; break; }
+    if (JSON.stringify(rollDrops(spec, { seed: 7, source: s })) !== JSON.stringify(a)) {
+      varied = true;
+      break;
+    }
   }
   ok('掉落判定按来源稳定分布（有源变化）', varied);
 
@@ -284,9 +348,11 @@ log('E12 确定性掉落：rollDrops 率 / 可复现性 / 过滤');
     const drops = rollDrops(rangeSpec, { seed: 7, source: `r:${i}` });
     rangeCounts.push(drops.length ? drops[0].count : 0);
   }
-  ok('min~max：count ∈ [2,5] 且不全相同',
+  ok(
+    'min~max：count ∈ [2,5] 且不全相同',
     rangeCounts.every((c) => c >= 2 && c <= 5) && new Set(rangeCounts).size > 1,
-    rangeCounts.slice(0, 6).join(','));
+    rangeCounts.slice(0, 6).join(','),
+  );
 }
 
 log(`\nPASS 玩法/生存机制实验：${passed} 组断言全部通过`);

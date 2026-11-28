@@ -7,8 +7,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = path.join(root, '.test-build');
@@ -98,15 +98,22 @@ const entries = [
 const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');
 const args = [
   '--ignoreConfig',
-  '--module', 'commonjs',
-  '--moduleResolution', 'bundler',
-  '--target', 'ES2020',
-  '--lib', 'ES2020,DOM,DOM.Iterable',
+  '--module',
+  'commonjs',
+  '--moduleResolution',
+  'bundler',
+  '--target',
+  'ES2020',
+  '--lib',
+  'ES2020,DOM,DOM.Iterable',
   '--strict',
   '--skipLibCheck',
-  '--outDir', tmp,
-  '--rootDir', 'src',
-  '--noEmit', 'false',
+  '--outDir',
+  tmp,
+  '--rootDir',
+  'src',
+  '--noEmit',
+  'false',
   ...entries.map((e) => path.join(root, e)),
 ];
 

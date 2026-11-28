@@ -1,21 +1,28 @@
 import * as THREE from 'three';
-import type { EventService } from '../services/events';
-import type { World } from '../world/world';
-import { moveBody, type PhysicsBody } from '../player/physics';
-import {
-  buildPig, buildSheep, buildCow, buildChicken, buildRabbit,
-  buildZombie, buildSkeleton, buildCreeper, buildSpider, buildSquid, type MobModel,
-} from './models';
-import type { DropSpec } from '../world/blocks';
-import type { Particles } from '../gfx/particles';
-import { dropHash, rollDrops } from '../world/drops';
-import { ANIMALS, BREED, NEW_MOBS, POPULATION } from '../core/tuning';
-import { canBreed, isBreedFood, pickMate } from './breeding';
 import type { AIService } from '../ai/AIService';
-import {
-  BALL, bounceVy, rollFriction, airDragFactor, spinDecay, magnusAcceleration, bounceSpin,
-} from './basketball';
+import { ANIMALS, BREED, NEW_MOBS, POPULATION } from '../core/tuning';
+import type { Particles } from '../gfx/particles';
+import { moveBody, type PhysicsBody } from '../player/physics';
+import type { EventService } from '../services/events';
+import type { DropSpec } from '../world/blocks';
+import { dropHash, rollDrops } from '../world/drops';
 import { isFireNear } from '../world/fire';
+import type { World } from '../world/world';
+import { airDragFactor, BALL, bounceSpin, bounceVy, magnusAcceleration, rollFriction, spinDecay } from './basketball';
+import { canBreed, isBreedFood, pickMate } from './breeding';
+import {
+  buildChicken,
+  buildCow,
+  buildCreeper,
+  buildPig,
+  buildRabbit,
+  buildSheep,
+  buildSkeleton,
+  buildSpider,
+  buildSquid,
+  buildZombie,
+  type MobModel,
+} from './models';
 
 /**
  * 实体系统（扩展点：CraftAPI.registerEntity）。
@@ -100,7 +107,13 @@ export class Entity implements PhysicsBody {
   aiComponent?: import('../ai/AIComponent').AIComponent;
   readonly model: MobModel;
 
-  constructor(readonly type: EntityType, x: number, y: number, z: number, private events: EventService) {
+  constructor(
+    readonly type: EntityType,
+    x: number,
+    y: number,
+    z: number,
+    private events: EventService,
+  ) {
     this.width = type.width;
     this.height = type.height;
     this.pos.set(x, y, z);
@@ -159,8 +172,8 @@ export class Entity implements PhysicsBody {
       return;
     }
     ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`);
-    this.vel.x += (-Math.sin(this.yaw)) * 2.2;
-    this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+    this.vel.x += -Math.sin(this.yaw) * 2.2;
+    this.vel.z += -Math.cos(this.yaw) * 2.2;
   }
 
   update(dt: number, world: World, ctx?: EntityContext) {
@@ -210,8 +223,8 @@ export class Entity implements PhysicsBody {
         if (dist < (this.type.attackRange ?? 1.8) && dy < 1.9 && this.attackCooldown <= 0) {
           this.attackCooldown = 1.05;
           ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
-          this.vel.x += (-Math.sin(this.yaw)) * 2.2;
-          this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+          this.vel.x += -Math.sin(this.yaw) * 2.2;
+          this.vel.z += -Math.cos(this.yaw) * 2.2;
         }
         ai.blackboard.set('wantAttack', false);
       }
@@ -229,8 +242,8 @@ export class Entity implements PhysicsBody {
             this.attackCooldown = 1.05;
             ctx.hurtPlayer(this.type.damage ?? 3, `${this.type.label}的攻击`, 'attack');
             // 攻击前扑
-            this.vel.x += (-Math.sin(this.yaw)) * 2.2;
-            this.vel.z += (-Math.cos(this.yaw)) * 2.2;
+            this.vel.x += -Math.sin(this.yaw) * 2.2;
+            this.vel.z += -Math.cos(this.yaw) * 2.2;
           }
         }
       }
@@ -276,8 +289,9 @@ export class Entity implements PhysicsBody {
     this.vel.x += (fx * speed - this.vel.x) * k;
     this.vel.z += (fz * speed - this.vel.z) * k;
 
-    const inWater = world.registry.get(world.getBlock(
-      Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z))).liquid;
+    const inWater = world.registry.get(
+      world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z)),
+    ).liquid;
     if (inWater) {
       // 水生生物悬浮在水中，而不是像误入水的陆生生物一样上浮
       this.vel.y = this.type.aquatic ? 0 : 2.2;
@@ -300,7 +314,7 @@ export class Entity implements PhysicsBody {
     if (moving) this.phase += dt * 7;
     this.model.group.position.copy(this.pos);
     this.model.group.rotation.y = this.yaw + Math.PI;
-    const animating = moving && (Math.abs(this.vel.x) + Math.abs(this.vel.z)) > 0.2;
+    const animating = moving && Math.abs(this.vel.x) + Math.abs(this.vel.z) > 0.2;
     this.model.animate(this.phase, animating);
     // 上下浮动必须叠加在实体位置上，不能由 animate() 直接写绝对坐标
     if (animating) this.model.group.position.y += Math.abs(Math.sin(this.phase)) * 0.02;
@@ -320,8 +334,9 @@ export class Entity implements PhysicsBody {
     const wasGround = this.onGround;
 
     // (2) 重力 / 水中阻尼上浮 + 水平滚动摩擦（均在 moveBody 之前）
-    const inWater = world.registry.get(world.getBlock(
-      Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z))).liquid;
+    const inWater = world.registry.get(
+      world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z)),
+    ).liquid;
     if (inWater) {
       this.vel.y = Math.min(this.vel.y + 8 * dt, 2.2);
       this.vel.x *= 0.6;
@@ -366,7 +381,11 @@ export class Entity implements PhysicsBody {
       this.spin = bounceSpin(this.spin, this.vel.x, this.vel.z);
       if (vy > 0) {
         this.events.emit('basketball:bounce', {
-          id: this.id, x: this.pos.x, y: this.pos.y, z: this.pos.z, strength: Math.abs(impactVy),
+          id: this.id,
+          x: this.pos.x,
+          y: this.pos.y,
+          z: this.pos.z,
+          strength: Math.abs(impactVy),
         });
       }
     } else if (this.onGround) {
@@ -425,43 +444,86 @@ export class EntityManager {
   private aiService: AIService | null = null;
 
   constructor(
-    private world: World, private scene: THREE.Scene, private events: EventService, seed = 0,
+    private world: World,
+    private scene: THREE.Scene,
+    private events: EventService,
+    seed = 0,
     private particles?: Particles,
   ) {
     this.seed = seed;
     this.registerType({
-      id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildPig,
-      health: 8, drops: [
-        { name: 'item:porkchop' }, { name: 'item:fertilizer', chance: 0.12 },
+      id: 'pig',
+      label: '猪',
+      width: 0.9,
+      height: 0.95,
+      speed: 1.15,
+      build: buildPig,
+      health: 8,
+      drops: [
+        { name: 'item:porkchop' },
+        { name: 'item:fertilizer', chance: 0.12 },
         { name: 'item:leather', chance: 0.5 },
       ],
     });
     this.registerType({
-      id: 'sheep', label: '羊', width: 0.9, height: 1.15, speed: 1.0, build: buildSheep,
-      health: 8, drops: [
-        { name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 },
-        { name: 'item:leather', chance: 0.3 },
-      ],
+      id: 'sheep',
+      label: '羊',
+      width: 0.9,
+      height: 1.15,
+      speed: 1.0,
+      build: buildSheep,
+      health: 8,
+      drops: [{ name: 'white_wool' }, { name: 'item:fertilizer', chance: 0.12 }, { name: 'item:leather', chance: 0.3 }],
     });
     // 三种新被动动物：数值与掉落取自 tuning.ts 的 ANIMALS，掉落名一律 item: 前缀
     const cow = ANIMALS.cow;
     this.registerType({
-      id: 'cow', label: '牛', width: cow.width, height: cow.height, speed: cow.speed,
-      build: buildCow, health: cow.health, weight: cow.weight, drops: cow.drops,
+      id: 'cow',
+      label: '牛',
+      width: cow.width,
+      height: cow.height,
+      speed: cow.speed,
+      build: buildCow,
+      health: cow.health,
+      weight: cow.weight,
+      drops: cow.drops,
     });
     const chicken = ANIMALS.chicken;
     this.registerType({
-      id: 'chicken', label: '鸡', width: chicken.width, height: chicken.height, speed: chicken.speed,
-      build: buildChicken, health: chicken.health, weight: chicken.weight, drops: chicken.drops,
+      id: 'chicken',
+      label: '鸡',
+      width: chicken.width,
+      height: chicken.height,
+      speed: chicken.speed,
+      build: buildChicken,
+      health: chicken.health,
+      weight: chicken.weight,
+      drops: chicken.drops,
     });
     const rabbit = ANIMALS.rabbit;
     this.registerType({
-      id: 'rabbit', label: '兔', width: rabbit.width, height: rabbit.height, speed: rabbit.speed,
-      build: buildRabbit, health: rabbit.health, weight: rabbit.weight, drops: rabbit.drops,
+      id: 'rabbit',
+      label: '兔',
+      width: rabbit.width,
+      height: rabbit.height,
+      speed: rabbit.speed,
+      build: buildRabbit,
+      health: rabbit.health,
+      weight: rabbit.weight,
+      drops: rabbit.drops,
     });
     this.registerType({
-      id: 'zombie', label: '僵尸', width: 0.6, height: 1.9, speed: 1.05, build: buildZombie,
-      hostile: true, health: 14, damage: 3, attackRange: 1.7, burnInDay: true,
+      id: 'zombie',
+      label: '僵尸',
+      width: 0.6,
+      height: 1.9,
+      speed: 1.05,
+      build: buildZombie,
+      hostile: true,
+      health: 14,
+      damage: 3,
+      attackRange: 1.7,
+      burnInDay: true,
       drops: [
         { name: 'item:apple', chance: 0.35 },
         { name: 'item:iron_ingot', chance: 0.15 },
@@ -469,32 +531,61 @@ export class EntityManager {
       ],
     });
     this.registerType({
-      id: 'skeleton', label: '骷髅', width: 0.6, height: 1.9, speed: 1.0, build: buildSkeleton,
-      hostile: true, health: 12, damage: 2, attackRange: 1.7, burnInDay: true,
+      id: 'skeleton',
+      label: '骷髅',
+      width: 0.6,
+      height: 1.9,
+      speed: 1.0,
+      build: buildSkeleton,
+      hostile: true,
+      health: 12,
+      damage: 2,
+      attackRange: 1.7,
+      burnInDay: true,
       drops: [{ name: 'item:bone_meal', chance: 0.75 }],
     });
     // ---- 内容更新：三种新生物（数值来自 tuning.ts 的 NEW_MOBS） ----
     const creeper = NEW_MOBS.creeper;
     this.registerType({
-      id: 'creeper', label: '苦力怕', width: creeper.width, height: creeper.height,
-      speed: creeper.speed, build: buildCreeper,
-      hostile: true, health: creeper.health, damage: creeper.damage, attackRange: creeper.attackRange,
-      burnInDay: creeper.burnInDay, explodeRadius: creeper.explodeRadius,
+      id: 'creeper',
+      label: '苦力怕',
+      width: creeper.width,
+      height: creeper.height,
+      speed: creeper.speed,
+      build: buildCreeper,
+      hostile: true,
+      health: creeper.health,
+      damage: creeper.damage,
+      attackRange: creeper.attackRange,
+      burnInDay: creeper.burnInDay,
+      explodeRadius: creeper.explodeRadius,
       drops: creeper.drops.map((d) => ({ ...d })),
     });
     const spider = NEW_MOBS.spider;
     this.registerType({
-      id: 'spider', label: '蜘蛛', width: spider.width, height: spider.height,
-      speed: spider.speed, build: buildSpider,
-      hostile: true, health: spider.health, damage: spider.damage, attackRange: spider.attackRange,
+      id: 'spider',
+      label: '蜘蛛',
+      width: spider.width,
+      height: spider.height,
+      speed: spider.speed,
+      build: buildSpider,
+      hostile: true,
+      health: spider.health,
+      damage: spider.damage,
+      attackRange: spider.attackRange,
       burnInDay: spider.burnInDay,
       drops: spider.drops.map((d) => ({ ...d })),
     });
     const squid = NEW_MOBS.squid;
     this.registerType({
-      id: 'squid', label: '鱿鱼', width: squid.width, height: squid.height,
-      speed: squid.speed, build: buildSquid,
-      health: squid.health, aquatic: squid.aquatic,
+      id: 'squid',
+      label: '鱿鱼',
+      width: squid.width,
+      height: squid.height,
+      speed: squid.speed,
+      build: buildSquid,
+      health: squid.health,
+      aquatic: squid.aquatic,
       drops: squid.drops.map((d) => ({ ...d })),
     });
   }
@@ -707,10 +798,20 @@ export class EntityManager {
 }
 
 /** 射线与竖直 AABB 求交（脚底为原点），返回进入距离 */
-function rayBox(origin: THREE.Vector3, dir: THREE.Vector3, feet: THREE.Vector3, half: number, height: number, maxDist: number): number | null {
-  const minX = feet.x - half, maxX = feet.x + half;
-  const minY = feet.y, maxY = feet.y + height;
-  const minZ = feet.z - half, maxZ = feet.z + half;
+function rayBox(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  feet: THREE.Vector3,
+  half: number,
+  height: number,
+  maxDist: number,
+): number | null {
+  const minX = feet.x - half,
+    maxX = feet.x + half;
+  const minY = feet.y,
+    maxY = feet.y + height;
+  const minZ = feet.z - half,
+    maxZ = feet.z + half;
   let tmin = 0;
   let tmax = maxDist;
   const axes: [number, number, number, number][] = [

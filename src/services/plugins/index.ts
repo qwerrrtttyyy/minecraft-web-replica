@@ -1,37 +1,35 @@
-export { PluginService, scopeAPI } from './PluginService';
-export type { PluginServiceOptions } from './PluginService';
+// v1.6.0：插件载体（js / wasm:module / wasm:host）
 export type {
-  PluginManifest,
-  PluginDefinition,
+  CarrierActivation,
+  CarrierHost,
+  CarrierInfo,
+  PluginCarrier,
+  WasmBytes,
+  WasmHostCarrier,
+  WasmModuleCarrier,
+} from './carriers/types';
+export type { EmitResult, ExtensionHandler, ExtensionInfo, ExtensionStats, WorldgenColumnPayload } from './extensions';
+// v1.6.0：扩展点注册表
+export { EXTENSION_POINTS, ExtensionRegistry } from './extensions';
+export type { PluginSourceOptions } from './loader';
+export { loadPluginDefinition, PluginLoadError } from './loader';
+export type {
   PluginContext,
+  PluginDefinition,
+  PluginManifest,
   PluginPermission,
   PluginRecord,
   PluginState,
   PluginStats,
 } from './PluginContext';
-export {
-  parseVersion, compareVersions, parseRange, satisfies, parseDependency,
-} from './semver';
-export type {
-  Version, Comparator, ComparatorOp, VersionRange, DependencySpec,
-} from './semver';
-export { loadPluginDefinition, PluginLoadError } from './loader';
-export type { PluginSourceOptions } from './loader';
-export {
-  MemoryPluginStorageProvider, LocalStoragePluginStorageProvider,
-  createPluginStorage, defaultPluginStorageProvider,
-} from './storage';
+export type { PluginServiceOptions } from './PluginService';
+export { PluginService, scopeAPI } from './PluginService';
+export type { Comparator, ComparatorOp, DependencySpec, Version, VersionRange } from './semver';
+export { compareVersions, parseDependency, parseRange, parseVersion, satisfies } from './semver';
 export type { PluginStorage, PluginStorageProvider } from './storage';
-// v1.6.0：扩展点注册表
 export {
-  ExtensionRegistry, EXTENSION_POINTS,
-} from './extensions';
-export type {
-  ExtensionInfo, ExtensionStats, EmitResult,
-  ExtensionHandler, WorldgenColumnPayload,
-} from './extensions';
-// v1.6.0：插件载体（js / wasm:module / wasm:host）
-export type {
-  PluginCarrier, WasmModuleCarrier, WasmHostCarrier, WasmBytes,
-  CarrierInfo, CarrierHost, CarrierActivation,
-} from './carriers/types';
+  createPluginStorage,
+  defaultPluginStorageProvider,
+  LocalStoragePluginStorageProvider,
+  MemoryPluginStorageProvider,
+} from './storage';

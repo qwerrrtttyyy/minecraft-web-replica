@@ -18,8 +18,7 @@ export interface Disposable {
   dispose(): void;
 }
 
-const isDisposable = (v: unknown): v is Disposable =>
-  !!v && typeof (v as Disposable).dispose === 'function';
+const isDisposable = (v: unknown): v is Disposable => !!v && typeof (v as Disposable).dispose === 'function';
 
 export class ServiceContainer implements Disposable {
   private readonly services = new Map<string, unknown>();

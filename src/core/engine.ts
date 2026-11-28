@@ -65,8 +65,8 @@ export class Engine {
 
   constructor(container: HTMLElement, options: { aa?: AAMode } = {}) {
     // 粗指针优先；触摸设备再要求「无悬停」，避免触摸屏笔记本被当成手机
-    this.isMobile = matchMedia('(pointer: coarse)').matches ||
-      (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
+    this.isMobile =
+      matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
     // MSAA 只能在创建上下文时决定，运行期改不了 —— 因此档位由启动参数选定
     this.aaMode = AA_MODES.includes(options.aa as AAMode) ? (options.aa as AAMode) : 'off';
     this.renderer = new THREE.WebGLRenderer({

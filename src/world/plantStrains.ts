@@ -12,15 +12,10 @@
  * 纯数据 + 纯函数，不依赖 World / DOM / three.js，可被
  * scripts/build-test-snapshot.mjs 编译进 CommonJS 快照。
  */
-import type { PlantTrait, PlantHarvest } from './plantTraits';
+import type { PlantHarvest, PlantTrait } from './plantTraits';
 
 /** 品系全局唯一 id；存档按 STRAIN_ORDER 的下标持久化，顺序只能末尾追加 */
-export type StrainId =
-  | 'luxuriant_wheat'
-  | 'berry_wheat'
-  | 'vine_berry'
-  | 'frost_grape'
-  | 'golden_wheat';
+export type StrainId = 'luxuriant_wheat' | 'berry_wheat' | 'vine_berry' | 'frost_grape' | 'golden_wheat';
 
 /** 品系定义：trait 覆盖叠加在物种基础特性之上 */
 export interface StrainDef {
@@ -105,10 +100,7 @@ export const CROSSBREED_COMBOS: readonly CrossbreedCombo[] = [
 ];
 
 /** 物种名 → 品系后代的查表：parents 无序匹配，同种需两株同物种 */
-export function findCombo(
-  speciesA: string,
-  speciesB: string,
-): CrossbreedCombo | undefined {
+export function findCombo(speciesA: string, speciesB: string): CrossbreedCombo | undefined {
   return CROSSBREED_COMBOS.find(
     (c) =>
       (c.parents[0] === speciesA && c.parents[1] === speciesB) ||

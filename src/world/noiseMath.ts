@@ -44,8 +44,7 @@ export function makePermutation(seed: number): Uint8Array {
 
 export function makeNoiseFunctions(perm: Uint8Array): NoiseFunctions {
   const hash2 = (x: number, y: number): number => perm[(perm[x & 255] + y) & 255] / 255;
-  const hash3 = (x: number, y: number, z: number): number =>
-    perm[(perm[(perm[x & 255] + y) & 255] + z) & 255] / 255;
+  const hash3 = (x: number, y: number, z: number): number => perm[(perm[(perm[x & 255] + y) & 255] + z) & 255] / 255;
   const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
   const noise2 = (x: number, y: number): number => {
@@ -109,9 +108,7 @@ export function makeNoiseFunctions(perm: Uint8Array): NoiseFunctions {
     return sum / norm;
   };
 
-  const fbm3 = (
-    x: number, y: number, z: number, octaves: number, lacunarity: number, gain: number,
-  ): number => {
+  const fbm3 = (x: number, y: number, z: number, octaves: number, lacunarity: number, gain: number): number => {
     let sum = 0;
     let amp = 1;
     let freq = 1;

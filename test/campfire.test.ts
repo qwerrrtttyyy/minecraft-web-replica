@@ -7,14 +7,13 @@
  * 不可烤材料被拒、点输入取回、关闭面板把槽内材料退回背包。
  */
 import { describe, expect, it, vi } from 'vitest';
-
-import { CampfirePanel } from '../src/ui/campfire';
+import type { TextureAtlas } from '../src/gfx/atlas';
+import type { MaterialId } from '../src/player/crafting';
 import { smeltOutputOf } from '../src/player/smelting';
 import { ITEMS } from '../src/player/survival';
-import type { TextureAtlas } from '../src/gfx/atlas';
-import type { BlockRegistry } from '../src/world/blocks';
+import { CampfirePanel } from '../src/ui/campfire';
 import type { CraftingHost, CraftingMaterial } from '../src/ui/crafting';
-import type { MaterialId } from '../src/player/crafting';
+import type { BlockRegistry } from '../src/world/blocks';
 
 /** 背包宿主：记录取走 / 退回 / 产出，不依赖 SurvivalState。 */
 class FakeHost {

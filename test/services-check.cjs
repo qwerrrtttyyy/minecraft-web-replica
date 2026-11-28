@@ -28,14 +28,19 @@ const ok = (name, fn) => {
 const pending = [];
 const okAsync = (name, fn) => {
   pending.push(
-    Promise.resolve().then(fn).then(
-      () => { results.push({ name, pass: true }); console.log(`PASS  ${name}`); },
-      (e) => {
-        failures++;
-        results.push({ name, pass: false, error: e.message });
-        console.log(`FAIL  ${name} — ${e.message}`);
-      },
-    ),
+    Promise.resolve()
+      .then(fn)
+      .then(
+        () => {
+          results.push({ name, pass: true });
+          console.log(`PASS  ${name}`);
+        },
+        (e) => {
+          failures++;
+          results.push({ name, pass: false, error: e.message });
+          console.log(`FAIL  ${name} — ${e.message}`);
+        },
+      ),
   );
 };
 
@@ -49,7 +54,8 @@ ok('容器 provide/require 往返', () => {
 });
 ok('容器 optional / has / keys', () => {
   const c = new ServiceContainer();
-  const a = token('a'), b = token('b');
+  const a = token('a'),
+    b = token('b');
   c.provide(a, 1);
   assert.strictEqual(c.optional(b), undefined);
   assert.strictEqual(c.has(a), true);
@@ -79,7 +85,9 @@ ok('容器逆序 dispose', () => {
 ok('on/emit 派发', () => {
   const ev = new EventService();
   let got = null;
-  ev.on('game:start', (p) => { got = p; });
+  ev.on('game:start', (p) => {
+    got = p;
+  });
   ev.emit('game:start', { seed: 42 });
   assert.strictEqual(got.seed, 42);
 });
@@ -94,20 +102,22 @@ ok('off 取消订阅', () => {
 });
 ok('M11 过期 off() 不抹掉后续同类型订阅', () => {
   const ev = new EventService();
-  let a = 0, b = 0;
+  let a = 0,
+    b = 0;
   const fnA = () => a++;
   const fnB = () => b++;
   const offA = ev.on('game:start', fnA);
-  ev.off('game:start', fnA);          // 先把 fnA 直接移除，offA 变为 stale
-  ev.on('game:start', fnB);          // 新订阅复用同 key
-  offA();                             // 旧 unsubscribe 应该不误删 fnB
+  ev.off('game:start', fnA); // 先把 fnA 直接移除，offA 变为 stale
+  ev.on('game:start', fnB); // 新订阅复用同 key
+  offA(); // 旧 unsubscribe 应该不误删 fnB
   ev.emit('game:start', { seed: 1 });
   assert.strictEqual(a, 0);
   assert.strictEqual(b, 1);
 });
 ok('同一事件多个订阅者均收到', () => {
   const ev = new EventService();
-  let a = 0, b = 0;
+  let a = 0,
+    b = 0;
   ev.on('game:start', () => a++);
   ev.on('game:start', () => b++);
   ev.emit('game:start', { seed: 1 });
@@ -118,8 +128,20 @@ ok('订阅者抛错被隔离，不阻断其他订阅者', () => {
   const errors = [];
   ev.setErrorHandler((i) => errors.push(i));
   let survived = 0;
-  ev.on('block:break', () => { throw new Error('插件炸了'); }, 'bad-plugin');
-  ev.on('block:break', () => { survived++; }, 'good-plugin');
+  ev.on(
+    'block:break',
+    () => {
+      throw new Error('插件炸了');
+    },
+    'bad-plugin',
+  );
+  ev.on(
+    'block:break',
+    () => {
+      survived++;
+    },
+    'good-plugin',
+  );
   ev.emit('block:break', { x: 0, y: 1, z: 0, block: 1 });
   assert.strictEqual(survived, 1);
   assert.strictEqual(errors.length, 1);
@@ -170,7 +192,10 @@ ok('事件环深度保护', () => {
   const errors = [];
   ev.setErrorHandler((i) => errors.push(i));
   let n = 0;
-  ev.on('game:pause', () => { n++; ev.emit('game:pause', { paused: true }); });
+  ev.on('game:pause', () => {
+    n++;
+    ev.emit('game:pause', { paused: true });
+  });
   ev.emit('game:pause', { paused: true });
   assert.ok(n <= 17, `递归次数 ${n}`);
   assert.ok(errors.some((e) => String(e.error).includes('深度')));
@@ -212,9 +237,9 @@ const makeFakeApi = () => {
     world: { setBlock: () => true, getBlock: () => 0 },
     player: { teleport() {}, setFly() {}, break() {}, place() {}, setCamera() {} },
     save: { import() {}, setProvider() {} },
-    blocks: { 
-      register() {}, 
-      get: (id) => id 
+    blocks: {
+      register() {},
+      get: (id) => id,
     },
     tnt: { ignite() {} },
     entities: { spawn() {}, list: () => [] },
@@ -232,13 +257,25 @@ const makeFakeApi = () => {
       registeredByName.set(def.name, def);
       return def;
     },
-    registerTile() {}, registerEntity() {}, setGenerator() {},
-    on() { return () => {}; }, off() {}, emit() {},
+    registerTile() {},
+    registerEntity() {},
+    setGenerator() {},
+    on() {
+      return () => {};
+    },
+    off() {},
+    emit() {},
     events: {
-      scope(ns, options) { return { ns, options }; },
+      scope(ns, options) {
+        return { ns, options };
+      },
       stats: () => ({ emitted: {}, subscribers: 0, channels: [] }),
-      onAny() { return () => {}; },
-      waitFor() { return Promise.resolve(); },
+      onAny() {
+        return () => {};
+      },
+      waitFor() {
+        return Promise.resolve();
+      },
     },
   };
 };
@@ -257,7 +294,12 @@ okAsync('插件注册与启用发出生命周期事件', async () => {
   ev.on('plugin:registered', () => seen.push('registered'));
   ev.on('plugin:enabled', () => seen.push('enabled'));
   let setup = 0;
-  ps.register({ manifest: { id: 'demo:a', version: '1.0.0' }, setup() { setup++; } });
+  ps.register({
+    manifest: { id: 'demo:a', version: '1.0.0' },
+    setup() {
+      setup++;
+    },
+  });
   await ps.enable('demo:a');
   assert.strictEqual(setup, 1);
   assert.deepStrictEqual(seen, ['registered', 'enabled']);
@@ -272,8 +314,18 @@ ok('插件拒绝非法 id 与重复注册', () => {
 okAsync('插件依赖递归启用', async () => {
   const { ps } = makePluginService();
   const order = [];
-  ps.register({ manifest: { id: 'demo:base' }, setup() { order.push('base'); } });
-  ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() { order.push('child'); } });
+  ps.register({
+    manifest: { id: 'demo:base' },
+    setup() {
+      order.push('base');
+    },
+  });
+  ps.register({
+    manifest: { id: 'demo:child', dependencies: ['demo:base'] },
+    setup() {
+      order.push('child');
+    },
+  });
   await ps.enable('demo:child');
   assert.deepStrictEqual(order, ['base', 'child']);
 });
@@ -288,7 +340,12 @@ okAsync('setup 抛错被隔离为 failed 并发出 plugin:error', async () => {
   const { ev, ps } = makePluginService();
   const errs = [];
   ev.on('plugin:error', (p) => errs.push(p));
-  ps.register({ manifest: { id: 'demo:boom' }, setup() { throw new Error('init failed'); } });
+  ps.register({
+    manifest: { id: 'demo:boom' },
+    setup() {
+      throw new Error('init failed');
+    },
+  });
   await ps.enable('demo:boom');
   assert.strictEqual(ps.get('demo:boom').state, 'failed');
   assert.strictEqual(errs.length, 1);
@@ -326,7 +383,9 @@ okAsync('并发启用依赖插件不再误报循环依赖（child 先）', async
   const { ps } = makePluginService();
   ps.register({
     manifest: { id: 'demo:base' },
-    setup: async () => { await new Promise((r) => setTimeout(r, 20)); },
+    setup: async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    },
   });
   ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() {} });
   await Promise.all([ps.enable('demo:child'), ps.enable('demo:base')]);
@@ -337,7 +396,9 @@ okAsync('并发启用依赖插件不再误报循环依赖（base 先）', async 
   const { ps } = makePluginService();
   ps.register({
     manifest: { id: 'demo:base' },
-    setup: async () => { await new Promise((r) => setTimeout(r, 20)); },
+    setup: async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    },
   });
   ps.register({ manifest: { id: 'demo:child', dependencies: ['demo:base'] }, setup() {} });
   await Promise.all([ps.enable('demo:base'), ps.enable('demo:child')]);
@@ -349,7 +410,10 @@ okAsync('同一插件并发 enable 只初始化一次', async () => {
   let setups = 0;
   ps.register({
     manifest: { id: 'demo:once' },
-    setup: async () => { setups++; await new Promise((r) => setTimeout(r, 10)); },
+    setup: async () => {
+      setups++;
+      await new Promise((r) => setTimeout(r, 10));
+    },
   });
   await Promise.all([ps.enable('demo:once'), ps.enable('demo:once'), ps.enable('demo:once')]);
   assert.strictEqual(setups, 1);
@@ -460,17 +524,42 @@ ok('M09 块 ID/名称冲突治理：重复 id 抛错', () => {
   const base = fakeApi();
   const scoped = scopeAPI(base, ['blocks:register']);
   // 注册一个带指定 id 的方块
-  const def1 = scoped.registerBlock({ name: 'test:block_a', id: 200, tiles: { top: 'test', bottom: 'test', side: 'test' } });
+  const def1 = scoped.registerBlock({
+    name: 'test:block_a',
+    id: 200,
+    tiles: { top: 'test', bottom: 'test', side: 'test' },
+  });
   assert.strictEqual(def1.id, 200);
   // 同 id 再次注册 → 抛错
-  assert.throws(() => scoped.registerBlock({ name: 'test:block_b', id: 200, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 重复: 200/);
+  assert.throws(
+    () => scoped.registerBlock({ name: 'test:block_b', id: 200, tiles: { top: 'test', bottom: 'test', side: 'test' } }),
+    /方块 id 重复: 200/,
+  );
   // 同 name 再次注册 → 抛错（即使 id 不同）
-  assert.throws(() => scoped.registerBlock({ name: 'test:block_a', id: 201, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块名重复: test:block_a/);
+  assert.throws(
+    () => scoped.registerBlock({ name: 'test:block_a', id: 201, tiles: { top: 'test', bottom: 'test', side: 'test' } }),
+    /方块名重复: test:block_a/,
+  );
   // 内置方块 id（如 1=stone）不可覆盖
-  assert.throws(() => scoped.registerBlock({ name: 'test:override_stone', id: 1, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 重复: 1/);
+  assert.throws(
+    () =>
+      scoped.registerBlock({
+        name: 'test:override_stone',
+        id: 1,
+        tiles: { top: 'test', bottom: 'test', side: 'test' },
+      }),
+    /方块 id 重复: 1/,
+  );
   // id 超出 1~255 → 抛错
-  assert.throws(() => scoped.registerBlock({ name: 'test:outrange', id: 300, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 超出 1~255/);
-  assert.throws(() => scoped.registerBlock({ name: 'test:neg', id: 0, tiles: { top: 'test', bottom: 'test', side: 'test' } }), /方块 id 超出 1~255/);
+  assert.throws(
+    () =>
+      scoped.registerBlock({ name: 'test:outrange', id: 300, tiles: { top: 'test', bottom: 'test', side: 'test' } }),
+    /方块 id 超出 1~255/,
+  );
+  assert.throws(
+    () => scoped.registerBlock({ name: 'test:neg', id: 0, tiles: { top: 'test', bottom: 'test', side: 'test' } }),
+    /方块 id 超出 1~255/,
+  );
 });
 ok('权限裁剪：time / settings / plugins 写入口默认拒绝', () => {
   const scoped = scopeAPI(fakeApi(), []);
@@ -502,8 +591,16 @@ okAsync('api:emit 同时约束 ctx.events.emit 与 api.events.scope 子通道', 
   ps.register({
     manifest: { id: 'demo:emit' },
     setup(ctx) {
-      try { ctx.events.emit('game:start', { seed: 1 }); } catch (e) { denied = e.message; }
-      try { ctx.api.events.scope('demo:child').emit('game:start', { seed: 1 }); } catch (e) { scopedDenied = e.message; }
+      try {
+        ctx.events.emit('game:start', { seed: 1 });
+      } catch (e) {
+        denied = e.message;
+      }
+      try {
+        ctx.api.events.scope('demo:child').emit('game:start', { seed: 1 });
+      } catch (e) {
+        scopedDenied = e.message;
+      }
     },
   });
   await ps.enable('demo:emit');
@@ -547,7 +644,11 @@ okAsync('list()/get() 的 manifest 是副本，改写无法自我提权', async 
   ps.register({
     manifest: { id: 'demo:tamper', permissions: [] },
     setup(ctx) {
-      try { ctx.api.world.setBlock(0, 0, 0, 1); } catch (e) { denied = /world:write/.test(e.message); }
+      try {
+        ctx.api.world.setBlock(0, 0, 0, 1);
+      } catch (e) {
+        denied = /world:write/.test(e.message);
+      }
     },
   });
   ps.list()[0].manifest.permissions.push('world:write');
@@ -559,29 +660,32 @@ okAsync('list()/get() 的 manifest 是副本，改写无法自我提权', async 
 ok('register 校验 setup / 未知权限 / 自依赖', () => {
   const { ps } = makePluginService();
   assert.throws(() => ps.register({ manifest: { id: 'demo:a' } }), /setup/);
-  assert.throws(
-    () => ps.register({ manifest: { id: 'demo:b', permissions: ['world:writ'] }, setup() {} }),
-    /未知权限/,
-  );
-  assert.throws(
-    () => ps.register({ manifest: { id: 'demo:c', dependencies: ['demo:c'] }, setup() {} }),
-    /自己/,
-  );
+  assert.throws(() => ps.register({ manifest: { id: 'demo:b', permissions: ['world:writ'] }, setup() {} }), /未知权限/);
+  assert.throws(() => ps.register({ manifest: { id: 'demo:c', dependencies: ['demo:c'] }, setup() {} }), /自己/);
 });
 okAsync('停用依赖插件会级联停用下游（依赖方先 teardown）', async () => {
   const { ps } = makePluginService();
   const order = [];
   ps.register({
     manifest: { id: 'demo:base' },
-    setup() { order.push('base-setup'); return () => order.push('base-teardown'); },
+    setup() {
+      order.push('base-setup');
+      return () => order.push('base-teardown');
+    },
   });
   ps.register({
     manifest: { id: 'demo:mid', dependencies: ['demo:base'] },
-    setup() { order.push('mid-setup'); return () => order.push('mid-teardown'); },
+    setup() {
+      order.push('mid-setup');
+      return () => order.push('mid-teardown');
+    },
   });
   ps.register({
     manifest: { id: 'demo:leaf', dependencies: ['demo:mid'] },
-    setup() { order.push('leaf-setup'); return () => order.push('leaf-teardown'); },
+    setup() {
+      order.push('leaf-setup');
+      return () => order.push('leaf-teardown');
+    },
   });
   await ps.enable('demo:leaf');
   assert.deepStrictEqual(order, ['base-setup', 'mid-setup', 'leaf-setup']);
@@ -591,8 +695,12 @@ okAsync('停用依赖插件会级联停用下游（依赖方先 teardown）', as
   assert.strictEqual(ps.get('demo:mid').state, 'disabled');
   assert.strictEqual(ps.get('demo:base').state, 'disabled');
   assert.deepStrictEqual(order, [
-    'base-setup', 'mid-setup', 'leaf-setup',
-    'leaf-teardown', 'mid-teardown', 'base-teardown',
+    'base-setup',
+    'mid-setup',
+    'leaf-setup',
+    'leaf-teardown',
+    'mid-teardown',
+    'base-teardown',
   ]);
 });
 ok('插件 dispose 停用全部插件', () => {
@@ -612,8 +720,12 @@ const validSave = () => ({
   edits: [['1,2,3', 5]],
   player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
   survival: {
-    health: 20, hunger: 20, saturation: 20, breath: 15,
-    inventory: [['i:apple', 2]], spawn: { x: 1, y: 2, z: 3 },
+    health: 20,
+    hunger: 20,
+    saturation: 20,
+    breath: 15,
+    inventory: [['i:apple', 2]],
+    spawn: { x: 1, y: 2, z: 3 },
   },
   dayTime: 0.32,
   hotbar: Array.from({ length: 9 }, () => null),
@@ -635,12 +747,24 @@ ok('validateSave 接受含可选生态字段的新档', () => {
 });
 ok('validateSave 拒绝损坏的生态字段', () => {
   const bad = [
-    (d) => { d.dayCount = -1; },
-    (d) => { d.dayCount = NaN; },
-    (d) => { d.botany = { v: 2, plants: [], soil: [] }; },
-    (d) => { d.botany = { v: 1, plants: 'x', soil: [] }; },
-    (d) => { d.botany = { v: 1, plants: [[1.5, 2, 3, 4, 5, 0]], soil: [] }; },
-    (d) => { d.botany = { v: 1, plants: [], soil: [[1, 2, 3, 500]] }; },
+    (d) => {
+      d.dayCount = -1;
+    },
+    (d) => {
+      d.dayCount = NaN;
+    },
+    (d) => {
+      d.botany = { v: 2, plants: [], soil: [] };
+    },
+    (d) => {
+      d.botany = { v: 1, plants: 'x', soil: [] };
+    },
+    (d) => {
+      d.botany = { v: 1, plants: [[1.5, 2, 3, 4, 5, 0]], soil: [] };
+    },
+    (d) => {
+      d.botany = { v: 1, plants: [], soil: [[1, 2, 3, 500]] };
+    },
   ];
   for (const mutate of bad) {
     const d = validSave();
@@ -670,7 +794,15 @@ ok('validateSave 接受含熔炉字段的存档并保留', () => {
   d.furnaces = {
     v: 1,
     cells: [
-      { pos: [1, 2, 3], input: ['beef', 3], fuel: ['coal', 2], output: ['cooked_beef', 1], burn: 12.5, burnMax: 80, progress: 4.2 },
+      {
+        pos: [1, 2, 3],
+        input: ['beef', 3],
+        fuel: ['coal', 2],
+        output: ['cooked_beef', 1],
+        burn: 12.5,
+        burnMax: 80,
+        progress: 4.2,
+      },
       { pos: [-17, 21, -9], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 },
     ],
   };
@@ -680,20 +812,81 @@ ok('validateSave 接受含熔炉字段的存档并保留', () => {
 });
 ok('validateSave 拒绝结构损坏的熔炉字段', () => {
   const bad = [
-    (d) => { d.furnaces = { v: 2, cells: [] }; },
-    (d) => { d.furnaces = { v: 1, cells: 'x' }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1.5, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, -1, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 81, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['beef', 0], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['beef', 1000], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: ['rock', 1], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: -1, burnMax: 0, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: -1, progress: 0 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: -0.5 }] }; },
-    (d) => { d.furnaces = { v: 1, cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 61 }] }; },
+    (d) => {
+      d.furnaces = { v: 2, cells: [] };
+    },
+    (d) => {
+      d.furnaces = { v: 1, cells: 'x' };
+    },
+    (d) => {
+      d.furnaces = { v: 1, cells: [{ input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }] };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1.5, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, -1, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 81, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: ['beef', 0], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: ['beef', 1000], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: ['rock', 1], fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: -1, burnMax: 0, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: -1, progress: 0 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: -0.5 }],
+      };
+    },
+    (d) => {
+      d.furnaces = {
+        v: 1,
+        cells: [{ pos: [1, 2, 3], input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 61 }],
+      };
+    },
   ];
   for (const mutate of bad) {
     const d = validSave();
@@ -709,36 +902,94 @@ ok('旧档缺熔炉字段仍通过校验', () => {
 });
 ok('validateSave 拒绝各类坏档', () => {
   const bad = [
-    (d) => { d.version = 1; },
-    (d) => { d.seed = 'abc'; },
-    (d) => { d.mode = 'hardcore'; },
-    (d) => { d.edits = 'oops'; },
-    (d) => { d.edits = [['1,2,3', 'x']]; },
-    (d) => { d.edits = [['1,2', 3]]; },
-    (d) => { d.edits = [['1,2,3', 256]]; },
-    (d) => { d.edits = [['1.5,2,3', 3]]; },
-    (d) => { d.dayTime = 1.5; },
-    (d) => { d.survival.inventory = [['b:999', 1]]; },
-    (d) => { d.survival.inventory = [['i:apple', 0]]; },
-    (d) => { d.survival.inventory = [['x:apple', 1]]; },
-    (d) => { delete d.player.pitch; },
-    (d) => { d.player.fly = 'yes'; },
-    (d) => { d.survival.inventory = [['i:apple']]; },
-    (d) => { d.survival.spawn = null; },
-    (d) => { d.hotbar = Array.from({ length: 8 }, () => null); },
-    (d) => { d.hotbar[0] = { kind: 'block', id: 'x' }; },
-    (d) => { d.slot = 12; },
-    (d) => { d.settings.fov = 'wide'; },
-    (d) => { delete d.savedAt; },
-    (d) => { d.dayTime = NaN; },
+    (d) => {
+      d.version = 1;
+    },
+    (d) => {
+      d.seed = 'abc';
+    },
+    (d) => {
+      d.mode = 'hardcore';
+    },
+    (d) => {
+      d.edits = 'oops';
+    },
+    (d) => {
+      d.edits = [['1,2,3', 'x']];
+    },
+    (d) => {
+      d.edits = [['1,2', 3]];
+    },
+    (d) => {
+      d.edits = [['1,2,3', 256]];
+    },
+    (d) => {
+      d.edits = [['1.5,2,3', 3]];
+    },
+    (d) => {
+      d.dayTime = 1.5;
+    },
+    (d) => {
+      d.survival.inventory = [['b:999', 1]];
+    },
+    (d) => {
+      d.survival.inventory = [['i:apple', 0]];
+    },
+    (d) => {
+      d.survival.inventory = [['x:apple', 1]];
+    },
+    (d) => {
+      delete d.player.pitch;
+    },
+    (d) => {
+      d.player.fly = 'yes';
+    },
+    (d) => {
+      d.survival.inventory = [['i:apple']];
+    },
+    (d) => {
+      d.survival.spawn = null;
+    },
+    (d) => {
+      d.hotbar = Array.from({ length: 8 }, () => null);
+    },
+    (d) => {
+      d.hotbar[0] = { kind: 'block', id: 'x' };
+    },
+    (d) => {
+      d.slot = 12;
+    },
+    (d) => {
+      d.settings.fov = 'wide';
+    },
+    (d) => {
+      delete d.savedAt;
+    },
+    (d) => {
+      d.dayTime = NaN;
+    },
     // 坐标 / 生存数值必须有范围：1e308 这类值会撑爆区块生成或 UI
-    (d) => { d.player.x = 1e308; },
-    (d) => { d.player.z = -1e308; },
-    (d) => { d.survival.spawn.y = 1e308; },
-    (d) => { d.survival.health = 1e6; },
-    (d) => { d.survival.saturation = 1e6; },
-    (d) => { d.survival.saturation = -1; },
-    (d) => { d.survival.breath = -1; },
+    (d) => {
+      d.player.x = 1e308;
+    },
+    (d) => {
+      d.player.z = -1e308;
+    },
+    (d) => {
+      d.survival.spawn.y = 1e308;
+    },
+    (d) => {
+      d.survival.health = 1e6;
+    },
+    (d) => {
+      d.survival.saturation = 1e6;
+    },
+    (d) => {
+      d.survival.saturation = -1;
+    },
+    (d) => {
+      d.survival.breath = -1;
+    },
   ];
   for (const mutate of bad) {
     const d = validSave();
@@ -752,13 +1003,21 @@ okAsync('v1 旧存档自动升级并补齐 9 格快捷栏', async () => {
   const store = {};
   global.localStorage = {
     getItem: (k) => store[k] ?? null,
-    setItem: (k, v) => { store[k] = v; },
-    removeItem: (k) => { delete store[k]; },
+    setItem: (k, v) => {
+      store[k] = v;
+    },
+    removeItem: (k) => {
+      delete store[k];
+    },
   };
   const legacy = {
-    version: 1, seed: 7, edits: [],
+    version: 1,
+    seed: 7,
+    edits: [],
     player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
-    dayTime: 0.3, hotbar: [1, 2, 3], slot: 0,
+    dayTime: 0.3,
+    hotbar: [1, 2, 3],
+    slot: 0,
     settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
     savedAt: 1,
   };
@@ -772,10 +1031,15 @@ okAsync('v1 旧存档自动升级并补齐 9 格快捷栏', async () => {
 });
 ok('M10 v2 存档缺失 mode 字段应拒绝（防静默模式切换）', () => {
   const v2NoMode = {
-    version: 2, seed: 7, mode: undefined,
-    edits: [], player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
+    version: 2,
+    seed: 7,
+    mode: undefined,
+    edits: [],
+    player: { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, fly: false },
     survival: { health: 20, hunger: 20, saturation: 20, breath: 15, inventory: [], spawn: { x: 1, y: 2, z: 3 } },
-    dayTime: 0.3, hotbar: Array(9).fill(null), slot: 0,
+    dayTime: 0.3,
+    hotbar: Array(9).fill(null),
+    slot: 0,
     settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
     savedAt: 1,
   };

@@ -4,14 +4,20 @@
  * 与 weather.ts 的分工：weather.ts 只放零依赖纯函数，本文件是运行时 System——
  * 采样历法 → 平滑逼近 → 发事件 → 把 current 暴露给变暗 / 粒子 / 寒冷三处共用。
  */
+
+import { WEATHER } from '../core/tuning';
+import type { System, Vec3Like } from '../core/types';
+import type { EventService } from '../services/events';
 import { seasonAt } from './ecology';
 import {
-  approachWeather, isLightning, weatherFactor, weatherTarget,
-  type Precipitation, type WeatherKind, type WeatherSnapshot,
+  approachWeather,
+  isLightning,
+  type Precipitation,
+  type WeatherKind,
+  type WeatherSnapshot,
+  weatherFactor,
+  weatherTarget,
 } from './weather';
-import { WEATHER } from '../core/tuning';
-import { type System, type Vec3Like } from '../core/types';
-import type { EventService } from '../services/events';
 
 export interface WeatherSystemOptions {
   seed: number;
@@ -64,9 +70,12 @@ export class WeatherSystem implements System {
       const kind = this.forced;
       const form: Precipitation = kind === 'snow' ? 'snow' : kind === 'clear' ? 'none' : 'rain';
       target = {
-        day: dayCount, kind, form,
+        day: dayCount,
+        kind,
+        form,
         intensity: WEATHER.intensity[kind],
-        darkness: weatherFactor(kind, 0), flash: 0,
+        darkness: weatherFactor(kind, 0),
+        flash: 0,
       };
     } else {
       target = weatherTarget(this.seed, dayCount, this.temperatureAt(focus.x, focus.z), seasonAt(dayCount));

@@ -21,17 +21,17 @@ export const HOST_PLUGIN_ABI = 1;
 
 /** 导入名 → 所需权限（undefined 表示读能力，默认开放） */
 export const HOST_IMPORT_PERMISSIONS: Readonly<Record<string, PluginPermission | undefined>> = {
-  mc_log: undefined,            // 写日志（只读副作用，归属命名空间）
-  mc_now: undefined,            // 单调时钟
-  mc_rand: undefined,           // 确定性 PRNG（由宿主播种，见 wasmHost.ts）
-  mc_world_seed: undefined,     // 读世界种子
-  mc_world_get: undefined,      // 读方块
-  mc_world_height: undefined,   // 读地表高度
-  mc_world_set: 'world:write',  // 写方块（生成期或运行时）
-  mc_wasm_call: 'wasm:use',     // 调用内置内核数值导出
-  mc_ext_register: undefined,   // 注册扩展点（真正写副作用由回调内的受控导入完成）
-  mc_storage_get: undefined,    // 读插件私有存储
-  mc_storage_set: undefined,    // 写插件私有存储（命名空间隔离）
+  mc_log: undefined, // 写日志（只读副作用，归属命名空间）
+  mc_now: undefined, // 单调时钟
+  mc_rand: undefined, // 确定性 PRNG（由宿主播种，见 wasmHost.ts）
+  mc_world_seed: undefined, // 读世界种子
+  mc_world_get: undefined, // 读方块
+  mc_world_height: undefined, // 读地表高度
+  mc_world_set: 'world:write', // 写方块（生成期或运行时）
+  mc_wasm_call: 'wasm:use', // 调用内置内核数值导出
+  mc_ext_register: undefined, // 注册扩展点（真正写副作用由回调内的受控导入完成）
+  mc_storage_get: undefined, // 读插件私有存储
+  mc_storage_set: undefined, // 写插件私有存储（命名空间隔离）
 };
 
 export const HOST_IMPORT_NAMES = Object.freeze(Object.keys(HOST_IMPORT_PERMISSIONS));
@@ -64,7 +64,7 @@ export const EVENT_TO_POINT: Readonly<Record<string, string>> = Object.freeze({
 /** 从扩展点 payload 提取 4 个数值参数给 WASM mc_hook（缺字段补 0） */
 export function payloadNumbers(point: string, payload: unknown): [number, number, number, number] {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
-  const num = (k: string): number => typeof p[k] === 'number' && Number.isFinite(p[k]) ? p[k] as number : 0;
+  const num = (k: string): number => (typeof p[k] === 'number' && Number.isFinite(p[k]) ? (p[k] as number) : 0);
   if (point === 'worldgen:column') return [num('cx'), num('cz'), 0, 0];
   if (point === 'gameplay:tick') return [num('now'), 0, 0, 0];
   if (point === 'event:survival:damage') return [num('amount'), num('health'), 0, 0];
@@ -72,9 +72,7 @@ export function payloadNumbers(point: string, payload: unknown): [number, number
 }
 
 /** 白名单外 import → 拒绝实例化，错误信息含具体名字便于插件作者排查 */
-export function assertWhitelistedImports(
-  imports: readonly { module: string; name: string; kind: string }[],
-): void {
+export function assertWhitelistedImports(imports: readonly { module: string; name: string; kind: string }[]): void {
   for (const imp of imports) {
     if (imp.module !== HOST_MODULE || !(imp.name in HOST_IMPORT_PERMISSIONS)) {
       throw new Error(`[wasm-host] 不允许的宿主导入 ${imp.module}.${imp.name}`);
@@ -112,10 +110,13 @@ export function planGrants(
 
 /** 抛错桩：保留 import 键但调用即失败，避免插件借「未声明能力」静默做事 */
 export function denyImport(name: string, grant: ImportGrant): (...args: unknown[]) => never {
-  const why = grant.reason === 'permission'
-    ? `缺少权限 ${grant.permission}（在 manifest.permissions 中声明）`
-    : '未在 carrier.hostImports 中声明';
-  return () => { throw new Error(`[wasm-host] ${name} 不可用：${why}`); };
+  const why =
+    grant.reason === 'permission'
+      ? `缺少权限 ${grant.permission}（在 manifest.permissions 中声明）`
+      : '未在 carrier.hostImports 中声明';
+  return () => {
+    throw new Error(`[wasm-host] ${name} 不可用：${why}`);
+  };
 }
 
 // ---- 线性内存 UTF-8 编解码（带边界检查）----
@@ -161,7 +162,7 @@ export function writeUtf8(memory: WebAssembly.Memory, ptr: number, cap: number, 
 export function payloadToText(payload: unknown, maxChars = 512): string {
   let text: string;
   try {
-    text = typeof payload === 'string' ? payload : JSON.stringify(payload) ?? String(payload);
+    text = typeof payload === 'string' ? payload : (JSON.stringify(payload) ?? String(payload));
   } catch {
     text = String(payload);
   }

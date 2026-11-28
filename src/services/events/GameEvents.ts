@@ -24,7 +24,10 @@ export interface GameEvents {
   'fire:extinguish': { x: number; y: number; z: number; cause: 'lifetime' | 'unsupported' | 'water' };
   /** 生态随机刻改变了方块（生长 / 蔓延 / 枯萎 / 成熟 / 采集），供存档与插件观测 */
   'plant:grow': {
-    x: number; y: number; z: number; block: BlockId;
+    x: number;
+    y: number;
+    z: number;
+    block: BlockId;
     kind: 'grow' | 'spread' | 'decay' | 'ripen' | 'harvest';
   };
   /** 植物蓄能到开花阈值 / 被采集：用于粒子、音效与生态反馈 */
@@ -33,7 +36,7 @@ export interface GameEvents {
   'plant:soil': { x: number; y: number; z: number; delta: number };
   /** 堆肥桶等级变化：World.setBlock 不发 block:place，需显式标记存档脏 */
   'compost:change': { x: number; y: number; z: number };
-  'explosion': { center: Vec3Like; radius: number };
+  explosion: { center: Vec3Like; radius: number };
   'player:spawn': { position: Vec3Like };
   'player:move': { position: Vec3Like };
   'player:camera': { mode: number };
@@ -106,7 +109,5 @@ export interface GameEvents {
   'bow:shoot': { x: number; y: number; z: number };
   /** 箭矢命中：生物给出类型，方块给出坐标 */
   'arrow:shoot': { x: number; y: number; z: number };
-  'arrow:hit':
-    | { kind: 'entity'; type: string }
-    | { kind: 'block'; x: number; y: number; z: number };
+  'arrow:hit': { kind: 'entity'; type: string } | { kind: 'block'; x: number; y: number; z: number };
 }

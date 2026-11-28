@@ -1,13 +1,10 @@
 import * as THREE from 'three';
-import {
-  blockKey, CRACK_STAGES, mulberry32, quantizeCrackStage,
-  type CrackStage,
-} from '../core/types';
+import { blockKey, CRACK_STAGES, type CrackStage, mulberry32, quantizeCrackStage } from '../core/types';
 
+export type { CrackStage };
 // 阶段常量与量化函数从此模块一并导出，供渲染层与外部诊断统一引用；
 // 实际定义在 core/types.ts（纯逻辑，可在无 WebGL 的 Node 回归里直接 require）。
 export { CRACK_STAGES, quantizeCrackStage };
-export type { CrackStage };
 
 /** 裂痕目标方块（世界坐标） */
 export interface CrackTarget {

@@ -1,6 +1,6 @@
-import type { GameEvents } from './GameEvents';
-import { EventChannel } from './EventChannel';
 import type { Disposable } from '../ServiceContainer';
+import { EventChannel } from './EventChannel';
+import type { GameEvents } from './GameEvents';
 
 type Handler<T> = (payload: T) => void;
 
@@ -82,12 +82,16 @@ export class EventService implements Disposable {
     // 用 fired 保证 fn 只执行一次、移除只做一次，避免订阅泄漏与重复回调。
     let off: () => void = () => {};
     let fired = false;
-    off = this.on(type, (p) => {
-      if (fired) return;
-      fired = true;
-      off();
-      fn(p);
-    }, label);
+    off = this.on(
+      type,
+      (p) => {
+        if (fired) return;
+        fired = true;
+        off();
+        fn(p);
+      },
+      label,
+    );
     // 调用方提前 off 时也要置 fired，防止之后同事件仍触发残留回调
     const wrappedOff = (): void => {
       if (fired) return;

@@ -37,7 +37,13 @@ const STEP = 0.05;
 
 export class QualityGovernor {
   private cfg: QualityGovernorConfig;
-  private samples: number[] = [];
+  /** 帧耗时环形缓冲：避免每帧 push/shift 搬运 96 个元素的数组 */
+  private readonly samples = new Float64Array(WINDOW);
+  private sampleHead = 0;
+  private sampleCount = 0;
+  /** 缓存的 p75：每 4 帧才重算一次（逐帧排序 96 个样本纯属浪费） */
+  private p75Cache = 0;
+  private p75Age = 0;
   private startScale: number;
   /** 累计超预算时间 / 稳定低于预算时间 */
   private overMs = 0;
@@ -45,12 +51,14 @@ export class QualityGovernor {
   /** 实测刷新率（0 = 尚未测出，按 60 处理） */
   private displayHz = 0;
   /** 帧间隔环形缓冲，用于估计刷新率 */
-  private intervals: number[] = [];
+  private readonly intervals = new Float64Array(60);
+  private intervalHead = 0;
+  private intervalCount = 0;
 
   constructor(cfg: QualityGovernorConfig) {
     this.cfg = cfg;
     this.startScale = clamp(cfg.maxScale, cfg.minScale, 1);
-    this.samples.length = 0;
+    this.clearSamples();
   }
 
   /** 重新配置（设置变更 / 画质档位切换时调用） */
@@ -62,7 +70,7 @@ export class QualityGovernor {
   /** 回到上限并清空统计（切回 auto 档时调用，避免沿用上一档的残余倍率） */
   reset(): void {
     this.startScale = clamp(this.cfg.maxScale, this.cfg.minScale, 1);
-    this.samples.length = 0;
+    this.clearSamples();
     this.overMs = 0;
     this.underMs = 0;
   }
@@ -88,7 +96,7 @@ export class QualityGovernor {
       if (this.overMs >= DOWN_COOLDOWN_MS && this.startScale > cfg.minScale + 1e-6) {
         this.startScale = Math.max(cfg.minScale, this.startScale - STEP);
         this.overMs = 0;
-        this.samples.length = 0;   // 调完清零窗口，下一段重新评估
+        this.clearSamples(); // 调完清零窗口，下一段重新评估
       }
     } else if (p75 < wantUp) {
       this.underMs += dtMs;
@@ -96,7 +104,7 @@ export class QualityGovernor {
       if (this.underMs >= UP_STABLE_MS && this.startScale < cfg.maxScale - 1e-6) {
         this.startScale = Math.min(cfg.maxScale, this.startScale + STEP);
         this.underMs = 0;
-        this.samples.length = 0;
+        this.clearSamples();
       }
     } else {
       // 死区：既不升也不降，计时保持但不清零（迟到的好状态仍算数）
@@ -106,7 +114,9 @@ export class QualityGovernor {
     return this.startScale;
   }
 
-  get scale(): number { return this.startScale; }
+  get scale(): number {
+    return this.startScale;
+  }
 
   stats(): QualityGovernorStats {
     return {
@@ -123,10 +133,18 @@ export class QualityGovernor {
     return Math.min(this.cfg.targetFps, Math.max(30, Math.round(hz)));
   }
 
+  private clearSamples(): void {
+    this.sampleHead = 0;
+    this.sampleCount = 0;
+    this.p75Cache = 0;
+    this.p75Age = 0;
+  }
+
   private pushSample(dtMs: number): void {
-    const a = this.samples;
-    a.push(dtMs);
-    if (a.length > WINDOW) a.shift();
+    this.samples[this.sampleHead] = dtMs;
+    this.sampleHead = (this.sampleHead + 1) % WINDOW;
+    if (this.sampleCount < WINDOW) this.sampleCount++;
+    if (this.p75Age > 0) this.p75Age--;
   }
 
   /**
@@ -137,22 +155,29 @@ export class QualityGovernor {
    */
   private pushInterval(dtMs: number): void {
     if (!(dtMs > 1)) return;
-    const a = this.intervals;
-    a.push(dtMs);
-    if (a.length > 60) a.shift();
-    if (a.length === 60) {
-      const sorted = [...a].sort((x, y) => x - y);
-      const p10 = sorted[Math.max(0, Math.floor(sorted.length * 0.1))];
-      const hz = Math.round(1000 / p10);
-      if (hz >= 24 && hz <= 240) this.displayHz = hz;
-    }
+    this.intervals[this.intervalHead] = dtMs;
+    this.intervalHead = (this.intervalHead + 1) % 60;
+    if (this.intervalCount < 60) this.intervalCount++;
+    // 刷新率估计不需要每帧重算：攒满 60 帧后每 15 帧复查一次即可
+    if (this.intervalCount < 60 || this.intervalHead % 15 !== 0) return;
+    const sorted = Array.from(this.intervals).sort((x, y) => x - y);
+    const p10 = sorted[Math.max(0, Math.floor(sorted.length * 0.1))];
+    const hz = Math.round(1000 / p10);
+    if (hz >= 24 && hz <= 240) this.displayHz = hz;
   }
 
+  /**
+   * p75：优先返回 4 帧内算好的缓存值。
+   * 决策只需要「最近几十毫秒的趋势」，每帧重排 96 个样本没有额外信息量；
+   * 缓存把这项开销从 ~96 log 96 次比较/帧降到每 4 帧一次。
+   */
   private percentile(q: number): number {
-    const n = this.samples.length;
-    if (n < 8) return 0;   // 样本不足不参与判定
-    const sorted = [...this.samples].sort((a, b) => a - b);
-    const i = Math.min(n - 1, Math.floor(n * q));
-    return sorted[i];
+    if (this.p75Age > 0) return this.p75Cache;
+    const n = this.sampleCount;
+    if (n < 8) return 0; // 样本不足不参与判定
+    const sorted = Array.from({ length: n }, (_, i) => this.samples[i]).sort((a, b) => a - b);
+    this.p75Cache = sorted[Math.min(n - 1, Math.floor(n * q))];
+    this.p75Age = 4;
+    return this.p75Cache;
   }
 }

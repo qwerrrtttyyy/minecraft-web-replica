@@ -85,10 +85,11 @@ log('\n手感回归（N3 挖掘裂痕阶段）');
   ok('裂痕阶段数为 10（0 无裂纹 + 1..9）', CRACK_STAGES === 10);
   ok('progress=0 对应无裂纹', quantizeCrackStage(0) === 0);
   ok('progress=1 对应满裂纹', quantizeCrackStage(1) === 9);
-  ok('边界：负数钳制为 0，>1 钳制为 9',
-    quantizeCrackStage(-0.01) === 0 && quantizeCrackStage(1.5) === 9);
-  ok('阶段边界精确值（0.0999→0 / 0.1→1 / 0.9→9）',
-    quantizeCrackStage(0.0999) === 0 && quantizeCrackStage(0.1) === 1 && quantizeCrackStage(0.9) === 9);
+  ok('边界：负数钳制为 0，>1 钳制为 9', quantizeCrackStage(-0.01) === 0 && quantizeCrackStage(1.5) === 9);
+  ok(
+    '阶段边界精确值（0.0999→0 / 0.1→1 / 0.9→9）',
+    quantizeCrackStage(0.0999) === 0 && quantizeCrackStage(0.1) === 1 && quantizeCrackStage(0.9) === 9,
+  );
   {
     let denseMono = true;
     let prevDense = -1;
@@ -129,8 +130,7 @@ log('\n手感回归（N3 挖掘裂痕阶段）');
   ok('60fps 阶段单调且无闪烁', monotonic60);
   const sampleA = quantizeCrackStage(0.55);
   const sampleB = quantizeCrackStage(0.55 + Number.EPSILON);
-  ok('量化为纯函数（同输入同输出）',
-    sampleA === quantizeCrackStage(0.55) && sampleA === sampleB && sampleA === 5);
+  ok('量化为纯函数（同输入同输出）', sampleA === quantizeCrackStage(0.55) && sampleA === sampleB && sampleA === 5);
 }
 
 log(`\nPASS 手感回归：${passed} 组断言全部通过`);

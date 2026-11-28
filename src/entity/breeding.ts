@@ -17,14 +17,15 @@ export function isBreedFood(typeId: string, material: string): boolean {
  * 按实体 id 升序稳定选择第一个，保证同种子同状态结果一致。
  */
 export function pickMate(self: Entity, others: readonly Entity[], radius: number): Entity | null {
-  const candidates = others.filter((o) =>
-    o !== self &&
-    !o.hostile &&
-    o.type.id === self.type.id &&
-    !o.baby &&
-    o.loveTimer > 0 &&
-    o.cooldown <= 0 &&
-    self.pos.distanceTo(o.pos) <= radius,
+  const candidates = others.filter(
+    (o) =>
+      o !== self &&
+      !o.hostile &&
+      o.type.id === self.type.id &&
+      !o.baby &&
+      o.loveTimer > 0 &&
+      o.cooldown <= 0 &&
+      self.pos.distanceTo(o.pos) <= radius,
   );
   candidates.sort((a, b) => a.id - b.id);
   return candidates[0] ?? null;
@@ -32,10 +33,16 @@ export function pickMate(self: Entity, others: readonly Entity[], radius: number
 
 /** 双方同类、均为成体、均处于求爱窗口且冷却结束 */
 export function canBreed(a: Entity, b: Entity): boolean {
-  return a !== b &&
-    !a.hostile && !b.hostile &&
+  return (
+    a !== b &&
+    !a.hostile &&
+    !b.hostile &&
     a.type.id === b.type.id &&
-    !a.baby && !b.baby &&
-    a.loveTimer > 0 && b.loveTimer > 0 &&
-    a.cooldown <= 0 && b.cooldown <= 0;
+    !a.baby &&
+    !b.baby &&
+    a.loveTimer > 0 &&
+    b.loveTimer > 0 &&
+    a.cooldown <= 0 &&
+    b.cooldown <= 0
+  );
 }

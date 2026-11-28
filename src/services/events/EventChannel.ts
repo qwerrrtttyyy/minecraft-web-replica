@@ -1,5 +1,5 @@
+import type { AnyEventHandler, EventService } from './EventService';
 import type { GameEvents } from './GameEvents';
-import type { EventService, AnyEventHandler } from './EventService';
 
 type Handler<T> = (payload: T) => void;
 
@@ -76,9 +76,7 @@ export class EventChannel {
    */
   emit<K extends keyof GameEvents>(type: K, payload: GameEvents[K]): void {
     if (!this.canEmit) {
-      throw new Error(
-        `[events] 通道 ${this.namespace} 未授权发送事件（manifest.permissions 需声明 api:emit）`,
-      );
+      throw new Error(`[events] 通道 ${this.namespace} 未授权发送事件（manifest.permissions 需声明 api:emit）`);
     }
     this.bus.emit(type, payload);
   }

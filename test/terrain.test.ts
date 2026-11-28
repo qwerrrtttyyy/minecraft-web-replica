@@ -4,10 +4,9 @@
  * 断言语义与 test/terrain-check.cjs 一一对应（迁移，未改动断言行为）。
  */
 import { describe, expect, it } from 'vitest';
-
-import { DefaultGenerator, DEFAULT_TERRAIN } from '../src/world/generator';
-import { BlockRegistry, registerBuiltinBlocks } from '../src/world/blocks';
 import { CHUNK_SIZE as CS, WORLD_HEIGHT as H, SEA_LEVEL } from '../src/core/types';
+import { BlockRegistry, registerBuiltinBlocks } from '../src/world/blocks';
+import { DEFAULT_TERRAIN, DefaultGenerator } from '../src/world/generator';
 
 const idx = (x: number, y: number, z: number) => (y * CS + z) * CS + x;
 
@@ -64,12 +63,14 @@ describe('高度范围', () => {
   });
   it('高度始终在合法区间且有明显起伏；columnInfo 返回坡度与群系', () => {
     const { gen } = make(2026);
-    let min = Infinity, max = -Infinity;
+    let min = Infinity,
+      max = -Infinity;
     for (let i = 0; i < 4000; i++) {
       const x = ((i * 37) % 2001) - 1000;
       const z = ((i * 91) % 2001) - 1000;
       const h = gen.surfaceHeight(x, z);
-      min = Math.min(min, h); max = Math.max(max, h);
+      min = Math.min(min, h);
+      max = Math.max(max, h);
     }
     expect(min).toBeGreaterThanOrEqual(4);
     expect(max).toBeLessThanOrEqual(H - 14);
@@ -86,11 +87,17 @@ describe('地形柱 / 水面 / 洞穴顶连续', () => {
   it('4 区块 × 256 列：地表实心、海水填满、海平面以上无水', () => {
     const { reg, gen } = make(777);
     const I = ids(reg);
-    for (const [cx, cz] of [[0, 0], [1, 0], [-2, 3], [5, -4]]) {
+    for (const [cx, cz] of [
+      [0, 0],
+      [1, 0],
+      [-2, 3],
+      [5, -4],
+    ]) {
       const data = chunk(gen, cx, cz);
       for (let lz = 0; lz < CS; lz++) {
         for (let lx = 0; lx < CS; lx++) {
-          const wx = cx * CS + lx, wz = cz * CS + lz;
+          const wx = cx * CS + lx,
+            wz = cz * CS + lz;
           const h = gen.surfaceHeight(wx, wz);
           const top = data[idx(lx, h, lz)];
           expect(top !== 0 && top !== I.water).toBe(true);
@@ -131,11 +138,22 @@ describe('群系 / 矿石 / 洞穴', () => {
         for (let lx = 0; lx < CS; lx++) {
           const v = data[idx(lx, y, lz)];
           if (v === 0 && y > 3 && y < 45) counts.cave++;
-          if (v === I.coal) { counts.coal++; expect(y).toBeLessThanOrEqual(depthMax.coal); }
-          else if (v === I.iron) { counts.iron++; expect(y).toBeLessThanOrEqual(depthMax.iron); }
-          else if (v === I.gold) { counts.gold++; expect(y).toBeLessThanOrEqual(depthMax.gold); }
-          else if (v === I.diamond) { counts.diamond++; expect(y).toBeLessThanOrEqual(depthMax.diamond); }
-          else if (v === I.glowstone) { counts.glowstone++; expect(y).toBeLessThanOrEqual(depthMax.glowstone); }
+          if (v === I.coal) {
+            counts.coal++;
+            expect(y).toBeLessThanOrEqual(depthMax.coal);
+          } else if (v === I.iron) {
+            counts.iron++;
+            expect(y).toBeLessThanOrEqual(depthMax.iron);
+          } else if (v === I.gold) {
+            counts.gold++;
+            expect(y).toBeLessThanOrEqual(depthMax.gold);
+          } else if (v === I.diamond) {
+            counts.diamond++;
+            expect(y).toBeLessThanOrEqual(depthMax.diamond);
+          } else if (v === I.glowstone) {
+            counts.glowstone++;
+            expect(y).toBeLessThanOrEqual(depthMax.glowstone);
+          }
         }
       }
     }
@@ -153,12 +171,12 @@ describe('跨区块树冠连续', () => {
       const gen = make(seed).gen;
       const near = chunk(gen, 0, 0);
       const neighbor = chunk(gen, dir, 0);
-      for (let lx = (dir === 1 ? CS - 4 : 0); (dir === 1 ? lx < CS : lx < 4); lx++) {
+      for (let lx = dir === 1 ? CS - 4 : 0; dir === 1 ? lx < CS : lx < 4; lx++) {
         for (let lz = 2; lz < CS - 2; lz++) {
           for (let y = SEA_LEVEL + 2; y < SEA_LEVEL + 14; y++) {
             if (near[idx(lx, y, lz)] !== I.log) continue;
             let leaves = 0;
-            for (let dx = (dir === 1 ? 0 : -2); dx <= (dir === 1 ? 2 : 0); dx++) {
+            for (let dx = dir === 1 ? 0 : -2; dx <= (dir === 1 ? 2 : 0); dx++) {
               for (let dz = -2; dz <= 2; dz++) {
                 const zz = lz + dz;
                 if (zz < 0 || zz >= CS) continue;
@@ -192,7 +210,8 @@ describe('可调参数', () => {
     const { gen } = make(99, { oreRichness: 0, treeDensity: {} });
     const I = ids(make(1).reg);
     const data = chunk(gen, 0, 0);
-    let logs = 0, ores = 0;
+    let logs = 0,
+      ores = 0;
     for (const v of data) {
       if (v === I.log) logs++;
       if (v === I.coal || v === I.iron || v === I.gold || v === I.diamond) ores++;
@@ -220,7 +239,8 @@ describe('水下地层无空气袋', () => {
       }
     }
     expect(oceanChunks.length).toBeGreaterThanOrEqual(3);
-    let air = 0, total = 0;
+    let air = 0,
+      total = 0;
     for (const [cx, cz] of oceanChunks.slice(0, 8)) {
       const data = chunk(gen, cx, cz);
       for (let lz = 0; lz < CS; lz++) {
@@ -245,7 +265,9 @@ describe('河道', () => {
   it('河道确实切出河谷且不切深海床', () => {
     const withRiver = make(2026, { riverDepth: 7 }).gen;
     const noRiver = make(2026, { riverDepth: 0 }).gen;
-    let changed = 0, cutSeabed = 0, maxDrop = 0;
+    let changed = 0,
+      cutSeabed = 0,
+      maxDrop = 0;
     for (let x = -400; x < 400; x += 3) {
       for (let z = -400; z < 400; z += 3) {
         if (x * x + z * z < 220 * 220) continue; // 排除出生抬升的耦合
@@ -280,9 +302,30 @@ describe('出生点保底', () => {
 describe('旧存档兼容（方块 id 只追加）', () => {
   it('旧 22 种方块 id 未变；4 种矿石追加在表尾', () => {
     const { reg } = make(1);
-    const legacy = ['grass', 'dirt', 'stone', 'cobblestone', 'sand', 'oak_log', 'oak_planks',
-      'oak_leaves', 'glass', 'bricks', 'water', 'bedrock', 'glowstone', 'snow', 'tnt',
-      'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'tall_grass', 'poppy', 'dandelion'];
+    const legacy = [
+      'grass',
+      'dirt',
+      'stone',
+      'cobblestone',
+      'sand',
+      'oak_log',
+      'oak_planks',
+      'oak_leaves',
+      'glass',
+      'bricks',
+      'water',
+      'bedrock',
+      'glowstone',
+      'snow',
+      'tnt',
+      'white_wool',
+      'red_wool',
+      'blue_wool',
+      'yellow_wool',
+      'tall_grass',
+      'poppy',
+      'dandelion',
+    ];
     expect(legacy.every((n, i) => reg.byNameGet(n)!.id === i + 1)).toBe(true);
     const ores = ['coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore'].map((n) => reg.byNameGet(n)!.id);
     expect(ores.every((v, i) => v === legacy.length + 1 + i)).toBe(true);

@@ -11,8 +11,9 @@
  * 三种载体统一由 PluginService 管理：manifest 校验 / semver 依赖 / 权限裁剪 / 生命周期 /
  * 代次保护 / 命名空间存储全部复用，载体只负责提供「激活函数 + 清理函数」。
  */
-import type { PluginContext } from '../PluginContext';
+
 import type { ExtensionRegistry } from '../extensions';
+import type { PluginContext } from '../PluginContext';
 
 /** 载体内省信息，写进 PluginRecord 供诊断与能力发现 */
 export interface CarrierInfo {
@@ -73,8 +74,4 @@ export interface CarrierHost {
 }
 
 /** 载体适配器签名 */
-export type CarrierAdapter = (
-  carrier: PluginCarrier,
-  ctx: PluginContext,
-  host: CarrierHost,
-) => CarrierActivation;
+export type CarrierAdapter = (carrier: PluginCarrier, ctx: PluginContext, host: CarrierHost) => CarrierActivation;

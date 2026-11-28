@@ -11,9 +11,7 @@ const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/
 const { World } = require('./terrain-logic/world/world.js');
 const { Botany } = require('./terrain-logic/world/botany.js');
 const { EventService } = require('./terrain-logic/services/events/EventService.js');
-const {
-  STRAINS, STRAIN_ORDER, findCombo, applyStrain,
-} = require('./terrain-logic/world/plantStrains.js');
+const { STRAINS, STRAIN_ORDER, findCombo, applyStrain } = require('./terrain-logic/world/plantStrains.js');
 const { PLANT_TRAITS } = require('./terrain-logic/world/plantTraits.js');
 const { CHUNK_SIZE: CS } = require('./terrain-logic/core/types.js');
 
@@ -100,9 +98,10 @@ ok('麦 × 麦在邻位长出带品系后代', offspringX >= 0, `x=${offspringX}
 if (offspringX >= 0) {
   const save = t.botany.serializeEcology();
   ok('存档版本升级为 v2', save.v === 2);
-  ok('杂交后代的品系写入存档', save.strains.some(
-    ([, , , idx]) => STRAIN_ORDER[idx] === 'luxuriant_wheat',
-  ));
+  ok(
+    '杂交后代的品系写入存档',
+    save.strains.some(([, , , idx]) => STRAIN_ORDER[idx] === 'luxuriant_wheat'),
+  );
 
   // ---------- 4. 存档往返：V2 保留品系，V1 迁移为无品系 ----------
 
@@ -111,10 +110,13 @@ if (offspringX >= 0) {
   put(t2, 9, 21, 8, 'wheat');
   put(t2, 10, 21, 8, 'wheat');
   t2.botany.restoreEcology(save);
-  ok('restoreEcology 读回 V2 品系', (() => {
-    const out = t2.botany.serializeEcology();
-    return out.v === 2 && out.strains.some(([, , , idx]) => STRAIN_ORDER[idx] === 'luxuriant_wheat');
-  })());
+  ok(
+    'restoreEcology 读回 V2 品系',
+    (() => {
+      const out = t2.botany.serializeEcology();
+      return out.v === 2 && out.strains.some(([, , , idx]) => STRAIN_ORDER[idx] === 'luxuriant_wheat');
+    })(),
+  );
 
   const t3 = makeWorld();
   put(t3, 8, 21, 8, 'wheat');
@@ -127,7 +129,9 @@ if (offspringX >= 0) {
   const t3b = makeWorld();
   put(t3b, 8, 21, 8, 'wheat');
   t3b.botany.restoreEcology({
-    v: 2, plants: [[8, 21, 8, t3b.id('wheat'), 50, 0]], soil: [],
+    v: 2,
+    plants: [[8, 21, 8, t3b.id('wheat'), 50, 0]],
+    soil: [],
     strains: [[8, 21, 8, 99]],
   });
   ok('越界品系下标被丢弃', t3b.botany.serializeEcology().strains.length === 0);
@@ -151,9 +155,7 @@ if (offspringX >= 0) {
   put(t, offspringX, 21, 8, 'air');
   t.events.emit('block:break', { x: offspringX, y: 21, z: 8, block: t.id('wheat') });
   const after = t.botany.serializeEcology();
-  ok('破坏后代后品系消失', !after.strains.some(
-    ([x]) => x === offspringX,
-  ));
+  ok('破坏后代后品系消失', !after.strains.some(([x]) => x === offspringX));
 }
 
 log(`\n植物杂交品系回归：${passed} 项全部通过`);

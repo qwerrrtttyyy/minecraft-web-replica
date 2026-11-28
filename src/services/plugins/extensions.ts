@@ -147,12 +147,7 @@ export class ExtensionRegistry implements Disposable {
   private errors = 0;
   private disposed = false;
 
-  register<P>(
-    point: string,
-    owner: string,
-    handler: ExtensionHandler<P>,
-    priority = 0,
-  ): () => void {
+  register<P>(point: string, owner: string, handler: ExtensionHandler<P>, priority = 0): () => void {
     if (this.disposed) throw new Error('[extensions] 注册表已销毁');
     if (typeof point !== 'string' || !POINT_PATTERN.test(point)) {
       throw new Error(`[extensions] 非法扩展点: ${String(point)}`);
@@ -163,11 +158,17 @@ export class ExtensionRegistry implements Disposable {
     if (typeof handler !== 'function') throw new Error('[extensions] handler 必须是函数');
     if (!Number.isFinite(priority)) throw new Error('[extensions] priority 必须是有限数值');
     const rec: ExtensionRecord<P> = {
-      id: ++this.seq, point, owner, priority,
+      id: ++this.seq,
+      point,
+      owner,
+      priority,
       handler: handler as ExtensionHandler<unknown>,
     };
     let list = this.points.get(point);
-    if (!list) { list = []; this.points.set(point, list); }
+    if (!list) {
+      list = [];
+      this.points.set(point, list);
+    }
     list.push(rec as ExtensionRecord);
     let active = true;
     return () => {
@@ -193,7 +194,10 @@ export class ExtensionRegistry implements Disposable {
     let removed = 0;
     for (const [point, list] of this.points) {
       const kept = list.filter((r) => {
-        if (r.owner === owner) { removed++; return false; }
+        if (r.owner === owner) {
+          removed++;
+          return false;
+        }
         return true;
       });
       if (kept.length === 0) this.points.delete(point);
@@ -231,8 +235,7 @@ export class ExtensionRegistry implements Disposable {
     const list = this.points.get(point);
     if (!list || list.length === 0) return { point, called: 0, errors: [] };
     this.emissions++;
-    const ordered = [...list].sort((a, b) =>
-      b.priority - a.priority || a.id - b.id);
+    const ordered = [...list].sort((a, b) => b.priority - a.priority || a.id - b.id);
     const result: EmitResult = { point, called: 0, errors: [] };
     for (const rec of ordered) {
       try {
@@ -272,7 +275,10 @@ export class ExtensionRegistry implements Disposable {
     let handlers = 0;
     const owners = new Set<string>();
     for (const list of this.points.values()) {
-      for (const r of list) { handlers++; owners.add(r.owner); }
+      for (const r of list) {
+        handlers++;
+        owners.add(r.owner);
+      }
     }
     return {
       points: this.points.size,

@@ -15,10 +15,7 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const craftSrc = fs.readFileSync(path.join(root, 'src/api/CraftAPI.ts'), 'utf8');
-const pluginSrc = fs.readFileSync(
-  path.join(root, 'src/services/plugins/PluginService.ts'),
-  'utf8',
-);
+const pluginSrc = fs.readFileSync(path.join(root, 'src/services/plugins/PluginService.ts'), 'utf8');
 
 const fails = [];
 

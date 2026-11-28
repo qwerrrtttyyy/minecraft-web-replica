@@ -72,22 +72,22 @@ Requires Node.js 20+. The build output is fully self-contained — no network ne
 
 ## Controls
 
-| Input | Action |
-| --- | --- |
-| WASD / Arrow keys | Move |
-| Space | Jump / swim up / fly up |
+| Input             | Action                                          |
+| ----------------- | ----------------------------------------------- |
+| WASD / Arrow keys | Move                                            |
+| Space             | Jump / swim up / fly up                         |
 | Double-SPACE or F | Toggle flight (Shift to descend, creative only) |
-| Shift | Sneak |
-| Ctrl / double-W | Sprint |
-| Left mouse (hold) | Break block (timed by hardness) |
-| Right mouse | Place block / eat / harvest flowering plant |
-| Middle mouse | Pick block |
-| Scroll / 1-9 | Switch hotbar slot |
-| E | Block library |
-| F5 | Toggle camera view |
-| F3 | Debug panel (version, diagnostics) |
-| Esc | Pause menu |
-| Mobile | Virtual joystick + buttons |
+| Shift             | Sneak                                           |
+| Ctrl / double-W   | Sprint                                          |
+| Left mouse (hold) | Break block (timed by hardness)                 |
+| Right mouse       | Place block / eat / harvest flowering plant     |
+| Middle mouse      | Pick block                                      |
+| Scroll / 1-9      | Switch hotbar slot                              |
+| E                 | Block library                                   |
+| F5                | Toggle camera view                              |
+| F3                | Debug panel (version, diagnostics)              |
+| Esc               | Pause menu                                      |
+| Mobile            | Virtual joystick + buttons                      |
 
 ## Testing & Quality
 
@@ -148,4 +148,4 @@ with human verification and proper `Co-authored-by` attribution.
 
 ---
 
-*Content generated with AI assistance.*
+_Content generated with AI assistance._

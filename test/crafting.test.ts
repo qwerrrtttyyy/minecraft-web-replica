@@ -4,14 +4,17 @@
  * 断言语义与 test/crafting-check.cjs 一一对应（迁移，未改动断言行为）。
  */
 import { describe, expect, it } from 'vitest';
-
-import { BlockRegistry, registerBuiltinBlocks } from '../src/world/blocks';
 import {
-  matchRecipe, CRAFTING_RECIPES, CRAFTING_GROUPS, INTERACTIVE_BLOCK,
-  materialToStack, inventoryKeyToMaterial,
+  CRAFTING_GROUPS,
+  CRAFTING_RECIPES,
+  INTERACTIVE_BLOCK,
+  inventoryKeyToMaterial,
+  matchRecipe,
+  materialToStack,
 } from '../src/player/crafting';
-import { ITEMS } from '../src/player/survival';
 import { EQUIPMENT } from '../src/player/equipment';
+import { ITEMS } from '../src/player/survival';
+import { BlockRegistry, registerBuiltinBlocks } from '../src/world/blocks';
 
 const reg = new BlockRegistry();
 registerBuiltinBlocks(reg);
@@ -42,19 +45,27 @@ describe('配方表结构', () => {
     expect(new Set(CRAFTING_RECIPES.map((r) => r.id)).size).toBe(CRAFTING_RECIPES.length);
   });
   it('每条配方都有产物与数量', () => {
-    expect(CRAFTING_RECIPES.every((r) => r.result && typeof r.result.material === 'string'
-      && Number.isInteger(r.result.count) && r.result.count > 0)).toBe(true);
+    expect(
+      CRAFTING_RECIPES.every(
+        (r) =>
+          r.result && typeof r.result.material === 'string' && Number.isInteger(r.result.count) && r.result.count > 0,
+      ),
+    ).toBe(true);
   });
   it('每条配方要么有序要么无序', () => {
-    expect(CRAFTING_RECIPES.every((r) => (!!r.pattern) !== (!!r.shapeless))).toBe(true);
+    expect(CRAFTING_RECIPES.every((r) => !!r.pattern !== !!r.shapeless)).toBe(true);
   });
   it('有序配方的字符都在 key 里', () => {
-    expect(CRAFTING_RECIPES.every((r) => !r.pattern
-      || r.pattern.every((row) => [...row].every((ch) => ch === ' ' || (r.key && r.key[ch]))))).toBe(true);
+    expect(
+      CRAFTING_RECIPES.every(
+        (r) => !r.pattern || r.pattern.every((row) => [...row].every((ch) => ch === ' ' || (r.key && r.key[ch]))),
+      ),
+    ).toBe(true);
   });
   it('材料组非空且成员合法', () => {
-    expect(Object.values(CRAFTING_GROUPS).every((g) => g.length > 0
-      && g.every((m) => reg.byNameGet(m) !== undefined))).toBe(true);
+    expect(
+      Object.values(CRAFTING_GROUPS).every((g) => g.length > 0 && g.every((m) => reg.byNameGet(m) !== undefined)),
+    ).toBe(true);
   });
 });
 
@@ -294,7 +305,10 @@ describe('材料标识转换', () => {
 // ---- 12. E04：装备配方 ----
 describe('装备配方', () => {
   const gridOf = (rows: string[], symbols: Record<string, string>) =>
-    rows.join('').split('').map((c) => symbols[c] ?? null);
+    rows
+      .join('')
+      .split('')
+      .map((c) => symbols[c] ?? null);
 
   it('41 件装备各有配方，产物与 EQUIPMENT 一致（新增铜工具 4 + 铜锄 1）', () => {
     const equipRecipes = CRAFTING_RECIPES.filter((r) => !!EQUIPMENT[r.id]);
@@ -332,7 +346,10 @@ describe('装备配方', () => {
 // ---- 13. 内容植物闭环与火把 ----
 describe('内容配方', () => {
   const patternGrid = (rows: string[], symbols: Record<string, string>) =>
-    rows.join('').split('').map((c) => symbols[c] ?? null);
+    rows
+      .join('')
+      .split('')
+      .map((c) => symbols[c] ?? null);
 
   it('棉花×4 可合成棉花块', () => {
     expect(matchRecipe(patternGrid(['CC', 'CC'], { C: 'item:cotton' }), 2)?.recipe.id).toBe('cotton_block');
@@ -343,8 +360,7 @@ describe('内容配方', () => {
     expect(m?.recipe.result.count).toBe(2);
   });
   it('棉花块混入多余材料不匹配（合成必须严格）', () => {
-    expect(matchRecipe(['item:cotton', 'item:cotton', 'item:cotton', 'dirt'], 2)?.recipe.id)
-      .not.toBe('cotton_block');
+    expect(matchRecipe(['item:cotton', 'item:cotton', 'item:cotton', 'dirt'], 2)?.recipe.id).not.toBe('cotton_block');
   });
   it('煤炭+木棍可合成 4 火把', () => {
     const r = CRAFTING_RECIPES.find((x) => x.id === 'torch_fuel');
@@ -361,9 +377,14 @@ describe('熔炉与营火配方', () => {
   it('8 个圆石围一圈 → 熔炉', () => {
     const cells = grid(3);
     const ring: Array<[number, number]> = [
-      [0, 0], [1, 0], [2, 0],
-      [0, 1], [2, 1],
-      [0, 2], [1, 2], [2, 2],
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [2, 1],
+      [0, 2],
+      [1, 2],
+      [2, 2],
     ];
     for (const [col, row] of ring) put(cells, 3, col, row, blk('cobblestone'));
     const m = matchOf(cells, 3);

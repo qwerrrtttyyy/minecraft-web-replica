@@ -1,19 +1,31 @@
-import puppeteer from 'puppeteer-core';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OUT = path.join(ROOT, 'test', 'artifacts');
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await puppeteer.launch({
-  executablePath: '/usr/local/bin/chromium', headless: true,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-swiftshader',
-    '--use-gl=angle', '--use-angle=swiftshader', '--allow-file-access-from-files'],
+  executablePath: '/usr/local/bin/chromium',
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--enable-unsafe-swiftshader',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--allow-file-access-from-files',
+  ],
 });
 async function shot(mobile, file, after) {
   const page = await browser.newPage();
-  if (mobile) await page.emulate({ viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
+  if (mobile)
+    await page.emulate({
+      viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    });
   else await page.setViewport({ width: 1280, height: 760 });
   await page.goto(`file://${path.join(ROOT, 'dist/index.html')}`, { waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 30000 });

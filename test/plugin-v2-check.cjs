@@ -25,20 +25,46 @@ const fakeApi = () => ({
   entities: { spawn() {}, list: () => [] },
   survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
   botany: {
-    registerPlant() {}, unregisterPlant() {}, registerRule() {}, unregisterRules() {},
-    listRules: () => [], stats: () => ({}),
+    registerPlant() {},
+    unregisterPlant() {},
+    registerRule() {},
+    unregisterRules() {},
+    listRules: () => [],
+    stats: () => ({}),
   },
   plugins: {
-    register() {}, enable() {}, disable() {}, unload() {}, list: () => [],
-    get() {}, reload() {}, enableAll() {}, stats() {}, install() {}, findByCapability() {},
+    register() {},
+    enable() {},
+    disable() {},
+    unload() {},
+    list: () => [],
+    get() {},
+    reload() {},
+    enableAll() {},
+    stats() {},
+    install() {},
+    findByCapability() {},
   },
   wasm: {
-    status: () => 'ready', stats: () => ({}), benchmark: () => null,
-    setEnabled: () => 'ready', listModules: () => [], call: () => 1,
-    callModule: () => 1, registerModule: () => ({}), unregisterModule: () => true,
+    status: () => 'ready',
+    stats: () => ({}),
+    benchmark: () => null,
+    setEnabled: () => 'ready',
+    listModules: () => [],
+    call: () => 1,
+    callModule: () => 1,
+    registerModule: () => ({}),
+    unregisterModule: () => true,
   },
-  registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
-  on() { return () => {}; }, off() {}, emit() {},
+  registerBlock() {},
+  registerTile() {},
+  registerEntity() {},
+  setGenerator() {},
+  on() {
+    return () => {};
+  },
+  off() {},
+  emit() {},
 });
 
 const make = (options = {}) => {
@@ -103,13 +129,21 @@ async function main() {
   // ---------- manifest 静态校验 ----------
   await ok('apiVersion 不满足引擎契约时拒绝注册', () => {
     const { ps } = make();
-    rejects(() => ps.register({
-      manifest: { id: 'demo:old', apiVersion: '^1.0.0' }, setup() {},
-    }), /要求插件 API/);
+    rejects(
+      () =>
+        ps.register({
+          manifest: { id: 'demo:old', apiVersion: '^1.0.0' },
+          setup() {},
+        }),
+      /要求插件 API/,
+    );
     assert.strictEqual(semver.satisfies(PLUGIN_API_VERSION, '^2.0.0'), true);
-    assert.doesNotThrow(() => ps.register({
-      manifest: { id: 'demo:new', apiVersion: '^2.0.0' }, setup() {},
-    }));
+    assert.doesNotThrow(() =>
+      ps.register({
+        manifest: { id: 'demo:new', apiVersion: '^2.0.0' },
+        setup() {},
+      }),
+    );
   });
 
   await ok('manifest 字段非法在注册期就被拦截', () => {
@@ -129,7 +163,8 @@ async function main() {
     const a = make();
     a.ps.register({ manifest: { id: 'p:base', version: '1.0.0' }, setup() {} });
     a.ps.register({
-      manifest: { id: 'p:child', dependencies: ['p:base@^1.0.0'] }, setup() {},
+      manifest: { id: 'p:child', dependencies: ['p:base@^1.0.0'] },
+      setup() {},
     });
     await a.ps.enable('p:child');
     assert.strictEqual(a.ps.get('p:base').state, 'enabled');
@@ -138,7 +173,8 @@ async function main() {
     const b = make();
     b.ps.register({ manifest: { id: 'p:base', version: '1.0.0' }, setup() {} });
     b.ps.register({
-      manifest: { id: 'p:child', dependencies: ['p:base@^2.0.0'] }, setup() {},
+      manifest: { id: 'p:child', dependencies: ['p:base@^2.0.0'] },
+      setup() {},
     });
     await b.ps.enable('p:child');
     assert.strictEqual(b.ps.get('p:child').state, 'failed');
@@ -147,7 +183,12 @@ async function main() {
 
   await ok('可选依赖缺失 / 失败只记 warning，不阻断启用', async () => {
     const { ps } = make();
-    ps.register({ manifest: { id: 'p:optfail' }, setup() { throw new Error('boom'); } });
+    ps.register({
+      manifest: { id: 'p:optfail' },
+      setup() {
+        throw new Error('boom');
+      },
+    });
     ps.register({
       manifest: {
         id: 'p:main',
@@ -206,7 +247,12 @@ async function main() {
     let setups = 0;
     const reloaded = [];
     ev.on('plugin:reloaded', (p) => reloaded.push(p.id));
-    ps.register({ manifest: { id: 'p:reload' }, setup() { setups++; } });
+    ps.register({
+      manifest: { id: 'p:reload' },
+      setup() {
+        setups++;
+      },
+    });
     await ps.enable('p:reload');
     await ps.reload('p:reload');
     assert.strictEqual(setups, 2);
@@ -218,9 +264,24 @@ async function main() {
   await ok('enableAll 按 priority 降序启用', async () => {
     const { ps } = make();
     const order = [];
-    ps.register({ manifest: { id: 'p:low', priority: -10 }, setup() { order.push('low'); } });
-    ps.register({ manifest: { id: 'p:high', priority: 10 }, setup() { order.push('high'); } });
-    ps.register({ manifest: { id: 'p:mid' }, setup() { order.push('mid'); } });
+    ps.register({
+      manifest: { id: 'p:low', priority: -10 },
+      setup() {
+        order.push('low');
+      },
+    });
+    ps.register({
+      manifest: { id: 'p:high', priority: 10 },
+      setup() {
+        order.push('high');
+      },
+    });
+    ps.register({
+      manifest: { id: 'p:mid' },
+      setup() {
+        order.push('mid');
+      },
+    });
     await ps.enableAll();
     assert.deepStrictEqual(order, ['high', 'mid', 'low']);
   });
@@ -228,7 +289,8 @@ async function main() {
   await ok('stats / findByCapability / durationMs / warnings', async () => {
     const { ps } = make();
     ps.register({
-      manifest: { id: 'p:cap', capabilities: ['demo.cap', 'wasm.monitor'] }, setup() {},
+      manifest: { id: 'p:cap', capabilities: ['demo.cap', 'wasm.monitor'] },
+      setup() {},
     });
     await ps.enable('p:cap');
     const st = ps.stats();
@@ -246,7 +308,9 @@ async function main() {
     let seen;
     ps.register({
       manifest: { id: 'p:ctx', capabilities: ['demo.ctx'] },
-      setup(ctx) { seen = ctx; },
+      setup(ctx) {
+        seen = ctx;
+      },
     });
     await ps.enable('p:ctx');
     assert.strictEqual(seen.id, 'p:ctx');
@@ -262,7 +326,9 @@ async function main() {
     let cfg;
     ps.register({
       manifest: { id: 'p:cfg', config: { a: 1, b: 2 } },
-      setup(ctx) { cfg = ctx.config; },
+      setup(ctx) {
+        cfg = ctx.config;
+      },
     });
     await ps.enable('p:cfg');
     assert.deepStrictEqual(cfg, { a: 1, b: 9, c: 10 });
@@ -287,11 +353,14 @@ async function main() {
     });
     await ps.enableAll();
     ps.unload('ns:a', true);
-    ps.register({ manifest: { id: 'ns:a' }, setup(ctx) {
-      assert.strictEqual(ctx.storage.get('shared'), 'A', '卸载后数据应保留');
-      ctx.storage.remove('shared');
-      assert.strictEqual(ctx.storage.get('shared', 'gone'), 'gone');
-    } });
+    ps.register({
+      manifest: { id: 'ns:a' },
+      setup(ctx) {
+        assert.strictEqual(ctx.storage.get('shared'), 'A', '卸载后数据应保留');
+        ctx.storage.remove('shared');
+        assert.strictEqual(ctx.storage.get('shared', 'gone'), 'gone');
+      },
+    });
     await ps.enable('ns:a');
   });
 
@@ -332,9 +401,10 @@ async function main() {
     rejects(() => loadPluginDefinition('module.exports = {}'), /缺少 manifest/);
     rejects(() => loadPluginDefinition('module.exports = { manifest: { id: "bad id" }, setup() {} }'), /非法插件 id/);
     rejects(() => loadPluginDefinition('module.exports = { manifest: { id: "demo:x" } }'), /缺少 setup/);
-    rejects(() => loadPluginDefinition(
-      'module.exports = { manifest: { id: "demo:x", permissions: ["nope"] }, setup() {} }',
-    ), /未知权限/);
+    rejects(
+      () => loadPluginDefinition('module.exports = { manifest: { id: "demo:x", permissions: ["nope"] }, setup() {} }'),
+      /未知权限/,
+    );
     rejects(() => loadPluginDefinition('throw new Error("syntax'), /执行失败/);
   });
 
@@ -350,7 +420,9 @@ async function main() {
     const { ps } = make();
     ps.register({
       manifest: { id: 'p:scoped' },
-      setup(ctx) { ctx.api.plugins.enable('p:other'); },
+      setup(ctx) {
+        ctx.api.plugins.enable('p:other');
+      },
     });
     await ps.enable('p:scoped');
     assert.strictEqual(ps.get('p:scoped').state, 'failed');

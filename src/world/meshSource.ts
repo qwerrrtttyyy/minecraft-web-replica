@@ -1,12 +1,17 @@
-import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
-import type { BlockRegistry, BlockShape } from './blocks';
+import { CHUNK_SIZE, SECTION_HEIGHT, WORLD_HEIGHT } from '../core/types';
 import type { TextureAtlas } from '../gfx/atlas';
-import type { World, Chunk } from './world';
+import type { BlockRegistry, BlockShape } from './blocks';
 import {
-  AIR_MESH_DEF, ZERO_UV,
-  type MeshBlockDef, type MeshConfig, type MeshSnapshot,
-  type MeshSource, type UVRect,
+  AIR_MESH_DEF,
+  type MeshBlockDef,
+  type MeshConfig,
+  type MeshSnapshot,
+  type MeshSource,
+  type SnapshotBuffers,
+  type UVRect,
+  ZERO_UV,
 } from './meshTypes';
+import type { Chunk, World } from './world';
 
 /**
  * 主线程侧：把活对象（World / TextureAtlas / BlockRegistry）投影为可序列化的
@@ -17,7 +22,19 @@ const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 const W = CS + 2;
 
-const toMeshDef = (d: { id: number; name: string; shape: BlockShape; opaque: boolean; cullSame?: boolean; liquid: boolean; transparentPass: boolean; lightEmission: number; tiles: { top: string; bottom: string; side: string }; tint?: boolean; crossHeight?: number }): MeshBlockDef => ({
+const toMeshDef = (d: {
+  id: number;
+  name: string;
+  shape: BlockShape;
+  opaque: boolean;
+  cullSame?: boolean;
+  liquid: boolean;
+  transparentPass: boolean;
+  lightEmission: number;
+  tiles: { top: string; bottom: string; side: string };
+  tint?: boolean;
+  crossHeight?: number;
+}): MeshBlockDef => ({
   id: d.id,
   name: d.name,
   shape: d.shape,
@@ -75,11 +92,24 @@ export function buildMeshConfig(
  * 热路径优化：中心 16×16 按 y 行整段拷贝，halo 直接读 8 个邻居的 data，
  * 不再逐格走 world.getBlock 的字符串 key 查找。
  */
-export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSnapshot {
-  const data = new Uint8Array(W * H * W);
-  // 未生成邻居按露天处理（与 World.getSkyLight 一致），避免世界边缘发黑
-  const sky = new Uint8Array(W * H * W).fill(15);
-  const block = new Uint8Array(W * H * W);
+export function buildMeshSnapshot(world: World, cx: number, cz: number, sy = 0, reuse?: SnapshotBuffers): MeshSnapshot {
+  // 只序列化当前 section 的 16 层 + 上下各 1 格 halo = 18 层，
+  // 分配量从整列 76KB 降到 23KB，网格化也只遍历自己那一段。
+  const y0 = sy * SECTION_HEIGHT - 1;
+  const SH = SECTION_HEIGHT + 2;
+  const size = W * SH * W;
+  // 池化复用：调用方交回上一轮 Worker 用过的同一批内存，稳态零分配
+  const data = reuse?.data ?? new Uint8Array(size);
+  const sky = reuse?.sky ?? new Uint8Array(size);
+  const block = reuse?.block ?? new Uint8Array(size);
+  if (reuse) {
+    data.fill(0);
+    sky.fill(15);
+    block.fill(0);
+  } else {
+    // 未生成邻居按露天处理（与 World.getSkyLight 一致），避免世界边缘发黑
+    sky.fill(15);
+  }
   const chunk = world.getChunk(cx, cz);
 
   // 3×3 邻居一次取齐；缺失 / 未生成的区块在快照里保持 0（等价于 getBlock 返回空气）
@@ -92,22 +122,26 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
   }
 
   // 9 格全在且已生成时 known 恒为全 1：传 null 让 Worker 走「全已知」路径，
-  // 省掉一次 25.9KB 分配与每行 fill（派发是移动场景的 GC 与尾延迟来源之一）。
+  // 省掉一次 5.8KB 分配与每行 fill（派发是移动场景的 GC 与尾延迟来源之一）。
   const allKnown = !!chunk && chunk.generated && nb.every((c) => c !== null);
-  const known: Uint8Array | null = allKnown ? null : new Uint8Array(W * H * W);
+  const known: Uint8Array | null = allKnown ? null : new Uint8Array(W * SH * W);
 
   const copy = (dst: Uint8Array, arr: (c: Chunk) => Uint8Array, trackKnown = false) => {
     // 只在写 data 时同步记录来源可信度；缺失邻居保持 0，不被当作已知空气
-    const mark = (i: number) => { if (known && trackKnown) known[i] = 1; };
+    const mark = (i: number) => {
+      if (known && trackKnown) known[i] = 1;
+    };
     // 中心区：每行 16 字节连续
     if (chunk) {
       const src = arr(chunk);
       const centerKnown = chunk.generated;
-      for (let y = 0; y < H; y++) {
-        const srcRow = y * CS * CS;
+      for (let iy = 0; iy < SH; iy++) {
+        const wy = y0 + iy;
+        if (wy < 0 || wy >= H) continue;
+        const srcRow = wy * CS * CS;
         for (let lz = 0; lz < CS; lz++) {
           const s = srcRow + lz * CS;
-          const d = (y * W + lz + 1) * W + 1;
+          const d = (iy * W + lz + 1) * W + 1;
           dst.set(src.subarray(s, s + CS), d);
           if (known && trackKnown && centerKnown) known.fill(1, d, d + CS);
         }
@@ -123,28 +157,54 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
     const southMid = nb[7] && arr(nb[7]);
     const southE = nb[8] && arr(nb[8]);
 
-    for (let y = 0; y < H; y++) {
-      const yRow = y * CS * CS;
-      const dRow = y * W * W;
+    for (let iy = 0; iy < SH; iy++) {
+      const wy = y0 + iy;
+      if (wy < 0 || wy >= H) continue; // 世界外整层保持默认（data 0 / sky 15）
+      const yRow = wy * CS * CS;
+      const dRow = iy * W * W;
       // 北 / 南整行（左邻 1 格 + 中邻 16 格 + 右邻 1 格）
       const nBase = dRow;
       const sBase = dRow + (CS + 1) * W;
       // 邻居行：北侧 local z = CS-1，南侧 local z = 0
       const nRow = yRow + (CS - 1) * CS;
       const sRow = yRow;
-      if (north) { dst[nBase] = north[nRow + CS - 1]; mark(nBase); }
-      if (northMid) { dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1); if (known && trackKnown) known.fill(1, nBase + 1, nBase + 1 + CS); }
-      if (northE) { dst[nBase + CS + 1] = northE[nRow]; mark(nBase + CS + 1); }
-      if (south) { dst[sBase] = south[sRow + CS - 1]; mark(sBase); }
-      if (southMid) { dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1); if (known && trackKnown) known.fill(1, sBase + 1, sBase + 1 + CS); }
-      if (southE) { dst[sBase + CS + 1] = southE[sRow]; mark(sBase + CS + 1); }
+      if (north) {
+        dst[nBase] = north[nRow + CS - 1];
+        mark(nBase);
+      }
+      if (northMid) {
+        dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1);
+        if (known && trackKnown) known.fill(1, nBase + 1, nBase + 1 + CS);
+      }
+      if (northE) {
+        dst[nBase + CS + 1] = northE[nRow];
+        mark(nBase + CS + 1);
+      }
+      if (south) {
+        dst[sBase] = south[sRow + CS - 1];
+        mark(sBase);
+      }
+      if (southMid) {
+        dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1);
+        if (known && trackKnown) known.fill(1, sBase + 1, sBase + 1 + CS);
+      }
+      if (southE) {
+        dst[sBase + CS + 1] = southE[sRow];
+        mark(sBase + CS + 1);
+      }
 
       // 西 / 东两列
       for (let lz = 0; lz < CS; lz++) {
         const d = dRow + (lz + 1) * W;
         const s = yRow + lz * CS;
-        if (midW) { dst[d] = midW[s + CS - 1]; mark(d); }
-        if (midE) { dst[d + CS + 1] = midE[s]; mark(d + CS + 1); }
+        if (midW) {
+          dst[d] = midW[s + CS - 1];
+          mark(d);
+        }
+        if (midE) {
+          dst[d + CS + 1] = midE[s];
+          mark(d + CS + 1);
+        }
       }
     }
   };
@@ -152,7 +212,7 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
   copy(data, (c) => c.data, true);
   copy(sky, (c) => c.sky);
   copy(block, (c) => c.block);
-  return { cx, cz, data, sky, block, known };
+  return { cx, cz, y0, data, sky, block, known };
 }
 
 /** 主线程同步路径（Worker 不可用时的降级，也用于基准对照） */

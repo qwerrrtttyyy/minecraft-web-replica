@@ -63,7 +63,11 @@ const SEASON_MODIFIERS: Readonly<Record<Season, ModifierSet>> = {
 };
 
 const RAIN_MODIFIERS: ModifierSet = {
-  growth: 1, solar: 0.8, hydro: 1.25, fungal: 1, soil: 1.2,
+  growth: 1,
+  solar: 0.8,
+  hydro: 1.25,
+  fungal: 1,
+  soil: 1.2,
 };
 
 /** 取当前环境的复合倍率；两个来源相乘，默认环境恒为 1 */

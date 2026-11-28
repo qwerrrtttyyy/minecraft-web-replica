@@ -31,15 +31,16 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
       - run: npm ci
-      - name: 构建单文件页面
-        run: npm run build
+      # Pages 用多文件产物：three.js 独立分包命中长缓存，首屏可并行拉取
+      - name: 构建多文件页面
+        run: npm run build:web
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist-web
 
   deploy:
     needs: build
