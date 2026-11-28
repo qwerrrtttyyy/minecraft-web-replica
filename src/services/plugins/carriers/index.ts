@@ -7,15 +7,28 @@
  *
  * 纯逻辑（WebAssembly + TextEncoder 均为标准 API，无 DOM），进入快照供 Node 回归。
  */
-import type { PluginContext } from '../PluginContext';
+
 import { decodeBase64, fnv1a } from '../../../wasm/protocol';
+import type { PluginContext } from '../PluginContext';
 import {
-  HOST_MODULE, HOST_PLUGIN_ABI, assertWhitelistedImports, planGrants, denyImport,
-  readUtf8, writeUtf8, POINT_KINDS, EVENT_TO_POINT, payloadNumbers,
+  assertWhitelistedImports,
+  denyImport,
+  EVENT_TO_POINT,
+  HOST_MODULE,
+  HOST_PLUGIN_ABI,
+  POINT_KINDS,
+  payloadNumbers,
+  planGrants,
+  readUtf8,
+  writeUtf8,
 } from './hostABI';
 import type {
-  WasmBytes, CarrierInfo, CarrierHost, CarrierActivation,
-  WasmModuleCarrier, WasmHostCarrier,
+  CarrierActivation,
+  CarrierHost,
+  CarrierInfo,
+  WasmBytes,
+  WasmHostCarrier,
+  WasmModuleCarrier,
 } from './types';
 
 const toBytes = (input: WasmBytes): Uint8Array<ArrayBuffer> => {
@@ -38,7 +51,9 @@ export function activateModuleCarrier(
   const info = host.registerModule(id, bytes);
   return {
     info: { kind: 'wasm:module', bytes: info.bytes, checksum: info.checksum },
-    teardown: () => { host.unregisterModule(id); },
+    teardown: () => {
+      host.unregisterModule(id);
+    },
   };
 }
 
@@ -111,7 +126,9 @@ export function activateHostCarrier(
   function stubFor(name: string): (...args: number[]) => number | void {
     switch (name) {
       case 'mc_log':
-        return (ptr, len) => { ctx.log(readUtf8(requireEx().memory, ptr, len)); };
+        return (ptr, len) => {
+          ctx.log(readUtf8(requireEx().memory, ptr, len));
+        };
       case 'mc_now':
         return () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
       case 'mc_rand':
@@ -123,7 +140,9 @@ export function activateHostCarrier(
       case 'mc_world_height':
         return (x, z) => scope.world.surfaceHeight(x, z);
       case 'mc_world_set':
-        return (x, y, z, id) => { scope.world.setBlock(x, y, z, id); };
+        return (x, y, z, id) => {
+          scope.world.setBlock(x, y, z, id);
+        };
       case 'mc_wasm_call':
         return (ptr, len, a = 0, b = 0, c = 0) => {
           const fn = readUtf8(requireEx().memory, ptr, len);
@@ -163,7 +182,7 @@ export function activateHostCarrier(
         return (keyPtr, keyLen, outPtr, outCap) => {
           const key = readUtf8(requireEx().memory, keyPtr, keyLen);
           const value = ctx.storage.get<unknown>(key);
-          const text = value === undefined ? '' : (typeof value === 'string' ? value : JSON.stringify(value));
+          const text = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value);
           return writeUtf8(requireEx().memory, outPtr, outCap, text);
         };
       }
@@ -199,8 +218,20 @@ export function activateHostCarrier(
     if (typeof raw._start === 'function') raw._start();
   } catch (e) {
     // 激活失败：撤销已建立的订阅，避免半成品残留
-    for (const off of offs.splice(0)) { try { off(); } catch { /* ignore */ } }
-    for (const off of subscriptions.splice(0)) { try { off(); } catch { /* ignore */ } }
+    for (const off of offs.splice(0)) {
+      try {
+        off();
+      } catch {
+        /* ignore */
+      }
+    }
+    for (const off of subscriptions.splice(0)) {
+      try {
+        off();
+      } catch {
+        /* ignore */
+      }
+    }
     throw e;
   }
 
@@ -217,14 +248,30 @@ export function activateHostCarrier(
     teardown: () => {
       if (disposed) return;
       disposed = true;
-      for (const off of subscriptions.splice(0).reverse()) { try { off(); } catch { /* ignore */ } }
-      for (const off of offs.splice(0).reverse()) { try { off(); } catch { /* ignore */ } }
+      for (const off of subscriptions.splice(0).reverse()) {
+        try {
+          off();
+        } catch {
+          /* ignore */
+        }
+      }
+      for (const off of offs.splice(0).reverse()) {
+        try {
+          off();
+        } catch {
+          /* ignore */
+        }
+      }
       host.extensions.unregisterOwner(ctx.id);
-      try { ex?._dispose?.(); } catch (e) { console.error(`[wasm-host] ${ctx.id} _dispose 失败`, e); }
+      try {
+        ex?._dispose?.();
+      } catch (e) {
+        console.error(`[wasm-host] ${ctx.id} _dispose 失败`, e);
+      }
       instance = null;
       ex = null;
     },
   };
 }
 
-export type { CarrierHost, CarrierActivation, PluginCarrier } from './types';
+export type { CarrierActivation, CarrierHost, PluginCarrier } from './types';

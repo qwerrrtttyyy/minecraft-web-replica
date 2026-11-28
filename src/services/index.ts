@@ -1,12 +1,12 @@
-import { ServiceContainer, token } from './ServiceContainer';
-import { EventService } from './events';
-import { ExtensionRegistry } from './plugins/extensions';
-import { PluginService, type PluginServiceOptions } from './plugins';
 import type { CraftAPI } from '../api/CraftAPI';
 import type { BuiltinDeps } from '../plugins/builtin/deps';
 import type { WasmRuntime } from '../wasm/runtime';
+import { EventService } from './events';
+import { PluginService, type PluginServiceOptions } from './plugins';
 import type { WasmBytes } from './plugins/carriers/types';
+import { ExtensionRegistry } from './plugins/extensions';
 import type { PluginSaveBag } from './plugins/saveBag';
+import { ServiceContainer, token } from './ServiceContainer';
 import type { PanelHost } from './ui/PanelHost';
 
 /** 全局服务令牌：组装根 provide，插件与门面 require */
@@ -43,8 +43,7 @@ export function createServices(options?: PluginServiceOptions): Services {
   const events = container.provide(TOKENS.Events, new EventService());
   const extensions = container.provide(TOKENS.Extensions, new ExtensionRegistry());
   const wasmHost = {
-    registerModule: (id: string, bytes: WasmBytes) =>
-      container.require(TOKENS.Wasm).registerModule(id, bytes),
+    registerModule: (id: string, bytes: WasmBytes) => container.require(TOKENS.Wasm).registerModule(id, bytes),
     unregisterModule: (id: string) => container.require(TOKENS.Wasm).unregisterModule(id),
     callKernel: (name: string, args: number[]) => container.require(TOKENS.Wasm).callKernel(name, args),
   };
@@ -52,19 +51,33 @@ export function createServices(options?: PluginServiceOptions): Services {
   const plugins = container.provide(
     TOKENS.Plugins,
     new PluginService(events, container, () => container.require(TOKENS.CraftAPI), {
-      ...options, extensions, wasmHost,
+      ...options,
+      extensions,
+      wasmHost,
     }),
   );
   return { container, events, plugins, extensions };
 }
 
-export { ServiceContainer, token } from './ServiceContainer';
-export type { ServiceToken, Disposable } from './ServiceContainer';
 export { EventService, EventService as EventBus } from './events';
-export { PluginService, scopeAPI, ExtensionRegistry, EXTENSION_POINTS } from './plugins';
 export type {
-  PluginDefinition, PluginManifest, PluginContext, PluginPermission,
-  PluginRecord, PluginState, PluginStats, PluginServiceOptions,
-  ExtensionInfo, ExtensionStats, EmitResult, WorldgenColumnPayload,
-  PluginCarrier, WasmModuleCarrier, WasmHostCarrier, WasmBytes,
+  EmitResult,
+  ExtensionInfo,
+  ExtensionStats,
+  PluginCarrier,
+  PluginContext,
+  PluginDefinition,
+  PluginManifest,
+  PluginPermission,
+  PluginRecord,
+  PluginServiceOptions,
+  PluginState,
+  PluginStats,
+  WasmBytes,
+  WasmHostCarrier,
+  WasmModuleCarrier,
+  WorldgenColumnPayload,
 } from './plugins';
+export { EXTENSION_POINTS, ExtensionRegistry, PluginService, scopeAPI } from './plugins';
+export type { Disposable, ServiceToken } from './ServiceContainer';
+export { ServiceContainer, token } from './ServiceContainer';

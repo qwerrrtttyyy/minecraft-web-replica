@@ -1,5 +1,5 @@
-import type { SoundMaterial } from '../world/blocks';
 import { clamp } from '../core/types';
+import type { SoundMaterial } from '../world/blocks';
 
 /**
  * 程序化音效：WebAudio 合成，零音频资源。
@@ -88,7 +88,11 @@ export class SoundEngine {
       this.eatTimeout = null;
     }
     if (this.rainSrc) {
-      try { this.rainSrc.stop(); } catch { /* 已停止 */ }
+      try {
+        this.rainSrc.stop();
+      } catch {
+        /* 已停止 */
+      }
       this.rainSrc.disconnect();
       this.rainSrc = null;
     }
@@ -141,14 +145,22 @@ export class SoundEngine {
 
   private matFreq(mat: SoundMaterial): number {
     switch (mat) {
-      case 'stone': return 720;
-      case 'dirt': return 300;
-      case 'wood': return 480;
-      case 'sand': return 1100;
-      case 'glass': return 1700;
-      case 'cloth': return 240;
-      case 'plant': return 900;
-      case 'liquid': return 500;
+      case 'stone':
+        return 720;
+      case 'dirt':
+        return 300;
+      case 'wood':
+        return 480;
+      case 'sand':
+        return 1100;
+      case 'glass':
+        return 1700;
+      case 'cloth':
+        return 240;
+      case 'plant':
+        return 900;
+      case 'liquid':
+        return 500;
     }
   }
 

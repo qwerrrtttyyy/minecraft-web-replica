@@ -157,13 +157,9 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   ok('引擎声明 cameraOwner 归属字段', engineSource.includes('cameraOwner'));
   ok('引擎不启用 preserveDrawingBuffer', !engineSource.includes('preserveDrawingBuffer'));
 }
-
-// 9) 摄影模式按键：可重绑定动作、默认键位与边缘事件源
-{
-  ok('DEFAULT_BINDINGS.photo 默认 KeyP', DEFAULT_BINDINGS.photo === 'KeyP', `photo=${DEFAULT_BINDINGS.photo}`);
-  ok('ACTION_KEYS 自动包含 photo', ACTION_KEYS.includes('photo'), `keys=${JSON.stringify(ACTION_KEYS)}`);
-  ok('ACTION_LABELS.photo 为 摄影模式', ACTION_LABELS.photo === '摄影模式', `label=${ACTION_LABELS.photo}`);
-}
+ok('DEFAULT_BINDINGS.photo 默认 KeyP', DEFAULT_BINDINGS.photo === 'KeyP', `photo=${DEFAULT_BINDINGS.photo}`);
+ok('ACTION_KEYS 自动包含 photo', ACTION_KEYS.includes('photo'), `keys=${JSON.stringify(ACTION_KEYS)}`);
+ok('ACTION_LABELS.photo 为 摄影模式', ACTION_LABELS.photo === '摄影模式', `label=${ACTION_LABELS.photo}`);
 
 // 10) 摄影模式存档快照：dayCount 与 dayTime 一样取进入前值（0 是合法天数，显式判 null）
 {
@@ -172,14 +168,22 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   const modeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'PhotoMode.ts'), 'utf8');
   const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.ts'), 'utf8');
   const apiSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'CraftAPI.ts'), 'utf8');
-  ok('PhotoMode 快照并清空 savedDayCount',
+  ok(
+    'PhotoMode 快照并清空 savedDayCount',
     /savedDayCount\s*:\s*number\s*\|\s*null\s*=\s*null/.test(modeSource) &&
-    /this\.savedDayCount\s*=\s*sky\.dayCount/.test(modeSource) &&
-    /this\.savedDayCount\s*=\s*null/.test(modeSource));
+      /this\.savedDayCount\s*=\s*sky\.dayCount/.test(modeSource) &&
+      /this\.savedDayCount\s*=\s*null/.test(modeSource),
+  );
   ok('PhotoAPI 暴露 savedDayCount', /readonly savedDayCount\s*:\s*number\s*\|\s*null;/.test(apiSource));
-  ok('collectSave 的 dayCount / dayTime 均取摄影前快照',
-    /dayCount:\s*photo\?\.active\s*&&\s*photo\.savedDayCount\s*!==\s*null\s*\?\s*photo\.savedDayCount\s*:\s*sky\.dayCount/.test(mainSource) &&
-    /dayTime:\s*photo\?\.active\s*&&\s*photo\.savedDayTime\s*!==\s*null\s*\?\s*photo\.savedDayTime\s*:\s*sky\.dayTime/.test(mainSource));
+  ok(
+    'collectSave 的 dayCount / dayTime 均取摄影前快照',
+    /dayCount:\s*photo\?\.active\s*&&\s*photo\.savedDayCount\s*!==\s*null\s*\?\s*photo\.savedDayCount\s*:\s*sky\.dayCount/.test(
+      mainSource,
+    ) &&
+      /dayTime:\s*photo\?\.active\s*&&\s*photo\.savedDayTime\s*!==\s*null\s*\?\s*photo\.savedDayTime\s*:\s*sky\.dayTime/.test(
+        mainSource,
+      ),
+  );
 }
 
 // 11) 覆盖层显示态 / 伪 pause 窗口 / teardown：源码契约（像素行为由浏览器冒烟验证）
@@ -190,44 +194,61 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.ts'), 'utf8');
   const inputSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'input', 'input.ts'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'photo.css'), 'utf8');
-  ok('CSS 默认隐藏覆盖层，.photo-visible 才切回 flex',
+  ok(
+    'CSS 默认隐藏覆盖层，.photo-visible 才切回 flex',
     /#photo-overlay\.photo-overlay\s*\{[\s\S]*?display:\s*none;/.test(css) &&
-    /\.photo-visible\s*\{\s*display:\s*flex;/.test(css));
-  ok('CSS 保留纵向分栏与 hints 居中',
-    /flex-direction:\s*column/.test(css) && /justify-content:\s*space-between/.test(css) &&
-    /#photo-overlay\s+\.photo-hints\s*\{[\s\S]*?align-self:\s*center/.test(css));
-  ok('PhotoMode 不再用 inline display 切换覆盖层',
+      /\.photo-visible\s*\{\s*display:\s*flex;/.test(css),
+  );
+  ok(
+    'CSS 保留纵向分栏与 hints 居中',
+    /flex-direction:\s*column/.test(css) &&
+      /justify-content:\s*space-between/.test(css) &&
+      /#photo-overlay\s+\.photo-hints\s*\{[\s\S]*?align-self:\s*center/.test(css),
+  );
+  ok(
+    'PhotoMode 不再用 inline display 切换覆盖层',
     !/overlay\.style\.display/.test(modeSource) &&
-    /overlay\.classList\.add\('photo-visible'\)/.test(modeSource) &&
-    /overlay\.classList\.remove\('photo-visible'\)/.test(modeSource));
-  ok('只有 pointerlockchange 的伪 pause 被吞，真实 Esc 永不按时间窗误吞',
+      /overlay\.classList\.add\('photo-visible'\)/.test(modeSource) &&
+      /overlay\.classList\.remove\('photo-visible'\)/.test(modeSource),
+  );
+  ok(
+    '只有 pointerlockchange 的伪 pause 被吞，真实 Esc 永不按时间窗误吞',
     isLockPauseEdge({ type: 'pause', source: 'pointerlock' }) === true &&
-    isLockPauseEdge({ type: 'pause', source: 'key' }) === false &&
-    isLockPauseEdge({ type: 'pause' }) === false &&
-    !/LOCK_PAUSE_GRACE_MS/.test(modeSource) &&
-    /source:\s*'pointerlock'/.test(inputSource) &&
-    /source:\s*'key'/.test(inputSource) &&
-    /isLockPauseEdge\(e\)/.test(mainSource));
-  ok('输入禁用期间 pause 与 jei 仍上报边沿（面板内 J / Esc 可关闭）',
+      isLockPauseEdge({ type: 'pause', source: 'key' }) === false &&
+      isLockPauseEdge({ type: 'pause' }) === false &&
+      !/LOCK_PAUSE_GRACE_MS/.test(modeSource) &&
+      /source:\s*'pointerlock'/.test(inputSource) &&
+      /source:\s*'key'/.test(inputSource) &&
+      /isLockPauseEdge\(e\)/.test(mainSource),
+  );
+  ok(
+    '输入禁用期间 pause 与 jei 仍上报边沿（面板内 J / Esc 可关闭）',
     emitsEdgeWhileDisabled('pause') === true &&
-    emitsEdgeWhileDisabled('jei') === true &&
-    emitsEdgeWhileDisabled('forward') === false &&
-    /emitsEdgeWhileDisabled\(action\)/.test(inputSource));
-  ok('摄影模式带独立进入按钮（桌面 / 触控共用）',
+      emitsEdgeWhileDisabled('jei') === true &&
+      emitsEdgeWhileDisabled('forward') === false &&
+      /emitsEdgeWhileDisabled\(action\)/.test(inputSource),
+  );
+  ok(
+    '摄影模式带独立进入按钮（桌面 / 触控共用）',
     /\.id\s*=\s*['"]photo-enter['"]/.test(modeSource) &&
-    /#photo-enter/.test(css) &&
-    /photoEnter\.addEventListener\('click'/.test(modeSource) &&
-    /canEnter\(\)/.test(modeSource));
-  ok('PhotoMode.dispose 移除五条全局监听并归还引擎状态',
+      /#photo-enter/.test(css) &&
+      /photoEnter\.addEventListener\('click'/.test(modeSource) &&
+      /canEnter\(\)/.test(modeSource),
+  );
+  ok(
+    'PhotoMode.dispose 移除五条全局监听并归还引擎状态',
     /dispose\(\): void/.test(modeSource) &&
-    /removeEventListener\('keydown', this\.onKeyDown\)/.test(modeSource) &&
-    /removeEventListener\('mousemove', this\.onMouseMove\)/.test(modeSource) &&
-    /removeEventListener\('mouseup', this\.onMouseUp\)/.test(modeSource) &&
-    /this\.canvas\.removeEventListener\('wheel', this\.onWheel\)/.test(modeSource) &&
-    /this\.canvas\.removeEventListener\('mousedown', this\.onMouseDown, \{ capture: true \}\)/.test(modeSource) &&
-    /this\.exit\(false\)/.test(modeSource));
-  ok('main 的 teardown 调用 photo.dispose()',
-    /const teardown = \(\) => \{[\s\S]*?photo\?\.dispose\(\)/.test(mainSource));
+      /removeEventListener\('keydown', this\.onKeyDown\)/.test(modeSource) &&
+      /removeEventListener\('mousemove', this\.onMouseMove\)/.test(modeSource) &&
+      /removeEventListener\('mouseup', this\.onMouseUp\)/.test(modeSource) &&
+      /this\.canvas\.removeEventListener\('wheel', this\.onWheel\)/.test(modeSource) &&
+      /this\.canvas\.removeEventListener\('mousedown', this\.onMouseDown, \{ capture: true \}\)/.test(modeSource) &&
+      /this\.exit\(false\)/.test(modeSource),
+  );
+  ok(
+    'main 的 teardown 调用 photo.dispose()',
+    /const teardown = \(\) => \{[\s\S]*?photo\?\.dispose\(\)/.test(mainSource),
+  );
 }
 
 console.log(`\n${passed} 项通过`);

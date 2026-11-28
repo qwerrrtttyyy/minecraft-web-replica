@@ -31,57 +31,105 @@ export interface StructureTemplate {
   blocks: readonly StructureBlock[];
 }
 
-export const STRUCTURE_KINDS: readonly StructureKind[] = [
-  'village_house', 'mineshaft', 'dungeon',
-];
+export const STRUCTURE_KINDS: readonly StructureKind[] = ['village_house', 'mineshaft', 'dungeon'];
 
 const OAK: StructurePalette = {
-  wall: 'oak_planks', floor: 'oak_planks', roof: 'oak_planks', accent: 'glass', light: 'torch',
+  wall: 'oak_planks',
+  floor: 'oak_planks',
+  roof: 'oak_planks',
+  accent: 'glass',
+  light: 'torch',
 };
 const BIRCH: StructurePalette = {
-  wall: 'birch_planks', floor: 'birch_planks', roof: 'birch_planks', accent: 'glass', light: 'torch',
+  wall: 'birch_planks',
+  floor: 'birch_planks',
+  roof: 'birch_planks',
+  accent: 'glass',
+  light: 'torch',
 };
 const SPRUCE: StructurePalette = {
-  wall: 'spruce_planks', floor: 'spruce_planks', roof: 'spruce_planks', accent: 'glass', light: 'lantern',
+  wall: 'spruce_planks',
+  floor: 'spruce_planks',
+  roof: 'spruce_planks',
+  accent: 'glass',
+  light: 'lantern',
 };
 const ACACIA: StructurePalette = {
-  wall: 'acacia_planks', floor: 'acacia_planks', roof: 'acacia_planks', accent: 'glass', light: 'torch',
+  wall: 'acacia_planks',
+  floor: 'acacia_planks',
+  roof: 'acacia_planks',
+  accent: 'glass',
+  light: 'torch',
 };
 const CHERRY: StructurePalette = {
-  wall: 'cherry_planks', floor: 'cherry_planks', roof: 'cherry_planks', accent: 'glass', light: 'lantern',
+  wall: 'cherry_planks',
+  floor: 'cherry_planks',
+  roof: 'cherry_planks',
+  accent: 'glass',
+  light: 'lantern',
 };
 const SANDSTONE: StructurePalette = {
-  wall: 'sandstone', floor: 'smooth_sandstone', roof: 'sandstone', accent: 'glass', light: 'lantern',
+  wall: 'sandstone',
+  floor: 'smooth_sandstone',
+  roof: 'sandstone',
+  accent: 'glass',
+  light: 'lantern',
 };
 
 /** 16 个陆地群系的村庄配色；ocean / beach 不生成村庄 */
 export const STRUCTURE_PALETTES: Readonly<Record<string, StructurePalette>> = {
-  plains: OAK, forest: OAK, jungle: OAK, swamp: OAK, mushroom_grove: OAK,
-  bamboo_grove: OAK, dark_forest: OAK,
+  plains: OAK,
+  forest: OAK,
+  jungle: OAK,
+  swamp: OAK,
+  mushroom_grove: OAK,
+  bamboo_grove: OAK,
+  dark_forest: OAK,
   birch_forest: BIRCH,
-  taiga: SPRUCE, snowy_taiga: SPRUCE, alpine: SPRUCE, snowy_tundra: SPRUCE,
-  savanna: ACACIA, cherry: CHERRY,
-  desert: SANDSTONE, mesa: SANDSTONE,
+  taiga: SPRUCE,
+  snowy_taiga: SPRUCE,
+  alpine: SPRUCE,
+  snowy_tundra: SPRUCE,
+  savanna: ACACIA,
+  cherry: CHERRY,
+  desert: SANDSTONE,
+  mesa: SANDSTONE,
 };
 
 export const MINE_PALETTE: StructurePalette = {
-  wall: 'oak_planks', floor: 'cobblestone', roof: 'oak_planks', accent: 'gravel', light: 'glow_torch',
+  wall: 'oak_planks',
+  floor: 'cobblestone',
+  roof: 'oak_planks',
+  accent: 'gravel',
+  light: 'glow_torch',
 };
 export const DUNGEON_PALETTE: StructurePalette = {
-  wall: 'mossy_cobblestone', floor: 'stone_bricks', roof: 'stone_bricks', accent: 'bookshelf', light: 'lantern',
+  wall: 'mossy_cobblestone',
+  floor: 'stone_bricks',
+  roof: 'stone_bricks',
+  accent: 'bookshelf',
+  light: 'lantern',
 };
 
 export const STRUCTURE_CELL: Readonly<Record<StructureKind, number>> = {
-  village_house: 64, mineshaft: 96, dungeon: 80,
+  village_house: 64,
+  mineshaft: 96,
+  dungeon: 80,
 };
 export const STRUCTURE_CHANCE: Readonly<Record<StructureKind, number>> = {
-  village_house: 0.32, mineshaft: 0.24, dungeon: 0.28,
+  village_house: 0.32,
+  mineshaft: 0.24,
+  dungeon: 0.28,
 };
 export const STRUCTURE_SALT: Readonly<Record<StructureKind, number>> = {
-  village_house: 0x1d01, mineshaft: 0x1d02, dungeon: 0x1d03,
+  village_house: 0x1d01,
+  mineshaft: 0x1d02,
+  dungeon: 0x1d03,
 };
 export const STRUCTURE_DEPTH: Readonly<Record<StructureKind, number>> = {
-  village_house: 0, mineshaft: 12, dungeon: 9,
+  village_house: 0,
+  mineshaft: 12,
+  dungeon: 9,
 };
 
 /** 无表群系（含插件新群系）回退橡木，不因缺色板跳过结构 */
@@ -177,6 +225,8 @@ export function buildStructure(kind: StructureKind, palette: StructurePalette): 
 /** 所有模板实际会发出的方块名，由模板推导，避免第二份手写清单漂移 */
 export const STRUCTURE_BLOCK_NAMES: ReadonlySet<string> = new Set(
   STRUCTURE_KINDS.flatMap((kind) =>
-    [...new Set([...Object.values(STRUCTURE_PALETTES), MINE_PALETTE, DUNGEON_PALETTE])]
-      .flatMap((palette) => buildStructure(kind, palette).blocks.map((b) => b.block))),
+    [...new Set([...Object.values(STRUCTURE_PALETTES), MINE_PALETTE, DUNGEON_PALETTE])].flatMap((palette) =>
+      buildStructure(kind, palette).blocks.map((b) => b.block),
+    ),
+  ),
 );

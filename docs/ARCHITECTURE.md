@@ -7,14 +7,14 @@
 
 ## 1. 旧架构的问题（v1.1.2）
 
-| 问题 | 具体表现 |
-|---|---|
-| 事件总线是"裸类" | `core/events.ts` 只有 63 行 `Map<string, Set<Handler>>`，无归属、无错误隔离、无生命周期；8 个模块直接 `import`，`main.ts` 里 11 处 `events.on(...)` 与状态机、UI 混在一起 |
-| 扩展 API 不是"插件" | `window.CraftAPI` 是 boot() 末尾手工拼出的 22 个闭包函数，没有 id、版本、依赖、权限、启停，注册后无法回收订阅 |
-| 组装根是上帝函数 | `main.ts` 800 行同时承担依赖构造、存档、状态机、事件接线、UI 反馈、系统注册，任何横切逻辑都得改它 |
-| 依赖靠闭包传递 | 运行期对象全是 `boot()` 局部变量，插件/测试无法访问或替换 |
-| 版本四处漂移 | 包名 1.1.2，`package.json` / `CraftAPI.version` / F3 面板都是 1.1.0 |
-| 测试产物手工同步 | `test/logic` 与 `test/terrain-logic` 是编译快照，无自动生成，审查报告 v1.1.0 提过、两轮未落地 |
+| 问题                | 具体表现                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 事件总线是"裸类"    | `core/events.ts` 只有 63 行 `Map<string, Set<Handler>>`，无归属、无错误隔离、无生命周期；8 个模块直接 `import`，`main.ts` 里 11 处 `events.on(...)` 与状态机、UI 混在一起 |
+| 扩展 API 不是"插件" | `window.CraftAPI` 是 boot() 末尾手工拼出的 22 个闭包函数，没有 id、版本、依赖、权限、启停，注册后无法回收订阅                                                             |
+| 组装根是上帝函数    | `main.ts` 800 行同时承担依赖构造、存档、状态机、事件接线、UI 反馈、系统注册，任何横切逻辑都得改它                                                                         |
+| 依赖靠闭包传递      | 运行期对象全是 `boot()` 局部变量，插件/测试无法访问或替换                                                                                                                 |
+| 版本四处漂移        | 包名 1.1.2，`package.json` / `CraftAPI.version` / F3 面板都是 1.1.0                                                                                                       |
+| 测试产物手工同步    | `test/logic` 与 `test/terrain-logic` 是编译快照，无自动生成，审查报告 v1.1.0 提过、两轮未落地                                                                             |
 
 一句话：**"扩展点"只是几个全局函数，不是可治理的服务。**
 
@@ -49,18 +49,18 @@
 
 ### 目录职责
 
-| 路径 | 职责 |
-|---|---|
-| `src/core/` | 引擎内核：主循环、类型常量、唯一版本源；`events.ts` 仅兼容再导出 |
-| `src/services/ServiceContainer.ts` | `token<T>()` 类型化令牌、`provide/require/optional/has/keys/dispose` |
-| `src/services/events/` | `GameEvents` 契约、`EventService` 实现、`EventChannel` 命名空间作用域 |
-| `src/services/plugins/` | `PluginContext` 契约、`PluginService` 实现与 `scopeAPI` 权限裁剪 |
-| `src/api/` | `CraftAPI` 门面：旧 22 项 + 新增 `plugins` / `events` 命名空间 |
-| `src/plugins/builtin/` | 默认启用的内置插件；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约 |
-| `src/plugins/example/` | 插件开发示例（不默认启用） |
-| `src/diagnostics/` | 运行时诊断组：只读快照检查、F3 / CraftAPI 报告、每 10 秒自动采样 |
-| `src/player/crafting.ts` | 合成规则：配方表与网格匹配（纯逻辑，不依赖 DOM / three） |
-| `src/ui/crafting.ts` | 合成界面：3×3 网格、结果槽、背包区与配方列表（经 `CraftingHost` 回调取放） |
+| 路径                               | 职责                                                                       |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `src/core/`                        | 引擎内核：主循环、类型常量、唯一版本源；`events.ts` 仅兼容再导出           |
+| `src/services/ServiceContainer.ts` | `token<T>()` 类型化令牌、`provide/require/optional/has/keys/dispose`       |
+| `src/services/events/`             | `GameEvents` 契约、`EventService` 实现、`EventChannel` 命名空间作用域      |
+| `src/services/plugins/`            | `PluginContext` 契约、`PluginService` 实现与 `scopeAPI` 权限裁剪           |
+| `src/api/`                         | `CraftAPI` 门面：旧 22 项 + 新增 `plugins` / `events` 命名空间             |
+| `src/plugins/builtin/`             | 默认启用的内置插件；`deps.ts` 定义 `TOKENS.BuiltinDeps` 契约               |
+| `src/plugins/example/`             | 插件开发示例（不默认启用）                                                 |
+| `src/diagnostics/`                 | 运行时诊断组：只读快照检查、F3 / CraftAPI 报告、每 10 秒自动采样           |
+| `src/player/crafting.ts`           | 合成规则：配方表与网格匹配（纯逻辑，不依赖 DOM / three）                   |
+| `src/ui/crafting.ts`               | 合成界面：3×3 网格、结果槽、背包区与配方列表（经 `CraftingHost` 回调取放） |
 
 ---
 
@@ -70,15 +70,15 @@
 
 ```ts
 const TOKENS = {
-  Events:      token<EventService>('events'),
-  Plugins:     token<PluginService>('plugins'),
-  CraftAPI:    token<CraftAPI>('api'),
+  Events: token<EventService>('events'),
+  Plugins: token<PluginService>('plugins'),
+  CraftAPI: token<CraftAPI>('api'),
   BuiltinDeps: token<BuiltinDeps>('builtin-deps'),
 };
 
 container.provide(TOKENS.Events, new EventService());
-const ev = container.require(TOKENS.Events);   // 未注册直接抛错，组装期暴露接线错误
-container.dispose();                            // 逆序调用各服务 dispose()
+const ev = container.require(TOKENS.Events); // 未注册直接抛错，组装期暴露接线错误
+container.dispose(); // 逆序调用各服务 dispose()
 ```
 
 - 禁止重复注册（避免静默覆盖）。
@@ -89,15 +89,15 @@ container.dispose();                            // 逆序调用各服务 dispose
 
 `on/off/emit` 签名与旧 `EventBus` 完全一致，业务模块零行为改动即可迁移；新增能力：
 
-| 能力 | 说明 |
-|---|---|
-| 错误隔离 | 单个订阅者抛错只上报 `setErrorHandler`，不阻断同事件其他订阅者或整帧逻辑 |
-| `once` / `waitFor` | 一次性订阅与 Promise 等待，支持插件异步启动编排 |
-| `scope(ns)` → `EventChannel` | 命名空间订阅作用域，`dispose()` 一键撤销全部订阅 |
-| `onAny` | 全局观测钩子，供调试面板 / 事件回放 / 审计 |
-| `stats()` | `{ emitted, subscribers, channels }`，测试可直接断言 |
-| 递归深度保护 | 深度 > 16 拦截并上报，防止两个插件互相 emit 死循环 |
-| `dispose()` | 纳入容器统一生命周期 |
+| 能力                         | 说明                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| 错误隔离                     | 单个订阅者抛错只上报 `setErrorHandler`，不阻断同事件其他订阅者或整帧逻辑 |
+| `once` / `waitFor`           | 一次性订阅与 Promise 等待，支持插件异步启动编排                          |
+| `scope(ns)` → `EventChannel` | 命名空间订阅作用域，`dispose()` 一键撤销全部订阅                         |
+| `onAny`                      | 全局观测钩子，供调试面板 / 事件回放 / 审计                               |
+| `stats()`                    | `{ emitted, subscribers, channels }`，测试可直接断言                     |
+| 递归深度保护                 | 深度 > 16 拦截并上报，防止两个插件互相 emit 死循环                       |
+| `dispose()`                  | 纳入容器统一生命周期                                                     |
 
 新增事件：`chunk:unloaded`、`stream:backpressure`、`service:ready`、
 `plugin:registered` / `plugin:enabled` / `plugin:disabled` / `plugin:error`。
@@ -106,7 +106,9 @@ container.dispose();                            // 逆序调用各服务 dispose
 
 ```ts
 declare module './services/events/GameEvents' {
-  interface GameEvents { 'my:thing': { value: number } }
+  interface GameEvents {
+    'my:thing': { value: number };
+  }
 }
 ```
 
@@ -115,10 +117,10 @@ declare module './services/events/GameEvents' {
 ```ts
 interface PluginDefinition {
   manifest: {
-    id: string;                    // 建议 作者:名称，正则校验
+    id: string; // 建议 作者:名称，正则校验
     version?: string;
     description?: string;
-    dependencies?: string[];       // enable 时递归先启用，循环依赖拦截
+    dependencies?: string[]; // enable 时递归先启用，循环依赖拦截
     permissions?: PluginPermission[];
   };
   setup(ctx: PluginContext): void | (() => void) | Promise<void | (() => void)>;
@@ -141,16 +143,16 @@ register ──► registered ──► enable ──► [递归启用依赖] �
                                               (teardown + 订阅清理)
 ```
 
-| 权限 | 放行能力 |
-|---|---|
-| `world:write` | `world.setBlock` / `tnt.ignite` / `entities.spawn` |
-| `player:write` | `player.teleport` / `setFly` / `break` / `place` / `setCamera`；`survival.setMode` / `respawn` / `give` / `damage` / `heal` |
-| `save:write` | `save.import` / `setProvider` |
-| `api:emit` | `CraftAPI.emit`、`ctx.events.emit`、`api.events.scope(...).emit` |
-| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` / `blocks.register` |
-| `time:write` | `time.set` / `time.setDayLength` |
-| `settings:write` | `settings.renderDistance` / `sensitivity` / `fov` / `sound` |
-| `plugins:manage` | `plugins.register` / `enable` / `disable` / `unload`（`list` 只读） |
+| 权限              | 放行能力                                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `world:write`     | `world.setBlock` / `tnt.ignite` / `entities.spawn`                                                                          |
+| `player:write`    | `player.teleport` / `setFly` / `break` / `place` / `setCamera`；`survival.setMode` / `respawn` / `give` / `damage` / `heal` |
+| `save:write`      | `save.import` / `setProvider`                                                                                               |
+| `api:emit`        | `CraftAPI.emit`、`ctx.events.emit`、`api.events.scope(...).emit`                                                            |
+| `blocks:register` | `registerBlock` / `registerTile` / `registerEntity` / `setGenerator` / `blocks.register`                                    |
+| `time:write`      | `time.set` / `time.setDayLength`                                                                                            |
+| `settings:write`  | `settings.renderDistance` / `sensitivity` / `fov` / `sound`                                                                 |
+| `plugins:manage`  | `plugins.register` / `enable` / `disable` / `unload`（`list` 只读）                                                         |
 
 未声明的写能力在插件上下文里会抛错（读能力默认全开）。写入口集中登记在
 `PluginService.ts` 的 `WRITE_CAPABILITIES` 表中，新增能力时同步维护该表，避免
@@ -186,21 +188,21 @@ CraftAPI.plugins.register({
       if (def.name.includes('ore')) ctx.log('挖到矿石：', def.label);
     });
     ctx.onDispose(() => ctx.log('已清理'));
-    return () => ctx.log('teardown');   // 二者都会执行
+    return () => ctx.log('teardown'); // 二者都会执行
   },
 });
 await CraftAPI.plugins.enable('demo:ore-notify');
-CraftAPI.plugins.list();       // [{ manifest, state: 'enabled' }]
+CraftAPI.plugins.list(); // [{ manifest, state: 'enabled' }]
 CraftAPI.plugins.disable('demo:ore-notify');
 CraftAPI.plugins.unload('demo:ore-notify');
 ```
 
 内置插件就是同一套契约：
 
-| 插件 | 订阅 | 职责 |
-|---|---|---|
-| `core:autosave` | `block:break/place/ignite`、`player:move`、`inventory:change`、`hotbar:select`、`explosion`、`survival:*` | 标记存档脏 / 死亡立即落盘 |
-| `core:hud-feedback` | `hotbar:select`、`inventory:change`、`save:done`、`survival:damage/death`、`entity:hurt` | HUD 更新、音效、触感、死亡状态机回调 |
+| 插件                | 订阅                                                                                                      | 职责                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `core:autosave`     | `block:break/place/ignite`、`player:move`、`inventory:change`、`hotbar:select`、`explosion`、`survival:*` | 标记存档脏 / 死亡立即落盘            |
+| `core:hud-feedback` | `hotbar:select`、`inventory:change`、`save:done`、`survival:damage/death`、`entity:hurt`                  | HUD 更新、音效、触感、死亡状态机回调 |
 
 `main.ts` 只把 boot() 的局部依赖打包成 `BuiltinDeps` 注册进容器，插件通过
 `ctx.services.require(TOKENS.BuiltinDeps)` 取用，不再依赖 main 的作用域。
@@ -209,14 +211,14 @@ CraftAPI.plugins.unload('demo:ore-notify');
 
 ## 5. 从 v1.1.2 迁移
 
-| 旧写法 | 新写法 |
-|---|---|
+| 旧写法                                      | 新写法                                                            |
+| ------------------------------------------- | ----------------------------------------------------------------- |
 | `import { EventBus } from '../core/events'` | `import { EventService } from '../services/events'`（垫片仍可用） |
-| `const events = new EventBus()` | `const { container, events, plugins } = createServices()` |
-| `import { createCraftAPI } from './api'` | `import { createCraftAPI } from './api'`（现为目录，签名不变） |
-| `events.on(...)` 散落在 boot() | 抽成 `PluginDefinition`，由 `PluginService` 注册/启用 |
-| `version: '1.1.0'` 硬编码 | `import { VERSION } from './core/version'` |
-| 手工维护 `test/logic/*.js` | `npm run test:snapshot` 从源码现场编译 |
+| `const events = new EventBus()`             | `const { container, events, plugins } = createServices()`         |
+| `import { createCraftAPI } from './api'`    | `import { createCraftAPI } from './api'`（现为目录，签名不变）    |
+| `events.on(...)` 散落在 boot()              | 抽成 `PluginDefinition`，由 `PluginService` 注册/启用             |
+| `version: '1.1.0'` 硬编码                   | `import { VERSION } from './core/version'`                        |
+| 手工维护 `test/logic/*.js`                  | `npm run test:snapshot` 从源码现场编译                            |
 
 `window.CraftAPI` 旧 22 项与 `window.__mc` 全部保持兼容（`__mc` 另加
 `services` / `events` / `plugins` / `api` 便于调试）。
@@ -288,20 +290,20 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 
 ## 7. 验证矩阵
 
-| 层级 | 命令 | 内容 |
-|---|---|---|
-| 版本 | `npm run check:version` | package.json / version.ts / README 一致 |
-| 类型 | `npm run typecheck` | TypeScript strict，0 error |
-| 构建 | `npm run build` | 单文件 `dist/index.html` |
-| 快照 | `npm run test:snapshot` | 从当前 TS 源码编译 CJS 测试快照 |
-| 逻辑 | `npm run test:logic` | 生存 8 组 + 地形 23 组 |
-| 光照 | `npm run test:light` | 天空光 / 方块光 / 跨区块 / 增量回收 21 组 |
-| 服务 | `npm run test:services` | 容器 / 事件 / 插件 / 存档校验 46 项（含并发启用、初始化中停用、waitFor 清理、emit 门禁、级联停用） |
-| 诊断 | `npm run test:diagnostics` | 运行时诊断组 20 组断言（健康快照 + 异常注入） |
-| 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组 |
-| 实景 | `npm run test:smoke` | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言 |
-| 视觉 | `npm run test:visual` | 昼夜 / 火光 / 全部内置方块展示墙 |
-| 一键 | `npm run verify` | 以上全部 |
+| 层级     | 命令                          | 内容                                                                                               |
+| -------- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| 版本     | `npm run check:version`       | package.json / version.ts / README 一致                                                            |
+| 类型     | `npm run typecheck`           | TypeScript strict，0 error                                                                         |
+| 构建     | `npm run build`               | 单文件 `dist/index.html`                                                                           |
+| 快照     | `npm run test:snapshot`       | 从当前 TS 源码编译 CJS 测试快照                                                                    |
+| 逻辑     | `npm run test:logic`          | 生存 8 组 + 地形 23 组                                                                             |
+| 光照     | `npm run test:light`          | 天空光 / 方块光 / 跨区块 / 增量回收 21 组                                                          |
+| 服务     | `npm run test:services`       | 容器 / 事件 / 插件 / 存档校验 46 项（含并发启用、初始化中停用、waitFor 清理、emit 门禁、级联停用） |
+| 诊断     | `npm run test:diagnostics`    | 运行时诊断组 20 组断言（健康快照 + 异常注入）                                                      |
+| 地形体系 | `npm run test:terrain-system` | 方块扩充 + 阶段管线 + 群系配置表 20 组                                                             |
+| 实景     | `npm run test:smoke`          | Chromium 桌面 + 移动端，含服务/插件/诊断/Config ACK 断言                                           |
+| 视觉     | `npm run test:visual`         | 昼夜 / 火光 / 全部内置方块展示墙                                                                   |
+| 一键     | `npm run verify`              | 以上全部                                                                                           |
 
 测试体系（快照机制、固定种子、新增测试规则）见 [TESTING.md](TESTING.md)。
 
@@ -320,12 +322,12 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 
 `meshTypes.ts` 把「网格化真正需要的能力」与「活对象」解耦：
 
-| 类型 | 作用 |
-|---|---|
-| `MeshSource` | mesher 唯一的数据入口：`getId / def / isOpaque / getSkyLight / getBlockLight / uv / greedy` |
-| `MeshConfig` | 低频配置（方块元数据 + tile→UV 表 + greedy 开关 + revision），只在注册变化时重建 |
-| `MeshSnapshot` | 单区块 + 1 格 halo 的 `data / sky / block` 三张 `Uint8Array`（各 18×80×18 ≈ 26KB），索引 `((y*W + lz+1)*W + lx+1)` |
-| `PackedGeo` / `PackedMesh` | 可 Transfer 的 `Float32Array` / `Uint32Array` 几何（含每顶点 `sky/block`） |
+| 类型                       | 作用                                                                                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MeshSource`               | mesher 唯一的数据入口：`getId / def / isOpaque / getSkyLight / getBlockLight / uv / greedy`                                                               |
+| `MeshConfig`               | 低频配置（方块元数据 + tile→UV 表 + greedy 开关 + revision），只在注册变化时重建                                                                          |
+| `MeshSnapshot`             | 单个 section（16 层）+ 上下各 1 格 halo 的 `data / sky / block` 三张 `Uint8Array`（各 18×18×18 ≈ 17KB），索引 `((row*W + lz+1)*W + lx+1)`，`row = y - y0` |
+| `PackedGeo` / `PackedMesh` | 可 Transfer 的 `Float32Array` / `Uint32Array` 几何（含每顶点 `sky/block`）                                                                                |
 
 同一份 `mesher.ts` 跑两种数据源：
 
@@ -335,23 +337,33 @@ v1.1.2 未捕获，冒出 `NotAllowedError` 页面异常；`lockFailed` / `dragg
 > 早期方案打算给 Worker 单独写一份 mesher。实际做法是「一个算法 + 两个数据源」，
 > 避免两套实现随迭代漂移 —— 这是本版最重要的结构决策。
 
-### 8.2 调度
+### 8.2 分段调度（16³ section）
+
+世界竖向 80 格切成 5 个 16³ section，脏集合、在途表、网格表全部以 `${cx},${sy},${cz}` 为 key：
 
 ```
 ChunkManager.update()
-  ├─ 生成（预算 4ms）→ world.dirty.add
-  ├─ 网格化（预算 6ms）→ 投递给 Worker 池（least-busy 选 wid，generation++）+ inFlight.set(key, gen)
-  ├─ Worker.onmessage → pendingResults（带 wid 回显）
-  └─ drain(): 丢弃 generation 过期的结果，按 wid 回退在途计数，其余 buildGeo + 上传
+  ├─ 生成（预算 4ms）→ finalize 时本列 5 段 + 邻居列整列入 world.dirty
+  ├─ 网格化（预算 6ms）→ 每段独立派发（least-busy 选 wid，generation++）+ inFlight.set(sectionKey, gen)
+  ├─ Worker.onmessage → pendingResults（带 wid / sy 回显，快照 buffer 一并回传进池）
+  └─ drain(): 丢弃 generation 过期的结果，按 wid 回退在途计数，其余 buildGeo + position.y = sy*16
 ```
+
+- **脏粒度**：改一格只脏它所在 section；踩在 y=16/32/48/64 或 x/z 区块边界时连带上下段 / 邻居列。
+  光照引擎记录本轮 BFS 实际改动的 y 范围，`flush` 只标脏覆盖该范围的段（天光柱会自然覆盖整段）。
+- **顶点坐标**：mesher 三条路径（逐面 / 贪心 / 盒子）都按绝对 y 写顶点，在 `publish()` 出口一次性减去 `yBase`。
+- **快照池**：`SnapshotBuffers` 由 Worker Transfer 回主线程，主线程容量 12 的池复用，稳态零分配；
+  尺寸不符（配置变更 / 旧版本回传）直接丢弃给 GC。
+- **事件语义**：`chunk:meshed` 仍是「每列一次」（首段落地时发），不是每段一次。
+- **统计**：`meshStats.chunks` 按列计，`meshStats.quads/vertices` 按段累加；诊断里「每区块 quad」口径不变。
 
 - **Worker 池（v1.3.0）**：默认 `min(hardwareConcurrency-1, 4)` 个 Worker（`?workers=N` 覆盖，夹紧 1..8）；
   派发时选「在途任务数最少」的 Worker（least-busy），解除单 Worker 吞吐上限；任一 Worker
   失败即整体 `fallbackToMain()`。`pickWorker()` 返回 wid 并记一笔在途，`drain` 时按 `wid` 回退。
 - **代次去重**：同一区块连续改脏只会保留最新结果，旧结果直接丢弃（不再闪烁）。
 - **在途取消**：区块卸载时从 `inFlight` 移除并 `generation++`，回传结果被识别为过期。
-- **背压**：`dirty.size > 24` 时暂停生成，避免「生成快于网格化」造成的队列堆积。
-- **自愈**：每帧扫描视距内「已生成但无网格」的区块并重新入队，任何漏标脏都会收敛。
+- **背压**：`dirty.size + inFlight.size > 80` 时暂停生成（每列 5 段，阈值按 5 倍任务量上调）。
+- **自愈**：每 0.25s 扫描视距内「已生成但无网格」的 section 并重新入队；正常路径由生成落地时的本列标脏覆盖，不依赖兜底。
 - **降级**：Worker 构造或运行失败 → `fallbackToMain()` 切同步路径；`?mesher=main` 可强制。
 
 ### 8.3 Greedy Meshing
@@ -392,8 +404,8 @@ v1.5.1 把光照也改成逐顶点：**每个角点取「空气侧」相邻 4 �
 
 **顶点布局打包（E1）**：每顶点 60 B → 44 B。
 
-| 旧 | 新 |
-| --- | --- |
+| 旧                                                                            | 新                                                                                          |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `position(3) + uv(2) + color(3) + aLight(2) + aTileRect(4)` = 14 float / 60 B | `position(3) + uv(2) + aShade(1) + aLight(2) + aTileOrigin(2) + aTint(1)` = 11 float / 44 B |
 
 - `color` 三分量同值（面定向 × AO），单分量 `aShade` 即可，shader 侧用 `vec3(vShade)`。
@@ -450,12 +462,12 @@ quad 顺序或任一顶点属性变化即 FAIL。
 
 ### 8.4 性能取舍（实测）
 
-| 指标 | 逐面 | Greedy |
-|---|---|---|
-| quad 数（6 区块，3 种子，v1.4.9） | 11,526 | 6,978（-39.5%） |
+| 指标                                       | 逐面   | Greedy          |
+| ------------------------------------------ | ------ | --------------- |
+| quad 数（6 区块，3 种子，v1.4.9）          | 11,526 | 6,978（-39.5%） |
 | quad 数（6 区块，3 种子，v1.5.1 平滑光照） | 12,507 | 8,525（-31.8%） |
-| 单区块网格化 CPU（Node，冷启动） | 25 ms | 35 ms |
-| 浏览器内单区块网格化 | ~7 ms | ~8.7 ms |
+| 单区块网格化 CPU（Node，冷启动）           | 25 ms  | 35 ms           |
+| 浏览器内单区块网格化                       | ~7 ms  | ~8.7 ms         |
 
 CPU 略升来自「按面扫描 + 每个可见面一次 AO」；因为整段已移出主线程，渲染不再被阻塞。
 v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发）把吞吐补回来。
@@ -472,13 +484,13 @@ v1.3.0 已按 `navigator.hardwareConcurrency` 起 Worker 池（least-busy 派发
 `src/diagnostics/RuntimeDiagnostics.ts` 只接收组装根收集的只读快照，不依赖 three / DOM
 业务对象，因此浏览器与 Node 共用同一套检查：
 
-| 入口 | 用途 |
-|---|---|
-| `CraftAPI.diagnostics.run()` | 手动执行全部检查，返回 `{ ok, checked, errors, warnings, issues, durationMs }` |
-| `CraftAPI.diagnostics.last()` | 最近一次自动采样结果 |
-| F3 面板 | 显示「运行时诊断」行 |
-| `__mc.diagnostics` | 控制台调试入口 |
-| 自动采样 | 每 10 秒一次；异常集合变化时才 `console.groupCollapsed` 输出 |
+| 入口                          | 用途                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `CraftAPI.diagnostics.run()`  | 手动执行全部检查，返回 `{ ok, checked, errors, warnings, issues, durationMs }` |
+| `CraftAPI.diagnostics.last()` | 最近一次自动采样结果                                                           |
+| F3 面板                       | 显示「运行时诊断」行                                                           |
+| `__mc.diagnostics`            | 控制台调试入口                                                                 |
+| 自动采样                      | 每 10 秒一次；异常集合变化时才 `console.groupCollapsed` 输出                   |
 
 覆盖的不变量：版本一致、玩家坐标/摔落值、playing 输入状态、暂停态残留按键、Worker 配置
 ACK、Worker 池大小、未初始化光照、幽灵网格、视距内缺网格、网格积压、插件 failed、事件
@@ -493,12 +505,12 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 `DefaultGenerator.generateChunk()` 不再是一段 100 行的流水账，而是
 「构建上下文 → 按固定阶段派发」：
 
-| 阶段 | 职责 | 关键约束 |
-|---|---|---|
-| `columns` | 地形柱、陡坡露石、雪线、浅海黏土、水、渐隐洞穴 | 水下地层不挖洞穴，避免空气袋 |
-| `ores` | 分层矿脉（煤 / 铁 / 金 / 钻石 / 萤石 + 铜 / 红石 / 青金石 / 绿宝石 / 花岗岩） | 只替换石头；`biome` 限制的矿脉逐格校验群系边界 |
-| `trees` | 跨区块树木（橡树 / 白桦 / 云杉 / 金合欢 / 樱花，树种权重来自配置表） | 由世界坐标候选点决定，邻区块裁剪结果一致 |
-| `decorate` | 花草 / 仙人掌 / 甘蔗 / 海草 / 海带 / 睡莲 / 南瓜 | 只写在配置表地表方块之上，不覆盖树冠，四邻水位校验 |
+| 阶段       | 职责                                                                          | 关键约束                                           |
+| ---------- | ----------------------------------------------------------------------------- | -------------------------------------------------- |
+| `columns`  | 地形柱、陡坡露石、雪线、浅海黏土、水、渐隐洞穴                                | 水下地层不挖洞穴，避免空气袋                       |
+| `ores`     | 分层矿脉（煤 / 铁 / 金 / 钻石 / 萤石 + 铜 / 红石 / 青金石 / 绿宝石 / 花岗岩） | 只替换石头；`biome` 限制的矿脉逐格校验群系边界     |
+| `trees`    | 跨区块树木（橡树 / 白桦 / 云杉 / 金合欢 / 樱花，树种权重来自配置表）          | 由世界坐标候选点决定，邻区块裁剪结果一致           |
+| `decorate` | 花草 / 仙人掌 / 甘蔗 / 海草 / 海带 / 睡莲 / 南瓜                              | 只写在配置表地表方块之上，不覆盖树冠，四邻水位校验 |
 
 地表 / 填充 / 装饰 / 浅滩黏土 / 仙人掌 / 甘蔗 / 树种 / 水下植物 / 睡莲 / 南瓜由
 `BIOME_PROFILES`（11 个群系）统一描述，构造时解析为方块 id；`TERRAIN_STAGES` 与实例
@@ -509,31 +521,32 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 
 `Botany`（`src/world/botany.ts`）是独立于地形生成的运行时生态层：
 
-| 设计点 | 实现 |
-|---|---|
-| 采样 | 每 0.3s 在玩家周围 24 格内随机取 56 列（移动端 24 列），只处理已生成区块 |
-| 高度分布 | 72% 贴地表 ±2 格（花草 / 草方块 / 树苗），28% 深入地下（蘑菇 / 地衣） |
-| 规则表 | 按方块名分派：柱状生长、作物阶段、树苗长树、草方块 / 花草 / 藤蔓 / 睡莲 / 水草 / 地衣蔓延、支撑检查与整列枯萎 |
+| 设计点   | 实现                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 采样     | 每 0.3s 在玩家周围 24 格内随机取 56 列（移动端 24 列），只处理已生成区块                                                             |
+| 高度分布 | 72% 贴地表 ±2 格（花草 / 草方块 / 树苗），28% 深入地下（蘑菇 / 地衣）                                                                |
+| 规则表   | 按方块名分派：柱状生长、作物阶段、树苗长树、草方块 / 花草 / 藤蔓 / 睡莲 / 水草 / 地衣蔓延、支撑检查与整列枯萎                        |
 | 内在能量 | `plantTraits.ts` 声明代谢类型 / 开花阈值 / 生长耗能 / 共享参数；`Botany` 为每株植物维护 0~100 能量，先充能再执行规则，能量不足则跳过 |
-| 环境判定 | solar：天空光 × 昼夜与方块光取大，土壤 +2；hydro：四邻水体或连续水草列；fungal：有效光照 <8，火光（方块光 ≥13）会灼伤 |
-| 根系网络 | 能量 ≥80 的植物向同代谢类型邻居转移富余能量；向日葵 / 发光地衣为枢纽（半径 4/3） |
-| 采集 | 能量达到 `bloom` 后空手右键或破坏结算：花蜜 / 额外种子 / 浆果；采集消耗 45 能量，浆果丛退回未成熟 |
-| 树形 | 与地形阶段共用 `buildTree()`（`src/world/trees.ts`），自然树与树苗树形一致 |
-| 事件 | 写入发出 `plant:grow`（grow / spread / decay / ripen / harvest）；开花 / 采集发出 `plant:bloom` 驱动粒子 |
-| 性能 | 单帧代价只与采样次数相关；能量表上限 4096 条按最旧淘汰，不做全图植物表。`test:botany` / `test:plant-energy` 覆盖全部规则 |
+| 环境判定 | solar：天空光 × 昼夜与方块光取大，土壤 +2；hydro：四邻水体或连续水草列；fungal：有效光照 <8，火光（方块光 ≥13）会灼伤                |
+| 根系网络 | 能量 ≥80 的植物向同代谢类型邻居转移富余能量；向日葵 / 发光地衣为枢纽（半径 4/3）                                                     |
+| 采集     | 能量达到 `bloom` 后空手右键或破坏结算：花蜜 / 额外种子 / 浆果；采集消耗 45 能量，浆果丛退回未成熟                                    |
+| 树形     | 与地形阶段共用 `buildTree()`（`src/world/trees.ts`），自然树与树苗树形一致                                                           |
+| 事件     | 写入发出 `plant:grow`（grow / spread / decay / ripen / harvest）；开花 / 采集发出 `plant:bloom` 驱动粒子                             |
+| 性能     | 单帧代价只与采样次数相关；能量表上限 4096 条按最旧淘汰，不做全图植物表。`test:botany` / `test:plant-energy` 覆盖全部规则             |
 
 ### 8.7.1 v1.6 植物系统深化
 
 四个纯数据模块承担规则复杂度，`Botany` 作为唯一状态协调者：
 
-| 模块 | 接口 | 职责 |
-|---|---|---|
+| 模块                   | 接口                                                       | 职责                                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/world/ecology.ts` | `seasonAt(day)` / `weatherAt(seed,day)` / `modifiers(env)` | 6 日一季的历法（一年 24 日）、seed 派生天气、三代谢倍率表；默认 spring/clear 全为 1，`Botany.update/tickAt` 的可选 `env` 不传时保持旧行为逐值中性 |
-| `src/world/drops.ts` | `rollDrops(specs, ctx)` | 稳定哈希判定掉落，替代玩家 / 实体两处 `Math.random`；支持 chance / 数量区间 / 昼夜 / 群系条件 |
-| `src/world/soil.ts` | `nutrientAt/consume/enrich/returnToSoil` | 与能量并行的土壤养分场；未跟踪格返回 100（天然肥沃），懒初始化保证旧测试中性；上限 1024 |
-| `src/world/compost.ts` | `levelOf/nextId/harvestOf` | 堆肥桶等级编码进 block id 110~118，借 `world.edits` 免费持久化；无需独立状态表 / 存档字段 |
+| `src/world/drops.ts`   | `rollDrops(specs, ctx)`                                    | 稳定哈希判定掉落，替代玩家 / 实体两处 `Math.random`；支持 chance / 数量区间 / 昼夜 / 群系条件                                                     |
+| `src/world/soil.ts`    | `nutrientAt/consume/enrich/returnToSoil`                   | 与能量并行的土壤养分场；未跟踪格返回 100（天然肥沃），懒初始化保证旧测试中性；上限 1024                                                           |
+| `src/world/compost.ts` | `levelOf/nextId/harvestOf`                                 | 堆肥桶等级编码进 block id 110~118，借 `world.edits` 免费持久化；无需独立状态表 / 存档字段                                                         |
 
 新增状态与约束：
+
 - `Botany` 持有 `energy` / `soil` / `env` 三份状态；`grow()` 成功写入后才扣能量与养分，失败都不扣；`decay()` / 破坏采集归还半份养分。
 - 玩家空手右键采集蓄能植物；手持 `item:fertilizer`（+35 养分）/ `item:bone_meal`（+55 养分且 +15 能量）右键目标格施肥。
 - 猪 / 羊 12% 掉有机肥，新增骷髅怪（夜间 hostile，75% 掉骨粉）；掉落判定全部走 `rollDrops`。
@@ -545,18 +558,18 @@ Worker 都确认当前 `revision` 后才为 true。运行时注册方块 / 纹�
 内容体系由四个新模块承担，接线仍遵守 `main → services → 业务模块` 单向依赖；生成器
 不接触 DOM / three：
 
-| 模块 | 接口 | 职责 |
-|---|---|---|
-| `src/core/tuning.ts` | `POPULATION` / `BREED` / `DROPS` / `BREED_FOODS` / `ANIMALS` | 纯数据数值中心：既有种群 / 交互距离原样搬入，新动物 / 掉落 / 繁殖 / 食物参数集中一处，调参零改调用方 |
-| `src/world/dropLogic.ts` | `scatterOffset` / `canPickup` / `mergeKey` / `dropsMerge` / `shouldDespawn` / `advanceWater` | 可见掉落物的纯判定（无 three / DOM）：确定性散开、拾取半径与延迟、同类合并、超时 / 掉出世界、入水终端下沉与水平衰减 |
-| `src/entity/droppedItem.ts` | `DropManager.spawn / update / clear` 与 `DroppedItem` | 渲染与生命周期：复用 `moveBody` 做碰撞、按材料键缓存几何 / 共享材质、浮动自转、入水水花与拾取反馈；拾取 / 消失只 `scene.remove`，不 dispose 共享资源 |
-| `src/entity/breeding.ts` | `isBreedFood` / `pickMate` / `canBreed` | 纯规则判定：食物白名单、按实体 id 升序稳定择偶、同类成体求爱且冷却结束才可繁殖；状态字段（age / loveTimer / cooldown）挂在 `Entity` 上 |
-| `src/ai/Node.ts` / `Blackboard.ts` / `AIContext.ts` | `NodeStatus` / `Node.tick` / `Blackboard` / `makeTickContext` | 行为树基础：节点基类、黑板、确定性 RNG（`mulberry32(hash(worldSeed, entityId, label))`） |
-| `src/ai/composites.ts` / `decorators.ts` | `Selector` / `Sequence` / `Parallel` / `RandomSelector` / `Inverter` / `Repeater` / `UntilFail` / `UntilSuccess` | 复合节点与装饰器，控制流组合 |
-| `src/ai/conditions.ts` / `actions.ts` / `Perception.ts` | 条件 / 动作节点库 + 只读感知视图 | 节点只依赖 `TickContext` 接口，不 import three / World / DOM；副作用经 `ctx.events` / `ctx.api` 发送 |
-| `src/ai/BehaviorTree.ts` / `registry.ts` | `BehaviorTree.fromJSON` / `NodeRegistry` | JSON 编译器与节点注册表，支持热重载 |
-| `src/ai/AIService.ts` / `AIComponent.ts` | `registerType` / `attach` / `update` / `enable` / `disable` / `reloadConfig` | 每帧批量更新、分帧预算，实体 spawn/despawn 时 attach/detach |
-| `src/ai/behaviors.ts` + `behaviors/*.json` | 4 种内置生物行为树配置 | 猪/羊 wander、僵尸/骷髅 chase+attack+wander，与 v1.4.9 行为等价 |
+| 模块                                                    | 接口                                                                                                             | 职责                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/tuning.ts`                                    | `POPULATION` / `BREED` / `DROPS` / `BREED_FOODS` / `ANIMALS`                                                     | 纯数据数值中心：既有种群 / 交互距离原样搬入，新动物 / 掉落 / 繁殖 / 食物参数集中一处，调参零改调用方                                                 |
+| `src/world/dropLogic.ts`                                | `scatterOffset` / `canPickup` / `mergeKey` / `dropsMerge` / `shouldDespawn` / `advanceWater`                     | 可见掉落物的纯判定（无 three / DOM）：确定性散开、拾取半径与延迟、同类合并、超时 / 掉出世界、入水终端下沉与水平衰减                                  |
+| `src/entity/droppedItem.ts`                             | `DropManager.spawn / update / clear` 与 `DroppedItem`                                                            | 渲染与生命周期：复用 `moveBody` 做碰撞、按材料键缓存几何 / 共享材质、浮动自转、入水水花与拾取反馈；拾取 / 消失只 `scene.remove`，不 dispose 共享资源 |
+| `src/entity/breeding.ts`                                | `isBreedFood` / `pickMate` / `canBreed`                                                                          | 纯规则判定：食物白名单、按实体 id 升序稳定择偶、同类成体求爱且冷却结束才可繁殖；状态字段（age / loveTimer / cooldown）挂在 `Entity` 上               |
+| `src/ai/Node.ts` / `Blackboard.ts` / `AIContext.ts`     | `NodeStatus` / `Node.tick` / `Blackboard` / `makeTickContext`                                                    | 行为树基础：节点基类、黑板、确定性 RNG（`mulberry32(hash(worldSeed, entityId, label))`）                                                             |
+| `src/ai/composites.ts` / `decorators.ts`                | `Selector` / `Sequence` / `Parallel` / `RandomSelector` / `Inverter` / `Repeater` / `UntilFail` / `UntilSuccess` | 复合节点与装饰器，控制流组合                                                                                                                         |
+| `src/ai/conditions.ts` / `actions.ts` / `Perception.ts` | 条件 / 动作节点库 + 只读感知视图                                                                                 | 节点只依赖 `TickContext` 接口，不 import three / World / DOM；副作用经 `ctx.events` / `ctx.api` 发送                                                 |
+| `src/ai/BehaviorTree.ts` / `registry.ts`                | `BehaviorTree.fromJSON` / `NodeRegistry`                                                                         | JSON 编译器与节点注册表，支持热重载                                                                                                                  |
+| `src/ai/AIService.ts` / `AIComponent.ts`                | `registerType` / `attach` / `update` / `enable` / `disable` / `reloadConfig`                                     | 每帧批量更新、分帧预算，实体 spawn/despawn 时 attach/detach                                                                                          |
+| `src/ai/behaviors.ts` + `behaviors/*.json`              | 4 种内置生物行为树配置                                                                                           | 猪/羊 wander、僵尸/骷髅 chase+attack+wander，与 v1.4.9 行为等价                                                                                      |
 
 新增动物（牛 / 鸡 / 兔）与猪 / 羊一起进入 `ANIMALS` 加权生成表，权重与掉落走
 `dropHash(seed, 'spawn:'+serial, 0)` 抽取；五种被动动物均可喂食繁殖。`ITEMS` 追加
@@ -582,18 +595,18 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 由 `main.ts` 构造并挂进引擎；熔炉本体为纯逻辑类 `Smelting`，由主循环 `tick(dt)` 驱动。
 状态只存内存与存档可选字段，不写世界方块差分：
 
-| 模块 | 接口 | 职责 |
-|---|---|---|
-| `src/world/blocks.ts` / `mesher.ts` | `BlockShape`（新增 `'slab' \| 'candle'`）、`emitFace(..., bounds?)` / `emitBox` | 火光方块地基：营火 / 灯笼 / 蜡烛 / 火焰（id 174~177）与任意盒几何，`icon` / `makeBlockGeometry` 同步支持子盒 |
-| `src/core/tuning.ts` | `FOOD_VALUES` / `FLAMMABLE` / `WARMTH` / `FIRE` / `NEW_ITEMS` | 数值中心：16 种可食物与饱和度、103 条可燃概率、温暖与火焰参数集中一处；`NEW_ITEMS` 食物值从 `FOOD_VALUES` 派生 |
-| `src/world/fire.ts` | `FireSystem` / `isHeatBlock` / `isFireNear` / `scanHeatSources` | 火焰蔓延与伤害：双热源、6 邻引燃、寿命熄灭、支撑检查、玩家 / 实体灼伤、刷怪规避 |
-| `src/player/smelting.ts` | `Smelting` / `SMELT_RECIPES` / `FUEL_UNITS` / `FurnaceSave` | per-block 熔炉状态机：输入 / 燃料 / 输出 + 燃烧 / 进度，10s 烧一件，破坏 `take()` 掉落，存档往返 |
-| `src/ui/furnace.ts` | `FurnacePanel` | 熔炉三槽面板 + 进度 / 燃烧条；打开时不暂停游戏 |
-| `src/world/warmth.ts` | `WarmthSystem` / `warmthTarget` / `approach` / `MAX_WARMTH` | 轻量温暖：靠近热源升、远离降，达标降低回血饥饿门槛 |
-| `src/ui/campfire.ts` | `CampfirePanel` / `CAMPFIRE_STACK_LIMIT` | 营火两槽「直接烤」面板：点输出即时烤熟 1 个，无燃料无进度；关闭退回槽内材料 |
-| `src/player/survival.ts` | `SurvivalState.saturation` / `eat()` / `serialize()` / `restore()` | 完整饱和度：进食叠加、exhaustion 先扣饱和度、回血门槛、旧档缺省 |
-| `src/save/save.ts` | `SaveData.saturation?` / `warmth?` / `furnaces?`（`cells`） / `isFurnaceSave` | 存档可选字段与逐条校验；不 bump save version |
-| `src/core/options.ts` | `fireSpread` | 设置项「火焰蔓延」默认开启，设置页「实验性玩法」组可关 |
+| 模块                                | 接口                                                                            | 职责                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `src/world/blocks.ts` / `mesher.ts` | `BlockShape`（新增 `'slab' \| 'candle'`）、`emitFace(..., bounds?)` / `emitBox` | 火光方块地基：营火 / 灯笼 / 蜡烛 / 火焰（id 174~177）与任意盒几何，`icon` / `makeBlockGeometry` 同步支持子盒   |
+| `src/core/tuning.ts`                | `FOOD_VALUES` / `FLAMMABLE` / `WARMTH` / `FIRE` / `NEW_ITEMS`                   | 数值中心：16 种可食物与饱和度、103 条可燃概率、温暖与火焰参数集中一处；`NEW_ITEMS` 食物值从 `FOOD_VALUES` 派生 |
+| `src/world/fire.ts`                 | `FireSystem` / `isHeatBlock` / `isFireNear` / `scanHeatSources`                 | 火焰蔓延与伤害：双热源、6 邻引燃、寿命熄灭、支撑检查、玩家 / 实体灼伤、刷怪规避                                |
+| `src/player/smelting.ts`            | `Smelting` / `SMELT_RECIPES` / `FUEL_UNITS` / `FurnaceSave`                     | per-block 熔炉状态机：输入 / 燃料 / 输出 + 燃烧 / 进度，10s 烧一件，破坏 `take()` 掉落，存档往返               |
+| `src/ui/furnace.ts`                 | `FurnacePanel`                                                                  | 熔炉三槽面板 + 进度 / 燃烧条；打开时不暂停游戏                                                                 |
+| `src/world/warmth.ts`               | `WarmthSystem` / `warmthTarget` / `approach` / `MAX_WARMTH`                     | 轻量温暖：靠近热源升、远离降，达标降低回血饥饿门槛                                                             |
+| `src/ui/campfire.ts`                | `CampfirePanel` / `CAMPFIRE_STACK_LIMIT`                                        | 营火两槽「直接烤」面板：点输出即时烤熟 1 个，无燃料无进度；关闭退回槽内材料                                    |
+| `src/player/survival.ts`            | `SurvivalState.saturation` / `eat()` / `serialize()` / `restore()`              | 完整饱和度：进食叠加、exhaustion 先扣饱和度、回血门槛、旧档缺省                                                |
+| `src/save/save.ts`                  | `SaveData.saturation?` / `warmth?` / `furnaces?`（`cells`） / `isFurnaceSave`   | 存档可选字段与逐条校验；不 bump save version                                                                   |
+| `src/core/options.ts`               | `fireSpread`                                                                    | 设置项「火焰蔓延」默认开启，设置页「实验性玩法」组可关                                                         |
 
 **火焰蔓延**：`FireSystem` 内部以 `Map<key, {x,y,z,age,life}>` 跟踪热源，由玩家周围
 定期扫描发现 + 自身点燃直接入表。每拍最多处理 `FIRE.maxPerTick` 个火源，对 6 邻判定：
@@ -610,13 +623,14 @@ painter **之后**追加注册，既有 tile 索引（0..63 及其后各段）�
 实体伤害不变；面板底部常驻提示「营火中无法移动，Esc 关闭；火焰不会灼伤你」。
 
 **熔炉与烹饪（融合远端）**：熔炉本体为 `Smelting` 的 per-block 状态（`input/fuel/output`
-+ `burn/burnMax/progress`），每件物品烧 `SMELT_SECONDS`（10s）；`burn` 耗尽后自动消耗下
-一个燃料，`progress` 满时输入 -1、输出 +1 产物。状态序列化为 `furnaces.cells`（坐标 +
-三槽 + 燃烧 / 进度秒数），`restore()` 逐条校验坐标 / 数值 / 材料白名单后重建，坏条目跳过；
-方块被挖掉时 `take()` 返回三槽内容供掉落。营火定位为光源 + 温暖 + 驱敌，不做第二套熔炉
-UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出即时烤熟 1 个，可烤物判定与
-熔炉共用 `smeltOutputOf`，关闭面板把槽内材料退回背包。新增配方：8 圆石 → 熔炉、
-圆石×3 + `#log`×3 + 煤×1 → 营火。
+
+- `burn/burnMax/progress`），每件物品烧 `SMELT_SECONDS`（10s）；`burn` 耗尽后自动消耗下
+  一个燃料，`progress` 满时输入 -1、输出 +1 产物。状态序列化为 `furnaces.cells`（坐标 +
+  三槽 + 燃烧 / 进度秒数），`restore()` 逐条校验坐标 / 数值 / 材料白名单后重建，坏条目跳过；
+  方块被挖掉时 `take()` 返回三槽内容供掉落。营火定位为光源 + 温暖 + 驱敌，不做第二套熔炉
+  UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出即时烤熟 1 个，可烤物判定与
+  熔炉共用 `smeltOutputOf`，关闭面板把槽内材料退回背包。新增配方：8 圆石 → 熔炉、
+  圆石×3 + `#log`×3 + 煤×1 → 营火。
 
 **温暖与饱和度**：`WarmthSystem` 每 0.2s 重算玩家 6 格内最近热源，按
 `clamp(1 - dist / (radius + 1), 0, 1) * 100` 求目标值并指数逼近；温暖 ≥ 50 时回血饥饿
@@ -633,19 +647,19 @@ UI，改用无燃料两槽「直接烤」面板（`CampfirePanel`）：点输出
 
 ## 9. 后续路线（带验收标准）
 
-| 版本 | 目标 | 可机械检查的验收标准 |
-|---|---|---|
-| v1.5.4 | 火光与饥饿（已完成） | 4 个火光方块 id 174~177 append-only；熔炉采用远端 `Smelting` + `FurnacePanel`；`fire` / `warmth` / `survival-saturation` / `campfire` Vitest 与 `smelting-check` 全绿；`terrain-system-check` 方块总数 165；`check:version` 1.5.4 |
-| v1.3.0 | Worker 池（least-busy 派发） | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升 |
-| v1.3.0 | 天空光 / 方块光（已完成） | `light-check` 21 项断言（v1.3.1 补遮光回收、跨区块天窗与幂等往返回归）；mesher 面覆盖与光照逐格一致 |
-| v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置 |
-| v1.4.1 | 植物生态 + 内在能量体系（已完成） | 35 种植物 / 树种 append-only；`botany-check` 28 组 + `plant-energy-check` 29 组断言 |
-| v1.6.0 | 花海扩充 + 植被表现力（已完成） | 追加 28 种植物（id 92~119）、花圃 / 浮萍 / 洞穴发光植物、植物高度分层与风摆；`terrain-system` 42 组 + `botany` 34 组 + `plant-energy` 32 组断言 |
-| v1.4.2 | 透明通道按距离排序 | 玻璃/水叠加无穿帮截图断言 |
-| v1.5.0 | 合成系统（已完成） | `crafting-check` 43 组断言：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、背包取放闭环 |
-| v1.4.3 | AABB 脱困 | 被方块包围时可在 2 秒内脱出 |
-| v1.4.4 | 光照服务化（可选） | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码 |
-| v2.0 | 护甲 / 联机 | 以插件形式实现，不新增 `main.ts` 事件接线 |
+| 版本   | 目标                                  | 可机械检查的验收标准                                                                                                                                                                                                              |
+| ------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.5.4 | 火光与饥饿（已完成）                  | 4 个火光方块 id 174~177 append-only；熔炉采用远端 `Smelting` + `FurnacePanel`；`fire` / `warmth` / `survival-saturation` / `campfire` Vitest 与 `smelting-check` 全绿；`terrain-system-check` 方块总数 165；`check:version` 1.5.4 |
+| v1.3.0 | Worker 池（least-busy 派发）          | 实景 `workerCount ≥ 1` 断言，回归全绿，多核环境吞吐随核数线性提升                                                                                                                                                                 |
+| v1.3.0 | 天空光 / 方块光（已完成）             | `light-check` 21 项断言（v1.3.1 补遮光回收、跨区块天窗与幂等往返回归）；mesher 面覆盖与光照逐格一致                                                                                                                               |
+| v1.4.0 | 方块扩充 + 地形生成体系整合（已完成） | `terrain-system-check` 18 组断言：id 45~54 末位追加、阶段顺序、10 种新方块自然生成位置                                                                                                                                            |
+| v1.4.1 | 植物生态 + 内在能量体系（已完成）     | 35 种植物 / 树种 append-only；`botany-check` 28 组 + `plant-energy-check` 29 组断言                                                                                                                                               |
+| v1.6.0 | 花海扩充 + 植被表现力（已完成）       | 追加 28 种植物（id 92~119）、花圃 / 浮萍 / 洞穴发光植物、植物高度分层与风摆；`terrain-system` 42 组 + `botany` 34 组 + `plant-energy` 32 组断言                                                                                   |
+| v1.4.2 | 透明通道按距离排序                    | 玻璃/水叠加无穿帮截图断言                                                                                                                                                                                                         |
+| v1.5.0 | 合成系统（已完成）                    | `crafting-check` 43 组断言：配方表结构、有序 / 无序匹配、3×3 内偏移摆放、材料组、背包取放闭环                                                                                                                                     |
+| v1.4.3 | AABB 脱困                             | 被方块包围时可在 2 秒内脱出                                                                                                                                                                                                       |
+| v1.4.4 | 光照服务化（可选）                    | `LightEngine` 经 `ServiceContainer` 注入且不修改 main.ts 业务代码                                                                                                                                                                 |
+| v2.0   | 护甲 / 联机                           | 以插件形式实现，不新增 `main.ts` 事件接线                                                                                                                                                                                         |
 
 > 编号说明：表中 `v1.6.0 花海扩充 + 植被表现力` 与其他历史 `v1.6.0` 标题均沿用早期规划编号，仅作历史记录保留；现行版本号以 `src/core/version.ts` 的 `VERSION` / `RELEASE` 为准。
 
@@ -673,15 +687,15 @@ id 字典序），`list()` 暴露 priority。内置扩展包现含 4 条规则�
 
 护甲 / 工具 / 后续联机插件只经以下通用接口接入，核心自身零处理器，无插件时行为与旧版逐项相等：
 
-| 接口 | 语义 | 说明 |
-|---|---|---|
-| `survival.damage(amount, cause, iframes, kind)` | — | `DamageKind = attack / explosion / fall / drown / starve / other`，缺省 `other`；透传进 `combat:damage-incoming` 载荷与 `survival:damage` 事件 |
-| `player:use-item` | 管道 | 右键使用手持物前，返回 `{ handled: true }` 截断默认放置 / 进食 |
-| `player:mining` | 管道 | 生存模式开始挖一个方块时改写 `time` / `harvest`（桌面 `mineTick` 与移动端 `tapBreak` 共用 `beginMining`） |
-| `player:attack` | 管道 | 生存模式近战命中前改写 `amount`（预填 3） |
-| `player:used-tool` | 通知 | 手持工具完成一次挖掘 / 攻击，供耐久结算 |
-| `save:collect` / `save:restore` | 通知 | `PluginSaveBag`（`TOKENS.PluginSaveBag`）按世界读写 `SaveData.plugins[插件 id]`；停用插件的数据原样保留 |
-| `PanelHost`（`TOKENS.PanelHost`） | 服务 | `register` 暂停菜单面板（与合成面板同一暂停态，关闭回来源）、`anchor` 取快捷栏上方锚点、`decorateSlot` 装饰快捷栏格 |
+| 接口                                            | 语义 | 说明                                                                                                                                           |
+| ----------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `survival.damage(amount, cause, iframes, kind)` | —    | `DamageKind = attack / explosion / fall / drown / starve / other`，缺省 `other`；透传进 `combat:damage-incoming` 载荷与 `survival:damage` 事件 |
+| `player:use-item`                               | 管道 | 右键使用手持物前，返回 `{ handled: true }` 截断默认放置 / 进食                                                                                 |
+| `player:mining`                                 | 管道 | 生存模式开始挖一个方块时改写 `time` / `harvest`（桌面 `mineTick` 与移动端 `tapBreak` 共用 `beginMining`）                                      |
+| `player:attack`                                 | 管道 | 生存模式近战命中前改写 `amount`（预填 3）                                                                                                      |
+| `player:used-tool`                              | 通知 | 手持工具完成一次挖掘 / 攻击，供耐久结算                                                                                                        |
+| `save:collect` / `save:restore`                 | 通知 | `PluginSaveBag`（`TOKENS.PluginSaveBag`）按世界读写 `SaveData.plugins[插件 id]`；停用插件的数据原样保留                                        |
+| `PanelHost`（`TOKENS.PanelHost`）               | 服务 | `register` 暂停菜单面板（与合成面板同一暂停态，关闭回来源）、`anchor` 取快捷栏上方锚点、`decorateSlot` 装饰快捷栏格                            |
 
 纯逻辑适配层在 `src/player/playerHooks.ts`，Player 只调用其中函数，玩法全部留给插件。
 

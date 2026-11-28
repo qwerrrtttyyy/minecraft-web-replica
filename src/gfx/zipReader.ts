@@ -101,8 +101,7 @@ export async function readZip(buffer: ArrayBuffer, options: ZipReadOptions = {})
     if (flags & 1) throw new Error(`不支持加密 ZIP 条目：${name}`);
     if (uncompressedSize > maxEntryBytes) throw new Error(`ZIP 单文件过大：${name}`);
     if (total + uncompressedSize > maxTotalBytes) throw new Error('ZIP 解压总量超过限制');
-    if (method === 8 && uncompressedSize > 0 && compressedSize > 0 &&
-      uncompressedSize / compressedSize > 200) {
+    if (method === 8 && uncompressedSize > 0 && compressedSize > 0 && uncompressedSize / compressedSize > 200) {
       throw new Error(`ZIP 压缩比异常：${name}`);
     }
     if (u32(view, localOffset) !== LOCAL) throw new Error(`ZIP 本地头损坏：${name}`);

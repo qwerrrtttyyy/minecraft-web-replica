@@ -46,7 +46,9 @@ function typedGeo() {
   for (const k of KEYS) {
     const Ctor = k === 'indices' ? Uint32Array : Float32Array;
     const a = new Ctor(CAP);
-    VALUES[k].forEach((v, i) => { a[i] = v; });
+    VALUES[k].forEach((v, i) => {
+      a[i] = v;
+    });
     g[k] = a;
     g.used[k] = VALUES[k].length;
   }
@@ -61,9 +63,11 @@ console.log('packMesh typed-array 回归（预分配容量不入几何）');
 {
   const out = pack(plainGeo());
   for (const k of KEYS) {
-    ok(`number[] 基线·${k} 长度`, out[k].length === VALUES[k].length,
-      `${out[k].length} vs ${VALUES[k].length}`);
-    ok(`number[] 基线·${k} 逐值`, VALUES[k].every((v, i) => out[k][i] === v));
+    ok(`number[] 基线·${k} 长度`, out[k].length === VALUES[k].length, `${out[k].length} vs ${VALUES[k].length}`);
+    ok(
+      `number[] 基线·${k} 逐值`,
+      VALUES[k].every((v, i) => out[k][i] === v),
+    );
   }
 }
 
@@ -72,17 +76,25 @@ console.log('packMesh typed-array 回归（预分配容量不入几何）');
   const typed = typedGeo();
   const out = pack(typed);
   for (const k of KEYS) {
-    ok(`typed·${k} 只打包已写入前缀`, out[k].length === VALUES[k].length,
-      `期望 ${VALUES[k].length}，实得 ${out[k].length}（容量 ${CAP}）`);
-    ok(`typed·${k} 逐值等于 number[] 版本`,
-      VALUES[k].every((v, i) => out[k][i] === v));
+    ok(
+      `typed·${k} 只打包已写入前缀`,
+      out[k].length === VALUES[k].length,
+      `期望 ${VALUES[k].length}，实得 ${out[k].length}（容量 ${CAP}）`,
+    );
+    ok(
+      `typed·${k} 逐值等于 number[] 版本`,
+      VALUES[k].every((v, i) => out[k][i] === v),
+    );
   }
   const plainOut = pack(plainGeo());
-  ok('typed / number[] 打包结果逐字节一致',
-    KEYS.every((k) => plainOut[k].length === out[k].length &&
-      plainOut[k].every((v, i) => v === out[k][i])));
-  ok('尾部有效 0 未被裁掉（used 优先于尾部探测）',
-    out.positions[3] === 0 && out.indices[3] === 0 && out.positions.length === 4);
+  ok(
+    'typed / number[] 打包结果逐字节一致',
+    KEYS.every((k) => plainOut[k].length === out[k].length && plainOut[k].every((v, i) => v === out[k][i])),
+  );
+  ok(
+    '尾部有效 0 未被裁掉（used 优先于尾部探测）',
+    out.positions[3] === 0 && out.indices[3] === 0 && out.positions.length === 4,
+  );
 }
 
 // 3) 满容量 typed array（无 used）也必须原样打包，不能误截
@@ -95,17 +107,20 @@ console.log('packMesh typed-array 回归（预分配容量不入几何）');
     full[k] = a;
   }
   const out = pack(full);
-  ok('满容量 typed array 不指定 used 时打包全部元素',
-    KEYS.every((k) => out[k].length === CAP && out[k].every((v, i) => v === i + 1)));
+  ok(
+    '满容量 typed array 不指定 used 时打包全部元素',
+    KEYS.every((k) => out[k].length === CAP && out[k].every((v, i) => v === i + 1)),
+  );
 }
 
 // 4) 空通道仍返回 null（签名与行为不变）
 {
   const r = packMesh({ opaque: null, emissive: null, transparent: null, water: null });
-  ok('全空 ChunkMeshData 的 mesh 全为 null',
-    ['opaque', 'emissive', 'transparent', 'water'].every((k) => r.mesh[k] === null));
-  ok('全空 ChunkMeshData 不产生 transfer',
-    r.transfer.length === 0);
+  ok(
+    '全空 ChunkMeshData 的 mesh 全为 null',
+    ['opaque', 'emissive', 'transparent', 'water'].every((k) => r.mesh[k] === null),
+  );
+  ok('全空 ChunkMeshData 不产生 transfer', r.transfer.length === 0);
 }
 
 console.log(`\n合计 ${passed} 项全部通过`);

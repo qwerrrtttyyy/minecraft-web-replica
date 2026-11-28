@@ -11,9 +11,7 @@
  * 足以覆盖 moveBody 与 updateBounce 的全部读取，不引入浏览器 / WebGL。
  */
 const assert = require('node:assert');
-const {
-  BALL, bounceVy, rollFriction, canPickup,
-} = require('./logic/entity/basketball.js');
+const { BALL, bounceVy, rollFriction, canPickup } = require('./logic/entity/basketball.js');
 const { Entity } = require('./logic/entity/entity.js');
 const THREE = require('three');
 
@@ -56,8 +54,11 @@ eq('bounceVy(-20) = 14', bounceVy(-20), 14);
 eq('bounceVy(-10) = 7', bounceVy(-10), 7);
 ok('入射越大反弹越高', bounceVy(-10) < bounceVy(-20));
 eq('阈值内静止', bounceVy(-BALL.REST_MIN_SPEED + 0.01), 0);
-ok('阈值边界按设计仍反弹（判定为 > 而非 >=）', bounceVy(-BALL.REST_MIN_SPEED) > 0,
-  `实际 ${bounceVy(-BALL.REST_MIN_SPEED)}`);
+ok(
+  '阈值边界按设计仍反弹（判定为 > 而非 >=）',
+  bounceVy(-BALL.REST_MIN_SPEED) > 0,
+  `实际 ${bounceVy(-BALL.REST_MIN_SPEED)}`,
+);
 eq('边界精确反弹值 = 1.12', +bounceVy(-BALL.REST_MIN_SPEED).toFixed(4), 1.12);
 eq('微弱入射不再反弹，杜绝永久抖动', bounceVy(-0.4), 0);
 eq('非下落速度不反弹', bounceVy(0), 0);
@@ -96,8 +97,7 @@ const total = 1 / 60;
 const fine = [v0];
 for (let i = 0; i < 4; i++) fine.push(rollFriction(fine[i], total / 4));
 const coarse = rollFriction(v0, total);
-ok('4 个微步 ≈ 1 个粗步（跨帧率一致）', Math.abs(fine[4] - coarse) < 1e-9,
-  `fine=${fine[4]} coarse=${coarse}`);
+ok('4 个微步 ≈ 1 个粗步（跨帧率一致）', Math.abs(fine[4] - coarse) < 1e-9, `fine=${fine[4]} coarse=${coarse}`);
 eq('零时长不改变速度', rollFriction(v0, 0), v0);
 ok('摩擦单调衰减', rollFriction(v0, 1) < v0);
 ok('负向速度同样被摩擦衰减', Math.abs(rollFriction(-v0, 0.5)) < Math.abs(-v0));
@@ -151,8 +151,14 @@ function makeWorld(wallX) {
 
 const buildBallModel = () => ({ group: new THREE.Group(), animate() {} });
 const BALL_TYPE = {
-  id: 'basketball', label: '篮球', width: 0.5, height: 0.5,
-  speed: 0, physics: 'bounce', health: Infinity, build: buildBallModel,
+  id: 'basketball',
+  label: '篮球',
+  width: 0.5,
+  height: 0.5,
+  speed: 0,
+  physics: 'bounce',
+  health: Infinity,
+  build: buildBallModel,
 };
 const silentEvents = () => ({ emit() {} });
 
@@ -161,7 +167,9 @@ const silentEvents = () => ({ emit() {} });
   const world = makeWorld();
   const strengths = [];
   const events = {
-    emit: (name, p) => { if (name === 'basketball:bounce') strengths.push(p.strength); },
+    emit: (name, p) => {
+      if (name === 'basketball:bounce') strengths.push(p.strength);
+    },
   };
   const ball = new Entity(BALL_TYPE, 0.5, 8, 0.5, events);
   ball.vel.y = -6;
@@ -169,8 +177,11 @@ const silentEvents = () => ({ emit() {} });
 
   ok('高处投放产生多次弹跳', strengths.length >= 3, `实际 ${strengths.length} 次`);
   for (let i = 1; i < strengths.length; i++) {
-    ok(`真实弹跳强度第 ${i + 1} 次 < 第 ${i} 次`, strengths[i] < strengths[i - 1],
-      `${strengths[i - 1].toFixed(3)} → ${strengths[i].toFixed(3)}`);
+    ok(
+      `真实弹跳强度第 ${i + 1} 次 < 第 ${i} 次`,
+      strengths[i] < strengths[i - 1],
+      `${strengths[i - 1].toFixed(3)} → ${strengths[i].toFixed(3)}`,
+    );
   }
   ok('最终竖直速度归零（静止）', ball.vel.y === 0, `vel.y=${ball.vel.y}`);
   ok('最终贴地 onGround=true', ball.onGround);
@@ -207,8 +218,11 @@ const silentEvents = () => ({ emit() {} });
   const q0 = ball.model.group.quaternion.clone();
   for (let i = 0; i < 10; i++) ball.update(1 / 60, world);
   ok('水平位移产生球面滚动旋转', !ball.model.group.quaternion.equals(q0));
-  ok('模型球心 = 脚底 + RADIUS', Math.abs((ball.model.group.position.y - ball.pos.y) - BALL.RADIUS) < 1e-9,
-    `diff=${(ball.model.group.position.y - ball.pos.y).toFixed(4)}`);
+  ok(
+    '模型球心 = 脚底 + RADIUS',
+    Math.abs(ball.model.group.position.y - ball.pos.y - BALL.RADIUS) < 1e-9,
+    `diff=${(ball.model.group.position.y - ball.pos.y).toFixed(4)}`,
+  );
 }
 
 // ---- 拾取冷却随 dt 递减 ----
@@ -217,8 +231,11 @@ const silentEvents = () => ({ emit() {} });
   const ball = new Entity(BALL_TYPE, 0.5, 1.02, 0.5, silentEvents());
   ball.pickupCooldown = 1.1;
   for (let i = 0; i < 30; i++) ball.update(1 / 60, world); // 0.5s
-  ok('pickupCooldown 按 dt 线性递减', Math.abs(ball.pickupCooldown - 0.6) < 1e-6,
-    `实际 ${ball.pickupCooldown.toFixed(4)}`);
+  ok(
+    'pickupCooldown 按 dt 线性递减',
+    Math.abs(ball.pickupCooldown - 0.6) < 1e-6,
+    `实际 ${ball.pickupCooldown.toFixed(4)}`,
+  );
 }
 
 // ---- 水中阻尼上浮（R5 边界）----
@@ -232,8 +249,7 @@ const silentEvents = () => ({ emit() {} });
   ball.vel.y = -10;
   // 水中每帧 +8*dt，从 -10 回升到上限 2.2 需约 1.53s；跑满 2s 验证钳制
   for (let i = 0; i < 120; i++) ball.update(1 / 60, waterWorld);
-  ok('水中上浮速度被钳制在 2.2', Math.abs(ball.vel.y - 2.2) < 1e-6,
-    `vel.y=${ball.vel.y.toFixed(3)}`);
+  ok('水中上浮速度被钳制在 2.2', Math.abs(ball.vel.y - 2.2) < 1e-6, `vel.y=${ball.vel.y.toFixed(3)}`);
 }
 
 // ---- walk 实体零回归：分流后既有实体行为不变 ----
@@ -241,10 +257,17 @@ const silentEvents = () => ({ emit() {} });
   const world = makeWorld();
   let bounceEvents = 0;
   const events = {
-    emit: (name) => { if (name === 'basketball:bounce') bounceEvents++; },
+    emit: (name) => {
+      if (name === 'basketball:bounce') bounceEvents++;
+    },
   };
   const pigType = {
-    id: 'pig', label: '猪', width: 0.9, height: 0.95, speed: 1.15, build: buildBallModel,
+    id: 'pig',
+    label: '猪',
+    width: 0.9,
+    height: 0.95,
+    speed: 1.15,
+    build: buildBallModel,
   };
   const ctx = {
     playerPos: new THREE.Vector3(0, 0, 0),

@@ -58,7 +58,10 @@ export function buildTree(species: TreeSpecies, rng: () => number, trunk = treeT
 
   if (species === 'acacia') {
     // 金合欢：平顶伞盖，底层半径 3、上层半径 2，层缘随机镂空
-    for (const [dy, rad] of [[trunk, 3], [trunk + 1, 2]] as const) {
+    for (const [dy, rad] of [
+      [trunk, 3],
+      [trunk + 1, 2],
+    ] as const) {
       for (let dx = -rad; dx <= rad; dx++) {
         for (let dz = -rad; dz <= rad; dz++) {
           const edge = Math.abs(dx) === rad || Math.abs(dz) === rad;

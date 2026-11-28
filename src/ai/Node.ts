@@ -1,4 +1,4 @@
-import { Blackboard } from './Blackboard';
+import type { Blackboard } from './Blackboard';
 
 /** 行为树节点执行状态。 */
 export enum NodeStatus {

@@ -1,7 +1,11 @@
 import { WORLD_HEIGHT } from '../core/types';
 import { TickContext } from './Node';
 
-export interface Vec3 { x: number; y: number; z: number; }
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface WorldView {
   getBlock(x: number, y: number, z: number): number;
@@ -60,19 +64,20 @@ export class Perception {
   }
 
   /** 8×8×8 贪婪扩展（BFS，步数上限），判定能否到达目标格。 */
-  canReach(
-    entity: { pos: Vec3 },
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    maxSteps = 64,
-  ): boolean {
+  canReach(entity: { pos: Vec3 }, targetX: number, targetY: number, targetZ: number, maxSteps = 64): boolean {
     const start = { x: Math.floor(entity.pos.x), y: Math.floor(entity.pos.y), z: Math.floor(entity.pos.z) };
     const goal = { x: Math.floor(targetX), y: Math.floor(targetY), z: Math.floor(targetZ) };
     const visited = new Set<string>();
     const queue: Array<{ x: number; y: number; z: number; steps: number }> = [{ ...start, steps: 0 }];
     visited.add(`${start.x},${start.y},${start.z}`);
-    const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const dirs = [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 1, 0],
+      [0, -1, 0],
+      [0, 0, 1],
+      [0, 0, -1],
+    ];
     while (queue.length) {
       const cur = queue.shift()!;
       if (cur.x === goal.x && cur.y === goal.y && cur.z === goal.z) return true;

@@ -1,9 +1,18 @@
 import type * as THREE from 'three';
-import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, blockKey, clamp, type BlockId } from '../core/types';
-import type { EventService } from '../services/events';
 import {
-  EXTENSION_POINTS, type ExtensionRegistry, type WorldgenColumnPayload,
-} from '../services/plugins/extensions';
+  type BlockId,
+  blockKey,
+  CHUNK_SIZE,
+  chunkKey,
+  clamp,
+  SECTION_HEIGHT,
+  SECTIONS,
+  sectionKey,
+  sectionOfY,
+  WORLD_HEIGHT,
+} from '../core/types';
+import type { EventService } from '../services/events';
+import { EXTENSION_POINTS, type ExtensionRegistry, type WorldgenColumnPayload } from '../services/plugins/extensions';
 import { AIR, type BlockRegistry } from './blocks';
 import type { IWorldGenerator } from './generator';
 import { LightEngine } from './light';
@@ -13,7 +22,10 @@ const H = WORLD_HEIGHT;
 
 /** 分桶内的编辑记录：坐标在 recordEdit 时解析一次，避免 ensureChunk 反复 split(',') */
 interface BlockEdit {
-  x: number; y: number; z: number; id: BlockId;
+  x: number;
+  y: number;
+  z: number;
+  id: BlockId;
 }
 
 export class Chunk {
@@ -28,15 +40,22 @@ export class Chunk {
   /** 逻辑时间（秒）：创建 / 最近一次有意义访问，用于 LRU 驻留；不用 Date.now 以保证可复现 */
   createdAt = 0;
   lastTouch = 0;
-  constructor(readonly cx: number, readonly cz: number) {}
+  constructor(
+    readonly cx: number,
+    readonly cz: number,
+  ) {}
   idx(x: number, y: number, z: number) {
     return (y * CS + z) * CS + x;
   }
 }
 
 export interface RayHit {
-  x: number; y: number; z: number;
-  nx: number; ny: number; nz: number;
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
   block: BlockId;
   dist: number;
 }
@@ -49,7 +68,7 @@ export class World {
   readonly chunks = new Map<string, Chunk>();
   /** 玩家改动差分：key -> blockId，存档只保存这些 */
   readonly edits = new Map<string, BlockId>();
-  /** 待重新网格化的区块 */
+  /** 待重新网格化的 section（key = sectionKey，粒度 16³） */
   readonly dirty = new Set<string>();
   /** 天空光 / 方块光传播引擎（区块生成与方块变化时增量更新） */
   readonly light: LightEngine;
@@ -59,6 +78,9 @@ export class World {
   generatedCount = 0;
   regeneratedCount = 0;
   private everGenerated = new Set<string>();
+  /** everGenerated 的插入顺序：超上限时按 FIFO 淘汰，避免长时间漫游后 Set 无限增长 */
+  private everGeneratedOrder: string[] = [];
+  private static readonly EVER_GENERATED_CAP = 4096;
   /** 编辑差分按 chunkKey 分桶，值为已解析的数值坐标：ensureChunk 不再逐条 split 字符串 */
   private editsByChunk = new Map<string, Map<string, BlockEdit>>();
   private bedrockId: BlockId;
@@ -148,7 +170,7 @@ export class World {
     if (!chunk.generated) {
       this.generatedCount++;
       if (this.everGenerated.has(key)) this.regeneratedCount++;
-      else this.everGenerated.add(key);
+      else this.noteGenerated(key);
       this.generator.generateChunk(cx, cz, chunk.data);
       this.finalizeGenerated(cx, cz, chunk);
     }
@@ -171,29 +193,44 @@ export class World {
     this.cacheCx = Number.NaN;
     this.generatedCount++;
     if (this.everGenerated.has(key)) this.regeneratedCount++;
-    else this.everGenerated.add(key);
+    else this.noteGenerated(key);
     this.finalizeGenerated(cx, cz, chunk);
     return true;
   }
 
-  /** 生成落地后的公共收尾：扩展点改写 → 玩家差分 → 光照初始化 → 邻居回脏 */
+  /** 记录「曾经生成过的区块」：只用于统计重生成次数，容量足够覆盖活跃视野即可 */
+  private noteGenerated(key: string): void {
+    this.everGenerated.add(key);
+    this.everGeneratedOrder.push(key);
+    if (this.everGeneratedOrder.length > World.EVER_GENERATED_CAP) {
+      const oldest = this.everGeneratedOrder.shift();
+      if (oldest !== undefined) this.everGenerated.delete(oldest);
+    }
+  }
+
+  /** 生成落地后的公共收尾：扩展点改写 → 玩家差分 → 光照初始化 → 本列与邻居回脏 */
   private finalizeGenerated(cx: number, cz: number, chunk: Chunk): void {
     const key = chunkKey(cx, cz);
     // v1.6.0：世界生成扩展点。插件（JS / WASM）可在地形落地后改写列内容，
     // 发生在玩家编辑差分与光照初始化之前：编辑仍优先，新方块参与光照计算。
     if (this.extensions?.has(EXTENSION_POINTS.WORLDGEN_COLUMN)) {
-      const x0 = cx * CS, z0 = cz * CS;
+      const x0 = cx * CS,
+        z0 = cz * CS;
       const payload: WorldgenColumnPayload = {
-        cx, cz, data: chunk.data,
+        cx,
+        cz,
+        data: chunk.data,
         get: (x, y, z) => {
           if (y < 0 || y >= H) return 0;
-          const lx = x - x0, lz = z - z0;
+          const lx = x - x0,
+            lz = z - z0;
           if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return 0;
           return chunk.data[chunk.idx(lx, y, lz)];
         },
         set: (x, y, z, id) => {
           if (y < 1 || y >= H) return;
-          const lx = x - x0, lz = z - z0;
+          const lx = x - x0,
+            lz = z - z0;
           if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return;
           chunk.data[chunk.idx(lx, y, lz)] = id;
         },
@@ -206,8 +243,7 @@ export class World {
     const bucket = this.editsByChunk.get(key);
     if (bucket) {
       for (const e of bucket.values()) {
-        if (e.x >= x0 && e.x < x0 + CS && e.z >= z0 && e.z < z0 + CS &&
-            e.y >= 0 && e.y < H) {
+        if (e.x >= x0 && e.x < x0 + CS && e.z >= z0 && e.z < z0 + CS && e.y >= 0 && e.y < H) {
           chunk.data[chunk.idx(e.x - x0, e.y, e.z - z0)] = e.id;
         }
       }
@@ -215,12 +251,22 @@ export class World {
     chunk.generated = true;
     // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
     this.light.initChunk(chunk);
+    // 本列 5 段入队：生成结果落地后下一帧即可网格化，不必等兜底自愈扫描（0.25s）才出现
+    this.markDirtyColumn(cx, cz);
     // 邻接已网格化区块需要重绘边界面；对角块也要算，因为 AO / 角点光照会采样对角 halo 格。
     for (const [dx, dz] of [
-      [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
     ] as const) {
       const nk = chunkKey(cx + dx, cz + dz);
-      if (this.chunks.get(nk)?.generated) this.dirty.add(nk);
+      // 新区块出现会改变邻居整列所有分段边界面：按 section 全列标脏
+      if (this.chunks.get(nk)?.generated) this.markDirtyColumn(cx + dx, cz + dz);
     }
     this.events.emit('chunk:generated', { cx, cz });
   }
@@ -259,6 +305,40 @@ export class World {
     return this.registry.isSolid(chunk.data[chunk.idx(x - chunk.cx * CS, y, z - chunk.cz * CS)]);
   }
 
+  /**
+   * 标脏一个方块所在 section；跨 section 边界时连带上下各一层。
+   * 网格粒度是 16³，所以改一格最多影响 3 个 section，而不是整列 80 格。
+   */
+  markDirtyAt(cx: number, cz: number, y: number): void {
+    const sy = sectionOfY(y);
+    this.dirty.add(sectionKey(cx, sy, cz));
+    if (y % SECTION_HEIGHT === 0 && sy > 0) this.dirty.add(sectionKey(cx, sy - 1, cz));
+    if (y % SECTION_HEIGHT === SECTION_HEIGHT - 1 && sy < SECTIONS - 1) {
+      this.dirty.add(sectionKey(cx, sy + 1, cz));
+    }
+  }
+
+  /** 整列标脏：区块生成 / 光照整体失效等「整列都变」的场景使用 */
+  markDirtyColumn(cx: number, cz: number): void {
+    for (let sy = 0; sy < SECTIONS; sy++) this.dirty.add(sectionKey(cx, sy, cz));
+  }
+
+  /**
+   * 方块变化的完整脏标记：本列 + 边界面涉及的邻居列。
+   * 对角块也要算，因为 AO / 角点光照会采样对角 halo 格（M07）。
+   */
+  private markBlockChange(cx: number, cz: number, lx: number, lz: number, y: number): void {
+    this.markDirtyAt(cx, cz, y);
+    if (lx === 0) this.markDirtyAt(cx - 1, cz, y);
+    if (lx === CS - 1) this.markDirtyAt(cx + 1, cz, y);
+    if (lz === 0) this.markDirtyAt(cx, cz - 1, y);
+    if (lz === CS - 1) this.markDirtyAt(cx, cz + 1, y);
+    if (lx === 0 && lz === 0) this.markDirtyAt(cx - 1, cz - 1, y);
+    if (lx === CS - 1 && lz === 0) this.markDirtyAt(cx + 1, cz - 1, y);
+    if (lx === 0 && lz === CS - 1) this.markDirtyAt(cx - 1, cz + 1, y);
+    if (lx === CS - 1 && lz === CS - 1) this.markDirtyAt(cx + 1, cz + 1, y);
+  }
+
   setBlock(x: number, y: number, z: number, id: BlockId, record = true): boolean {
     if (y < 1 || y >= H) return false;
     const cx = Math.floor(x / CS);
@@ -273,17 +353,7 @@ export class World {
     if (record) this.recordEdit(blockKey(x, y, z), id);
     // 光照增量更新（会把受影响的区块标脏）
     this.light.updateBlock(x, y, z, old, id);
-    this.dirty.add(chunkKey(cx, cz));
-    if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
-    if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
-    if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
-    if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
-    // M07：边角格的光照/网格变化也会影响对角区块的边界面（AO、贪婪合并跨角），
-    // 一并标脏避免对角 chunk 渲染错位。
-    if (lx === 0 && lz === 0) this.dirty.add(chunkKey(cx - 1, cz - 1));
-    if (lx === CS - 1 && lz === 0) this.dirty.add(chunkKey(cx + 1, cz - 1));
-    if (lx === 0 && lz === CS - 1) this.dirty.add(chunkKey(cx - 1, cz + 1));
-    if (lx === CS - 1 && lz === CS - 1) this.dirty.add(chunkKey(cx + 1, cz + 1));
+    this.markBlockChange(cx, cz, lx, lz, y);
     return true;
   }
 
@@ -307,15 +377,7 @@ export class World {
       if (old === id) continue;
       chunk.data[idx] = id;
       this.recordEdit(blockKey(x, y, z), id);
-      this.dirty.add(chunkKey(cx, cz));
-      if (lx === 0) this.dirty.add(chunkKey(cx - 1, cz));
-      if (lx === CS - 1) this.dirty.add(chunkKey(cx + 1, cz));
-      if (lz === 0) this.dirty.add(chunkKey(cx, cz - 1));
-      if (lz === CS - 1) this.dirty.add(chunkKey(cx, cz + 1));
-      if (lx === 0 && lz === 0) this.dirty.add(chunkKey(cx - 1, cz - 1));
-      if (lx === CS - 1 && lz === 0) this.dirty.add(chunkKey(cx + 1, cz - 1));
-      if (lx === 0 && lz === CS - 1) this.dirty.add(chunkKey(cx - 1, cz + 1));
-      if (lx === CS - 1 && lz === CS - 1) this.dirty.add(chunkKey(cx + 1, cz + 1));
+      this.markBlockChange(cx, cz, lx, lz, y);
       // 光照延迟到末尾统一刷新（M04 deferred flush，配合 M03 预算帧）
       this.light.queueBlockUpdate(x, y, z, old, id);
       written++;
@@ -416,10 +478,12 @@ export class World {
     const tDeltaX = dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity;
     const tDeltaY = dir.y !== 0 ? Math.abs(1 / dir.y) : Infinity;
     const tDeltaZ = dir.z !== 0 ? Math.abs(1 / dir.z) : Infinity;
-    let tMaxX = dir.x !== 0 ? (stepX > 0 ? (x + 1 - origin.x) : (origin.x - x)) * tDeltaX : Infinity;
-    let tMaxY = dir.y !== 0 ? (stepY > 0 ? (y + 1 - origin.y) : (origin.y - y)) * tDeltaY : Infinity;
-    let tMaxZ = dir.z !== 0 ? (stepZ > 0 ? (z + 1 - origin.z) : (origin.z - z)) * tDeltaZ : Infinity;
-    let nx = 0, ny = 0, nz = 0;
+    let tMaxX = dir.x !== 0 ? (stepX > 0 ? x + 1 - origin.x : origin.x - x) * tDeltaX : Infinity;
+    let tMaxY = dir.y !== 0 ? (stepY > 0 ? y + 1 - origin.y : origin.y - y) * tDeltaY : Infinity;
+    let tMaxZ = dir.z !== 0 ? (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * tDeltaZ : Infinity;
+    let nx = 0,
+      ny = 0,
+      nz = 0;
     let t = 0;
     for (let i = 0; i < 256; i++) {
       const id = this.getBlock(x, y, z);
@@ -431,11 +495,26 @@ export class World {
         }
       }
       if (tMaxX < tMaxY && tMaxX < tMaxZ) {
-        x += stepX; t = tMaxX; tMaxX += tDeltaX; nx = -stepX; ny = 0; nz = 0;
+        x += stepX;
+        t = tMaxX;
+        tMaxX += tDeltaX;
+        nx = -stepX;
+        ny = 0;
+        nz = 0;
       } else if (tMaxY < tMaxZ) {
-        y += stepY; t = tMaxY; tMaxY += tDeltaY; nx = 0; ny = -stepY; nz = 0;
+        y += stepY;
+        t = tMaxY;
+        tMaxY += tDeltaY;
+        nx = 0;
+        ny = -stepY;
+        nz = 0;
       } else {
-        z += stepZ; t = tMaxZ; tMaxZ += tDeltaZ; nx = 0; ny = 0; nz = -stepZ;
+        z += stepZ;
+        t = tMaxZ;
+        tMaxZ += tDeltaZ;
+        nx = 0;
+        ny = 0;
+        nz = -stepZ;
       }
       if (t > maxDist) return null;
     }

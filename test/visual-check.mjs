@@ -7,16 +7,20 @@
  *
  * 用法：node test/visual-check.mjs
  */
-import puppeteer from 'puppeteer-core';
-import path from 'node:path';
+
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'artifacts');
-const CHROME = process.env.CHROME_PATH ??
-  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
-    .find((p) => fs.existsSync(p)) ?? '/usr/local/bin/chromium';
+const CHROME =
+  process.env.CHROME_PATH ??
+  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome'].find((p) =>
+    fs.existsSync(p),
+  ) ??
+  '/usr/local/bin/chromium';
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist', 'index.html')}`;
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -31,40 +35,55 @@ const ok = (name, cond, detail = '') => {
 /** 与 survival-smoke.mjs 保持同一套渲染后端开关（CI 用 Xvfb + Mesa） */
 const HEADLESS = process.env.MC_HEADLESS !== '0';
 const GL_BASE = ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox'];
-const GL_ARGS = (process.env.MC_GL ?? 'swiftshader') === 'desktop'
-  ? [...GL_BASE, '--use-gl=desktop']
-  : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
+const GL_ARGS =
+  (process.env.MC_GL ?? 'swiftshader') === 'desktop'
+    ? [...GL_BASE, '--use-gl=desktop']
+    : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: HEADLESS,
   args: [
-    '--no-sandbox', '--disable-dev-shm-usage',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
     ...GL_ARGS,
-    '--allow-file-access-from-files', '--window-size=1280,760', '--mute-audio',
+    '--allow-file-access-from-files',
+    '--window-size=1280,760',
+    '--mute-audio',
   ],
 });
 
-const sample = async (page, x, y, w, h) => page.evaluate(({ x, y, w, h }) => new Promise((resolve) => {
-  requestAnimationFrame(() => {
-    const canvas = document.querySelector('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    const buf = new Uint8Array(w * h * 4);
-    gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-    let r = 0, g = 0, b = 0;
-    const colors = new Set();
-    for (let i = 0; i < buf.length; i += 4) {
-      r += buf[i]; g += buf[i + 1]; b += buf[i + 2];
-      colors.add(`${buf[i]},${buf[i + 1]},${buf[i + 2]}`);
-    }
-    const n = w * h;
-    resolve({
-      r: r / n, g: g / n, b: b / n,
-      lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / n,
-      colors: colors.size,
-    });
-  });
-}), { x, y, w, h });
+const sample = async (page, x, y, w, h) =>
+  page.evaluate(
+    ({ x, y, w, h }) =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          const canvas = document.querySelector('canvas');
+          const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+          const buf = new Uint8Array(w * h * 4);
+          gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+          let r = 0,
+            g = 0,
+            b = 0;
+          const colors = new Set();
+          for (let i = 0; i < buf.length; i += 4) {
+            r += buf[i];
+            g += buf[i + 1];
+            b += buf[i + 2];
+            colors.add(`${buf[i]},${buf[i + 1]},${buf[i + 2]}`);
+          }
+          const n = w * h;
+          resolve({
+            r: r / n,
+            g: g / n,
+            b: b / n,
+            lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / n,
+            colors: colors.size,
+          });
+        });
+      }),
+    { x, y, w, h },
+  );
 
 /** 等世界网格收敛（新光照会额外标脏邻块，固定 sleep 容易采样过早） */
 const waitSettled = async (page, timeout = 20000) => {
@@ -85,7 +104,9 @@ try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+  });
 
   await page.goto(URL_UNDER_TEST, { waitUntil: 'load' });
   await page.waitForFunction('window.__mc !== undefined', { timeout: 30000 });
@@ -121,43 +142,59 @@ try {
   ok('白天画面非纯色', day.colors > 12, `distinct=${day.colors} lum=${day.lum.toFixed(1)}`);
 
   // ---------- 黄昏 ----------
-  await page.evaluate(() => { window.__mc.sky.dayTime = 0.74; });
+  await page.evaluate(() => {
+    window.__mc.sky.dayTime = 0.74;
+  });
   await sleep(900);
   await page.screenshot({ path: path.join(OUT, 'visual-sunset.png') });
   const duskSky = await page.evaluate(() => window.__mc.sky.visualState());
-  ok('黄昏地平线大气放大生效', duskSky.sunScale > 1.2 && duskSky.moonScale > 1.1,
-    `sun=${duskSky.sunScale.toFixed(2)} moon=${duskSky.moonScale.toFixed(2)}`);
+  ok(
+    '黄昏地平线大气放大生效',
+    duskSky.sunScale > 1.2 && duskSky.moonScale > 1.1,
+    `sun=${duskSky.sunScale.toFixed(2)} moon=${duskSky.moonScale.toFixed(2)}`,
+  );
 
   // ---------- 夜 ----------
-  await page.evaluate(() => { window.__mc.sky.dayTime = 0.9; });
+  await page.evaluate(() => {
+    window.__mc.sky.dayTime = 0.9;
+  });
   await sleep(900);
   const night = await sample(page, 608, 300, 64, 64);
   await page.screenshot({ path: path.join(OUT, 'visual-night.png') });
-  ok('夜间画面明显变暗', night.lum < day.lum * 0.72,
-    `day=${day.lum.toFixed(1)} night=${night.lum.toFixed(1)}`);
+  ok('夜间画面明显变暗', night.lum < day.lum * 0.72, `day=${day.lum.toFixed(1)} night=${night.lum.toFixed(1)}`);
   ok('夜间仍有可见细节', night.colors > 12, `distinct=${night.colors}`);
   const skyNight = await page.evaluate(() => window.__mc.sky.visualState());
-  ok('月相为 8 相且相位有效', skyNight.moonPhases === 8 && skyNight.moonPhase >= 0 && skyNight.moonPhase < 8,
-    `phases=${skyNight.moonPhases} current=${skyNight.moonPhase}`);
-  ok('夜间双层星点各自可见', skyNight.starLayers === 2 &&
-    skyNight.starOpacity.every((v) => v > 0.3 && v <= 0.95),
-    `opacity=${skyNight.starOpacity.map((v) => v.toFixed(3)).join('/')}`);
-  ok('雾区间有效且地平线过渡早于远裁剪',
+  ok(
+    '月相为 8 相且相位有效',
+    skyNight.moonPhases === 8 && skyNight.moonPhase >= 0 && skyNight.moonPhase < 8,
+    `phases=${skyNight.moonPhases} current=${skyNight.moonPhase}`,
+  );
+  ok(
+    '夜间双层星点各自可见',
+    skyNight.starLayers === 2 && skyNight.starOpacity.every((v) => v > 0.3 && v <= 0.95),
+    `opacity=${skyNight.starOpacity.map((v) => v.toFixed(3)).join('/')}`,
+  );
+  ok(
+    '雾区间有效且地平线过渡早于远裁剪',
     skyNight.fogNear > 0 && skyNight.fogNear < skyNight.fogFar,
-    `fog=${skyNight.fogNear.toFixed(1)}..${skyNight.fogFar.toFixed(1)}`);
+    `fog=${skyNight.fogNear.toFixed(1)}..${skyNight.fogFar.toFixed(1)}`,
+  );
 
   // ---------- 火光 ----------
   const lightScene = await page.evaluate(() => {
     const mc = window.__mc;
     const p = mc.player.pos;
     const yaw = mc.player.yaw;
-    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-    const cx = Math.floor(p.x + fx * 4), cz = Math.floor(p.z + fz * 4);
+    const fx = -Math.sin(yaw),
+      fz = -Math.cos(yaw);
+    const cx = Math.floor(p.x + fx * 4),
+      cz = Math.floor(p.z + fz * 4);
     const gy = mc.world.surfaceHeight(cx, cz);
     // 平整一小块地面，放火把与南瓜灯
     for (let dx = -2; dx <= 2; dx++) {
       for (let dz = -2; dz <= 2; dz++) {
-        const x = cx + dx, z = cz + dz;
+        const x = cx + dx,
+          z = cz + dz;
         const h = mc.world.surfaceHeight(x, z);
         mc.world.setBlock(x, h, z, mc.registry.byNameGet('stone').id);
       }
@@ -166,8 +203,12 @@ try {
     mc.world.setBlock(cx + 2, gy + 1, cz, mc.registry.byNameGet('jack_o_lantern').id);
     mc.world.setBlock(cx - 2, gy + 1, cz, mc.registry.byNameGet('glowstone').id);
     // 面向灯火
-    const ex = p.x, ey = p.y + 1.62, ez = p.z;
-    const dx = cx + 0.5 - ex, dy = gy + 1 - ey, dz = cz + 0.5 - ez;
+    const ex = p.x,
+      ey = p.y + 1.62,
+      ez = p.z;
+    const dx = cx + 0.5 - ex,
+      dy = gy + 1 - ey,
+      dz = cz + 0.5 - ez;
     mc.player.yaw = Math.atan2(-dx, -dz);
     mc.player.pitch = Math.atan2(dy, Math.hypot(dx, dz));
     return { cx, cz, gy };
@@ -198,32 +239,91 @@ try {
   const dark = await sample(page, 540, 280, 200, 160);
   const removed = await page.evaluate((s) => window.__mc.world.getBlockLight(s.cx, s.gy + 1, s.cz), lightScene);
   ok('移除火把后方块光归零', removed === 0, `got=${removed}`);
-  ok('火光区域比无火光时更亮', lit.lum > dark.lum * 1.15,
-    `lit=${lit.lum.toFixed(1)} dark=${dark.lum.toFixed(1)} @${lightScene.cx},${lightScene.cz}`);
+  ok(
+    '火光区域比无火光时更亮',
+    lit.lum > dark.lum * 1.15,
+    `lit=${lit.lum.toFixed(1)} dark=${dark.lum.toFixed(1)} @${lightScene.cx},${lightScene.cz}`,
+  );
 
   // ---------- 方块展示墙（悬空，避免树木/花朵干扰） ----------
-  await page.evaluate(() => { window.__mc.sky.dayTime = 0.32; });
+  await page.evaluate(() => {
+    window.__mc.sky.dayTime = 0.32;
+  });
   await page.evaluate(() => {
     const mc = window.__mc;
     const p = mc.player.pos;
     const yaw = mc.player.yaw;
-    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-    const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const fx = -Math.sin(yaw),
+      fz = -Math.cos(yaw);
+    const rx = Math.cos(yaw),
+      rz = -Math.sin(yaw);
     // 全部内置方块，按材质分组排布
-    const names = ['grass', 'dirt', 'stone', 'cobblestone', 'stone_bricks', 'mossy_cobblestone', 'gravel', 'sand',
-      'sandstone', 'ice', 'obsidian', 'bricks', 'oak_log', 'oak_planks', 'spruce_planks', 'birch_planks',
-      'crafting_table', 'glass', 'glowstone', 'torch', 'jack_o_lantern', 'tnt', 'snow', 'coal_ore',
-      'iron_ore', 'gold_ore', 'diamond_ore', 'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'orange_wool',
-      'green_wool', 'purple_wool', 'black_wool', 'oak_leaves', 'red_mushroom', 'brown_mushroom', 'dead_bush',
-      'copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'clay', 'podzol', 'granite', 'cactus',
-      'sugar_cane', 'fern', 'pumpkin', 'bookshelf', 'lavender', 'edelweiss', 'ghost_flower',
-      'moonflower', 'duckweed', 'sea_anemone'];
+    const names = [
+      'grass',
+      'dirt',
+      'stone',
+      'cobblestone',
+      'stone_bricks',
+      'mossy_cobblestone',
+      'gravel',
+      'sand',
+      'sandstone',
+      'ice',
+      'obsidian',
+      'bricks',
+      'oak_log',
+      'oak_planks',
+      'spruce_planks',
+      'birch_planks',
+      'crafting_table',
+      'glass',
+      'glowstone',
+      'torch',
+      'jack_o_lantern',
+      'tnt',
+      'snow',
+      'coal_ore',
+      'iron_ore',
+      'gold_ore',
+      'diamond_ore',
+      'white_wool',
+      'red_wool',
+      'blue_wool',
+      'yellow_wool',
+      'orange_wool',
+      'green_wool',
+      'purple_wool',
+      'black_wool',
+      'oak_leaves',
+      'red_mushroom',
+      'brown_mushroom',
+      'dead_bush',
+      'copper_ore',
+      'emerald_ore',
+      'lapis_ore',
+      'redstone_ore',
+      'clay',
+      'podzol',
+      'granite',
+      'cactus',
+      'sugar_cane',
+      'fern',
+      'pumpkin',
+      'bookshelf',
+      'lavender',
+      'edelweiss',
+      'ghost_flower',
+      'moonflower',
+      'duckweed',
+      'sea_anemone',
+    ];
     const baseY = Math.floor(p.y) + 16;
     const wallDist = 7;
     const cols = 8;
     const rows = Math.ceil(names.length / cols);
     for (let i = 0; i < names.length; i++) {
-      const col = i % cols, row = (i / cols) | 0;
+      const col = i % cols,
+        row = (i / cols) | 0;
       const x = Math.floor(p.x + fx * wallDist + rx * (col - (cols - 1) / 2));
       const z = Math.floor(p.z + fz * wallDist + rz * (col - (cols - 1) / 2));
       mc.world.setBlock(x, baseY + row, z, mc.registry.byNameGet(names[i]).id);
@@ -255,24 +355,30 @@ try {
     el.querySelector('.rotate-gate-play')?.click();
     return { shown, dismissed: el.hidden, icon: !!el.querySelector('svg') };
   });
-  ok('N1 旋转引导可显示且「仍要游玩」可关闭',
+  ok(
+    'N1 旋转引导可显示且「仍要游玩」可关闭',
     !!gateState && gateState.shown && gateState.dismissed && gateState.icon,
-    JSON.stringify(gateState));
+    JSON.stringify(gateState),
+  );
 
   const pe = await page.evaluate(() => {
     const host = document.createElement('div');
     host.className = 'touch-ui';
-    host.innerHTML = '<div class="joy-zone joy-zone--pe"><div class="joy-base joy-base--pe"><div class="joy-knob joy-knob--pe"></div></div></div>' +
+    host.innerHTML =
+      '<div class="joy-zone joy-zone--pe"><div class="joy-base joy-base--pe"><div class="joy-knob joy-knob--pe"></div></div></div>' +
       '<button class="tbtn tbtn--pe tbtn-jump" data-role="jump" data-icon="jump" aria-label="跳跃"></button>';
     document.body.appendChild(host);
     const btn = host.querySelector('.tbtn--pe');
     const base = host.querySelector('.joy-base--pe');
     const knob = host.querySelector('.joy-knob--pe');
-    const bs = getComputedStyle(btn), bass = getComputedStyle(base), ks = getComputedStyle(knob);
+    const bs = getComputedStyle(btn),
+      bass = getComputedStyle(base),
+      ks = getComputedStyle(knob);
     const rect = btn.getBoundingClientRect();
     const out = {
       radius: parseFloat(bs.borderRadius),
-      width: rect.width, height: rect.height,
+      width: rect.width,
+      height: rect.height,
       baseRadius: parseFloat(bass.borderRadius),
       baseWidth: base.getBoundingClientRect().width,
       knobRadius: parseFloat(ks.borderRadius),
@@ -280,12 +386,16 @@ try {
     host.remove();
     return out;
   });
-  ok('N2 动作为圆角方形且命中区 ≥44×44',
+  ok(
+    'N2 动作为圆角方形且命中区 ≥44×44',
     pe.radius >= 6 && pe.width >= 44 && pe.height >= 44,
-    `radius=${pe.radius}px ${pe.width}×${pe.height}`);
-  ok('N2 摇杆为方形底盘 + 圆形拇指盘',
+    `radius=${pe.radius}px ${pe.width}×${pe.height}`,
+  );
+  ok(
+    'N2 摇杆为方形底盘 + 圆形拇指盘',
     pe.baseRadius >= 8 && pe.baseWidth >= 100 && pe.knobRadius >= 20,
-    `base=${pe.baseRadius}px/${pe.baseWidth}px knob=${pe.knobRadius}px`);
+    `base=${pe.baseRadius}px/${pe.baseWidth}px knob=${pe.knobRadius}px`,
+  );
 
   const noteLayout = await page.evaluate(() => {
     const note = document.querySelector('.save-note');
@@ -301,10 +411,16 @@ try {
       overflow: note.scrollWidth > note.clientWidth + 1,
     };
   });
-  ok('N5 保存提示与快捷栏垂直间距 ≥8px', !!noteLayout && noteLayout.gap >= 8,
-    `gap=${noteLayout ? noteLayout.gap.toFixed(1) : 'n/a'}px`);
-  ok('N5 长提示不换行溢出', !!noteLayout && !noteLayout.overflow && noteLayout.height < 24,
-    `height=${noteLayout ? noteLayout.height.toFixed(1) : 'n/a'}px`);
+  ok(
+    'N5 保存提示与快捷栏垂直间距 ≥8px',
+    !!noteLayout && noteLayout.gap >= 8,
+    `gap=${noteLayout ? noteLayout.gap.toFixed(1) : 'n/a'}px`,
+  );
+  ok(
+    'N5 长提示不换行溢出',
+    !!noteLayout && !noteLayout.overflow && noteLayout.height < 24,
+    `height=${noteLayout ? noteLayout.height.toFixed(1) : 'n/a'}px`,
+  );
 
   const miningStyle = await page.evaluate(() => {
     const bar = document.querySelector('.mining-bar');
@@ -312,8 +428,11 @@ try {
     const s = getComputedStyle(bar);
     return { width: parseFloat(s.width), opacity: parseFloat(s.opacity) };
   });
-  ok('N3 绿条已弱化为辅助反馈', !!miningStyle && miningStyle.width <= 96 && miningStyle.opacity <= 0.6,
-    JSON.stringify(miningStyle));
+  ok(
+    'N3 绿条已弱化为辅助反馈',
+    !!miningStyle && miningStyle.width <= 96 && miningStyle.opacity <= 0.6,
+    JSON.stringify(miningStyle),
+  );
 
   ok('图形测试无运行时错误', errors.length === 0, errors.slice(0, 3).join(' | '));
   await page.close();

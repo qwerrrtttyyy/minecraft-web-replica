@@ -84,18 +84,27 @@ log('植物生态随机刻回归（生长 / 蔓延 / 枯萎）');
 {
   const t = makeWorld();
   put(t, 5, 21, 5, 'sugar_cane');
-  ok('甘蔗长高', until(t, 5, 21, 5, () => get(t, 5, 22, 5) === t.id('sugar_cane')));
+  ok(
+    '甘蔗长高',
+    until(t, 5, 21, 5, () => get(t, 5, 22, 5) === t.id('sugar_cane')),
+  );
   until(t, 5, 21, 5, () => get(t, 5, 23, 5) === t.id('sugar_cane'));
   const caneTop = get(t, 5, 24, 5) === t.id('sugar_cane');
   ok('甘蔗最高 3 格', !caneTop && get(t, 5, 23, 5) === t.id('sugar_cane'));
 
   put(t, 7, 21, 7, 'cactus');
-  ok('仙人掌长高', until(t, 7, 21, 7, () => get(t, 7, 22, 7) === t.id('cactus')));
+  ok(
+    '仙人掌长高',
+    until(t, 7, 21, 7, () => get(t, 7, 22, 7) === t.id('cactus')),
+  );
   until(t, 7, 21, 7, () => get(t, 7, 23, 7) === t.id('cactus'));
   ok('仙人掌最高 3 格', get(t, 7, 24, 7) !== t.id('cactus'));
 
   put(t, 9, 21, 9, 'bamboo');
-  ok('竹子长高', until(t, 9, 21, 9, () => get(t, 9, 22, 9) === t.id('bamboo')));
+  ok(
+    '竹子长高',
+    until(t, 9, 21, 9, () => get(t, 9, 22, 9) === t.id('bamboo')),
+  );
 
   // 海带需要上方是水
   put(t, 14, 20, 8, 'sand');
@@ -103,20 +112,32 @@ log('植物生态随机刻回归（生长 / 蔓延 / 枯萎）');
   put(t, 14, 22, 8, 'water');
   put(t, 14, 23, 8, 'water');
   t.world.setBlock(14, 21, 8, t.id('kelp'));
-  ok('海带向上生长', until(t, 14, 21, 8, () => get(t, 14, 22, 8) === t.id('kelp')));
+  ok(
+    '海带向上生长',
+    until(t, 14, 21, 8, () => get(t, 14, 22, 8) === t.id('kelp')),
+  );
 }
 
 // 2) 作物与浆果：阶段推进 / 成熟
 {
   const t = makeWorld();
   put(t, 3, 21, 3, 'wheat_seedling');
-  ok('麦苗 → 抽穗', until(t, 3, 21, 3, () => get(t, 3, 21, 3) === t.id('wheat_growing')));
-  ok('抽穗 → 成熟', until(t, 3, 21, 3, () => get(t, 3, 21, 3) === t.id('wheat')));
+  ok(
+    '麦苗 → 抽穗',
+    until(t, 3, 21, 3, () => get(t, 3, 21, 3) === t.id('wheat_growing')),
+  );
+  ok(
+    '抽穗 → 成熟',
+    until(t, 3, 21, 3, () => get(t, 3, 21, 3) === t.id('wheat')),
+  );
   t.botany.tickAt(3, 21, 3, 1);
   ok('成熟小麦不再变化', get(t, 3, 21, 3) === t.id('wheat'));
 
   put(t, 5, 21, 3, 'sweet_berry_bush');
-  ok('甜浆果丛成熟', until(t, 5, 21, 3, () => get(t, 5, 21, 3) === t.id('sweet_berry_bush_ripe')));
+  ok(
+    '甜浆果丛成熟',
+    until(t, 5, 21, 3, () => get(t, 5, 21, 3) === t.id('sweet_berry_bush_ripe')),
+  );
 }
 // 3) 树苗长成对应树种
 for (const [sapling, logName, leafName] of [
@@ -143,7 +164,10 @@ for (const [sapling, logName, leafName] of [
   const t = makeWorld();
   // 泥土被邻接草方块同化
   put(t, 6, 20, 10, 'dirt');
-  ok('泥土被草方块同化', until(t, 6, 20, 10, () => get(t, 6, 20, 10) === t.id('grass')));
+  ok(
+    '泥土被草方块同化',
+    until(t, 6, 20, 10, () => get(t, 6, 20, 10) === t.id('grass')),
+  );
 
   // 草方块自然长出草花
   t.world.setBlock(11, 21, 11, 0);
@@ -151,14 +175,16 @@ for (const [sapling, logName, leafName] of [
     const above = get(t, 11, 21, 11);
     return above !== 0 && t.reg.get(above).shape === 'cross';
   });
-  ok('草方块上自然长出植物', grewPlant,
-    grewPlant ? `${t.reg.get(get(t, 11, 21, 11)).name}` : '');
+  ok('草方块上自然长出植物', grewPlant, grewPlant ? `${t.reg.get(get(t, 11, 21, 11)).name}` : '');
 
   // 花向邻近草地蔓延
   put(t, 4, 21, 12, 'poppy');
   const before = count(t, 'poppy');
-  ok('虞美人向邻近草地蔓延', until(t, 4, 21, 12, () => count(t, 'poppy') > before, 6000),
-    `${before} → ${count(t, 'poppy')}`);
+  ok(
+    '虞美人向邻近草地蔓延',
+    until(t, 4, 21, 12, () => count(t, 'poppy') > before, 6000),
+    `${before} → ${count(t, 'poppy')}`,
+  );
 
   // 拆掉支撑后随机刻会枯萎
   put(t, 3, 21, 14, 'bluebell');
@@ -180,8 +206,11 @@ for (const [sapling, logName, leafName] of [
     }
   }
   put(t, 8, 21, 8, 'brown_mushroom');
-  ok('暗处蘑菇扩散', until(t, 8, 21, 8, () => count(t, 'brown_mushroom') > 1, 8000),
-    `${count(t, 'brown_mushroom')} 株，天光 ${t.world.getSkyLight(8, 21, 8)}`);
+  ok(
+    '暗处蘑菇扩散',
+    until(t, 8, 21, 8, () => count(t, 'brown_mushroom') > 1, 8000),
+    `${count(t, 'brown_mushroom')} 株，天光 ${t.world.getSkyLight(8, 21, 8)}`,
+  );
 }
 
 // 6) 藤蔓垂挂 / 睡莲铺水 / 南瓜藤结瓜 / 发光地衣扩散
@@ -189,7 +218,10 @@ for (const [sapling, logName, leafName] of [
   const t = makeWorld();
   t.world.setBlock(14, 23, 14, t.id('stone'));
   put(t, 14, 22, 14, 'vine');
-  ok('藤蔓向下垂挂', until(t, 14, 22, 14, () => get(t, 14, 21, 14) === t.id('vine')));
+  ok(
+    '藤蔓向下垂挂',
+    until(t, 14, 22, 14, () => get(t, 14, 21, 14) === t.id('vine')),
+  );
   for (let i = 0; i < 80; i++) t.botany.tickAt(14, 21, 14, 1);
   ok('垂下的藤蔓由上方藤蔓支撑、不会枯萎', get(t, 14, 21, 14) === t.id('vine'));
 
@@ -198,14 +230,31 @@ for (const [sapling, logName, leafName] of [
     for (let dz = 2; dz <= 6; dz++) t.world.setBlock(dx, 20, dz, t.id('water'));
   }
   put(t, 4, 21, 4, 'lily_pad');
-  ok('睡莲铺满邻近水面', until(t, 4, 21, 4, () => count(t, 'lily_pad') > 1, 6000),
-    `${count(t, 'lily_pad')} 片`);
+  ok(
+    '睡莲铺满邻近水面',
+    until(t, 4, 21, 4, () => count(t, 'lily_pad') > 1, 6000),
+    `${count(t, 'lily_pad')} 片`,
+  );
 
   put(t, 11, 21, 3, 'pumpkin_stem');
-  ok('南瓜藤结出南瓜', until(t, 11, 21, 3, () => {
-    return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) =>
-      get(t, 11 + dx, 21, 3 + dz) === t.id('pumpkin'));
-  }, 6000));
+  ok(
+    '南瓜藤结出南瓜',
+    until(
+      t,
+      11,
+      21,
+      3,
+      () => {
+        return [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ].some(([dx, dz]) => get(t, 11 + dx, 21, 3 + dz) === t.id('pumpkin'));
+      },
+      6000,
+    ),
+  );
 
   // 洞穴壁：封闭石室内部放发光地衣，暗处沿石壁扩散
   for (let x = 1; x <= 7; x++) {
@@ -218,8 +267,11 @@ for (const [sapling, logName, leafName] of [
     }
   }
   put(t, 4, 21, 10, 'glow_lichen');
-  ok('发光地衣在暗处扩散', until(t, 4, 21, 10, () => count(t, 'glow_lichen') > 1, 8000),
-    `${count(t, 'glow_lichen')} 处，天光 ${t.world.getSkyLight(4, 21, 10)}`);
+  ok(
+    '发光地衣在暗处扩散',
+    until(t, 4, 21, 10, () => count(t, 'glow_lichen') > 1, 8000),
+    `${count(t, 'glow_lichen')} 处，天光 ${t.world.getSkyLight(4, 21, 10)}`,
+  );
 }
 
 // 6b) v1.6.0 新生态：常春藤垂挂 / 浮萍铺水 / 洞穴发光植物扩散
@@ -227,7 +279,10 @@ for (const [sapling, logName, leafName] of [
   const t = makeWorld();
   t.world.setBlock(14, 23, 14, t.id('stone'));
   put(t, 14, 22, 14, 'ivy');
-  ok('常春藤向下垂挂', until(t, 14, 22, 14, () => get(t, 14, 21, 14) === t.id('ivy')));
+  ok(
+    '常春藤向下垂挂',
+    until(t, 14, 22, 14, () => get(t, 14, 21, 14) === t.id('ivy')),
+  );
   for (let i = 0; i < 80; i++) t.botany.tickAt(14, 21, 14, 1);
   ok('垂下的常春藤由上方藤蔓支撑', get(t, 14, 21, 14) === t.id('ivy'));
 
@@ -237,8 +292,11 @@ for (const [sapling, logName, leafName] of [
     for (let dz = 2; dz <= 6; dz++) w.world.setBlock(dx, 20, dz, w.id('water'));
   }
   put(w, 4, 21, 4, 'duckweed');
-  ok('浮萍铺满邻近水面', until(w, 4, 21, 4, () => count(w, 'duckweed') > 1, 6000),
-    `${count(w, 'duckweed')} 片`);
+  ok(
+    '浮萍铺满邻近水面',
+    until(w, 4, 21, 4, () => count(w, 'duckweed') > 1, 6000),
+    `${count(w, 'duckweed')} 片`,
+  );
 
   // 沙滩 / 沙漠花卉可以在沙面蔓延（3~7 格范围全部换成沙，保证落点只能是沙）
   const s = makeWorld();
@@ -249,11 +307,17 @@ for (const [sapling, logName, leafName] of [
     }
   }
   put(s, 5, 21, 5, 'sea_thrift');
-  ok('海石竹在沙面蔓延', until(s, 5, 21, 5, () => count(s, 'sea_thrift') > 1, 6000),
-    `${count(s, 'sea_thrift')} 株`);
+  ok(
+    '海石竹在沙面蔓延',
+    until(s, 5, 21, 5, () => count(s, 'sea_thrift') > 1, 6000),
+    `${count(s, 'sea_thrift')} 株`,
+  );
 
   // 封闭石室：荧光苔 / 月光花在暗处扩散，且不会因光照不足枯死
-  for (const [name, tries] of [['glow_moss', 8000], ['moonflower', 8000]]) {
+  for (const [name, tries] of [
+    ['glow_moss', 8000],
+    ['moonflower', 8000],
+  ]) {
     const d = makeWorld();
     for (let x = 1; x <= 7; x++) {
       for (let z = 7; z <= 13; z++) {
@@ -263,8 +327,11 @@ for (const [sapling, logName, leafName] of [
       }
     }
     put(d, 4, 21, 10, name);
-    ok(`${name} 在暗处扩散`, until(d, 4, 21, 10, () => count(d, name) > 1, tries),
-      `${count(d, name)} 处，天光 ${d.world.getSkyLight(4, 21, 10)}`);
+    ok(
+      `${name} 在暗处扩散`,
+      until(d, 4, 21, 10, () => count(d, name) > 1, tries),
+      `${count(d, name)} 处，天光 ${d.world.getSkyLight(4, 21, 10)}`,
+    );
   }
 }
 
@@ -277,8 +344,7 @@ for (const [sapling, logName, leafName] of [
   until(t, 3, 21, 3, () => get(t, 3, 22, 3) === t.id('sugar_cane'));
   put(t, 5, 20, 10, 'dirt');
   until(t, 5, 20, 10, () => get(t, 5, 20, 10) === t.id('grass'));
-  ok('plant:grow 事件带 grow / spread 类型',
-    kinds.has('grow') && kinds.has('spread'), [...kinds].join(','));
+  ok('plant:grow 事件带 grow / spread 类型', kinds.has('grow') && kinds.has('spread'), [...kinds].join(','));
 }
 
 // 8) 未加载区块不会被采样（update 不越界）

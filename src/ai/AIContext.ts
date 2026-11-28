@@ -1,6 +1,6 @@
 import { mulberry32 } from '../core/types';
 import { Blackboard } from './Blackboard';
-import { TickContext } from './Node';
+import type { TickContext } from './Node';
 
 /** 把 (worldSeed, entityId, label) 混成一个 32 位种子，供 mulberry32 使用。 */
 export function hashSeed(worldSeed: number, entityId: number, label: string): number {
@@ -12,10 +12,7 @@ export function hashSeed(worldSeed: number, entityId: number, label: string): nu
 }
 
 /** 构造一个最小的 TickContext（测试与 AIService 复用）。所有随机性经 rng，确定性可复现。 */
-export function makeTickContext(opts: {
-  worldSeed: number;
-  entityId: number;
-}): TickContext {
+export function makeTickContext(opts: { worldSeed: number; entityId: number }): TickContext {
   const { worldSeed, entityId } = opts;
   const blackboard = new Blackboard();
   const rngCache = new Map<string, () => number>();

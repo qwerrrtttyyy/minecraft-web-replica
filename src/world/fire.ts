@@ -1,10 +1,10 @@
 import type * as THREE from 'three';
-import { blockKey, type BlockId, type System } from '../core/types';
+import { FIRE, FLAMMABLE } from '../core/tuning';
+import { type BlockId, blockKey, type System } from '../core/types';
+import type { Particles } from '../gfx/particles';
+import type { EventService } from '../services/events';
 import { AIR, type BlockRegistry } from './blocks';
 import type { World } from './world';
-import type { EventService } from '../services/events';
-import type { Particles } from '../gfx/particles';
-import { FIRE, FLAMMABLE } from '../core/tuning';
 
 /**
  * 火焰系统（PR3 真实火焰蔓延）。
@@ -28,7 +28,12 @@ const SCAN_VERTICAL = 8;
 const MAX_TICKS_PER_UPDATE = 8;
 /** 6 邻方向（±x / ±y / ±z） */
 const DIRS: readonly (readonly [number, number, number])[] = [
-  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
 ];
 
 /** 热源方块名：火焰与营火 */
@@ -188,9 +193,13 @@ export class FireSystem implements System {
     // 1) 发现玩家周围的新热源
     if (this.playerPos) {
       scanHeatSources(
-        this.world, this.registry,
-        this.playerPos.x, this.playerPos.y, this.playerPos.z,
-        FIRE.scanRadius, SCAN_VERTICAL,
+        this.world,
+        this.registry,
+        this.playerPos.x,
+        this.playerPos.y,
+        this.playerPos.z,
+        FIRE.scanRadius,
+        SCAN_VERTICAL,
         (x, y, z) => this.track(x, y, z),
       );
     }
@@ -217,7 +226,6 @@ export class FireSystem implements System {
       // 火焰失去下方固体支撑则熄灭
       if (!this.registry.isSolid(this.world.getBlock(e.x, e.y - 1, e.z))) {
         this.extinguish(e.x, e.y, e.z, 'unsupported');
-        continue;
       }
     }
 
@@ -347,8 +355,7 @@ export class FireSystem implements System {
     const p = this.playerPos;
     // 玩家忙碌（烹饪面板打开、无法移动）时豁免灼伤，避免「不能动却挨打」；
     // 实体伤害不受此豁免影响。
-    if (p && this.isPlayerBusy?.() !== true
-        && this.isHeatAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) {
+    if (p && this.isPlayerBusy?.() !== true && this.isHeatAt(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) {
       this.hurtPlayer(FIRE.damage, '火焰');
     }
 

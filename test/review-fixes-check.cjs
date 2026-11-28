@@ -34,7 +34,11 @@ const ok = (name, cond, extra = '') => {
 };
 const rejects = (name, fn, re) => {
   let msg = '';
-  try { fn(); } catch (e) { msg = e instanceof Error ? e.message : String(e); }
+  try {
+    fn();
+  } catch (e) {
+    msg = e instanceof Error ? e.message : String(e);
+  }
   assert.ok(re.test(msg), `${name} — 期望 /${re.source}/，实际「${msg}」`);
   passed++;
   console.log(`  ✓ ${name}`);
@@ -49,17 +53,47 @@ const fakeApi = () => ({
   tnt: { ignite() {} },
   entities: { spawn() {}, list: () => [] },
   survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
-  botany: { registerPlant() {}, unregisterPlant() {}, registerRule() {}, unregisterRules() {}, listRules: () => [], stats: () => ({}) },
+  botany: {
+    registerPlant() {},
+    unregisterPlant() {},
+    registerRule() {},
+    unregisterRules() {},
+    listRules: () => [],
+    stats: () => ({}),
+  },
   plugins: {
-    register() {}, enable() {}, disable() {}, unload() {}, list: () => [],
-    get() {}, reload() {}, enableAll() {}, stats() {}, install() {}, findByCapability() {},
+    register() {},
+    enable() {},
+    disable() {},
+    unload() {},
+    list: () => [],
+    get() {},
+    reload() {},
+    enableAll() {},
+    stats() {},
+    install() {},
+    findByCapability() {},
   },
   wasm: {
-    status: () => 'ready', stats: () => ({}), benchmark: () => null, setEnabled: () => 'ready',
-    listModules: () => [], call: () => 1, callModule: () => 1, registerModule: () => ({}), unregisterModule: () => true,
+    status: () => 'ready',
+    stats: () => ({}),
+    benchmark: () => null,
+    setEnabled: () => 'ready',
+    listModules: () => [],
+    call: () => 1,
+    callModule: () => 1,
+    registerModule: () => ({}),
+    unregisterModule: () => true,
   },
-  registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
-  on() { return () => {}; }, off() {}, emit() {},
+  registerBlock() {},
+  registerTile() {},
+  registerEntity() {},
+  setGenerator() {},
+  on() {
+    return () => {};
+  },
+  off() {},
+  emit() {},
 });
 
 async function main() {
@@ -68,7 +102,9 @@ async function main() {
   {
     const ev = new EventService();
     let n = 0;
-    ev.once('block:place', () => { n++; });
+    ev.once('block:place', () => {
+      n++;
+    });
     const p = { x: 0, y: 0, z: 0, id: 1, byPlayer: false };
     ev.emit('block:place', p);
     ev.emit('block:place', p);
@@ -77,14 +113,19 @@ async function main() {
   {
     const ev = new EventService();
     let n = 0;
-    ev.once('block:place', () => { n++; ev.emit('block:place', { x: 0, y: 0, z: 0, id: 1, byPlayer: false }); });
+    ev.once('block:place', () => {
+      n++;
+      ev.emit('block:place', { x: 0, y: 0, z: 0, id: 1, byPlayer: false });
+    });
     ev.emit('block:place', { x: 0, y: 0, z: 0, id: 1, byPlayer: false });
     ok('EventService.once 重入安全', n === 1, `实际 ${n}`);
   }
   {
     const ev = new EventService();
     let n = 0;
-    const off = ev.once('block:place', () => { n++; });
+    const off = ev.once('block:place', () => {
+      n++;
+    });
     off();
     ev.emit('block:place', { x: 0, y: 0, z: 0, id: 1, byPlayer: false });
     ok('EventService.once 提前 off 生效', n === 0, `实际 ${n}`);
@@ -96,7 +137,9 @@ async function main() {
     const ev = new EventService();
     const ch = ev.scope('review:fix');
     let n = 0;
-    ch.once('block:place', () => { n++; });
+    ch.once('block:place', () => {
+      n++;
+    });
     const p = { x: 0, y: 0, z: 0, id: 1, byPlayer: false };
     ch.emit('block:place', p);
     ch.emit('block:place', p);
@@ -107,7 +150,9 @@ async function main() {
     const ev = new EventService();
     const ch = ev.scope('review:fix2');
     let n = 0;
-    const off = ch.once('block:place', () => { n++; });
+    const off = ch.once('block:place', () => {
+      n++;
+    });
     off();
     ch.emit('block:place', { x: 0, y: 0, z: 0, id: 1, byPlayer: false });
     ok('EventChannel.once 提前 off 生效', n === 0, `实际 ${n}`);
@@ -159,13 +204,25 @@ async function main() {
     const body = { pos: { x: 1.9, y: 0, z: 0.5 }, vel: { x: 2, y: 0, z: 0 }, width: 0.6, height: 1.8, onGround: false };
     moveBody(world, body, 0.05);
     ok('碰撞钳制到最近阻挡面（正向）', body.pos.x < 1.75 && body.pos.x > 1.69, `x=${body.pos.x}`);
-    const body2 = { pos: { x: 4.1, y: 0, z: 0.5 }, vel: { x: -2, y: 0, z: 0 }, width: 0.6, height: 1.8, onGround: false };
+    const body2 = {
+      pos: { x: 4.1, y: 0, z: 0.5 },
+      vel: { x: -2, y: 0, z: 0 },
+      width: 0.6,
+      height: 1.8,
+      onGround: false,
+    };
     moveBody(world, body2, 0.05);
     ok('碰撞钳制到最近阻挡面（反向）', body2.pos.x > 4.29 && body2.pos.x < 4.31, `x=${body2.pos.x}`);
     // 顶面恰好贴住上方方块底面：只是相切、不算重叠，不应被抬升
     const solidAbove = new Set(['0,10,0']);
     const worldAbove = { isSolidAt: (x, y, z) => solidAbove.has(`${x},${y},${z}`) };
-    const body3 = { pos: { x: 0, y: 8.25, z: 0 }, vel: { x: 0, y: -1, z: 0 }, width: 0.6, height: 1.8, onGround: false };
+    const body3 = {
+      pos: { x: 0, y: 8.25, z: 0 },
+      vel: { x: 0, y: -1, z: 0 },
+      width: 0.6,
+      height: 1.8,
+      onGround: false,
+    };
     moveBody(worldAbove, body3, 0.05);
     ok('顶面与方块底面齐平时不被抬升', Math.abs(body3.pos.y - 8.2) < 1e-6 && !body3.onGround, `y=${body3.pos.y}`);
   }
@@ -175,7 +232,9 @@ async function main() {
   {
     // R1: setup 被 disable 取消后，并发 enable 不得重复 setup / drain 别人的 teardown
     const ev = new EventService();
-    const ps = new PluginService(ev, new ServiceContainer(), () => fakeApi(), { storage: new MemoryPluginStorageProvider() });
+    const ps = new PluginService(ev, new ServiceContainer(), () => fakeApi(), {
+      storage: new MemoryPluginStorageProvider(),
+    });
     let setups = 0;
     let teardowns = 0;
     ps.register({
@@ -183,7 +242,9 @@ async function main() {
       async setup() {
         setups++;
         await new Promise((r) => setTimeout(r, 15));
-        return () => { teardowns++; };
+        return () => {
+          teardowns++;
+        };
       },
     });
     const p1 = ps.enable('r:race');
@@ -197,7 +258,9 @@ async function main() {
   }
   {
     // R2: manifest 可变字段注册时必须防御性拷贝
-    const ps = new PluginService(new EventService(), new ServiceContainer(), () => fakeApi(), { storage: new MemoryPluginStorageProvider() });
+    const ps = new PluginService(new EventService(), new ServiceContainer(), () => fakeApi(), {
+      storage: new MemoryPluginStorageProvider(),
+    });
     const manifest = { id: 'r:copy', permissions: [], config: { a: 1 } };
     ps.register({ manifest, setup() {} });
     manifest.permissions.push('world:write');
@@ -210,28 +273,48 @@ async function main() {
     // R3: install 与 register 必须接受同一套权限
     const missing = PLUGIN_PERMISSIONS.filter((p) => {
       const source = `module.exports = { manifest: { id: 'r:perm', permissions: ['${p}'] }, setup() {} };`;
-      try { loadPluginDefinition(source); return false; } catch { return true; }
+      try {
+        loadPluginDefinition(source);
+        return false;
+      } catch {
+        return true;
+      }
     });
     ok('install 接受全部 PLUGIN_PERMISSIONS', missing.length === 0, `拒绝: ${missing.join(',')}`);
   }
   {
     // R4: reload 失败时不能谎报成功
     const ev = new EventService();
-    const ps = new PluginService(ev, new ServiceContainer(), () => fakeApi(), { storage: new MemoryPluginStorageProvider() });
-    ps.register({ manifest: { id: 'r:reload' }, setup() { throw new Error('boom'); } });
+    const ps = new PluginService(ev, new ServiceContainer(), () => fakeApi(), {
+      storage: new MemoryPluginStorageProvider(),
+    });
+    ps.register({
+      manifest: { id: 'r:reload' },
+      setup() {
+        throw new Error('boom');
+      },
+    });
     let reloaded = 0;
-    ev.on('plugin:reloaded', () => { reloaded++; });
+    ev.on('plugin:reloaded', () => {
+      reloaded++;
+    });
     await assert.rejects(() => ps.reload('r:reload'), /重载失败/);
     ok('reload 失败不发 plugin:reloaded', reloaded === 0);
   }
   {
     // R5: 小数 slot 不是合法数组下标
     const valid = () => ({
-      version: 2, seed: 1, mode: 'survival', edits: [],
+      version: 2,
+      seed: 1,
+      mode: 'survival',
+      edits: [],
       player: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fly: false },
       survival: { health: 20, hunger: 20, breath: 15, inventory: [], spawn: { x: 0, y: 0, z: 0 } },
-      dayTime: 0.3, hotbar: Array.from({ length: 9 }, () => null), slot: 0,
-      settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 }, savedAt: 1,
+      dayTime: 0.3,
+      hotbar: Array.from({ length: 9 }, () => null),
+      slot: 0,
+      settings: { sound: true, renderDistance: 5, sensitivity: 1, fov: 72 },
+      savedAt: 1,
     });
     ok('validateSave 接受合法档', validateSave(valid()) === true);
     ok('validateSave 拒绝小数 slot', validateSave({ ...valid(), slot: 0.5 }) === false);
@@ -253,8 +336,7 @@ async function main() {
     const world = { getChunk: (cx, cz) => (cx === 0 && cz === 0 ? { generated: true } : undefined) };
     const src = new WorldMeshSource(world, 0, 0, { defs: [], uv: {} });
     ok('活世界来源：中心格已知', src.isKnown(0, 10, 0) === true);
-    ok('活世界来源：未生成邻居视为未知',
-      src.isKnown(-1, 10, 0) === false && src.isKnown(16, 10, 0) === false);
+    ok('活世界来源：未生成邻居视为未知', src.isKnown(-1, 10, 0) === false && src.isKnown(16, 10, 0) === false);
     ok('活世界来源：y 越界保持已知', src.isKnown(-1, -1, 0) === true);
   }
 

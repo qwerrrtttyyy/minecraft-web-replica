@@ -136,10 +136,8 @@ const RANDOM_TICK_SPEEDS: readonly RandomTickSpeed[] = [0, 1, 2, 3];
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const bool = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def);
-const num = (v: unknown, def: number, min: number, max: number) =>
-  finite(v) ? clamp(v, min, max) : def;
-const pick = <T>(v: unknown, allowed: readonly T[], def: T): T =>
-  allowed.includes(v as T) ? (v as T) : def;
+const num = (v: unknown, def: number, min: number, max: number) => (finite(v) ? clamp(v, min, max) : def);
+const pick = <T>(v: unknown, allowed: readonly T[], def: T): T => (allowed.includes(v as T) ? (v as T) : def);
 
 /** 画质档位对应的渲染分辨率倍率；auto 返回 null，由引擎按帧率自适应 */
 export function qualityScale(mode: QualityMode): number | null {

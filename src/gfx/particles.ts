@@ -31,7 +31,10 @@ export class Particles implements System {
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage));
     this.geo.setDrawRange(0, 0);
     const mat = new THREE.PointsMaterial({
-      size: 0.13, vertexColors: true, sizeAttenuation: true, depthWrite: false,
+      size: 0.13,
+      vertexColors: true,
+      sizeAttenuation: true,
+      depthWrite: false,
     });
     this.points = new THREE.Points(this.geo, mat);
     this.points.frustumCulled = false;
@@ -43,7 +46,16 @@ export class Particles implements System {
    * 发射一簇粒子。life 为可选的单粒子寿命（秒）；缺省沿用既有的 0.45~0.95s。
    * 烟雾等需要更长寿命的表现可显式传入（如 2.5）。
    */
-  burst(x: number, y: number, z: number, color: [number, number, number], n: number, spread: number, speed: number, life?: number) {
+  burst(
+    x: number,
+    y: number,
+    z: number,
+    color: [number, number, number],
+    n: number,
+    spread: number,
+    speed: number,
+    life?: number,
+  ) {
     if (!this.enabled) return;
     for (let i = 0; i < n; i++) {
       if (this.count >= this.capacity) return;
@@ -59,7 +71,7 @@ export class Particles implements System {
       this.colors[i3] = Math.min(1, color[0] * shade);
       this.colors[i3 + 1] = Math.min(1, color[1] * shade);
       this.colors[i3 + 2] = Math.min(1, color[2] * shade);
-      this.maxLife[idx] = this.life[idx] = life ?? (0.45 + Math.random() * 0.5);
+      this.maxLife[idx] = this.life[idx] = life ?? 0.45 + Math.random() * 0.5;
     }
   }
 
@@ -78,7 +90,8 @@ export class Particles implements System {
         // 与末尾交换删除
         const last = --this.count;
         if (i !== last) {
-          const i3 = i * 3, l3 = last * 3;
+          const i3 = i * 3,
+            l3 = last * 3;
           for (let k = 0; k < 3; k++) {
             this.positions[i3 + k] = this.positions[l3 + k];
             this.colors[i3 + k] = this.colors[l3 + k];

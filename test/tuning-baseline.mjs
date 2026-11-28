@@ -1,6 +1,6 @@
-import puppeteer from 'puppeteer-core';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = process.env.CHROME_PATH ?? '/usr/local/bin/chromium';
@@ -11,9 +11,14 @@ const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
   args: [
-    '--no-sandbox', '--disable-dev-shm-usage',
-    '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
-    '--allow-file-access-from-files', '--window-size=1280,760', '--mute-audio',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--enable-unsafe-swiftshader',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--allow-file-access-from-files',
+    '--window-size=1280,760',
+    '--mute-audio',
   ],
 });
 
@@ -65,7 +70,7 @@ const fps = await page.evaluate(async () => {
     function tick() {
       n++;
       if (performance.now() - t0 < 1500) requestAnimationFrame(tick);
-      else resolve(Math.round(n * 1000 / (performance.now() - t0)));
+      else resolve(Math.round((n * 1000) / (performance.now() - t0)));
     }
     requestAnimationFrame(tick);
   });
@@ -75,7 +80,8 @@ const fps = await page.evaluate(async () => {
 const move = await page.evaluate(async () => {
   const mc = window.__mc;
   const p = mc.player;
-  const x0 = p.pos.x, z0 = p.pos.z;
+  const x0 = p.pos.x,
+    z0 = p.pos.z;
   const t0 = performance.now();
   const frames = [];
 
@@ -179,8 +185,18 @@ const load = await page.evaluate(async () => {
 });
 
 const residentEnd = await chunkStats();
-console.log(JSON.stringify({
-  fps, move, build, load, churn,
-  resident: { count: residentEnd.resident, max: residentEnd.maxResident, regenerated: residentEnd.regenerated },
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      fps,
+      move,
+      build,
+      load,
+      churn,
+      resident: { count: residentEnd.resident, max: residentEnd.maxResident, regenerated: residentEnd.regenerated },
+    },
+    null,
+    2,
+  ),
+);
 await browser.close();

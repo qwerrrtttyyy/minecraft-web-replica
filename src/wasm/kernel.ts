@@ -10,16 +10,21 @@
  *    自检不过就不安装后端；运行期异常则逐调用回退 JS，绝不改变地形确定性。
  *  - **插件模块准入**：无 import、体积/内存/导出数量受限，只暴露数值型调用。
  */
-import { KERNEL_BASE64, KERNEL_SHA256, KERNEL_BYTES, KERNEL_ABI as GENERATED_ABI } from './kernelBinary';
+
+import { EQUIVALENCE_SAMPLES, makeNoiseFunctions, makePermutation, type NoiseBackend } from '../world/noiseMath';
+import { KERNEL_ABI as GENERATED_ABI, KERNEL_BASE64, KERNEL_BYTES, KERNEL_SHA256 } from './kernelBinary';
 import {
-  KERNEL_ABI, KERNEL_REQUIRED_EXPORTS, MODULE_LIMITS, PERM_SIZE,
-  WasmKernelError, decodeBase64, fnv1a, isWasmAvailable, jsFingerprint,
+  decodeBase64,
+  fnv1a,
+  isWasmAvailable,
+  jsFingerprint,
+  KERNEL_ABI,
+  KERNEL_REQUIRED_EXPORTS,
+  MODULE_LIMITS,
+  PERM_SIZE,
   validateModuleBytes,
+  WasmKernelError,
 } from './protocol';
-import {
-  EQUIVALENCE_SAMPLES, makeNoiseFunctions, makePermutation,
-  type NoiseBackend,
-} from '../world/noiseMath';
 
 export interface KernelExports {
   memory: WebAssembly.Memory;
@@ -62,27 +67,27 @@ const asBytes = (data: Uint8Array | ArrayBuffer | string): Uint8Array => {
   return data;
 };
 
-const exportTable = (ex: WebAssembly.Exports): Record<string, unknown> =>
-  ex as unknown as Record<string, unknown>;
+const exportTable = (ex: WebAssembly.Exports): Record<string, unknown> => ex as unknown as Record<string, unknown>;
 
-function callNumeric(
-  ex: WebAssembly.Exports,
-  name: string,
-  args: readonly number[],
-  label: string,
-): number {
+function callNumeric(ex: WebAssembly.Exports, name: string, args: readonly number[], label: string): number {
   const fn = exportTable(ex)[name];
   if (typeof fn !== 'function') {
     throw new WasmKernelError('missing-export', `${label} 未提供函数导出 ${name}`);
   }
   if (args.length > MODULE_LIMITS.maxCallArgs || args.some((a) => typeof a !== 'number' || !Number.isFinite(a))) {
-    throw new WasmKernelError('bad-arguments', `${label}.${name} 参数必须是有限数值（最多 ${MODULE_LIMITS.maxCallArgs} 个）`);
+    throw new WasmKernelError(
+      'bad-arguments',
+      `${label}.${name} 参数必须是有限数值（最多 ${MODULE_LIMITS.maxCallArgs} 个）`,
+    );
   }
   let out: unknown;
   try {
     out = (fn as (...a: number[]) => unknown)(...args);
   } catch (e) {
-    throw new WasmKernelError('call-failed', `${label}.${name} 调用抛错：${e instanceof Error ? e.message : String(e)}`);
+    throw new WasmKernelError(
+      'call-failed',
+      `${label}.${name} 调用抛错：${e instanceof Error ? e.message : String(e)}`,
+    );
   }
   if (typeof out !== 'number') {
     throw new WasmKernelError('bad-arguments', `${label}.${name} 返回值不是数值（WASM 导出只开放数值函数）`);
@@ -126,7 +131,10 @@ function makeKernelInstance(mod: WebAssembly.Module, label: string): WasmKernelI
   try {
     instance = new WebAssembly.Instance(mod, {});
   } catch (e) {
-    throw new WasmKernelError('instantiate-failed', `${label} 实例化失败：${e instanceof Error ? e.message : String(e)}`);
+    throw new WasmKernelError(
+      'instantiate-failed',
+      `${label} 实例化失败：${e instanceof Error ? e.message : String(e)}`,
+    );
   }
   const ex = instance.exports as unknown as KernelExports;
   const memory = ex.memory;
@@ -158,10 +166,7 @@ function makeKernelInstance(mod: WebAssembly.Module, label: string): WasmKernelI
 }
 
 /** 编译内置内核（strict：ABI / 指纹 / 必需导出全部校验） */
-export function compileKernel(
-  bytes: Uint8Array,
-  meta: { sha256?: string } = {},
-): WasmKernelModule {
+export function compileKernel(bytes: Uint8Array, meta: { sha256?: string } = {}): WasmKernelModule {
   const mod = compileRaw(bytes, true);
   const probe = makeKernelInstance(mod, 'kernel');
   const ex = probe.exports;
@@ -189,7 +194,10 @@ export function loadBuiltinKernel(): WasmKernelModule {
     throw new WasmKernelError('invalid-base64', `内联内核长度 ${bytes.length}，期望 ${KERNEL_BYTES}`);
   }
   if (GENERATED_ABI !== KERNEL_ABI) {
-    throw new WasmKernelError('abi-mismatch', `生成物 ABI ${GENERATED_ABI} 与协议 ABI ${KERNEL_ABI} 不一致，请重新 build:wasm`);
+    throw new WasmKernelError(
+      'abi-mismatch',
+      `生成物 ABI ${GENERATED_ABI} 与协议 ABI ${KERNEL_ABI} 不一致，请重新 build:wasm`,
+    );
   }
   return compileKernel(bytes, { sha256: KERNEL_SHA256 });
 }
@@ -226,16 +234,43 @@ export function createNoiseBackend(
       return v;
     } catch (e) {
       alive = false;
-      hooks.onFailure?.(new Error(`[wasm] ${label} 调用异常，已回退 JS：${e instanceof Error ? e.message : String(e)}`));
+      hooks.onFailure?.(
+        new Error(`[wasm] ${label} 调用异常，已回退 JS：${e instanceof Error ? e.message : String(e)}`),
+      );
       return fallback();
     }
   };
   return {
-    noise2: (x, y) => guard('noise2', (e) => e.mc_noise2(x, y), () => js.noise2(x, y)),
-    noise3: (x, y, z) => guard('noise3', (e) => e.mc_noise3(x, y, z), () => js.noise3(x, y, z)),
-    fbm2: (x, y, o, l, g) => guard('fbm2', (e) => e.mc_fbm2(x, y, o, l, g), () => js.fbm2(x, y, o, l, g)),
-    fbm3: (x, y, z, o, l, g) => guard('fbm3', (e) => e.mc_fbm3(x, y, z, o, l, g), () => js.fbm3(x, y, z, o, l, g)),
-    ridged2: (x, y, o, l, g) => guard('ridged2', (e) => e.mc_ridged2(x, y, o, l, g), () => js.ridged2(x, y, o, l, g)),
+    noise2: (x, y) =>
+      guard(
+        'noise2',
+        (e) => e.mc_noise2(x, y),
+        () => js.noise2(x, y),
+      ),
+    noise3: (x, y, z) =>
+      guard(
+        'noise3',
+        (e) => e.mc_noise3(x, y, z),
+        () => js.noise3(x, y, z),
+      ),
+    fbm2: (x, y, o, l, g) =>
+      guard(
+        'fbm2',
+        (e) => e.mc_fbm2(x, y, o, l, g),
+        () => js.fbm2(x, y, o, l, g),
+      ),
+    fbm3: (x, y, z, o, l, g) =>
+      guard(
+        'fbm3',
+        (e) => e.mc_fbm3(x, y, z, o, l, g),
+        () => js.fbm3(x, y, z, o, l, g),
+      ),
+    ridged2: (x, y, o, l, g) =>
+      guard(
+        'ridged2',
+        (e) => e.mc_ridged2(x, y, o, l, g),
+        () => js.ridged2(x, y, o, l, g),
+      ),
     dispose: () => {
       if (!alive) return;
       alive = false;
@@ -290,7 +325,10 @@ export function verifyKernelEquivalence(
       check('ridged2', s, js.ridged2(x, y, 4, 2, 0.5), ex.mc_ridged2(x, y, 4, 2, 0.5));
     }
     // 批量内核：累加顺序与 JS 参考一致，逐位对拍
-    const bx = -3.25, by = 7.5, step = 0.137, n = 64;
+    const bx = -3.25,
+      by = 7.5,
+      step = 0.137,
+      n = 64;
     let jsBatch = 0;
     for (let i = 0; i < n; i++) jsBatch += js.fbm2(bx + i * step, by, 4, 2, 0.5);
     check('fbm2_batch', [bx, by, step], jsBatch, ex.mc_fbm2_batch(bx, by, step, n, 4, 2, 0.5));
@@ -310,10 +348,7 @@ export interface PluginModuleRecord {
 
 const MODULE_ID = /^[a-z0-9][a-z0-9._:-]{1,63}$/i;
 
-export function compilePluginModule(
-  id: string,
-  data: Uint8Array | ArrayBuffer | string,
-): PluginModuleRecord {
+export function compilePluginModule(id: string, data: Uint8Array | ArrayBuffer | string): PluginModuleRecord {
   if (!MODULE_ID.test(id)) throw new WasmKernelError('bad-arguments', `非法 WASM 模块 id: ${id}`);
   const bytes = asBytes(data);
   const mod = compileRaw(bytes, false);
@@ -333,6 +368,9 @@ function makePluginInstance(mod: WebAssembly.Module, id: string): WebAssembly.In
   try {
     return new WebAssembly.Instance(mod, {});
   } catch (e) {
-    throw new WasmKernelError('instantiate-failed', `模块 ${id} 实例化失败：${e instanceof Error ? e.message : String(e)}`);
+    throw new WasmKernelError(
+      'instantiate-failed',
+      `模块 ${id} 实例化失败：${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }

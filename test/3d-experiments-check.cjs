@@ -6,12 +6,12 @@ const { DefaultGenerator, DEFAULT_TERRAIN } = require(path.join(ROOT, 'world/gen
 const { BlockRegistry, registerBuiltinBlocks } = require(path.join(ROOT, 'world/blocks.js'));
 const { CHUNK_SIZE: CS, WORLD_HEIGHT: H, SEA_LEVEL } = require(path.join(ROOT, 'core/types.js'));
 const { DEFAULT_OPTIONS } = require(path.join(ROOT, 'core/options.js'));
-const {
-  packLightVertex, unpackLightVertex, packVertexLights, unpackVertexLights,
-} = require(path.join(ROOT, 'world/lightPacking.js'));
-const {
-  nameToTile, tileForPath, filterKnownTiles, normalizeZipPath, firstFrameRect,
-} = require(path.join(ROOT, 'gfx/texturePack.js'));
+const { packLightVertex, unpackLightVertex, packVertexLights, unpackVertexLights } = require(
+  path.join(ROOT, 'world/lightPacking.js'),
+);
+const { nameToTile, tileForPath, filterKnownTiles, normalizeZipPath, firstFrameRect } = require(
+  path.join(ROOT, 'gfx/texturePack.js'),
+);
 const { readZip } = require(path.join(ROOT, 'gfx/zipReader.js'));
 
 let passed = 0;
@@ -44,7 +44,12 @@ const densityAgain = make(2026, { densityTerrain: true }).gen;
 let surfaceOk = true;
 let headClear = true;
 let overhang = 0;
-for (const [cx, cz] of [[0, 0], [1, 0], [2, 2], [4, 4]]) {
+for (const [cx, cz] of [
+  [0, 0],
+  [1, 0],
+  [2, 2],
+  [4, 4],
+]) {
   const c = generate(classic, cx, cz);
   const d = generate(density, cx, cz);
   const d2 = generate(densityAgain, cx, cz);
@@ -56,8 +61,11 @@ for (const [cx, cz] of [[0, 0], [1, 0], [2, 2], [4, 4]]) {
       const h = density.surfaceHeight(cx * CS + lx, cz * CS + lz);
       if (h < SEA_LEVEL) continue;
       if (d[idx(lx, h, lz)] === 0) surfaceOk = false;
-      if ((c[idx(lx, h + 1, lz)] === 0 && d[idx(lx, h + 1, lz)] !== 0) ||
-        (c[idx(lx, h + 2, lz)] === 0 && d[idx(lx, h + 2, lz)] !== 0)) headClear = false;
+      if (
+        (c[idx(lx, h + 1, lz)] === 0 && d[idx(lx, h + 1, lz)] !== 0) ||
+        (c[idx(lx, h + 2, lz)] === 0 && d[idx(lx, h + 2, lz)] !== 0)
+      )
+        headClear = false;
       for (let y = h + 3; y < H; y++) {
         if (c[idx(lx, y, lz)] === 0 && d[idx(lx, y, lz)] !== 0) overhang++;
       }
@@ -82,25 +90,36 @@ ok('光照高级 / 低级半字节布局', packLightVertex(1, 0) === 240 && pack
 const packed = packVertexLights(new Float32Array([1, 0, 0, 1, 0.5, 0.5]));
 ok('顶点光照批量打包', Array.from(packed).join(',') === '240,15,136');
 const unpacked = unpackVertexLights(packed);
-ok('顶点光照批量解包', unpacked.length === 6 && unpacked[0] === 1 && unpacked[3] === 1 && Math.abs(unpacked[4] - 8 / 15) < 1e-6);
+ok(
+  '顶点光照批量解包',
+  unpacked.length === 6 && unpacked[0] === 1 && unpacked[3] === 1 && Math.abs(unpacked[4] - 8 / 15) < 1e-6,
+);
 
 ok('材质包文件名映射', nameToTile('grass_top.png') === 'grass_top');
-ok('Java 1.13+ 资源包路径与别名',
-  nameToTile('assets/minecraft/textures/block/grass_block_top.png') === 'grass_top');
-ok('原版橡木纹理保持同名匹配',
+ok('Java 1.13+ 资源包路径与别名', nameToTile('assets/minecraft/textures/block/grass_block_top.png') === 'grass_top');
+ok(
+  '原版橡木纹理保持同名匹配',
   nameToTile('assets/minecraft/textures/block/oak_planks.png') === 'oak_planks' &&
-  nameToTile('assets/minecraft/textures/block/leaves_oak.png') === 'oak_leaves');
-ok('Bedrock 橡木纹理别名',
+    nameToTile('assets/minecraft/textures/block/leaves_oak.png') === 'oak_leaves',
+);
+ok(
+  'Bedrock 橡木纹理别名',
   nameToTile('textures/blocks/log_oak.png') === 'log_side' &&
-  nameToTile('textures/blocks/planks_oak.png') === 'oak_planks');
-ok('草丛侧面叠加层不会覆盖最终纹理',
-  tileForPath('assets/minecraft/textures/block/grass_block_side_overlay.png',
-    new Set(['grass_side'])) === null);
-ok('资源包清单相对路径归一化',
+    nameToTile('textures/blocks/planks_oak.png') === 'oak_planks',
+);
+ok(
+  '草丛侧面叠加层不会覆盖最终纹理',
+  tileForPath('assets/minecraft/textures/block/grass_block_side_overlay.png', new Set(['grass_side'])) === null,
+);
+ok(
+  '资源包清单相对路径归一化',
   normalizeZipPath('assets/pack/pack.json', './textures/stone.png') === 'assets/pack/textures/stone.png' &&
-  normalizeZipPath('pack.json', 'textures/stone.png') === 'textures/stone.png');
-const filtered = filterKnownTiles(['stone', 'nope.png', 'grass_block_side_overlay.png'],
-  new Set(['stone', 'grass_top', 'grass_side']));
+    normalizeZipPath('pack.json', 'textures/stone.png') === 'textures/stone.png',
+);
+const filtered = filterKnownTiles(
+  ['stone', 'nope.png', 'grass_block_side_overlay.png'],
+  new Set(['stone', 'grass_top', 'grass_side']),
+);
 ok('材质包匹配统计', filtered.known.join(',') === 'stone' && filtered.missed.join(',') === 'nope.png');
 
 // 动画纹理首帧：条带与网格都要取左上 16×16，不能把整张表压成一格
@@ -153,4 +172,7 @@ function makeZip(names) {
   const entries = await readZip(arrayBuffer, { filter: (n) => n.endsWith('.png') });
   ok('大资源包：只按过滤后的纹理数计条目上限', entries.size === 1 && entries.has(names[300]));
   console.log(`3D experiments PASS (${passed})`);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

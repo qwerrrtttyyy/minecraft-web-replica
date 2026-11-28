@@ -37,12 +37,14 @@ assert.equal(s.countKey('i:apple'), 2);
 assert.equal(s.damage(4, 'test'), true);
 assert.equal(s.health, 16);
 assert.equal(s.damage(4, 'test'), false, 'iframes should block');
-s.health = 1; s.iframes = 0;
+s.health = 1;
+s.iframes = 0;
 assert.equal(s.damage(5, 'fatal'), true);
 assert.equal(s.dead, true);
 
 // 序列化 / 恢复
-s.health = 12; s.dead = false;
+s.health = 12;
+s.dead = false;
 const snap = s.serialize();
 const s2 = new SurvivalState(new EventBus(), registry);
 s2.restore(snap);
@@ -63,34 +65,43 @@ assert.equal(s3.breath, 0, 'breath should deplete underwater');
 // 饱和度：进食叠加 / 上限 / exhaustion 顺序 / 回血门槛 / 存档往返
 {
   const s = new SurvivalState(new EventBus(), registry);
-  s.hunger = 10; s.saturation = 0;
+  s.hunger = 10;
+  s.saturation = 0;
   assert.equal(s.eat('apple'), true);
   assert.equal(s.hunger, 14);
   assert.equal(s.saturation, 2.4, 'eat adds saturation');
 
   const capped = new SurvivalState(new EventBus(), registry);
-  capped.hunger = 4; capped.saturation = 8;
+  capped.hunger = 4;
+  capped.saturation = 8;
   capped.eat('porkchop');
   assert.equal(capped.hunger, 10);
   assert.equal(capped.saturation, 10, 'saturation must not exceed current hunger');
 
   const dry = new SurvivalState(new EventBus(), registry);
-  dry.hunger = 20; dry.saturation = 0;
+  dry.hunger = 20;
+  dry.saturation = 0;
   for (let i = 0; i < 250; i++) dry.tick(0.1, { moving: true, sprinting: true, mining: false, underwater: false });
   assert.equal(dry.saturation, 0);
   assert.equal(dry.hunger, 19, 'exhaustion drains hunger once saturation is empty');
 
   const noSat = new SurvivalState(new EventBus(), registry);
-  noSat.health = 10; noSat.hunger = 19; noSat.saturation = 0;
+  noSat.health = 10;
+  noSat.hunger = 19;
+  noSat.saturation = 0;
   let heals = 0;
   const origHeal = noSat.heal.bind(noSat);
-  noSat.heal = (a) => { heals++; origHeal(a); };
+  noSat.heal = (a) => {
+    heals++;
+    origHeal(a);
+  };
   for (let i = 0; i < 200; i++) noSat.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: false });
   assert.equal(heals, 0, 'regen requires saturation > 0');
   assert.equal(noSat.health, 10);
 
   const s4 = new SurvivalState(new EventBus(), registry);
-  s4.hunger = 12; s4.saturation = 3.2;
+  s4.hunger = 12;
+  s4.saturation = 3.2;
   const snap = s4.serialize();
   assert.equal(snap.saturation, 3.2);
   const s5 = new SurvivalState(new EventBus(), registry);
@@ -109,11 +120,7 @@ assert.equal(s3.breath, 0, 'breath should deplete underwater');
     { name: 'item:fertilizer', chance: 1, min: 2, max: 4 },
   ];
   const ctx = { seed: 20261115, source: 'b:3,20,5' };
-  assert.deepEqual(
-    rollDrops(specs, ctx),
-    rollDrops(specs, ctx),
-    'same seed+source must produce identical drops',
-  );
+  assert.deepEqual(rollDrops(specs, ctx), rollDrops(specs, ctx), 'same seed+source must produce identical drops');
   assert.ok(rollDrops([{ name: 'x', chance: 0 }], ctx).length === 0, 'chance 0 drops nothing');
   assert.ok(rollDrops([{ name: 'x', chance: 1 }], ctx).length === 1, 'chance 1 always drops');
   const counts = [];
@@ -121,7 +128,10 @@ assert.equal(s3.breath, 0, 'breath should deplete underwater');
     const got = rollDrops([{ name: 'x', chance: 1, min: 2, max: 4 }], { ...ctx, source: `b:${i},0,0` });
     counts.push(got[0].count);
   }
-  assert.ok(counts.every((c) => c >= 2 && c <= 4), 'count range must be respected');
+  assert.ok(
+    counts.every((c) => c >= 2 && c <= 4),
+    'count range must be respected',
+  );
   assert.ok(new Set(counts).size > 1, 'count range must actually vary');
   assert.ok(
     rollDrops([{ name: 'x', chance: 1, nightOnly: true }], { ...ctx, daylight: 1 }).length === 0,
@@ -133,4 +143,6 @@ assert.equal(s3.breath, 0, 'breath should deplete underwater');
   );
 }
 
-console.log('PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick/确定性掉落 共 9 组断言');
+console.log(
+  'PASS 生存状态机纯逻辑回归：addDrop/count/consume/eat/damage/iframes/serialize/tick/确定性掉落 共 9 组断言',
+);

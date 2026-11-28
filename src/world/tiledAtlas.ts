@@ -43,14 +43,11 @@ export function installTiledAtlas(mat: THREE.Material): void {
   mat.onBeforeCompile = (shader, renderer) => {
     prev.call(mat, shader, renderer);
     shader.uniforms.uTileSize = { value: new THREE.Vector2(TILE_UV_SIZE[0], TILE_UV_SIZE[1]) };
-    shader.vertexShader = VERT_PREAMBLE + shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      '#include <begin_vertex>\n\tvTileOrigin = aTileOrigin;',
-    );
-    shader.fragmentShader = FRAG_PREAMBLE + shader.fragmentShader.replace(
-      '#include <map_fragment>',
-      TILED_MAP_FRAGMENT,
-    );
+    shader.vertexShader =
+      VERT_PREAMBLE +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTileOrigin = aTileOrigin;');
+    shader.fragmentShader =
+      FRAG_PREAMBLE + shader.fragmentShader.replace('#include <map_fragment>', TILED_MAP_FRAGMENT);
   };
   // three 默认以 onBeforeCompile.toString() 作为 cache key；此处按材质实例区分，
   // 保证 water（额外顶点动画）与 opaque 不会误共享 program。

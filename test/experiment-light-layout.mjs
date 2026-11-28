@@ -13,36 +13,49 @@
  *       vertexLightBytes 必须精确为 1 / 8 / 1。
  * 用法：npm run build && npm run test:experiment-light
  */
-import puppeteer from 'puppeteer-core';
-import path from 'node:path';
+
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'artifacts');
-const CHROME = process.env.CHROME_PATH ??
-  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
-    .find((p) => fs.existsSync(p)) ?? '/usr/local/bin/chromium';
+const CHROME =
+  process.env.CHROME_PATH ??
+  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome'].find((p) =>
+    fs.existsSync(p),
+  ) ??
+  '/usr/local/bin/chromium';
 const BASE_URL = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist', 'index.html')}`;
 const HEADLESS = process.env.MC_HEADLESS !== '0';
 const GL_BASE = ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox'];
-const GL_ARGS = (process.env.MC_GL ?? 'swiftshader') === 'desktop'
-  ? [...GL_BASE, '--use-gl=desktop']
-  : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
+const GL_ARGS =
+  (process.env.MC_GL ?? 'swiftshader') === 'desktop'
+    ? [...GL_BASE, '--use-gl=desktop']
+    : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: HEADLESS,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', ...GL_ARGS,
-    '--allow-file-access-from-files', '--window-size=1280,760', '--mute-audio'],
+  args: [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    ...GL_ARGS,
+    '--allow-file-access-from-files',
+    '--window-size=1280,760',
+    '--mute-audio',
+  ],
 });
 
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push(m.text());
+});
 await page.goto(BASE_URL, { waitUntil: 'load' });
 await page.evaluate(() => window.__mc.startGame());
 
@@ -56,26 +69,27 @@ while (Date.now() < deadline) {
 await sleep(2000);
 
 /** 采样同一块画布的像素与当前布局字节数；避免编码 PNG 后的元数据噪声 */
-const sample = () => page.evaluate(() => {
-  const src = window.__mc.engine.renderer.domElement;
-  const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(src, 0, 0);
-  const data = ctx.getImageData(0, 0, c.width, c.height).data;
-  const px = [];
-  // 固定步长采样：同一页同一缓冲区，步长固定即可逐点比较
-  for (let i = 0; i < data.length; i += 64) {
-    px.push(data[i], data[i + 1], data[i + 2]);
-  }
-  return {
-    mode: window.__mc.chunks.lightingMode,
-    bytes: window.__mc.chunks.vertexLightBytes,
-    pixels: px,
-    meshes: window.__mc.chunks.meshCount,
-  };
-});
+const sample = () =>
+  page.evaluate(() => {
+    const src = window.__mc.engine.renderer.domElement;
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0);
+    const data = ctx.getImageData(0, 0, c.width, c.height).data;
+    const px = [];
+    // 固定步长采样：同一页同一缓冲区，步长固定即可逐点比较
+    for (let i = 0; i < data.length; i += 64) {
+      px.push(data[i], data[i + 1], data[i + 2]);
+    }
+    return {
+      mode: window.__mc.chunks.lightingMode,
+      bytes: window.__mc.chunks.vertexLightBytes,
+      pixels: px,
+      meshes: window.__mc.chunks.meshCount,
+    };
+  });
 
 const flip = async (packed) => {
   await page.evaluate((v) => window.__mc.chunks.setPackedLighting(v), packed);

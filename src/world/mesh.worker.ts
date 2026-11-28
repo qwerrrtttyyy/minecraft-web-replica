@@ -1,11 +1,8 @@
-import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
-import { meshChunk } from './mesher';
-import { SnapshotMeshSource } from './snapshotSource';
+import { CHUNK_SIZE, SECTION_HEIGHT, WORLD_HEIGHT } from '../core/types';
 import { blockIdSource, DefaultGenerator } from './generator';
-import {
-  packMesh,
-  type MeshConfig, type WorkerRequest, type WorkerResponse,
-} from './meshTypes';
+import { meshChunk } from './mesher';
+import { type MeshConfig, packMesh, type WorkerRequest, type WorkerResponse } from './meshTypes';
+import { SnapshotMeshSource } from './snapshotSource';
 
 /**
  * 网格化 Worker：只依赖纯数据，不 import three / World / TextureAtlas。
@@ -25,26 +22,38 @@ let genFailed = false;
 const queuedGen: Extract<WorkerRequest, { type: 'gen' }>[] = [];
 
 const post = (msg: WorkerResponse, transfer: ArrayBuffer[] = []) => {
-  (self as unknown as { postMessage(m: unknown, t?: Transferable[]): void })
-    .postMessage(msg, transfer);
+  (self as unknown as { postMessage(m: unknown, t?: Transferable[]): void }).postMessage(msg, transfer);
 };
 
 const runMesh = (msg: Extract<WorkerRequest, { type: 'mesh' }>) => {
   try {
     const src = new SnapshotMeshSource(config as MeshConfig, msg.snapshot);
-    const out = meshChunk(src);
+    // 只网格化该 section 的 16 层：顶点 y 归一到 0..16，由 mesh.position.y 抬升
+    const out = meshChunk(src, msg.sy * SECTION_HEIGHT, SECTION_HEIGHT);
     const { mesh, transfer } = packMesh(out);
-    post({
-      type: 'result',
-      channel: 'mesh',
-      wid: msg.wid,
-      cx: msg.cx,
-      cz: msg.cz,
-      generation: msg.generation,
-      configRevision: msg.configRevision,
-      mesh,
-      stats: out.stats,
-    }, transfer);
+    // 快照 buffer 用完整理后回传，主线程池化复用（否则每个 section 每帧 23KB 白分配）
+    const back: ArrayBuffer[] = [
+      msg.snapshot.data.buffer as ArrayBuffer,
+      msg.snapshot.sky.buffer as ArrayBuffer,
+      msg.snapshot.block.buffer as ArrayBuffer,
+    ];
+    if (msg.snapshot.known) back.push(msg.snapshot.known.buffer as ArrayBuffer);
+    post(
+      {
+        type: 'result',
+        channel: 'mesh',
+        wid: msg.wid,
+        cx: msg.cx,
+        cz: msg.cz,
+        sy: msg.sy,
+        generation: msg.generation,
+        configRevision: msg.configRevision,
+        mesh,
+        stats: out.stats,
+        snapshotBuffers: back,
+      },
+      [...transfer, ...back],
+    );
   } catch (err) {
     post({
       type: 'error',
@@ -52,9 +61,16 @@ const runMesh = (msg: Extract<WorkerRequest, { type: 'mesh' }>) => {
       wid: msg.wid,
       cx: msg.cx,
       cz: msg.cz,
+      sy: msg.sy,
       generation: msg.generation,
       configRevision: msg.configRevision,
       message: err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err),
+      // 失败也要把 buffer 还回去，否则池子会被错误路径慢慢抽干
+      snapshotBuffers: [
+        msg.snapshot.data.buffer as ArrayBuffer,
+        msg.snapshot.sky.buffer as ArrayBuffer,
+        msg.snapshot.block.buffer as ArrayBuffer,
+      ],
     });
   }
 };
@@ -64,15 +80,18 @@ const runGen = (msg: Extract<WorkerRequest, { type: 'gen' }>) => {
   try {
     const data = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
     generator!.generateChunk(msg.cx, msg.cz, data);
-    post({
-      type: 'genResult',
-      channel: 'gen',
-      wid: msg.wid,
-      cx: msg.cx,
-      cz: msg.cz,
-      generation: msg.generation,
-      data,
-    }, [data.buffer]);
+    post(
+      {
+        type: 'genResult',
+        channel: 'gen',
+        wid: msg.wid,
+        cx: msg.cx,
+        cz: msg.cz,
+        generation: msg.generation,
+        data,
+      },
+      [data.buffer],
+    );
   } catch (err) {
     post({
       type: 'error',
@@ -99,11 +118,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (msg.type === 'genConfig') {
     try {
       // Worker 内没有 BlockRegistry / WASM 后端：JS 噪声参考与主线程逐位等价
-      generator = new DefaultGenerator(
-        msg.config.seed,
-        blockIdSource(msg.config.ids),
-        msg.config.options,
-      );
+      generator = new DefaultGenerator(msg.config.seed, blockIdSource(msg.config.ids), msg.config.options);
     } catch (err) {
       generator = null;
       genFailed = true;
@@ -111,30 +126,59 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       // 否则主线程永远收不到失败信号，后续请求会一直堆在队列里
       const reason = `genConfig 初始化失败: ${err instanceof Error ? err.message : String(err)}`;
       for (const q of queuedGen) {
-        post({ type: 'error', channel: 'gen', wid: q.wid, cx: q.cx, cz: q.cz, generation: q.generation, configRevision: 0, message: reason });
+        post({
+          type: 'error',
+          channel: 'gen',
+          wid: q.wid,
+          cx: q.cx,
+          cz: q.cz,
+          generation: q.generation,
+          configRevision: 0,
+          message: reason,
+        });
       }
       queuedGen.length = 0;
-      post({ type: 'error', channel: 'gen', wid: msg.wid, cx: 0, cz: 0, generation: 0, configRevision: 0, message: reason });
+      post({
+        type: 'error',
+        channel: 'gen',
+        wid: msg.wid,
+        cx: 0,
+        cz: 0,
+        generation: 0,
+        configRevision: 0,
+        message: reason,
+      });
       return;
     }
     while (queuedGen.length) runGen(queuedGen.shift() as Extract<WorkerRequest, { type: 'gen' }>);
     return;
   }
   if (msg.type === 'mesh') {
-    if (!config) { queued.push(msg); return; }
+    if (!config) {
+      queued.push(msg);
+      return;
+    }
     runMesh(msg);
     return;
   }
   if (msg.type === 'gen') {
     if (genFailed) {
       post({
-        type: 'error', channel: 'gen', wid: msg.wid, cx: msg.cx, cz: msg.cz,
-        generation: msg.generation, configRevision: 0,
+        type: 'error',
+        channel: 'gen',
+        wid: msg.wid,
+        cx: msg.cx,
+        cz: msg.cz,
+        generation: msg.generation,
+        configRevision: 0,
         message: 'genConfig 初始化失败，生成器不可用',
       });
       return;
     }
-    if (!generator) { queuedGen.push(msg); return; }
+    if (!generator) {
+      queuedGen.push(msg);
+      return;
+    }
     runGen(msg);
   }
 };

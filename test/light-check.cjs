@@ -29,12 +29,16 @@ function makeChunk(cx, cz) {
     }
   }
   const chunk = {
-    cx, cz, data,
+    cx,
+    cz,
+    data,
     sky: new Uint8Array(CS * CS * H),
     block: new Uint8Array(CS * CS * H),
     generated: true,
     lit: false,
-    idx(x, y, z) { return (y * CS + z) * CS + x; },
+    idx(x, y, z) {
+      return (y * CS + z) * CS + x;
+    },
   };
   chunks.set(key(cx, cz), chunk);
   return chunk;
@@ -42,7 +46,9 @@ function makeChunk(cx, cz) {
 const world = {
   registry: reg,
   dirty: new Set(),
-  getChunk(cx, cz) { return chunks.get(key(cx, cz)); },
+  getChunk(cx, cz) {
+    return chunks.get(key(cx, cz));
+  },
 };
 const light = new LightEngine(world);
 
@@ -54,7 +60,13 @@ const ok = (name, cond, extra = '') => {
 };
 
 const center = makeChunk(0, 0);
-for (const [cx, cz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) makeChunk(cx, cz);
+for (const [cx, cz] of [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+])
+  makeChunk(cx, cz);
 for (const chunk of chunks.values()) light.initChunk(chunk);
 
 ok('露天列天空光为 15', center.sky[center.idx(8, SURFACE + 1, 8)] === 15);
@@ -71,14 +83,16 @@ ok('距离 5 衰减为 9', center.block[center.idx(13, ty, 8)] === 9);
 
 center.data[center.idx(8, ty, 8)] = 0;
 light.updateBlock(8, ty, 8, torch, 0);
-ok('移除火把后光照归零', center.block[center.idx(8, ty, 8)] === 0 &&
-  center.block[center.idx(13, ty, 8)] === 0);
+ok('移除火把后光照归零', center.block[center.idx(8, ty, 8)] === 0 && center.block[center.idx(13, ty, 8)] === 0);
 
 // 跨区块传播
 center.data[center.idx(15, ty, 8)] = torch;
 light.updateBlock(15, ty, 8, 0, torch);
-ok('火光跨区块传播', chunks.get(key(1, 0)).block[chunks.get(key(1, 0)).idx(0, ty, 8)] === 13,
-  `x16=${chunks.get(key(1, 0)).block[chunks.get(key(1, 0)).idx(0, ty, 8)]}`);
+ok(
+  '火光跨区块传播',
+  chunks.get(key(1, 0)).block[chunks.get(key(1, 0)).idx(0, ty, 8)] === 13,
+  `x16=${chunks.get(key(1, 0)).block[chunks.get(key(1, 0)).idx(0, ty, 8)]}`,
+);
 center.data[center.idx(15, ty, 8)] = 0;
 light.updateBlock(15, ty, 8, torch, 0);
 ok('跨区块移除后归零', chunks.get(key(1, 0)).block[chunks.get(key(1, 0)).idx(0, ty, 8)] === 0);
@@ -106,9 +120,16 @@ ok('光照变化会标记区块脏', world.dirty.size > 0);
 // 回归 v1.3.1：旧实现只清「本列」，水平扩散出去的格子保留旧亮度，
 // 表现为封死天窗后房间依旧亮堂；同时列内等亮度梯度（都是 15）也收不掉。
 const roofY2 = SURFACE + 5;
-for (const [cx, cz] of [[2, 2], [3, 2]]) makeChunk(cx, cz);
+for (const [cx, cz] of [
+  [2, 2],
+  [3, 2],
+])
+  makeChunk(cx, cz);
 const at = (gx, gz) => chunks.get(key(gx >> 4, gz >> 4));
-const gsky = (gx, y, gz) => { const c = at(gx, gz); return c.sky[c.idx(gx & 15, y, gz & 15)]; };
+const gsky = (gx, y, gz) => {
+  const c = at(gx, gz);
+  return c.sky[c.idx(gx & 15, y, gz & 15)];
+};
 /** 模拟 world.setBlock：先落 data，再走增量光照 */
 function gedit(gx, y, gz, v) {
   const c = at(gx, gz);
@@ -133,8 +154,7 @@ const shaftFloor = gsky(52, SURFACE + 1, 37);
 const roomNear = gsky(48, SURFACE + 1, 37);
 const roomFar = gsky(44, SURFACE + 1, 37);
 ok('天窗井底为露天亮度', shaftFloor === 15, `got=${shaftFloor}`);
-ok('密封房间由天窗点亮（跨区块）', roomNear > 0 && roomFar < roomNear,
-  `near=${roomNear} far=${roomFar}`);
+ok('密封房间由天窗点亮（跨区块）', roomNear > 0 && roomFar < roomNear, `near=${roomNear} far=${roomFar}`);
 
 gedit(52, roofY2, 37, stone);
 let residual = 0;
@@ -147,10 +167,13 @@ ok('封住天窗后房间内无残留天空光', residual === 0, `残留 ${resid
 ok('封住天窗后井底天空光归零', gsky(52, SURFACE + 1, 37) === 0);
 
 gedit(52, roofY2, 37, 0);
-ok('重新挖开后天窗亮度可恢复（幂等）',
-  gsky(52, SURFACE + 1, 37) === shaftFloor && gsky(48, SURFACE + 1, 37) === roomNear &&
-  gsky(44, SURFACE + 1, 37) === roomFar,
-  `${gsky(52, SURFACE + 1, 37)}/${gsky(48, SURFACE + 1, 37)}/${gsky(44, SURFACE + 1, 37)}`);
+ok(
+  '重新挖开后天窗亮度可恢复（幂等）',
+  gsky(52, SURFACE + 1, 37) === shaftFloor &&
+    gsky(48, SURFACE + 1, 37) === roomNear &&
+    gsky(44, SURFACE + 1, 37) === roomFar,
+  `${gsky(52, SURFACE + 1, 37)}/${gsky(48, SURFACE + 1, 37)}/${gsky(44, SURFACE + 1, 37)}`,
+);
 
 // 半透明介质落进光井：衰减判据要用「列衰减」，空气→树叶 opacity 相同但列衰减 +1
 gedit(52, roofY2 + 1, 37, reg.byNameGet('oak_leaves').id);

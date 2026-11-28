@@ -1,29 +1,27 @@
 import * as THREE from 'three';
-import { clamp, lerp, SEA_LEVEL, WORLD_HEIGHT, type BlockId, type System } from '../core/types';
-import type { EventService } from '../services/events';
-import { AIR, needsSupport, type BlockDefinition, type BlockRegistry } from '../world/blocks';
-import type { World, RayHit } from '../world/world';
-import type { TextureAtlas } from '../gfx/atlas';
-import type { Input } from '../input/input';
-import { moveBody, boxIntersectsBlock, type PhysicsBody } from './physics';
-import { isStuck, resolvePenetration, type SolidPredicate } from './unstuck';
-import { PlayerModel } from '../entity/models';
 import type { SoundEngine } from '../audio/sound';
-import type { Particles } from '../gfx/particles';
-import type { EntityManager, Entity } from '../entity/entity';
-import type { DropManager } from '../entity/droppedItem';
-import { isBreedFood } from '../entity/breeding';
-import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
-import type { Botany } from '../world/botany';
-import { INTERACTIVE_BLOCK } from './crafting';
-import { rollDrops } from '../world/drops';
-import { BALL } from '../entity/basketball';
 import { RANGED } from '../core/tuning';
+import { type BlockId, clamp, lerp, SEA_LEVEL, type System, WORLD_HEIGHT } from '../core/types';
+import { BALL } from '../entity/basketball';
+import { isBreedFood } from '../entity/breeding';
+import type { DropManager } from '../entity/droppedItem';
+import type { Entity, EntityManager } from '../entity/entity';
+import { PlayerModel } from '../entity/models';
+import type { TextureAtlas } from '../gfx/atlas';
+import type { Particles } from '../gfx/particles';
+import type { Input } from '../input/input';
+import type { EventService } from '../services/events';
 import type { ExtensionRegistry } from '../services/plugins/extensions';
+import { AIR, type BlockDefinition, type BlockRegistry, needsSupport } from '../world/blocks';
+import type { Botany } from '../world/botany';
+import { COMPOST_VALUES, COMPOSTER_ID, harvestOf as composterHarvest, nextId as composterNext } from '../world/compost';
+import { rollDrops } from '../world/drops';
+import type { RayHit, World } from '../world/world';
+import { INTERACTIVE_BLOCK } from './crafting';
+import { boxIntersectsBlock, moveBody, type PhysicsBody } from './physics';
 import { heldToolId, notifyUsedTool, resolveAttack, resolveMining, resolveUseItem } from './playerHooks';
-import {
-  COMPOSTER_ID, nextId as composterNext, harvestOf as composterHarvest, COMPOST_VALUES,
-} from '../world/compost';
+import { ITEMS, MAX_HUNGER, type Stack, type SurvivalState } from './survival';
+import { isStuck, resolvePenetration, type SolidPredicate } from './unstuck';
 
 /** 快捷栏一格：方块或物品（生存模式会带数量） */
 export interface HotbarState {
@@ -129,11 +127,17 @@ export class Player implements System, PhysicsBody {
   // ---- AABB 脱困（被方块挤住时平滑推出） ----
   unstuckCount = 0;
   private stuckTarget: {
-    fx: number; fy: number; fz: number; tx: number; ty: number; tz: number;
-    t: number; dur: number; dist: number;
+    fx: number;
+    fy: number;
+    fz: number;
+    tx: number;
+    ty: number;
+    tz: number;
+    t: number;
+    dur: number;
+    dist: number;
   } | null = null;
-  private readonly solidPredicate: SolidPredicate = (x, y, z) =>
-    this.registry.isSolid(this.world.getBlock(x, y, z));
+  private readonly solidPredicate: SolidPredicate = (x, y, z) => this.registry.isSolid(this.world.getBlock(x, y, z));
 
   constructor(
     private world: World,
@@ -176,7 +180,7 @@ export class Player implements System, PhysicsBody {
 
   selectedItem() {
     const s = this.selectedStack();
-    return s && s.kind === 'item' ? ITEMS[s.id as string] ?? null : null;
+    return s && s.kind === 'item' ? (ITEMS[s.id as string] ?? null) : null;
   }
 
   setHeldStack(stack: Stack | null) {
@@ -193,7 +197,7 @@ export class Player implements System, PhysicsBody {
       const def = this.registry.get(stack.id as BlockId);
       this.heldMesh = new THREE.Mesh(this.atlas.makeBlockGeometry(def), this.heldMaterial);
       // 十字面植物用 0.34；蜡烛几何本身是窄柱，0.30 偏小，用 0.42 保住手持存在感
-      const heldScale = def.shape === 'cross' ? 0.34 : def.shape === 'candle' ? 0.42 : 0.30;
+      const heldScale = def.shape === 'cross' ? 0.34 : def.shape === 'candle' ? 0.42 : 0.3;
       this.heldMesh.scale.setScalar(heldScale);
     } else {
       const item = ITEMS[stack.id as string];
@@ -220,8 +224,8 @@ export class Player implements System, PhysicsBody {
     for (const preferOpenSky of [true, false]) {
       for (let r = 0; r < 40; r += 4) {
         for (let a = 0; a < 8; a++) {
-          const x = Math.round(Math.cos(a * Math.PI / 4) * r);
-          const z = Math.round(Math.sin(a * Math.PI / 4) * r);
+          const x = Math.round(Math.cos((a * Math.PI) / 4) * r);
+          const z = Math.round(Math.sin((a * Math.PI) / 4) * r);
           // 用生成器地形高度，避免把树冠/草丛误判为地面；花草非实心，可以站进去
           const h = this.world.generator.surfaceHeight(x, z);
           const top = this.world.getBlock(x, h, z);
@@ -294,7 +298,9 @@ export class Player implements System, PhysicsBody {
     return isStuck(this.pos, this.width, this.height, this.solidPredicate);
   }
   /** 是否正在执行脱困缓动 */
-  get isUnstucking(): boolean { return this.stuckTarget !== null; }
+  get isUnstucking(): boolean {
+    return this.stuckTarget !== null;
+  }
 
   /** 传送 / 入水 / 切模式后必须清零，否则旧下落速度会在下一次落地时结算伤害 */
   resetFallDistance() {
@@ -325,7 +331,8 @@ export class Player implements System, PhysicsBody {
         this.onGround = false;
         this.unstuckCount++;
         this.events.emit('player:unstuck', {
-          position: { x: this.pos.x, y: this.pos.y, z: this.pos.z }, distance: s.dist,
+          position: { x: this.pos.x, y: this.pos.y, z: this.pos.z },
+          distance: s.dist,
         });
       }
       return true;
@@ -335,8 +342,15 @@ export class Player implements System, PhysicsBody {
     if (!r.moved || !r.resolved) return false;
     const dist = Math.hypot(r.dx, r.dy, r.dz);
     this.stuckTarget = {
-      fx: this.pos.x, fy: this.pos.y, fz: this.pos.z, tx: r.x, ty: r.y, tz: r.z,
-      t: 0, dur: Math.min(0.4, 0.12 + dist * 0.02), dist,
+      fx: this.pos.x,
+      fy: this.pos.y,
+      fz: this.pos.z,
+      tx: r.x,
+      ty: r.y,
+      tz: r.z,
+      t: 0,
+      dur: Math.min(0.4, 0.12 + dist * 0.02),
+      dist,
     };
     this.vel.set(0, 0, 0);
     return true;
@@ -358,13 +372,15 @@ export class Player implements System, PhysicsBody {
     this.pitch = clamp(this.pitch - dy * 0.0022, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
 
     this.sneaking = input.sneak && !this.fly;
-    this.sprinting = input.sprint && input.moveZ > 0.1 && !this.sneaking &&
-      (!this.survival.isSurvival || this.survival.hunger > 6);
+    this.sprinting =
+      input.sprint && input.moveZ > 0.1 && !this.sneaking && (!this.survival.isSurvival || this.survival.hunger > 6);
 
-    const feetDef = this.registry.get(this.world.getBlock(
-      Math.floor(this.pos.x), Math.floor(this.pos.y + 0.3), Math.floor(this.pos.z)));
-    const eyeDef = this.registry.get(this.world.getBlock(
-      Math.floor(this.pos.x), Math.floor(this.pos.y + EYE), Math.floor(this.pos.z)));
+    const feetDef = this.registry.get(
+      this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 0.3), Math.floor(this.pos.z)),
+    );
+    const eyeDef = this.registry.get(
+      this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + EYE), Math.floor(this.pos.z)),
+    );
     // 海草 / 海带占据水格，玩家穿过时仍要按入水处理（浮力、氧气、水下雾）
     this.inWater = feetDef.liquid || feetDef.waterPlant === true;
     this.eyeInWater = eyeDef.liquid || eyeDef.waterPlant === true;
@@ -377,11 +393,12 @@ export class Player implements System, PhysicsBody {
     let wx = -s * input.moveZ + c * input.moveX;
     let wz = -c * input.moveZ - s * input.moveX;
     const wl = Math.hypot(wx, wz);
-    if (wl > 1) { wx /= wl; wz /= wl; }
+    if (wl > 1) {
+      wx /= wl;
+      wz /= wl;
+    }
 
-    let speed = this.fly ? (this.sprinting ? 22 : 11)
-      : this.sneaking ? 1.4
-        : this.sprinting ? 5.8 : 4.3;
+    let speed = this.fly ? (this.sprinting ? 22 : 11) : this.sneaking ? 1.4 : this.sprinting ? 5.8 : 4.3;
     if (this.inWater && !this.fly) speed *= 0.55;
 
     const accel = this.fly ? 10 : this.onGround ? 14 : 3.2;
@@ -427,9 +444,11 @@ export class Player implements System, PhysicsBody {
       const px = Math.floor(this.pos.x + wx * 0.7);
       const pz = Math.floor(this.pos.z + wz * 0.7);
       const py = Math.floor(this.pos.y);
-      if (this.world.isSolidAt(px, py, pz) &&
+      if (
+        this.world.isSolidAt(px, py, pz) &&
         !this.world.isSolidAt(px, py + 1, pz) &&
-        !this.world.isSolidAt(px, py + 2, pz)) {
+        !this.world.isSolidAt(px, py + 2, pz)
+      ) {
         this.vel.y = JUMP_VEL;
       }
     }
@@ -441,8 +460,9 @@ export class Player implements System, PhysicsBody {
       this.stepAcc += hSpeed * dt;
       if (this.stepAcc > 2.3) {
         this.stepAcc = 0;
-        const under = this.registry.get(this.world.getBlock(
-          Math.floor(this.pos.x), Math.floor(this.pos.y - 0.05), Math.floor(this.pos.z)));
+        const under = this.registry.get(
+          this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y - 0.05), Math.floor(this.pos.z)),
+        );
         this.sound.step(under.sound);
       }
     }
@@ -504,8 +524,10 @@ export class Player implements System, PhysicsBody {
     if (this.moveEmitAcc > 0.25) {
       this.moveEmitAcc = 0;
       // 只有真的移动过才通知存档，站着不动不应反复触发自动保存
-      const moved = Math.abs(this.pos.x - this.lastEmitX) +
-        Math.abs(this.pos.y - this.lastEmitY) + Math.abs(this.pos.z - this.lastEmitZ);
+      const moved =
+        Math.abs(this.pos.x - this.lastEmitX) +
+        Math.abs(this.pos.y - this.lastEmitY) +
+        Math.abs(this.pos.z - this.lastEmitZ);
       if (moved > 0.02) {
         this.lastEmitX = this.pos.x;
         this.lastEmitY = this.pos.y;
@@ -593,8 +615,11 @@ export class Player implements System, PhysicsBody {
     this.viewDirection(this.tmpDir);
     const eHit = this.entities.raycast(this.tmpEye, this.tmpDir, ENTITY_REACH);
     const blockHit = this.world.raycast(this.tmpEye, this.tmpDir, REACH);
-    if (eHit && eHit.entity.type.id === 'basketball' &&
-      eHit.dist < Math.min(blockHit ? blockHit.dist : 999, ENTITY_REACH)) {
+    if (
+      eHit &&
+      eHit.entity.type.id === 'basketball' &&
+      eHit.dist < Math.min(blockHit ? blockHit.dist : 999, ENTITY_REACH)
+    ) {
       this.patBasketball(eHit);
       return;
     }
@@ -784,10 +809,13 @@ export class Player implements System, PhysicsBody {
       this.swing();
       return true;
     }
-    const key = stack.kind === 'item' ? `item:${stack.id}` : (() => {
-      const def = this.registry.get(stack.id as BlockId);
-      return def.name;
-    })();
+    const key =
+      stack.kind === 'item'
+        ? `item:${stack.id}`
+        : (() => {
+            const def = this.registry.get(stack.id as BlockId);
+            return def.name;
+          })();
     if (!COMPOST_VALUES[key]) return false;
     const next = composterNext(id, key);
     if (next === null) return false;
@@ -813,9 +841,7 @@ export class Player implements System, PhysicsBody {
     if (target.baby || target.hostile) return false;
     const stack = this.selectedStack();
     if (!stack) return false;
-    const material = stack.kind === 'item'
-      ? `item:${stack.id}`
-      : this.registry.get(stack.id as BlockId).name;
+    const material = stack.kind === 'item' ? `item:${stack.id}` : this.registry.get(stack.id as BlockId).name;
     if (!isBreedFood(target.type.id, material)) return false;
     if (!this.entities.feed(target, material)) return false;
     this.survival.consume(stack, 1);
@@ -983,11 +1009,13 @@ export class Player implements System, PhysicsBody {
     ball.pickupCooldown = Math.max(ball.pickupCooldown, BALL.PICKUP_COOLDOWN * 0.35);
     this.swing();
     this.sound.hit();
-    this.particles.burst(ball.pos.x, ball.pos.y + 0.35, ball.pos.z,
-      [0.92, 0.45, 0.12], 10, 0.18, 2.4);
+    this.particles.burst(ball.pos.x, ball.pos.y + 0.35, ball.pos.z, [0.92, 0.45, 0.12], 10, 0.18, 2.4);
     this.shake(0.05);
     this.events.emit('basketball:slap', {
-      id: ball.id, x: ball.pos.x, y: ball.pos.y, z: ball.pos.z,
+      id: ball.id,
+      x: ball.pos.x,
+      y: ball.pos.y,
+      z: ball.pos.z,
     });
   }
 
@@ -1003,8 +1031,7 @@ export class Player implements System, PhysicsBody {
     this.sound.hit();
     // 命中确认：碎屑贴在被击者身上（世界空间生成），小幅度屏震不抢操作
     const e = target.entity;
-    this.particles.burst(e.pos.x, e.pos.y + e.height * 0.65, e.pos.z,
-      [0.92, 0.18, 0.16], 9, 0.16, 2.2);
+    this.particles.burst(e.pos.x, e.pos.y + e.height * 0.65, e.pos.z, [0.92, 0.18, 0.16], 9, 0.16, 2.2);
     this.shake(0.07);
   }
 
@@ -1073,7 +1100,11 @@ export class Player implements System, PhysicsBody {
       this.camera.position.x += shakeX;
       this.camera.position.y += shakeY;
       if (this.cameraMode === 1) {
-        this.camera.lookAt(this.tmpEye.x + this.tmpDir.x * 6, this.tmpEye.y + this.tmpDir.y * 6, this.tmpEye.z + this.tmpDir.z * 6);
+        this.camera.lookAt(
+          this.tmpEye.x + this.tmpDir.x * 6,
+          this.tmpEye.y + this.tmpDir.y * 6,
+          this.tmpEye.z + this.tmpDir.z * 6,
+        );
       } else {
         this.camera.lookAt(this.tmpEye);
       }
@@ -1095,11 +1126,7 @@ export class Player implements System, PhysicsBody {
     const handScale = Math.min(0.72, Math.max(0.3, aspect / 2.15));
     this.heldGroup.scale.setScalar(handScale);
     const handX = Math.min(0.44, halfW * 0.42);
-    this.heldGroup.position.set(
-      handX + bobX * 0.6,
-      -0.40 + bobY * 0.6 - sp * 0.22,
-      -0.72 - sp * 0.12,
-    );
+    this.heldGroup.position.set(handX + bobX * 0.6, -0.4 + bobY * 0.6 - sp * 0.22, -0.72 - sp * 0.12);
     this.heldGroup.rotation.set(0.12 - sp * 0.95, -0.4 - sp * 0.2, 0.06);
   }
 }

@@ -1,2 +1,2 @@
+export type { APIDeps, CraftAPI } from './CraftAPI';
 export { createCraftAPI } from './CraftAPI';
-export type { CraftAPI, APIDeps } from './CraftAPI';

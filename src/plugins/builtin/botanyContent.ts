@@ -9,8 +9,8 @@
  */
 import type { BlockInput } from '../../world/blocks';
 import type { BiomeId } from '../../world/generator';
-import type { PlantTrait } from '../../world/plantTraits';
 import type { PlantRule } from '../../world/plantRules';
+import type { PlantTrait } from '../../world/plantTraits';
 
 export const EXPANSION_PLUGIN_ID = 'core:botany-expansion';
 /** 扩展方块 id 起点：内置方块已占用 1~138（v1.6.0 移植植物顺延 111~138），必须末位追加且不超过 255 */
@@ -18,10 +18,7 @@ export const EXPANSION_FIRST_ID = 139;
 /** 单列生成权重累加的上界；插件据此先做一次廉价 roll 过滤再查世界 */
 export const SPAWN_ROLL_CEILING = 0.04;
 
-type Painter = (
-  setPixel: (x: number, y: number, hex: number, alpha?: number) => void,
-  rng: () => number,
-) => void;
+type Painter = (setPixel: (x: number, y: number, hex: number, alpha?: number) => void, rng: () => number) => void;
 
 export interface ExpansionPlant {
   name: string;
@@ -49,44 +46,75 @@ const nectar = { item: 'item:nectar', count: 1 };
  */
 export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
   {
-    name: 'thistle', label: '蓟', id: 159,
+    name: 'thistle',
+    label: '蓟',
+    id: 159,
     trait: { metabolism: 'solar', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     // 11 → 18 群系扩展：仅追加新群系权重，既有 plains / forest 键不动
     spawn: {
-      plains: 0.008, forest: 0.004,
-      jungle: 0.006, bamboo_grove: 0.004, dark_forest: 0.004,
-      birch_forest: 0.004, mushroom_grove: 0.003,
+      plains: 0.008,
+      forest: 0.004,
+      jungle: 0.006,
+      bamboo_grove: 0.004,
+      dark_forest: 0.004,
+      birch_forest: 0.004,
+      mushroom_grove: 0.003,
     },
     paint: (set) => {
       for (let y = 9; y < 16; y++) set(8, y, 0x4a7c3f);
       for (let y = 3; y < 9; y++) {
-        set(7, y, 0x8a5cc8); set(8, y, 0xa77bdd); set(9, y, 0x7b4dbb);
-        if (y % 2 === 0) { set(6, y, 0x9b6bd0); set(10, y, 0x6f43ad); }
+        set(7, y, 0x8a5cc8);
+        set(8, y, 0xa77bdd);
+        set(9, y, 0x7b4dbb);
+        if (y % 2 === 0) {
+          set(6, y, 0x9b6bd0);
+          set(10, y, 0x6f43ad);
+        }
       }
       set(8, 2, 0xc9a2e8);
     },
   },
   {
-    name: 'cattail', label: '香蒲', id: 160,
+    name: 'cattail',
+    label: '香蒲',
+    id: 160,
     trait: { metabolism: 'hydro', bloom: 70, growthCost: 16, shareRadius: 2, sharePower: 10 },
     spawn: {
-      beach: 0.02, plains: 0.012, forest: 0.008,
-      jungle: 0.008, bamboo_grove: 0.012, mushroom_grove: 0.006,
+      beach: 0.02,
+      plains: 0.012,
+      forest: 0.008,
+      jungle: 0.008,
+      bamboo_grove: 0.012,
+      mushroom_grove: 0.006,
     },
-    nearWater: true, waterPlant: true,
+    nearWater: true,
+    waterPlant: true,
     paint: (set) => {
       for (let y = 4; y < 16; y++) set(8, y, 0x4c7a3a);
-      for (let y = 2; y < 7; y++) { set(7, y, 0x6b4526); set(8, y, 0x8a5a2f); set(9, y, 0x5c3a20); }
-      for (let y = 9; y < 16; y++) { set(5, y, 0x3f6b32); set(11, y, 0x356028); }
+      for (let y = 2; y < 7; y++) {
+        set(7, y, 0x6b4526);
+        set(8, y, 0x8a5a2f);
+        set(9, y, 0x5c3a20);
+      }
+      for (let y = 9; y < 16; y++) {
+        set(5, y, 0x3f6b32);
+        set(11, y, 0x356028);
+      }
     },
   },
   {
-    name: 'glow_mushroom', label: '荧光菇', id: 161,
+    name: 'glow_mushroom',
+    label: '荧光菇',
+    id: 161,
     trait: { metabolism: 'fungal', bloom: 65, growthCost: 14, shareRadius: 3, sharePower: 16, hub: true },
     spawn: {
-      forest: 0.005, taiga: 0.004,
-      mushroom_grove: 0.012, dark_forest: 0.008, jungle: 0.005,
-      snowy_taiga: 0.004, birch_forest: 0.003,
+      forest: 0.005,
+      taiga: 0.004,
+      mushroom_grove: 0.012,
+      dark_forest: 0.008,
+      jungle: 0.005,
+      snowy_taiga: 0.004,
+      birch_forest: 0.003,
     },
     lightEmission: 5,
     paint: (set) => {
@@ -96,51 +124,86 @@ export const EXPANSION_PLANTS: readonly ExpansionPlant[] = [
           if (Math.abs(x - 8) <= y - 3) set(x, y, y < 6 ? 0x6ff0d8 : 0x2fc4b0);
         }
       }
-      set(6, 5, 0xd8fff4); set(9, 6, 0xd8fff4);
+      set(6, 5, 0xd8fff4);
+      set(9, 6, 0xd8fff4);
     },
   },
   {
-    name: 'frost_bloom', label: '霜花', id: 162,
+    name: 'frost_bloom',
+    label: '霜花',
+    id: 162,
     trait: { metabolism: 'solar', bloom: 75, growthCost: 20, shareRadius: 2, sharePower: 10, harvest: nectar },
     spawn: { alpine: 0.012, snowy_tundra: 0.014, snowy_taiga: 0.008 },
     paint: (set) => {
       for (let y = 9; y < 16; y++) set(8, y, 0x5f8f6a);
-      const petals = [[8, 3], [5, 5], [11, 5], [4, 8], [12, 8], [6, 11], [10, 11]];
-      for (const [x, y] of petals) { set(x, y, 0xdff2ff); set(x, y + 1, 0xa9d8f5); }
-      set(8, 7, 0xfff3b0); set(8, 8, 0xffe27a);
+      const petals = [
+        [8, 3],
+        [5, 5],
+        [11, 5],
+        [4, 8],
+        [12, 8],
+        [6, 11],
+        [10, 11],
+      ];
+      for (const [x, y] of petals) {
+        set(x, y, 0xdff2ff);
+        set(x, y + 1, 0xa9d8f5);
+      }
+      set(8, 7, 0xfff3b0);
+      set(8, 8, 0xffe27a);
     },
   },
   {
-    name: 'ember_fern', label: '余烬蕨', id: 163,
+    name: 'ember_fern',
+    label: '余烬蕨',
+    id: 163,
     trait: { metabolism: 'fungal', bloom: 60, growthCost: 12, shareRadius: 2, sharePower: 10 },
     spawn: {
-      forest: 0.006, taiga: 0.006,
-      jungle: 0.006, dark_forest: 0.006, bamboo_grove: 0.004, mushroom_grove: 0.005,
+      forest: 0.006,
+      taiga: 0.006,
+      jungle: 0.006,
+      dark_forest: 0.006,
+      bamboo_grove: 0.004,
+      mushroom_grove: 0.005,
     },
     paint: (set) => {
       for (let y = 4; y < 16; y++) {
         set(8, y, 0x8a3a24);
         const w = Math.max(0, 4 - Math.floor((16 - y) / 3));
-        for (let d = 1; d <= w; d++) { set(8 - d, y, 0xc45a2a); set(8 + d, y, 0xa8441f); }
+        for (let d = 1; d <= w; d++) {
+          set(8 - d, y, 0xc45a2a);
+          set(8 + d, y, 0xa8441f);
+        }
       }
     },
   },
   {
-    name: 'moonlotus', label: '月莲', id: 164,
+    name: 'moonlotus',
+    label: '月莲',
+    id: 164,
     trait: { metabolism: 'hydro', bloom: 80, growthCost: 18, shareRadius: 2, sharePower: 12, harvest: nectar },
     spawn: {
-      ocean: 0.006, beach: 0.01,
-      jungle: 0.006, bamboo_grove: 0.006, mushroom_grove: 0.004,
+      ocean: 0.006,
+      beach: 0.01,
+      jungle: 0.006,
+      bamboo_grove: 0.006,
+      mushroom_grove: 0.004,
     },
-    nearWater: true, waterPlant: true,
+    nearWater: true,
+    waterPlant: true,
     paint: (set) => {
-      for (let x = 3; x < 13; x++) { set(x, 12, 0x2f6f8a); set(x, 13, 0x245b73); }
+      for (let x = 3; x < 13; x++) {
+        set(x, 12, 0x2f6f8a);
+        set(x, 13, 0x245b73);
+      }
       for (let x = 4; x < 12; x++) {
         for (let y = 6; y < 11; y++) {
           if (Math.abs(x - 8) <= 11 - y) set(x, y, y < 8 ? 0xd7e9ff : 0x8fb8e8);
         }
       }
-      set(8, 8, 0xfff6c9); set(7, 9, 0xf2e2a8); set(9, 9, 0xf2e2a8);
+      set(8, 8, 0xfff6c9);
+      set(7, 9, 0xf2e2a8);
+      set(9, 9, 0xf2e2a8);
     },
   },
 ];
@@ -150,9 +213,16 @@ export const EXPANSION_PLANT_COUNT = EXPANSION_PLANTS.length;
 export function expansionBlockInput(p: ExpansionPlant): BlockInput {
   return {
     id: p.id,
-    name: p.name, label: p.label, shape: 'cross',
-    solid: false, opaque: false, liquid: false, transparentPass: false,
-    lightEmission: p.lightEmission ?? 0, hardness: 0, sound: 'plant',
+    name: p.name,
+    label: p.label,
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: p.lightEmission ?? 0,
+    hardness: 0,
+    sound: 'plant',
     waterPlant: p.waterPlant,
     tiles: { top: p.name, bottom: p.name, side: p.name },
     drops: [{ name: 'self' }],
@@ -186,8 +256,7 @@ export function spawnHash(x: number, z: number, seed: number): number {
 
 /** 水平四邻的绝对坐标（规则里统一取 y 与自身相同的邻居） */
 function horizontal(ctx: Parameters<PlantRule['tick']>[0]): [number, number, number][] {
-  return ctx.neighbors(ctx.x, ctx.y, ctx.z)
-    .filter(([, ny]) => ny === ctx.y) as [number, number, number][];
+  return ctx.neighbors(ctx.x, ctx.y, ctx.z).filter(([, ny]) => ny === ctx.y) as [number, number, number][];
 }
 
 /**

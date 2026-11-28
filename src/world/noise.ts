@@ -1,7 +1,4 @@
-import {
-  makeNoiseFunctions, makePermutation,
-  type NoiseBackend, type NoiseFunctions,
-} from './noiseMath';
+import { makeNoiseFunctions, makePermutation, type NoiseBackend, type NoiseFunctions } from './noiseMath';
 
 /**
  * 可播种的 2D / 3D 值噪声 + 分形叠加（fBm）。
@@ -61,9 +58,7 @@ export class Noise {
   /** 分形叠加 */
   fbm2(x: number, y: number, octaves: number, lacunarity = 2, gain = 0.5): number {
     const b = this.backend;
-    return b
-      ? b.fbm2(x, y, octaves, lacunarity, gain)
-      : this.js.fbm2(x, y, octaves, lacunarity, gain);
+    return b ? b.fbm2(x, y, octaves, lacunarity, gain) : this.js.fbm2(x, y, octaves, lacunarity, gain);
   }
 
   /**
@@ -72,17 +67,13 @@ export class Noise {
    */
   ridged2(x: number, y: number, octaves: number, lacunarity = 2, gain = 0.5): number {
     const b = this.backend;
-    return b
-      ? b.ridged2(x, y, octaves, lacunarity, gain)
-      : this.js.ridged2(x, y, octaves, lacunarity, gain);
+    return b ? b.ridged2(x, y, octaves, lacunarity, gain) : this.js.ridged2(x, y, octaves, lacunarity, gain);
   }
 
   /** 3D 分形叠加（洞穴 / 矿脉等体积特征） */
   fbm3(x: number, y: number, z: number, octaves: number, lacunarity = 2, gain = 0.5): number {
     const b = this.backend;
-    return b
-      ? b.fbm3(x, y, z, octaves, lacunarity, gain)
-      : this.js.fbm3(x, y, z, octaves, lacunarity, gain);
+    return b ? b.fbm3(x, y, z, octaves, lacunarity, gain) : this.js.fbm3(x, y, z, octaves, lacunarity, gain);
   }
 }
 

@@ -7,9 +7,10 @@
  * 关键约束：不修改 ecology.ts 的 Weather 类型与 weatherAt(seed, day) 签名 ——
  * test/plant-energy-check.cjs 锁死了双参确定性，植物侧继续读粗粒度天气。
  */
-import { clamp } from '../core/types';
+
 import { WEATHER } from '../core/tuning';
-import { weatherAt, type Season, type Weather } from './ecology';
+import { clamp } from '../core/types';
+import { type Season, type Weather, weatherAt } from './ecology';
 
 /** 完整天气形态：保留旧的 clear/rain，追加 snow / thunder */
 export type WeatherKind = Weather | 'snow' | 'thunder';
@@ -64,8 +65,11 @@ export function weatherFactor(kind: WeatherKind, flash = 0): number {
 
 /** 稳定整数哈希（0~1）：同 seed/day/tick 恒定，无 Math.random */
 export function lightningRoll(seed: number, day: number, tick: number): number {
-  let h = (seed ^ Math.imul(Math.max(0, Math.floor(day)), 0x9e3779b1) ^
-    Math.imul(Math.max(0, Math.floor(tick)), 0x85ebca6b)) | 0;
+  let h =
+    (seed ^
+      Math.imul(Math.max(0, Math.floor(day)), 0x9e3779b1) ^
+      Math.imul(Math.max(0, Math.floor(tick)), 0x85ebca6b)) |
+    0;
   h = Math.imul(h ^ (h >>> 16), 0xc2b2ae35) | 0;
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }

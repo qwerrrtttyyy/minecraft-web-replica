@@ -18,7 +18,11 @@ export class TouchControls {
   /** 视角拖动倍率（设置页「触控灵敏度」，1 = 默认） */
   lookScale = 1;
 
-  constructor(private input: Input, uiRoot: HTMLElement, canvas: HTMLCanvasElement) {
+  constructor(
+    private input: Input,
+    uiRoot: HTMLElement,
+    canvas: HTMLCanvasElement,
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'touch-ui';
     this.root.innerHTML = `
@@ -50,7 +54,11 @@ export class TouchControls {
     joyZone.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.joyId = e.pointerId;
-      try { joyZone.setPointerCapture(e.pointerId); } catch { /* 合成事件无活动指针 */ }
+      try {
+        joyZone.setPointerCapture(e.pointerId);
+      } catch {
+        /* 合成事件无活动指针 */
+      }
       this.updateJoy(e, joyZone);
     });
     joyZone.addEventListener('pointermove', (e) => {
@@ -73,7 +81,11 @@ export class TouchControls {
       el.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        try { el.setPointerCapture(e.pointerId); } catch { /* 合成事件无活动指针 */ }
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* 合成事件无活动指针 */
+        }
         el.classList.add('active');
         this.buzz();
         if (key === 'jump') {
@@ -109,12 +121,20 @@ export class TouchControls {
       this.lookId = e.pointerId;
       this.lookLast = { x: e.clientX, y: e.clientY };
       this.lookStart = { x: e.clientX, y: e.clientY, t: performance.now() };
-      try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件无活动指针 */ }
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* 合成事件无活动指针 */
+      }
     });
     canvas.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.lookId) return;
       // 暂停 / 死亡期间 input 被禁用：丢弃这次拖动，避免恢复后把累积增量一次性应用。
-      if (!this.input.enabled) { this.dropLook(); this.lookId = null; return; }
+      if (!this.input.enabled) {
+        this.dropLook();
+        this.lookId = null;
+        return;
+      }
       const dx = e.clientX - this.lookLast.x;
       const dy = e.clientY - this.lookLast.y;
       this.lookLast = { x: e.clientX, y: e.clientY };
@@ -204,9 +224,12 @@ export class TouchControls {
   /** 放置键的语义：手持方块=放置，手持食物=进食，手持篮球=投掷，空手=禁用 */
   setUseMode(mode: 'block' | 'item' | 'throw' | 'none') {
     const btn = this.root.querySelector('[data-role="place"]') as HTMLElement;
-    const throwIcon = '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12h16M12 4c3.2 3.3 3.2 12.7 0 16M12 4c-3.2 3.3-3.2 12.7 0 16" fill="none" stroke="currentColor" stroke-width="1.5"/>';
-    const itemIcon = '<path d="M12 21c-4 0-7-3.2-7-7 0-4.3 4.6-7.6 7-9.6 2.4 2 7 5.3 7 9.6 0 3.8-3 7-7 7z" fill="currentColor"/><path d="M12 4c.6-1.4 2-2.4 3.6-2.4" stroke="currentColor" stroke-width="2" fill="none"/>';
-    const blockIcon = '<path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/>';
+    const throwIcon =
+      '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12h16M12 4c3.2 3.3 3.2 12.7 0 16M12 4c-3.2 3.3-3.2 12.7 0 16" fill="none" stroke="currentColor" stroke-width="1.5"/>';
+    const itemIcon =
+      '<path d="M12 21c-4 0-7-3.2-7-7 0-4.3 4.6-7.6 7-9.6 2.4 2 7 5.3 7 9.6 0 3.8-3 7-7 7z" fill="currentColor"/><path d="M12 4c.6-1.4 2-2.4 3.6-2.4" stroke="currentColor" stroke-width="2" fill="none"/>';
+    const blockIcon =
+      '<path d="M12 2l9 5v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="2" fill="none"/>';
     const icon = mode === 'throw' ? throwIcon : mode === 'item' ? itemIcon : blockIcon;
     btn.querySelector('svg')!.innerHTML = icon;
     btn.setAttribute('aria-label', mode === 'throw' ? '投掷篮球' : mode === 'item' ? '进食' : '放置方块');
@@ -216,6 +239,10 @@ export class TouchControls {
 
   /** 轻微触感反馈（不支持的设备静默跳过） */
   private buzz() {
-    try { navigator.vibrate?.(12); } catch { /* 忽略 */ }
+    try {
+      navigator.vibrate?.(12);
+    } catch {
+      /* 忽略 */
+    }
   }
 }

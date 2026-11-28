@@ -51,7 +51,8 @@ export function scatterOffset(seed: number, source: string, index: number): Scat
   const dx = Math.cos(angle) * radius;
   const dz = Math.sin(angle) * radius;
   return {
-    dx, dz,
+    dx,
+    dz,
     vx: dx,
     vy: 0.7 + unit(h3) * 0.3,
     vz: dz,

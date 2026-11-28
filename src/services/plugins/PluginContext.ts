@@ -1,9 +1,9 @@
+import type { CraftAPI } from '../../api/CraftAPI';
 import type { EventChannel } from '../events/EventChannel';
 import type { ServiceContainer } from '../ServiceContainer';
-import type { CraftAPI } from '../../api/CraftAPI';
-import type { PluginStorage } from './storage';
-import type { ExtensionRegistry } from './extensions';
 import type { CarrierInfo } from './carriers/types';
+import type { ExtensionRegistry } from './extensions';
+import type { PluginStorage } from './storage';
 
 /** 插件可申请的写权限；未申请的能力会被 scopeAPI 拦截并抛错 */
 export type PluginPermission =
@@ -25,8 +25,17 @@ export type PluginPermission =
 
 /** 全部合法权限名（register 期校验） */
 export const PLUGIN_PERMISSIONS: readonly PluginPermission[] = [
-  'world:write', 'player:write', 'save:write', 'api:emit', 'blocks:register', 'botany:register',
-  'time:write', 'settings:write', 'wasm:use', 'plugins:manage', 'events:subscribe',
+  'world:write',
+  'player:write',
+  'save:write',
+  'api:emit',
+  'blocks:register',
+  'botany:register',
+  'time:write',
+  'settings:write',
+  'wasm:use',
+  'plugins:manage',
+  'events:subscribe',
 ];
 
 export interface PluginManifest {

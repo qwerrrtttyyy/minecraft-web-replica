@@ -5,29 +5,29 @@
  * 不写存档、不标脏、不改区块加载中心。相机归属由 engine.cameraOwner 明确标识。
  */
 import './photo.css';
-import { Quaternion, Vector3, type EulerOrder } from 'three';
-import { CHUNK_SIZE, clamp, type System } from '../core/types';
+import { type EulerOrder, Quaternion, Vector3 } from 'three';
 import type { Engine } from '../core/engine';
+import { CHUNK_SIZE, clamp, type System } from '../core/types';
+import type { Sky } from '../gfx/sky';
 import type { Input } from '../input/input';
 import type { Player } from '../player/player';
-import type { Sky } from '../gfx/sky';
-import type { WeatherSystem } from '../world/weatherSystem';
-import type { WeatherKind } from '../world/weather';
-import { seasonAt } from '../world/ecology';
 import type { HUD } from '../ui/hud';
+import { seasonAt } from '../world/ecology';
+import type { WeatherKind } from '../world/weather';
+import type { WeatherSystem } from '../world/weatherSystem';
 import {
   clampFov,
   clampPhotoPosition,
   nextTimePreset,
   nextWeather,
-  photoCaption,
-  photoFileName,
-  TIME_PRESETS,
-  TIME_PRESET_VALUES,
-  WEATHER_CYCLE,
   type PhotoMetadata,
   type PhotoWeather,
+  photoCaption,
+  photoFileName,
+  TIME_PRESET_VALUES,
+  TIME_PRESETS,
   type TimePreset,
+  WEATHER_CYCLE,
 } from './photoFrames';
 
 export interface PhotoModeOptions {
@@ -48,10 +48,16 @@ export interface PhotoModeOptions {
 }
 
 const WEATHER_LABELS: Readonly<Record<PhotoWeather, string>> = {
-  clear: '晴', rain: '雨', snow: '雪', thunder: '雷暴',
+  clear: '晴',
+  rain: '雨',
+  snow: '雪',
+  thunder: '雷暴',
 };
 const PRESET_LABELS: Readonly<Record<TimePreset, string>> = {
-  dawn: '黎明', day: '白昼', dusk: '黄昏', night: '夜晚',
+  dawn: '黎明',
+  day: '白昼',
+  dusk: '黄昏',
+  night: '夜晚',
 };
 const LOOK_SENSITIVITY = 0.0022;
 const MOVE_SPEED = 7;
@@ -65,7 +71,10 @@ function presetFor(dayTime: number): TimePreset {
   for (const preset of TIME_PRESETS) {
     const raw = Math.abs(dayTime - TIME_PRESET_VALUES[preset]);
     const dist = Math.min(raw, 1 - raw);
-    if (dist < bestDist) { best = preset; bestDist = dist; }
+    if (dist < bestDist) {
+      best = preset;
+      bestDist = dist;
+    }
   }
   return best;
 }
@@ -158,20 +167,36 @@ export class PhotoMode implements System {
     this.photoEnter.title = '摄影模式 (P)';
     this.photoEnter.setAttribute('aria-label', '进入摄影模式');
     opts.uiRoot.appendChild(this.photoEnter);
-    this.photoEnter.addEventListener('click', () => { this.enter(); });
+    this.photoEnter.addEventListener('click', () => {
+      this.enter();
+    });
 
     this.overlay.addEventListener('click', (e) => {
       if (!this.active) return;
       const button = (e.target as HTMLElement).closest<HTMLElement>('[data-photo-action]');
       if (!button) return;
       switch (button.dataset.photoAction) {
-        case 'capture': this.requestCapture(this.stamp); break;
-        case 'stamp': this.toggleStamp(); break;
-        case 'time': this.setTimePreset(); break;
-        case 'weather': this.cycleWeather(); break;
-        case 'fovMinus': this.changeFov(-5); break;
-        case 'fovPlus': this.changeFov(5); break;
-        case 'exit': this.exit(); break;
+        case 'capture':
+          this.requestCapture(this.stamp);
+          break;
+        case 'stamp':
+          this.toggleStamp();
+          break;
+        case 'time':
+          this.setTimePreset();
+          break;
+        case 'weather':
+          this.cycleWeather();
+          break;
+        case 'fovMinus':
+          this.changeFov(-5);
+          break;
+        case 'fovPlus':
+          this.changeFov(5);
+          break;
+        case 'exit':
+          this.exit();
+          break;
       }
     });
 
@@ -205,7 +230,8 @@ export class PhotoMode implements System {
     this.timePreset = presetFor(sky.dayTime);
     const currentWeather = weather.forced ?? weather.current.kind;
     this.weatherPreset = WEATHER_CYCLE.includes(currentWeather as PhotoWeather)
-      ? currentWeather as PhotoWeather : 'clear';
+      ? (currentWeather as PhotoWeather)
+      : 'clear';
     this.stamp = true;
     this.stampButton.textContent = '水印：开';
     this.pendingCapture = null;
@@ -302,8 +328,7 @@ export class PhotoMode implements System {
     const input = this.opts.input;
     // Input.jumpHeld / sneakHeld 是从未赋值的旧字段，实时状态取 jump / sneak getter
     // （它们同时覆盖键盘、触控与手柄），保留旧字段只作兼容或注入测试。
-    const rise = (input.jump || input.jumpHeld ? 1 : 0) -
-      (input.sneak || input.sneakHeld ? 1 : 0);
+    const rise = (input.jump || input.jumpHeld ? 1 : 0) - (input.sneak || input.sneakHeld ? 1 : 0);
     const mx = input.moveX;
     const mz = input.moveZ;
     if (mx !== 0 || mz !== 0 || rise !== 0) {
@@ -314,7 +339,10 @@ export class PhotoMode implements System {
       let dz = (-c * mz - s * mx) * speed;
       // 斜向不许比直向快：只钳制水平分量，升降速度独立
       const len = Math.hypot(dx, dz);
-      if (len > speed) { dx *= speed / len; dz *= speed / len; }
+      if (len > speed) {
+        dx *= speed / len;
+        dz *= speed / len;
+      }
       camera.position.x += dx;
       camera.position.z += dz;
       camera.position.y += rise * speed;
@@ -325,7 +353,10 @@ export class PhotoMode implements System {
     }
 
     this.infoAcc += dt;
-    if (this.infoAcc >= 0.2) { this.infoAcc = 0; this.refreshOverlay(); }
+    if (this.infoAcc >= 0.2) {
+      this.infoAcc = 0;
+      this.refreshOverlay();
+    }
   }
 
   /** 只排队，不在帧外读像素（WebGL 未开 preserveDrawingBuffer） */
@@ -368,11 +399,22 @@ export class PhotoMode implements System {
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
     switch (e.code) {
-      case 'KeyT': e.preventDefault(); this.setTimePreset(); break;
-      case 'KeyY': e.preventDefault(); this.cycleWeather(); break;
-      case 'KeyS': this.toggleStamp(); break;
+      case 'KeyT':
+        e.preventDefault();
+        this.setTimePreset();
+        break;
+      case 'KeyY':
+        e.preventDefault();
+        this.cycleWeather();
+        break;
+      case 'KeyS':
+        this.toggleStamp();
+        break;
       case 'Enter':
-      case 'NumpadEnter': e.preventDefault(); this.requestCapture(this.stamp); break;
+      case 'NumpadEnter':
+        e.preventDefault();
+        this.requestCapture(this.stamp);
+        break;
     }
   };
 
@@ -399,7 +441,9 @@ export class PhotoMode implements System {
     this.dragY = e.clientY;
   };
 
-  private readonly onMouseUp = (): void => { this.dragging = false; };
+  private readonly onMouseUp = (): void => {
+    this.dragging = false;
+  };
 
   private weatherLabel(): string {
     const kind = this.opts.weather.forced ?? this.opts.weather.current.kind;
@@ -413,7 +457,9 @@ export class PhotoMode implements System {
       season: seasonAt(this.opts.sky.dayCount),
       weather: this.weatherLabel(),
       time: this.opts.sky.timeString(),
-      x: p.x, y: p.y, z: p.z,
+      x: p.x,
+      y: p.y,
+      z: p.z,
       date: new Date(),
     };
   }
@@ -422,11 +468,9 @@ export class PhotoMode implements System {
     if (!this.active) return;
     const meta = this.metadata();
     const n = (v: number) => v.toFixed(1);
-    this.infoCoords.textContent =
-      `坐标 (${n(meta.x)}, ${n(meta.y)}, ${n(meta.z)}) · FOV ${Math.round(this.opts.engine.camera.fov)}`;
+    this.infoCoords.textContent = `坐标 (${n(meta.x)}, ${n(meta.y)}, ${n(meta.z)}) · FOV ${Math.round(this.opts.engine.camera.fov)}`;
     this.infoPlace.textContent = `群系 ${meta.biome} · 季节 ${meta.season}`;
-    this.infoSky.textContent =
-      `天气 ${meta.weather} · 时刻 ${meta.time} · 档位 ${PRESET_LABELS[this.timePreset]}`;
+    this.infoSky.textContent = `天气 ${meta.weather} · 时刻 ${meta.time} · 档位 ${PRESET_LABELS[this.timePreset]}`;
   }
 
   /** engine.onAfterRender：紧跟 renderer.render 的同一帧取像素并导出 */

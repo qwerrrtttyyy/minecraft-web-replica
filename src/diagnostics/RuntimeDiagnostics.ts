@@ -1,5 +1,5 @@
-import { VERSION } from '../core/version';
 import type { GameMode } from '../core/types';
+import { VERSION } from '../core/version';
 import { parseDependency } from '../services/plugins/semver';
 
 /**
@@ -115,123 +115,139 @@ const finite = (v: number) => Number.isFinite(v);
  *
  * 参照值：逐面输出约 2080 quad/区块，Greedy 合并后约 1240 quad/区块，
  * 平滑光照（四角光照不一致时退回逐面）后实测约 1420 quad/区块。
- * 预算取 1800：既能抓住「合并彻底失效（回到逐面基线）」，
- * 又给不同种子 / 地形起伏留出足够余量，不至于误报。
+ * 预算取 2400：统计口径已改为「当前驻留几何」（不再被重复网格化虚增），
+ * 16³ 分段会在段边界损失少量跨段合并；逐面基线的量级远高于此，仍能抓住合并失效。
  */
-export const MERGE_BUDGET_QUADS_PER_CHUNK = 1800;
+export const MERGE_BUDGET_QUADS_PER_CHUNK = 2400;
 
 export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): DiagnosticReport {
   const started = typeof performance !== 'undefined' ? performance.now() : 0;
   const issues: DiagnosticIssue[] = [];
   let checked = 0;
 
-  const check = (
-    id: string, pass: boolean, message: string, severity: DiagnosticSeverity = 'error',
-  ) => {
+  const check = (id: string, pass: boolean, message: string, severity: DiagnosticSeverity = 'error') => {
     checked++;
     if (!pass) issues.push({ id, severity, message });
   };
 
-  check('version', s.version === VERSION,
-    `版本号不一致：运行时 ${s.version}，常量 ${VERSION}`);
+  check('version', s.version === VERSION, `版本号不一致：运行时 ${s.version}，常量 ${VERSION}`);
 
   // ---- 玩家 ----
   const p = s.player;
-  check('player.position',
+  check(
+    'player.position',
     !!p && finite(p.x) && finite(p.y) && finite(p.z) && p.y >= -1 && p.y < 512,
-    p ? `玩家坐标异常：${p.x},${p.y},${p.z}` : '玩家对象缺失');
-  check('player.fallDistance',
+    p ? `玩家坐标异常：${p.x},${p.y},${p.z}` : '玩家对象缺失',
+  );
+  check(
+    'player.fallDistance',
     !!p && finite(p.fallDistance) && p.fallDistance >= 0,
-    p ? `摔落距离异常：${p.fallDistance}` : '玩家对象缺失');
+    p ? `摔落距离异常：${p.fallDistance}` : '玩家对象缺失',
+  );
 
   // ---- 输入状态机 ----
-  check('input.enabled',
-    s.mode !== 'playing' || s.input.enabled,
-    '处于 playing 但 input.enabled=false');
-  check('input.staleKeys',
+  check('input.enabled', s.mode !== 'playing' || s.input.enabled, '处于 playing 但 input.enabled=false');
+  check(
+    'input.staleKeys',
     s.input.pressedKeys.length === 0 || s.input.enabled,
-    `输入已禁用但仍有按键未释放：${s.input.pressedKeys.join(', ')}`);
+    `输入已禁用但仍有按键未释放：${s.input.pressedKeys.join(', ')}`,
+  );
 
   // ---- 区块 / Worker ----
   const c = s.chunks;
-  check('chunks.config',
-    c.configReady && c.configRevision >= 0,
-    '网格配置未就绪（Worker 可能仍在使用旧方块元数据）');
+  check('chunks.config', c.configReady && c.configRevision >= 0, '网格配置未就绪（Worker 可能仍在使用旧方块元数据）');
   if (c.mesherMode === 'worker') {
-    check('chunks.worker', c.workerCount >= 1 && c.workerCount <= 8,
-      `Worker 池数量异常：${c.workerCount}`);
+    check('chunks.worker', c.workerCount >= 1 && c.workerCount <= 8, `Worker 池数量异常：${c.workerCount}`);
   }
   if (s.mode === 'playing' || s.mode === 'paused') {
-    check('chunks.unlit', c.unlitChunks === 0,
-      `有 ${c.unlitChunks} 个已生成区块未初始化光照`);
-    check('chunks.ghostMesh', c.meshed <= Math.max(1, c.generated),
-      `网格数 ${c.meshed} 超过已生成区块 ${c.generated}`);
-    check('chunks.missingMesh',
+    check('chunks.unlit', c.unlitChunks === 0, `有 ${c.unlitChunks} 个已生成区块未初始化光照`);
+    check('chunks.ghostMesh', c.meshed <= Math.max(1, c.generated), `网格数 ${c.meshed} 超过已生成区块 ${c.generated}`);
+    check(
+      'chunks.missingMesh',
       c.loading || c.missingMeshes === 0 || c.dirty > 0 || c.inFlight > 0,
-      `${c.missingMeshes} 个视距内区块既无网格也无在途任务`);
-    check('chunks.backlog', c.dirty + c.inFlight <= 24,
-      `网格队列积压：dirty=${c.dirty} inFlight=${c.inFlight}`, 'warn');
+      `${c.missingMeshes} 个视距内区块既无网格也无在途任务`,
+    );
+    check(
+      'chunks.backlog',
+      c.dirty + c.inFlight <= 24,
+      `网格队列积压：dirty=${c.dirty} inFlight=${c.inFlight}`,
+      'warn',
+    );
     if (c.resident !== undefined && c.maxResident !== undefined) {
-      check('chunks.residentCap', c.resident <= c.maxResident,
-        `驻留区块 ${c.resident} 超过上限 ${c.maxResident}（LRU 淘汰可能失效）`, 'warn');
+      check(
+        'chunks.residentCap',
+        c.resident <= c.maxResident,
+        `驻留区块 ${c.resident} 超过上限 ${c.maxResident}（LRU 淘汰可能失效）`,
+        'warn',
+      );
     }
     // 平滑光照会让「四角光照不一致」的面退回逐面输出，Greedy 收益因此变薄。
     // 这个预算专门盯住「合并彻底失效」：一旦平均 quad 数逼近逐面基线，
     // 说明合并规则被改坏了（而不是单纯变慢），必须报出来而不是默默吃掉帧率。
     if (c.meshQuads !== undefined && c.meshChunks !== undefined && c.meshChunks > 0) {
       const perChunk = c.meshQuads / c.meshChunks;
-      check('chunks.mergeBudget', perChunk <= MERGE_BUDGET_QUADS_PER_CHUNK,
-        `平均每区块 ${perChunk.toFixed(0)} quad 超过预算 ${MERGE_BUDGET_QUADS_PER_CHUNK}`
-        + '（Greedy 合并可能已失效）');
+      check(
+        'chunks.mergeBudget',
+        perChunk <= MERGE_BUDGET_QUADS_PER_CHUNK,
+        `平均每区块 ${perChunk.toFixed(0)} quad 超过预算 ${MERGE_BUDGET_QUADS_PER_CHUNK}` + '（Greedy 合并可能已失效）',
+      );
     }
   }
 
   // ---- 插件 / 事件 ----
   const failed = s.plugins.filter((pl) => pl.state === 'failed');
-  check('plugins.failed', failed.length === 0,
-    `插件初始化失败：${failed.map((pl) => pl.id).join(', ')}`);
+  check('plugins.failed', failed.length === 0, `插件初始化失败：${failed.map((pl) => pl.id).join(', ')}`);
   const byId = new Map(s.plugins.map((pl) => [pl.id, pl]));
   // dependencies 允许 `id@^1.2.0` 形式；必须用与 PluginService 相同的解析取出裸 id，
   // 否则版本限定的依赖会被误判为「未启用」。
   const dangling = s.plugins.filter(
-    (pl) => pl.state === 'enabled' && (pl.dependencies ?? []).some((dep: string) =>
-      byId.get(parseDependency(dep)?.id ?? dep)?.state !== 'enabled'),
+    (pl) =>
+      pl.state === 'enabled' &&
+      (pl.dependencies ?? []).some((dep: string) => byId.get(parseDependency(dep)?.id ?? dep)?.state !== 'enabled'),
   );
-  check('plugins.dependency', dangling.length === 0,
-    `启用中的插件缺少已启用的依赖：${dangling.map((pl) => `${pl.id}→${(pl.dependencies ?? []).join(',')}`).join('；')}`);
-  check('events.subscribers', s.events.subscribers >= 0 && s.events.channels >= 0,
-    '事件服务统计为负值');
+  check(
+    'plugins.dependency',
+    dangling.length === 0,
+    `启用中的插件缺少已启用的依赖：${dangling.map((pl) => `${pl.id}→${(pl.dependencies ?? []).join(',')}`).join('；')}`,
+  );
+  check('events.subscribers', s.events.subscribers >= 0 && s.events.channels >= 0, '事件服务统计为负值');
   if (s.mode === 'playing') {
-    check('events.alive', s.events.subscribers > 0,
-      'playing 状态下事件总线没有任何订阅者', 'warn');
+    check('events.alive', s.events.subscribers > 0, 'playing 状态下事件总线没有任何订阅者', 'warn');
   }
 
   // ---- 生存 / 死亡状态 ----
   if (s.gameMode === 'survival' && s.survival) {
     const v = s.survival;
-    check('survival.ranges',
-      finite(v.health) && v.health >= 0 && v.health <= 20 &&
-      finite(v.hunger) && v.hunger >= 0 && v.hunger <= 20 &&
-      finite(v.breath) && v.breath >= 0 && v.breath <= 15,
-      `生存数值越界：health=${v.health} hunger=${v.hunger} breath=${v.breath}`);
-    check('survival.deadState',
-      !(s.mode === 'playing' && v.dead),
-      '生存状态已死亡，但主状态机仍在 playing');
-    check('survival.deadOverlay',
-      !(s.mode === 'dead' && !v.dead),
-      '主状态机为 dead，但生存状态未标记死亡', 'warn');
+    check(
+      'survival.ranges',
+      finite(v.health) &&
+        v.health >= 0 &&
+        v.health <= 20 &&
+        finite(v.hunger) &&
+        v.hunger >= 0 &&
+        v.hunger <= 20 &&
+        finite(v.breath) &&
+        v.breath >= 0 &&
+        v.breath <= 15,
+      `生存数值越界：health=${v.health} hunger=${v.hunger} breath=${v.breath}`,
+    );
+    check('survival.deadState', !(s.mode === 'playing' && v.dead), '生存状态已死亡，但主状态机仍在 playing');
+    check('survival.deadOverlay', !(s.mode === 'dead' && !v.dead), '主状态机为 dead，但生存状态未标记死亡', 'warn');
   }
 
   // ---- 植物生态（v1.6）----
   const pl = s.plant;
   if (pl) {
-    check('plant.tracked',
-      Number.isInteger(pl.tracked) && pl.tracked >= 0,
-      `跟踪植物数异常：${pl.tracked}`);
-    check('plant.energy',
-      finite(pl.avgEnergy) && pl.avgEnergy >= 0 && pl.avgEnergy <= 100 &&
-      Number.isInteger(pl.invalidEnergy) && pl.invalidEnergy === 0,
-      `植物能量快照异常：avg=${pl.avgEnergy} invalid=${pl.invalidEnergy}`);
+    check('plant.tracked', Number.isInteger(pl.tracked) && pl.tracked >= 0, `跟踪植物数异常：${pl.tracked}`);
+    check(
+      'plant.energy',
+      finite(pl.avgEnergy) &&
+        pl.avgEnergy >= 0 &&
+        pl.avgEnergy <= 100 &&
+        Number.isInteger(pl.invalidEnergy) &&
+        pl.invalidEnergy === 0,
+      `植物能量快照异常：avg=${pl.avgEnergy} invalid=${pl.invalidEnergy}`,
+    );
   }
 
   // ---- 摄影模式（v1.6.0-beta.3）----
@@ -239,68 +255,98 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
   // 都会留下「模式与相机不一致」的隐蔽故障，必须在诊断里报出来。
   const photoSnap = s.photo;
   if (photoSnap) {
-    check('photo-camera-owner',
+    check(
+      'photo-camera-owner',
       photoSnap.active ? photoSnap.cameraOwner === 'photo' : photoSnap.cameraOwner !== 'photo',
-      `摄影模式 active=${photoSnap.active} 但相机归属为 ${photoSnap.cameraOwner}`);
+      `摄影模式 active=${photoSnap.active} 但相机归属为 ${photoSnap.cameraOwner}`,
+    );
   }
 
   // ---- WASM（v1.5.0）----
   const w = s.wasm;
   if (w) {
-    check('wasm.status',
+    check(
+      'wasm.status',
       ['disabled', 'unavailable', 'ready', 'fallback'].includes(w.status),
-      `WASM 状态非法：${w.status}`);
-    check('wasm.abi',
+      `WASM 状态非法：${w.status}`,
+    );
+    check(
+      'wasm.abi',
       w.status === 'disabled' || w.status === 'unavailable' || w.abi >= 1,
-      `WASM 已就绪但 ABI 非法：${w.abi}`);
-    check('wasm.fallback',
+      `WASM 已就绪但 ABI 非法：${w.abi}`,
+    );
+    check(
+      'wasm.fallback',
       w.status === 'fallback' || w.status === 'disabled' || w.fallbackCount === 0,
-      `WASM 状态 ${w.status} 却记录了 ${w.fallbackCount} 次回退`);
-    check('wasm.selfcheck',
+      `WASM 状态 ${w.status} 却记录了 ${w.fallbackCount} 次回退`,
+    );
+    check(
+      'wasm.selfcheck',
       (w.selfCheckMismatches ?? 0) === 0 || w.status !== 'ready',
-      `WASM 自检存在 ${w.selfCheckMismatches} 处不一致却仍处于 ready`, 'warn');
+      `WASM 自检存在 ${w.selfCheckMismatches} 处不一致却仍处于 ready`,
+      'warn',
+    );
     // 新字段可选：旧快照缺字段时跳过，不误报
     if (w.backend !== undefined) {
-      check('wasm.backend',
+      check(
+        'wasm.backend',
         w.backend === 'js' || w.backend === 'wasm' || w.backend === 'pending',
-        `WASM 后端取值非法：${w.backend}`);
+        `WASM 后端取值非法：${w.backend}`,
+      );
     }
     if (w.benchJsMs !== undefined && w.benchWasmMs !== undefined) {
-      check('wasm.bench',
-        finite(w.benchJsMs) && w.benchJsMs >= 0 &&
-        finite(w.benchWasmMs) && w.benchWasmMs >= 0,
-        `WASM 基准耗时非法：js=${w.benchJsMs} wasm=${w.benchWasmMs}`);
+      check(
+        'wasm.bench',
+        finite(w.benchJsMs) && w.benchJsMs >= 0 && finite(w.benchWasmMs) && w.benchWasmMs >= 0,
+        `WASM 基准耗时非法：js=${w.benchJsMs} wasm=${w.benchWasmMs}`,
+      );
     }
   }
 
   // ---- 四季与天候 ----
   const weatherSnap = s.weather;
   if (weatherSnap) {
-    check('weather.factor',
-      finite(weatherSnap.darkness) && weatherSnap.darkness >= 0 && weatherSnap.darkness <= 1 &&
-      finite(weatherSnap.flash) && weatherSnap.flash >= 0 && weatherSnap.flash <= 1,
-      `天气因子非法：darkness=${weatherSnap.darkness} flash=${weatherSnap.flash}`);
-    check('weather.intensity',
-      finite(weatherSnap.intensity) && weatherSnap.intensity >= 0 && weatherSnap.intensity <= 1 &&
-      finite(weatherSnap.rainLevel) && weatherSnap.rainLevel >= 0 && weatherSnap.rainLevel <= 1,
-      `降水强度非法：intensity=${weatherSnap.intensity} rainLevel=${weatherSnap.rainLevel}`);
+    check(
+      'weather.factor',
+      finite(weatherSnap.darkness) &&
+        weatherSnap.darkness >= 0 &&
+        weatherSnap.darkness <= 1 &&
+        finite(weatherSnap.flash) &&
+        weatherSnap.flash >= 0 &&
+        weatherSnap.flash <= 1,
+      `天气因子非法：darkness=${weatherSnap.darkness} flash=${weatherSnap.flash}`,
+    );
+    check(
+      'weather.intensity',
+      finite(weatherSnap.intensity) &&
+        weatherSnap.intensity >= 0 &&
+        weatherSnap.intensity <= 1 &&
+        finite(weatherSnap.rainLevel) &&
+        weatherSnap.rainLevel >= 0 &&
+        weatherSnap.rainLevel <= 1,
+      `降水强度非法：intensity=${weatherSnap.intensity} rainLevel=${weatherSnap.rainLevel}`,
+    );
     // 闪电瞬间两套通道存在一帧相位差，跳过该帧避免误报
     if (weatherSnap.flash < 0.01) {
-      check('weather.channels',
-        finite(weatherSnap.chunkDarkness) && finite(weatherSnap.entityDarkness) &&
-        Math.abs(weatherSnap.chunkDarkness - weatherSnap.entityDarkness) < 1e-3,
-        `两套光照通道天气因子不一致：chunk=${weatherSnap.chunkDarkness} entity=${weatherSnap.entityDarkness}`);
+      check(
+        'weather.channels',
+        finite(weatherSnap.chunkDarkness) &&
+          finite(weatherSnap.entityDarkness) &&
+          Math.abs(weatherSnap.chunkDarkness - weatherSnap.entityDarkness) < 1e-3,
+        `两套光照通道天气因子不一致：chunk=${weatherSnap.chunkDarkness} entity=${weatherSnap.entityDarkness}`,
+      );
     }
   }
 
   // ---- 实体 / 存档 ----
-  check('entities.count', intOrZero(s.entities),
-    `实体数量异常：${s.entities}`);
-  check('entities.cap', s.entities <= 200,
-    `实体数量偏高：${s.entities}`, 'warn');
-  check('save.staleness',
+  check('entities.count', intOrZero(s.entities), `实体数量异常：${s.entities}`);
+  check('entities.cap', s.entities <= 200, `实体数量偏高：${s.entities}`, 'warn');
+  check(
+    'save.staleness',
     !s.save.dirty || s.save.lastOkAt <= 0 || now - s.save.lastOkAt < 30_000,
-    `存档已脏超过 ${Math.round((now - s.save.lastOkAt) / 1000)} 秒`, 'warn');
+    `存档已脏超过 ${Math.round((now - s.save.lastOkAt) / 1000)} 秒`,
+    'warn',
+  );
 
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.length - errors;

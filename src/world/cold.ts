@@ -4,15 +4,20 @@
  * WarmthSystem 只负责"靠近热源更暖"，明确排除寒冷伤害（warmth.ts:11）。
  * 本模块负责恶劣天气对温暖的惩罚与冻伤节拍，独立可测。
  */
-import { type System } from '../core/types';
+
 import { COLD } from '../core/tuning';
-import type { WeatherKind } from './weather';
-import type { Season } from './ecology';
+import type { System } from '../core/types';
 import type { SurvivalState } from '../player/survival';
+import type { Season } from './ecology';
+import type { WeatherKind } from './weather';
 
 /** 环境对温暖的每秒惩罚（0 表示无惩罚） */
 export function environmentPenalty(
-  kind: WeatherKind, season: Season, daylight: number, sheltered: boolean, enabled = true,
+  kind: WeatherKind,
+  season: Season,
+  daylight: number,
+  sheltered: boolean,
+  enabled = true,
 ): number {
   // 「天气与季节」关闭后不产生任何寒冷：冬季 / 夜晚惩罚也必须一起停掉
   if (!enabled) return 0;

@@ -7,5 +7,6 @@
  *
  * @deprecated 使用 services/events 替代
  */
-export { EventService, EventService as EventBus, EventChannel } from '../services/events';
-export type { GameEvents, EventStats, EventErrorInfo, AnyEventHandler } from '../services/events';
+
+export type { AnyEventHandler, EventErrorInfo, EventStats, GameEvents } from '../services/events';
+export { EventChannel, EventService, EventService as EventBus } from '../services/events';

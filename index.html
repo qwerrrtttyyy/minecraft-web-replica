@@ -8,7 +8,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MC-TS" />
-  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta property="og:title" content="我的世界 · Minecraft TS 复刻" />
+  <meta property="og:description" content="基于 three.js 的体素沙盒游戏，支持生存/创造、离线游玩。" />
+  <meta property="og:image" content="./showcase.webp" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <script>
+    // file:// 下 <link rel="manifest"> 会触发跨域请求错误（PWA 本身也不可用），
+    // 只在 http(s) 协议注入，保持控制台干净、自动化测试的 error 断言不被污染。
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = './manifest.webmanifest';
+      document.head.appendChild(link);
+    }
+  </script>
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <title>我的世界 · Minecraft TS 复刻</title>

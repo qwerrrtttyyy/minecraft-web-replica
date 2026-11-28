@@ -44,8 +44,10 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **Worker 配置失效**：注册方块 / 纹理后必须让 `ChunkManager.invalidateConfig()` 重建并
   `postConfig()` 到每个 Worker，同时重排已有网格；Worker 会回传 `config-ack`，
   `chunks.configReady` 是运行时诊断的判据。
-- **快照契约**：带光照的网格快照必须同时拷贝 `data / sky / block` 三张 18×80×18 缓冲；
-  Greedy mask key 包含 `id | ao<<8 | sky<<10 | block<<14`，光照不同不合并。
+- **快照契约**：带光照的网格快照必须同时拷贝 `data / sky / block` 三张缓冲；按 16³ section
+  序列化为 18 层（16 层 + 上下各 1 层 halo），快照带 `y0` 用于把绝对 y 映射到行号；
+  `SnapshotMeshSource` 仍兼容旧 80/82 行全列布局。Greedy mask key 包含
+  `id | ao<<8 | sky<<10 | block<<14`，光照不同不合并。
   （v1.5.1 起 `sky / block` 写的是**角点光照等级**而非邻居格光照，位布局不变；
   平滑光照下四角光照不一致的面必须退回逐面输出，否则合并面只能带一份光、渐变会被抹平。
   角点光不需要新顶点属性，也不需要新的快照字段 —— 1 格 halo 已足够。）

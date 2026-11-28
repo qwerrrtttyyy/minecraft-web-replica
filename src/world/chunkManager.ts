@@ -1,22 +1,39 @@
 import * as THREE from 'three';
-import MeshWorker from './mesh.worker?worker&inline';
-import { createWorkerPool } from './workerPool';
-import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, parseChunkKey, type System } from '../core/types';
-import type { EventService } from '../services/events';
-import type { World } from './world';
-import type { TextureAtlas } from '../gfx/atlas';
-import { meshChunk } from './mesher';
-import { buildMeshConfig, buildMeshSnapshot, WorldMeshSource } from './meshSource';
-import { installTiledAtlas } from './tiledAtlas';
-import type { IWorldGenerator, TerrainOptions } from './generator';
 import type { GenThreads } from '../core/options';
 import {
-  MESH_CHANNELS, isStaleConfigRevision, packMesh,
-  type GenResult, type MeshConfig, type MeshStats, type PackedGeo, type PackedMesh,
+  CHUNK_SIZE,
+  chunkKey,
+  parseChunkKey,
+  parseSectionKey,
+  SECTION_HEIGHT,
+  SECTIONS,
+  type System,
+  sectionKey,
+  WORLD_HEIGHT,
+} from '../core/types';
+import type { TextureAtlas } from '../gfx/atlas';
+import type { EventService } from '../services/events';
+import { selectEvictions } from './chunkRetention';
+import type { IWorldGenerator, TerrainOptions } from './generator';
+import { packVertexLights, unpackVertexLights, type VertexLightMode } from './lightPacking';
+import MeshWorker from './mesh.worker?worker&inline';
+import { meshChunk } from './mesher';
+import { buildMeshConfig, buildMeshSnapshot, WorldMeshSource } from './meshSource';
+import {
+  type GenResult,
+  isStaleConfigRevision,
+  MESH_CHANNELS,
+  type MeshConfig,
+  type MeshStats,
+  type PackedGeo,
+  type PackedMesh,
+  packMesh,
+  type SnapshotBuffers,
   type WorkerResponse,
 } from './meshTypes';
-import { selectEvictions } from './chunkRetention';
-import { packVertexLights, unpackVertexLights, type VertexLightMode } from './lightPacking';
+import { installTiledAtlas } from './tiledAtlas';
+import { createWorkerPool } from './workerPool';
+import type { World } from './world';
 
 /**
  * world.generator 可被 Worker 逐位复刻时的结构标记。
@@ -37,6 +54,8 @@ function asWorkerGeneratable(gen: IWorldGenerator): WorkerGeneratable | null {
 }
 
 interface ChunkMeshes {
+  /** 该段当前几何的 quad 数：驻留统计在替换 / 卸载时做加减，避免累计值冒充当前开销 */
+  quads: number;
   opaque?: THREE.Mesh;
   /** 仅对照路径（?emerge=0）下存在 */
   emissive?: THREE.Mesh;
@@ -66,20 +85,20 @@ const GEN_BUDGET_MS = 4;
 const MAX_GEN_DISPATCH_PER_FRAME = 3;
 /** 在途生成任务上限：超过后暂停派发新生成，优先让已有结果落地 */
 const MAX_PENDING_GEN = 24;
-/** 每帧最多派发多少个网格任务（Worker 化后主线程只做快照与通信） */
-const MAX_DISPATCH_PER_FRAME = 6;
+/** 每帧最多派发多少个网格任务（section 粒度：18 段 ≈ 3.6 列；Worker 化后主线程只做快照与通信） */
+const MAX_DISPATCH_PER_FRAME = 18;
 /** 每帧允许派发的「视野外」刷新任务上限：玩家背对的方向给首次网格化让路 */
-const MAX_OFFVIEW_DISPATCH_PER_FRAME = 2;
+const MAX_OFFVIEW_DISPATCH_PER_FRAME = 6;
 /**
  * 每帧「边界刷新」类派发总上限（不分视野）。
  * 生成一个新区块会回脏最多 8 个已网格化的邻居（边界面 AO / 角点光要重算），
  * 实测移动时这类刷新占了派发量的 ~71%，把首次网格化挤到排队 —— 限流保新鲜内容优先。
  */
-const MAX_REFRESH_DISPATCH_PER_FRAME = 2;
+const MAX_REFRESH_DISPATCH_PER_FRAME = 8;
 /** 视野判定：区块中心相对相机的方向与视线点积高于此值视为视野内 */
 const VIEW_DOT_THRESHOLD = 0.2;
 /** dirty + 在途任务积压上限：超过后暂停生成，优先消化网格队列 */
-export const BACKLOG_LIMIT = 24;
+export const BACKLOG_LIMIT = 80;
 /** initialLoad 等待 Worker 的兜底超时（ms），超时自动降级主线程 */
 const LOAD_TIMEOUT_MS = 15000;
 /** 视距之外的驻留区块上限（可通过 ?maxChunks=N 覆盖） */
@@ -118,7 +137,7 @@ export interface ChunkManagerOptions {
  * 区块网格的解析包围球半径：所有顶点都在本地 16×H×16 盒内，
  * 取盒的外接球（中心 8,H/2,8）比 computeBoundingSphere 逐顶点扫描更快，且对剔除而言足够紧。
  */
-const CHUNK_BOUND_RADIUS = Math.hypot(CHUNK_SIZE / 2, WORLD_HEIGHT / 2, CHUNK_SIZE / 2);
+const SECTION_BOUND_RADIUS = Math.hypot(CHUNK_SIZE / 2, SECTION_HEIGHT / 2, CHUNK_SIZE / 2);
 
 const buildGeo = (p: PackedGeo, packedLighting: boolean): THREE.BufferGeometry => {
   const g = new THREE.BufferGeometry();
@@ -129,9 +148,7 @@ const buildGeo = (p: PackedGeo, packedLighting: boolean): THREE.BufferGeometry =
   // 每顶点天空光 / 方块光，shader 与昼夜系数、太阳色一起决定最终亮度
   g.setAttribute(
     'aLight',
-    packedLighting
-      ? new THREE.BufferAttribute(packVertexLights(p.lights), 1)
-      : new THREE.BufferAttribute(p.lights, 2),
+    packedLighting ? new THREE.BufferAttribute(packVertexLights(p.lights), 1) : new THREE.BufferAttribute(p.lights, 2),
   );
   // 每个顶点的图集 tile 起点，shader 用 fract(局部UV) × uTileSize 平铺
   g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
@@ -142,8 +159,8 @@ const buildGeo = (p: PackedGeo, packedLighting: boolean): THREE.BufferGeometry =
   g.setIndex(new THREE.BufferAttribute(p.indices, 1));
   // 解析包围球（局部坐标）：替代逐顶点 computeBoundingSphere，移动场景每次重网格都省一次 O(顶点数) 扫描
   g.boundingSphere = new THREE.Sphere(
-    new THREE.Vector3(CHUNK_SIZE / 2, WORLD_HEIGHT / 2, CHUNK_SIZE / 2),
-    CHUNK_BOUND_RADIUS,
+    new THREE.Vector3(CHUNK_SIZE / 2, SECTION_HEIGHT / 2, CHUNK_SIZE / 2),
+    SECTION_BOUND_RADIUS,
   );
   return g;
 };
@@ -199,14 +216,15 @@ vec3 foliageTint(vec2 wxz) {
  * 与 v1.5.1 的独立 emissive 通道行为一致，用于 E3 的 A/B 对照。
  */
 function injectLegacyEmissive(shader: ChunkShader) {
-  shader.vertexShader = 'attribute float aShade;\nvarying float vShade;\n' + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvShade = aShade;',
-  );
-  shader.fragmentShader = 'varying float vShade;\n' + shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.rgb *= vShade;',
-  );
+  shader.vertexShader =
+    'attribute float aShade;\nvarying float vShade;\n' +
+    shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvShade = aShade;');
+  shader.fragmentShader =
+    'varying float vShade;\n' +
+    shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n\tdiffuseColor.rgb *= vShade;',
+    );
 }
 
 function injectLight(
@@ -221,13 +239,18 @@ function injectLight(
   const assign = packed
     ? 'float lp = floor(aLight + 0.5);\n\tvLight = vec2(floor(lp / 16.0), mod(lp, 16.0)) / 15.0;'
     : 'vLight = aLight;';
-  shader.vertexShader = `${decl}\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n` + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    `#include <begin_vertex>\n\t${assign}\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;`,
-  );
-  shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    `#include <color_fragment>
+  shader.vertexShader =
+    `${decl}\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n` +
+    shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>\n\t${assign}\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;`,
+    );
+  shader.fragmentShader =
+    'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' +
+    FOLIAGE_GLSL +
+    shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
     // 顶点开关：1 = 群系染色，2 = 自发光（等价于旧的独立 emissive 材质）
     float unlit = step(1.5, vTint);
     // 植被掩膜：必须在光照染色之前采样饱和度，否则天空/太阳色会把灰度误判成彩色
@@ -244,7 +267,7 @@ function injectLight(
     // 自发光不参与光照，但保留面定向 × AO 的明暗（与旧 emissive 通道的观感一致）
     diffuseColor.rgb *= mix(vShade * (0.07 + 0.93 * lit) * lightTint, vec3(vShade), unlit);
     diffuseColor.rgb *= mix(vec3(1.0), folTint, folMask);`,
-  );
+    );
 }
 
 /**
@@ -254,16 +277,18 @@ function injectLight(
  */
 function injectSway(shader: ChunkShader, time: { value: number }) {
   shader.uniforms.uSwayTime = time;
-  shader.vertexShader = 'attribute float aSway;\nuniform float uSwayTime;\n' + shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    `#include <begin_vertex>
+  shader.vertexShader =
+    'attribute float aSway;\nuniform float uSwayTime;\n' +
+    shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
     if (aSway > 0.0) {
       vec3 swayPos = (modelMatrix * vec4(position, 1.0)).xyz;
       float phase = swayPos.x * 0.63 + swayPos.z * 0.71;
       transformed.x += sin(uSwayTime * 1.35 + phase) * aSway * 0.055;
       transformed.z += cos(uSwayTime * 1.12 + phase * 1.27) * aSway * 0.038;
     }`,
-  );
+    );
 }
 
 /**
@@ -291,7 +316,8 @@ export class ChunkManager implements System {
     opaque: THREE.MeshBasicMaterial;
     /** 仅 ?emerge=0 对照路径使用 */
     emissive: THREE.MeshBasicMaterial;
-    transparent: THREE.MeshBasicMaterial; water: THREE.MeshBasicMaterial;
+    transparent: THREE.MeshBasicMaterial;
+    water: THREE.MeshBasicMaterial;
   };
   /** 昼夜强度（0~1），由 Sky 每帧写入 shader */
   readonly lightUniform = { value: 1 };
@@ -346,6 +372,18 @@ export class ChunkManager implements System {
   private sortAcc = 0;
   private backpressureAcc = 0;
   private sortDirty = true;
+  /** 列级「是否已有任意 section 网格」：meshCount / 诊断统计用，避免每次遍历 5 个 section */
+  private readonly meshedColumns = new Set<string>();
+  /** 自愈扫描节流：每 0.25s 一次，不必每帧翻 512 列 × 5 段 */
+  private healAcc = 0;
+  /**
+   * 快照缓冲池：Worker 用完把 data/sky/block 原路 transfer 回来，
+   * 下一帧派发直接复用。池上限 = 同时在途任务的合理峰值，避免无限增长。
+   */
+  private readonly snapshotPool: SnapshotBuffers[] = [];
+  /** 当前驻留几何的 quad / 顶点数：替换与卸载时加减，供诊断使用 */
+  private residentQuads = 0;
+  private residentVertices = 0;
   /** 实验性玩法「透明排序」：false 时不做距离排序，透明网格用固定 renderOrder=2 */
   transparentSortEnabled = true;
   private sortWasEnabled = true;
@@ -364,8 +402,12 @@ export class ChunkManager implements System {
     const requestedMargin = options.retentionMargin ?? DEFAULT_RETENTION_MARGIN;
     const requestedResidency = options.minResidencySec ?? DEFAULT_MIN_RESIDENCY_SEC;
     this.maxResident = Number.isFinite(requestedCap) ? Math.max(1, Math.floor(requestedCap)) : DEFAULT_MAX_RESIDENT;
-    this.retentionMargin = Number.isFinite(requestedMargin) ? Math.max(2, Math.floor(requestedMargin)) : DEFAULT_RETENTION_MARGIN;
-    this.minResidencySec = Number.isFinite(requestedResidency) ? Math.max(0, requestedResidency) : DEFAULT_MIN_RESIDENCY_SEC;
+    this.retentionMargin = Number.isFinite(requestedMargin)
+      ? Math.max(2, Math.floor(requestedMargin))
+      : DEFAULT_RETENTION_MARGIN;
+    this.minResidencySec = Number.isFinite(requestedResidency)
+      ? Math.max(0, requestedResidency)
+      : DEFAULT_MIN_RESIDENCY_SEC;
     this.greedyOption = options.greedy ?? true;
     this.mergeEmissiveOption = options.mergeEmissive ?? true;
     this.packedLightingOption = options.packedLighting ?? true;
@@ -377,13 +419,20 @@ export class ChunkManager implements System {
       // 仅在对照路径（?emerge=0）下被使用；默认路径不自发光几何，不会编译出 program
       emissive: new THREE.MeshBasicMaterial({ map: atlas.texture, alphaTest: 0.5 }),
       transparent: new THREE.MeshBasicMaterial({
-        map: atlas.texture, transparent: true, opacity: 0.8,
-        depthWrite: false, side: THREE.DoubleSide,
+        map: atlas.texture,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       }),
       water: new THREE.MeshBasicMaterial({
-        map: atlas.texture, transparent: true, opacity: 0.78,
+        map: atlas.texture,
+        transparent: true,
+        opacity: 0.78,
         // N4：显式声明深度测试；保持 depthWrite:false / DoubleSide 以维持水下可读性
-        depthTest: true, depthWrite: false, side: THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       }),
     };
     // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
@@ -396,15 +445,17 @@ export class ChunkManager implements System {
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
       injectLight(shader, this.lightUniform, this.sunTint, this.packedLightingOption);
-      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
+      shader.vertexShader =
+        'uniform float uTime;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
         vec3 wPos = (modelMatrix * vec4(position, 1.0)).xyz;
         // N4：把波动夹紧到 ±0.02，水面顶点不再越过方块边界形成细蓝边 / 与岩石近共面闪烁。
         // 动画节奏、透明度与高光保持不变（Q5）。
         float wave = sin(wPos.x * 0.9 + uTime * 1.7) * 0.028 + cos(wPos.z * 1.1 + uTime * 1.3) * 0.028;
         transformed.y += clamp(wave, -0.02, 0.02);`,
-      );
+        );
     };
     // 对照路径的旧 emissive 通道：只乘面明暗，不参与光照
     if (!this.mergeEmissiveOption) {
@@ -454,7 +505,9 @@ export class ChunkManager implements System {
     }
     this.mode = 'worker';
     for (const w of pool.workers) {
-      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        this.pendingResults.push(e.data);
+      };
       w.onerror = (e) => {
         console.warn('[mesher] Worker 运行失败，回退主线程同步网格化：', e.message);
         this.fallbackToMain();
@@ -466,9 +519,7 @@ export class ChunkManager implements System {
   }
 
   /** 推断生成 Worker 池规模：默认从网格池里匀出 1~2 个，避免小核机开太多线程 */
-  private static decideGenPoolSize(
-    override: number | undefined, meshWorkers: number, mobile: boolean,
-  ): number {
+  private static decideGenPoolSize(override: number | undefined, meshWorkers: number, mobile: boolean): number {
     if (override !== undefined) return Math.max(0, Math.min(4, Math.floor(override)));
     return Math.max(1, Math.min(mobile ? 1 : 2, Math.max(1, meshWorkers - 1)));
   }
@@ -485,7 +536,9 @@ export class ChunkManager implements System {
     const cfg = this.genConfig as WorkerGeneratable['workerConfig'];
     for (const w of pool.workers) {
       // 两个池共用 pendingResults 缓冲，靠消息上的 channel 分流
-      w.onmessage = (e: MessageEvent<WorkerResponse>) => { this.pendingResults.push(e.data); };
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        this.pendingResults.push(e.data);
+      };
       w.onerror = (e) => {
         console.warn('[worldgen] 生成 Worker 运行失败，回退主线程同步生成：', e.message);
         this.fallbackGenToMain();
@@ -506,16 +559,23 @@ export class ChunkManager implements System {
     this.teardownGenWorkers();
     this.genMode = 'main';
     if (!this.genSupported || !this.genConfig) return;
-    const want = spec === 'auto'
-      ? ChunkManager.decideGenPoolSize(undefined, Math.max(1, this.workers.length), this.mobileMode)
-      : spec;
+    const want =
+      spec === 'auto'
+        ? ChunkManager.decideGenPoolSize(undefined, Math.max(1, this.workers.length), this.mobileMode)
+        : spec;
     if (want <= 0) return;
     this.spawnGenWorkers(want);
   }
 
   /** 销毁生成池；在途生成任务立即结算，区块由同步路径重新认领 */
   private teardownGenWorkers(): void {
-    for (const w of this.genWorkers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    for (const w of this.genWorkers) {
+      try {
+        w.terminate();
+      } catch {
+        /* 已销毁 */
+      }
+    }
     this.genWorkers = [];
     this.genBusy = [];
     // 只丢弃生成通道的回传，网格池的消息必须保留
@@ -537,7 +597,13 @@ export class ChunkManager implements System {
 
   /** 销毁当前 Worker 池；在途任务立即改由主线程补算，避免 Promise 永挂 */
   private teardownWorkers(): void {
-    for (const w of this.workers) { try { w.terminate(); } catch { /* 已销毁 */ } }
+    for (const w of this.workers) {
+      try {
+        w.terminate();
+      } catch {
+        /* 已销毁 */
+      }
+    }
     this.workers = [];
     this.busy = [];
     this.workerConfig = [];
@@ -546,8 +612,8 @@ export class ChunkManager implements System {
     const pending = [...this.inFlight.entries()];
     this.inFlight.clear();
     for (const [key, rec] of pending) {
-      const [cx, cz] = parseChunkKey(key);
-      this.applySync(cx, cz);
+      const [cx, sy, cz] = parseSectionKey(key);
+      this.applySync(cx, sy, cz);
       rec.resolve();
     }
     // 重建池后必须让 getConfig() 重新下发配置：新 Worker 的 config 初始为 null，
@@ -579,9 +645,19 @@ export class ChunkManager implements System {
   }
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
-  get meshCount() { return this.meshes.size; }
-  get lightingMode(): VertexLightMode { return this.packedLightingOption ? 'packed8' : 'float2'; }
-  get vertexLightBytes(): number { return this.packedLightingOption ? 1 : 8; }
+  get meshCount() {
+    return this.meshedColumns.size;
+  }
+  /** 已网格化的 section 数（诊断用：一列最多 5 个） */
+  get sectionMeshCount() {
+    return this.meshes.size;
+  }
+  get lightingMode(): VertexLightMode {
+    return this.packedLightingOption ? 'packed8' : 'float2';
+  }
+  get vertexLightBytes(): number {
+    return this.packedLightingOption ? 1 : 8;
+  }
 
   setPackedLighting(v: boolean): void {
     if (this.packedLightingOption === v) return;
@@ -605,36 +681,77 @@ export class ChunkManager implements System {
     }
   }
   /** 当前驻留区块总数（诊断 / 基准用） */
-  get residentCount() { return this.world.chunks.size; }
-  get isLoading() { return this.loading; }
-  get mesherMode(): 'worker' | 'main' { return this.mode; }
-  get workerCount(): number { return this.workers.length; }
-  get inFlightCount() { return this.inFlight.size; }
+  get residentCount() {
+    return this.world.chunks.size;
+  }
+  get isLoading() {
+    return this.loading;
+  }
+  get mesherMode(): 'worker' | 'main' {
+    return this.mode;
+  }
+  get workerCount(): number {
+    return this.workers.length;
+  }
+  get inFlightCount() {
+    return this.inFlight.size;
+  }
   /** 在途地形生成任务数（诊断 / 基准用） */
-  get genPendingCount() { return this.pendingGen.size; }
+  get genPendingCount() {
+    return this.pendingGen.size;
+  }
   /** 生成 Worker 池规模（诊断用；0 = 未启用 / 已回退） */
-  get genWorkerCount() { return this.genWorkers.length; }
+  get genWorkerCount() {
+    return this.genWorkers.length;
+  }
   /** 地形生成通道：worker = 异步，main = 主线程同步回退 */
-  get generationMode(): 'worker' | 'main' { return this.genMode; }
-  get meshStats() { return { ...this.totals }; }
+  get generationMode(): 'worker' | 'main' {
+    return this.genMode;
+  }
+  get meshStats() {
+    // quads / vertices / chunks 反映「当前驻留几何」，用于诊断每区块 quad 预算；
+    // merged / ms 是累计工作量，排查合并收益与耗时用。
+    return {
+      ...this.totals,
+      quads: this.residentQuads,
+      vertices: this.residentVertices,
+      chunks: this.meshedColumns.size,
+    };
+  }
   /** 运行时诊断：所有 Worker 是否都已确认当前配置 */
   get configReady(): boolean {
     if (this.config === null) return false;
     if (this.mode === 'main') return true;
-    return this.workers.length > 0 &&
-      this.workers.every((_, i) => this.workerConfig[i] === this.configRevision);
+    return this.workers.length > 0 && this.workers.every((_, i) => this.workerConfig[i] === this.configRevision);
   }
-  get configRevisionValue(): number { return this.configRevision; }
+  get configRevisionValue(): number {
+    return this.configRevision;
+  }
   /** 运行时诊断：该区块是否已有网格 / 是否在途 */
-  hasMesh(cx: number, cz: number): boolean { return this.meshes.has(chunkKey(cx, cz)); }
-  hasInFlight(cx: number, cz: number): boolean { return this.inFlight.has(chunkKey(cx, cz)); }
+  hasMesh(cx: number, cz: number): boolean {
+    return this.meshedColumns.has(chunkKey(cx, cz));
+  }
+  hasInFlight(cx: number, cz: number): boolean {
+    for (let sy = 0; sy < SECTIONS; sy++) {
+      if (this.inFlight.has(sectionKey(cx, sy, cz))) return true;
+    }
+    return false;
+  }
   /** 透明/水通道的当前排序结果（按几何中心到相机距离远→近），用于调试与自动化断言 */
   get transparentOrder() {
     return this.transparentOrderCache.map((e) => ({ ...e }));
   }
+  /** 排序条目数：调试面板只读长度，不必为拿长度复制整张表 */
+  get transparentOrderCount() {
+    return this.transparentOrderCache.length;
+  }
   /** 每个 Worker 当前在途任务数（诊断用） */
-  get workerBusy(): number[] { return [...this.busy]; }
-  get greedy() { return this.getConfig().greedy; }
+  get workerBusy(): number[] {
+    return [...this.busy];
+  }
+  get greedy() {
+    return this.getConfig().greedy;
+  }
   set greedy(v: boolean) {
     if (this.greedyOption === v) return;
     this.greedyOption = v;
@@ -658,7 +775,11 @@ export class ChunkManager implements System {
   private getConfig(): MeshConfig {
     if (!this.config) {
       this.config = buildMeshConfig(
-        this.world.registry, this.atlas, this.greedyOption, this.configRevision, this.mergeEmissiveOption,
+        this.world.registry,
+        this.atlas,
+        this.greedyOption,
+        this.configRevision,
+        this.mergeEmissiveOption,
       );
       this.postConfig();
     }
@@ -681,6 +802,22 @@ export class ChunkManager implements System {
     if (override && override >= 1) return Math.min(Math.max(1, Math.floor(override)), 8);
     const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
     return Math.max(1, Math.min(hc - 1, mobile ? 2 : 4));
+  }
+
+  private takeSnapshots(): SnapshotBuffers | undefined {
+    return this.snapshotPool.pop();
+  }
+
+  private recycleSnapshots(buffers: ArrayBuffer[] | undefined): void {
+    if (!buffers || buffers.length < 3 || this.snapshotPool.length >= 12) return;
+    const data = new Uint8Array(buffers[0]);
+    const sky = new Uint8Array(buffers[1]);
+    const block = new Uint8Array(buffers[2]);
+    // 尺寸不符（配置变更 / 旧版本回传）就不回收，宁可丢给 GC
+    if (data.length !== sky.length || data.length !== block.length) return;
+    const expected = (CHUNK_SIZE + 2) * (SECTION_HEIGHT + 2) * (CHUNK_SIZE + 2);
+    if (data.length !== expected) return;
+    this.snapshotPool.push({ data, sky, block });
   }
 
   /** 选最空闲的 Worker（在途任务数最少），并记一笔在途 */
@@ -721,14 +858,18 @@ export class ChunkManager implements System {
    * 请求一个区块的网格；同一 key 在途时复用记录（代次去重）。
    * wantPromise=false（流式调度的常态）时不分配 Promise，只有预载等待才要。
    */
-  private requestMesh(cx: number, cz: number, wantPromise = false): Promise<void> | null {
-    const key = chunkKey(cx, cz);
+  private requestMesh(cx: number, cz: number, sy: number, wantPromise = false): Promise<void> | null {
+    const key = sectionKey(cx, sy, cz);
     const existing = this.inFlight.get(key);
     if (existing) return wantPromise ? (existing.promise ?? this.adoptInFlight(existing)) : null;
     const generation = ++this.generation;
     const configRevision = this.configRevision;
     let resolve: () => void = () => {};
-    const promise = wantPromise ? new Promise<void>((r) => { resolve = r; }) : null;
+    const promise = wantPromise
+      ? new Promise<void>((r) => {
+          resolve = r;
+        })
+      : null;
     this.inFlight.set(key, { generation, configRevision, promise, resolve });
     // 网格调度是"有意义访问"：刷新 LRU 时钟，让缓冲区保留玩家真正看过的区块
     this.world.touchChunk(cx, cz);
@@ -737,9 +878,9 @@ export class ChunkManager implements System {
       // H05：主线程路径必须兜住异常——applySync 抛错时若不释放 inFlight，
       // 该 key 永久卡在途，backlog 涨满后整条生成流停摆（initialLoad 则永挂黑屏）
       try {
-        this.applySync(cx, cz);
+        this.applySync(cx, sy, cz);
       } catch (e) {
-        console.error(`[mesher] 主线程网格化失败 (${cx}, ${cz})，跳过该区块：`, e);
+        console.error(`[mesher] 主线程网格化失败 (${cx},${sy},${cz})，跳过该分段：`, e);
       }
       this.inFlight.delete(key);
       resolve();
@@ -748,12 +889,12 @@ export class ChunkManager implements System {
       // （invalidateConfig 现在会立即重建，但这里兜住未来新增的调用路径）
       this.getConfig();
       const wid = this.pickWorker();
-      const snapshot = buildMeshSnapshot(this.world, cx, cz);
+      const snapshot = buildMeshSnapshot(this.world, cx, cz, sy, this.takeSnapshots());
       // known 为 null（9 格全已知）时不转移，Worker 侧按全已知处理
       const transfer = [snapshot.data.buffer, snapshot.sky.buffer, snapshot.block.buffer];
       if (snapshot.known) transfer.push(snapshot.known.buffer);
       this.workers[wid].postMessage(
-        { type: 'mesh', cx, cz, generation, configRevision, snapshot, wid },
+        { type: 'mesh', cx, cz, sy, generation, configRevision, snapshot, wid },
         // N4：known 位图与 data 同步转移，避免 Worker 侧收到丢失/复制的来源信息
         transfer,
       );
@@ -764,9 +905,14 @@ export class ChunkManager implements System {
   /** 给已在途但没有 Promise 的记录补一个等待者（预载与流式派发撞车时） */
   private adoptInFlight(rec: InFlight): Promise<void> {
     let done!: () => void;
-    const promise = new Promise<void>((r) => { done = r; });
+    const promise = new Promise<void>((r) => {
+      done = r;
+    });
     const prev = rec.resolve;
-    rec.resolve = () => { prev(); done(); };
+    rec.resolve = () => {
+      prev();
+      done();
+    };
     rec.promise = promise;
     return promise;
   }
@@ -775,13 +921,13 @@ export class ChunkManager implements System {
    * 尝试派发一个脏区块（三段优先级循环共用）。
    * 未生成 / 已在途的保留脏标记等下一帧；返回是否真正发出。
    */
-  private tryDispatch(cx: number, cz: number): boolean {
-    const key = chunkKey(cx, cz);
+  private tryDispatch(cx: number, sy: number, cz: number): boolean {
+    const key = sectionKey(cx, sy, cz);
     // 未生成的区块保留脏标记等下一帧
     if (!this.world.getChunk(cx, cz)?.generated) return false;
     if (this.inFlight.has(key)) return false;
     this.world.dirty.delete(key);
-    this.requestMesh(cx, cz);
+    this.requestMesh(cx, cz, sy);
     return true;
   }
 
@@ -803,7 +949,9 @@ export class ChunkManager implements System {
     }
     const generation = ++this.generation;
     let resolve!: () => void;
-    const promise = new Promise<void>((r) => { resolve = r; });
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
     this.pendingGen.set(key, { generation, promise, resolve });
     const wid = this.pickGenWorker();
     this.genWorkers[wid].postMessage({ type: 'gen', cx, cz, generation, wid });
@@ -834,16 +982,27 @@ export class ChunkManager implements System {
     this.pendingGen.delete(key);
     if (msg.type === 'genResult') {
       // 已被同步路径抢先生成（回退窗口）：丢弃 Worker 结果，避免重复初始化
-      if (this.world.chunks.has(key)) { rec.resolve(); return; }
+      if (this.world.chunks.has(key)) {
+        rec.resolve();
+        return;
+      }
       try {
         this.world.acceptGeneratedChunk(msg.cx, msg.cz, msg.data);
       } catch (e) {
         console.error(`[worldgen] 生成结果落地失败 (${msg.cx}, ${msg.cz})，主线程补算：`, e);
-        try { this.world.ensureChunk(msg.cx, msg.cz); } catch { /* 已记录，跳过该区块 */ }
+        try {
+          this.world.ensureChunk(msg.cx, msg.cz);
+        } catch {
+          /* 已记录，跳过该区块 */
+        }
       }
     } else {
       console.error('[worldgen] 区块生成失败，主线程补算：', msg.message);
-      try { this.world.ensureChunk(msg.cx, msg.cz); } catch { /* 已记录，跳过该区块 */ }
+      try {
+        this.world.ensureChunk(msg.cx, msg.cz);
+      } catch {
+        /* 已记录，跳过该区块 */
+      }
     }
     rec.resolve();
   }
@@ -861,11 +1020,16 @@ export class ChunkManager implements System {
         continue;
       }
       // 生成通道：独立队列与在途表，先行分流
-      if (msg.channel === 'gen') { this.drainGen(msg); continue; }
+      if (msg.channel === 'gen') {
+        this.drainGen(msg);
+        continue;
+      }
+      // 先回收快照内存，再做任何可能 continue 的判定
+      this.recycleSnapshots(msg.snapshotBuffers);
       // 每条回传消息都对应一次派发计数：无论结果是否过期都要回退，
       // 否则「区块卸载后旧结果晚到」会让 busy 计数永久偏高（v1.3.2 修复）。
       if (msg.wid != null && this.busy[msg.wid] > 0) this.busy[msg.wid]--;
-      const key = chunkKey(msg.cx, msg.cz);
+      const key = sectionKey(msg.cx, msg.sy ?? 0, msg.cz);
       const rec = this.inFlight.get(key);
       if (!rec || rec.generation !== msg.generation) continue;
       this.inFlight.delete(key);
@@ -878,13 +1042,14 @@ export class ChunkManager implements System {
       }
       if (msg.type === 'result') {
         if (this.world.getChunk(msg.cx, msg.cz)?.generated) {
-          this.applyPacked(key, msg.cx, msg.cz, msg.mesh);
-          this.accumulate(msg.stats);
+          const firstOfColumn = !this.meshedColumns.has(chunkKey(msg.cx, msg.cz));
+          this.applyPacked(key, msg.cx, msg.sy, msg.cz, msg.mesh);
+          this.accumulate(msg.stats, firstOfColumn);
         }
       } else {
         console.error('[mesher] 区块网格化失败，主线程补算：', msg.message);
         try {
-          this.applySync(msg.cx, msg.cz);
+          this.applySync(msg.cx, msg.sy ?? 0, msg.cz);
         } catch (e) {
           console.error(`[mesher] 主线程补算失败 (${msg.cx}, ${msg.cz})，跳过该区块：`, e);
         }
@@ -893,48 +1058,64 @@ export class ChunkManager implements System {
     }
   }
 
-  private accumulate(s: MeshStats): void {
+  /** 累计网格统计；chunks 按「列」计数（诊断用它算每区块 quad 均值，按段算会偏小 5 倍） */
+  private accumulate(s: MeshStats, countColumn = false): void {
     this.totals.quads += s.quads;
     this.totals.vertices += s.vertices;
     this.totals.merged += s.merged;
     this.totals.ms += s.ms;
-    this.totals.chunks++;
+    if (countColumn) this.totals.chunks++;
   }
 
   /** 主线程同步网格化（降级路径 / Worker 单区块失败兜底 / 基准对照） */
-  private applySync(cx: number, cz: number): void {
+  private applySync(cx: number, sy: number, cz: number): void {
     const src = new WorldMeshSource(this.world, cx * CHUNK_SIZE, cz * CHUNK_SIZE, this.getConfig());
-    const out = meshChunk(src);
+    const out = meshChunk(src, sy * SECTION_HEIGHT, SECTION_HEIGHT);
     const { mesh } = packMesh(out);
-    this.applyPacked(chunkKey(cx, cz), cx, cz, mesh);
-    this.accumulate(out.stats);
+    const firstOfColumn = !this.meshedColumns.has(chunkKey(cx, cz));
+    this.applyPacked(sectionKey(cx, sy, cz), cx, sy, cz, mesh);
+    this.accumulate(out.stats, firstOfColumn);
   }
 
-  private applyPacked(key: string, cx: number, cz: number, data: PackedMesh): void {
+  private applyPacked(key: string, cx: number, sy: number, cz: number, data: PackedMesh): void {
     const old = this.meshes.get(key);
-    if (old) this.disposeMeshes(old);
+    if (old) {
+      this.residentQuads -= old.quads;
+      this.residentVertices -= old.quads * 4;
+      this.disposeMeshes(old);
+    }
     const make = (geo: PackedGeo | null, mat: THREE.Material, order: number): THREE.Mesh | undefined => {
       if (!geo || geo.indices.length === 0) return undefined;
       const mesh = new THREE.Mesh(buildGeo(geo, this.packedLightingOption), mat);
-      mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+      // 顶点 y 已归一到 section 内 0..16，这里只负责抬到世界高度
+      mesh.position.set(cx * CHUNK_SIZE, sy * SECTION_HEIGHT, cz * CHUNK_SIZE);
       mesh.renderOrder = order;
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
       this.scene.add(mesh);
       return mesh;
     };
+    const firstOfColumn = !this.meshedColumns.has(chunkKey(cx, cz));
+    const quads =
+      (data.opaque?.indices.length ?? 0) / 6 +
+      (data.emissive?.indices.length ?? 0) / 6 +
+      (data.transparent?.indices.length ?? 0) / 6 +
+      (data.water?.indices.length ?? 0) / 6;
     const entry: ChunkMeshes = {
+      quads,
       opaque: make(data.opaque, this.materials.opaque, 0),
       // 对照路径的独立 emissive 通道；默认路径 data.emissive 恒为 null
-      emissive: this.mergeEmissiveOption
-        ? undefined
-        : make(data.emissive, this.materials.emissive, 1),
+      emissive: this.mergeEmissiveOption ? undefined : make(data.emissive, this.materials.emissive, 1),
       transparent: make(data.transparent, this.materials.transparent, 2),
       water: make(data.water, this.materials.water, 2),
     };
     this.meshes.set(key, entry);
+    this.residentQuads += quads;
+    this.residentVertices += quads * 4;
+    this.meshedColumns.add(chunkKey(cx, cz));
     this.sortDirty = true;
-    this.events.emit('chunk:meshed', { cx, cz });
+    // 事件保持「每列一次」的旧语义：插件监听它做区块级刷新，5 段各发一次会放大 5 倍
+    if (firstOfColumn) this.events.emit('chunk:meshed', { cx, cz });
   }
 
   /**
@@ -960,7 +1141,7 @@ export class ChunkManager implements System {
         items.push({ key, pass, mesh, dist: this.sortTmp.distanceTo(cam) });
       }
     }
-    items.sort((a, b) => (b.dist - a.dist) || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
+    items.sort((a, b) => b.dist - a.dist || a.key.localeCompare(b.key) || a.pass.localeCompare(b.pass));
     this.transparentOrderCache = items.map((it, i) => {
       const order = 10 + i;
       it.mesh.renderOrder = order;
@@ -1002,22 +1183,30 @@ export class ChunkManager implements System {
 
     // 0) 远处脏标记回队：之前 discard 会让驻留网格永久保留旧配置 / 旧方块数据
     for (const key of this.deferredDirty) {
-      const [x, z] = parseChunkKey(key);
+      const [x, , z] = parseSectionKey(key);
       if (Math.abs(x - cx) <= margin && Math.abs(z - cz) <= margin) {
         this.deferredDirty.delete(key);
         this.world.dirty.add(key);
       }
     }
 
-    // 0a) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的区块重新入队。
-    // 已在 dirty 里的不重复 add：移动时每帧全量扫描驻留区块，重复 add 是白费的哈希写入。
-    for (const [key, chunk] of this.world.chunks) {
-      if (!chunk.generated) continue;
-      if (Math.abs(chunk.cx - cx) > margin || Math.abs(chunk.cz - cz) > margin) continue;
-      // 已在生成在途表里的不重复入队：结果落地时会自行入脏
-      if (!this.meshes.has(key) && !this.inFlight.has(key) && !this.pendingGen.has(key) &&
-          !this.world.dirty.has(key)) {
-        this.world.dirty.add(key);
+    // 0a) 兜底自愈：视距内「已生成但无网格、且没有在途任务」的 section 重新入队。
+    // 扫描成本是 5×驻留区块，降到每 0.25s 一次；玩家移动一帧看不出一帧的差别。
+    this.healAcc += dt;
+    if (this.healAcc >= 0.25) {
+      this.healAcc = 0;
+      const genKey = (x: number, z: number) => chunkKey(x, z);
+      for (const chunk of this.world.chunks.values()) {
+        if (!chunk.generated) continue;
+        if (Math.abs(chunk.cx - cx) > margin || Math.abs(chunk.cz - cz) > margin) continue;
+        // 生成在途时结果落地会自己标脏，不必在这里重复入队
+        if (this.pendingGen.has(genKey(chunk.cx, chunk.cz))) continue;
+        for (let sy = 0; sy < SECTIONS; sy++) {
+          const key = sectionKey(chunk.cx, sy, chunk.cz);
+          if (!this.meshes.has(key) && !this.inFlight.has(key) && !this.world.dirty.has(key)) {
+            this.world.dirty.add(key);
+          }
+        }
       }
     }
 
@@ -1037,7 +1226,7 @@ export class ChunkManager implements System {
         const key = chunkKey(cx + dx, cz + dz);
         const chunk = this.world.getChunk(cx + dx, cz + dz);
         if (chunk?.generated) continue;
-        if (this.pendingGen.has(key)) continue;   // 异步在途，等回传
+        if (this.pendingGen.has(key)) continue; // 异步在途，等回传
         if (genDispatched >= MAX_GEN_DISPATCH_PER_FRAME) break;
         if (this.pendingGen.size >= MAX_PENDING_GEN) break;
         this.requestGenerate(cx + dx, cz + dz);
@@ -1062,15 +1251,25 @@ export class ChunkManager implements System {
       if (this.camera) {
         const dir = this.camera.getWorldDirection(this.sortTmp);
         const len = Math.hypot(dir.x, dir.z);
-        if (len > 1e-6) { fwdX = dir.x / len; fwdZ = dir.z / len; }
+        if (len > 1e-6) {
+          fwdX = dir.x / len;
+          fwdZ = dir.z / len;
+        }
       }
       const camX = this.camera ? this.camera.position.x : 0;
       const camZ = this.camera ? this.camera.position.z : 0;
 
-      interface DirtyEntry { x: number; z: number; d2: number; refresh: boolean; out: boolean }
+      interface DirtyEntry {
+        x: number;
+        sy: number;
+        z: number;
+        d2: number;
+        refresh: boolean;
+        out: boolean;
+      }
       const list: DirtyEntry[] = [];
       for (const key of this.world.dirty) {
-        const [x, z] = parseChunkKey(key);
+        const [x, sy, z] = parseSectionKey(key);
         if (Math.abs(x - cx) > margin || Math.abs(z - cz) > margin) {
           // 远处脏标记暂存而非丢弃：invalidateConfig / 光照 flush 会标记缓冲区里的驻留
           // 网格，直接丢弃会让它们一直用旧几何，走近也不会修复（已有网格不触发自愈）。
@@ -1084,16 +1283,17 @@ export class ChunkManager implements System {
         const dist = Math.hypot(dx, dz);
         const dot = dist > 1e-6 ? (dx * fwdX + dz * fwdZ) / dist : 1;
         list.push({
-          x, z,
+          x,
+          sy,
+          z,
           d2: (x - cx) ** 2 + (z - cz) ** 2,
           refresh: this.meshes.has(key),
           out: dot < VIEW_DOT_THRESHOLD,
         });
       }
-      list.sort((a, b) =>
-        (a.refresh ? 1 : 0) - (b.refresh ? 1 : 0) ||
-        (a.out ? 1 : 0) - (b.out ? 1 : 0) ||
-        a.d2 - b.d2);
+      list.sort(
+        (a, b) => (a.refresh ? 1 : 0) - (b.refresh ? 1 : 0) || (a.out ? 1 : 0) - (b.out ? 1 : 0) || a.d2 - b.d2,
+      );
 
       let dispatched = 0;
       let refresh = 0;
@@ -1102,23 +1302,27 @@ export class ChunkManager implements System {
       for (const it of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME) break;
         if (it.refresh) continue;
-        if (!this.tryDispatch(it.x, it.z)) continue;
+        if (!this.tryDispatch(it.x, it.sy, it.z)) continue;
         dispatched++;
       }
       // ② 视野内的边界刷新
       for (const it of list) {
         if (dispatched >= MAX_DISPATCH_PER_FRAME || refresh >= MAX_REFRESH_DISPATCH_PER_FRAME) break;
         if (!it.refresh || it.out) continue;
-        if (!this.tryDispatch(it.x, it.z)) continue;
+        if (!this.tryDispatch(it.x, it.sy, it.z)) continue;
         dispatched++;
         refresh++;
       }
       // ③ 视野外的边界刷新：双重限流，玩家回头前还有第 0 步兜底重排
       for (const it of list) {
-        if (dispatched >= MAX_DISPATCH_PER_FRAME || refresh >= MAX_REFRESH_DISPATCH_PER_FRAME ||
-          offview >= MAX_OFFVIEW_DISPATCH_PER_FRAME) break;
+        if (
+          dispatched >= MAX_DISPATCH_PER_FRAME ||
+          refresh >= MAX_REFRESH_DISPATCH_PER_FRAME ||
+          offview >= MAX_OFFVIEW_DISPATCH_PER_FRAME
+        )
+          break;
         if (!it.refresh || !it.out) continue;
-        if (!this.tryDispatch(it.x, it.z)) continue;
+        if (!this.tryDispatch(it.x, it.sy, it.z)) continue;
         dispatched++;
         refresh++;
         offview++;
@@ -1140,22 +1344,36 @@ export class ChunkManager implements System {
     for (const key of keys) {
       const chunk = this.world.chunks.get(key);
       if (!chunk) continue;
-      const rec = this.inFlight.get(key);
-      if (rec) { this.inFlight.delete(key); rec.resolve(); }
+      for (let sy = 0; sy < SECTIONS; sy++) {
+        const rec = this.inFlight.get(sectionKey(chunk.cx, sy, chunk.cz));
+        if (rec) {
+          this.inFlight.delete(sectionKey(chunk.cx, sy, chunk.cz));
+          rec.resolve();
+        }
+      }
       // 生成在途的区块被卸载：结算 Promise，Worker 晚到的结果由 drainGen 丢弃
       const grec = this.pendingGen.get(key);
-      if (grec) { this.pendingGen.delete(key); grec.resolve(); }
-      const m = this.meshes.get(key);
-      if (m) {
+      if (grec) {
+        this.pendingGen.delete(key);
+        grec.resolve();
+      }
+      for (let sy = 0; sy < SECTIONS; sy++) {
+        const sk = sectionKey(chunk.cx, sy, chunk.cz);
+        const m = this.meshes.get(sk);
+        if (!m) continue;
+        this.residentQuads -= m.quads;
+        this.residentVertices -= m.quads * 4;
         this.disposeMeshes(m);
-        this.meshes.delete(key);
+        this.meshes.delete(sk);
         this.sortDirty = true;
       }
+      this.meshedColumns.delete(key);
       // 先让光照引擎的区块缓存失效，再删除数据：否则重建后 BFS 可能写入旧对象。
       this.world.light.invalidate(chunk.cx, chunk.cz);
       this.world.unloadChunk(key);
-      this.world.dirty.delete(key);
-      this.deferredDirty.delete(key);
+      for (let sy = 0; sy < SECTIONS; sy++) this.world.dirty.delete(sectionKey(chunk.cx, sy, chunk.cz));
+      // deferredDirty 存的是 section key，卸载时要整列 5 个都清掉
+      for (let sy = 0; sy < SECTIONS; sy++) this.deferredDirty.delete(sectionKey(chunk.cx, sy, chunk.cz));
       this.events.emit('chunk:unloaded', { cx: chunk.cx, cz: chunk.cz });
     }
   }
@@ -1185,6 +1403,7 @@ export class ChunkManager implements System {
       this.meshes.delete(key);
     }
     this.meshes.clear();
+    this.meshedColumns.clear();
     this.transparentOrderCache.length = 0;
     // inFlight 已清空，teardownWorkers 不会触发主线程补算
     this.teardownWorkers();
@@ -1208,7 +1427,7 @@ export class ChunkManager implements System {
         const [dx, dz] = list[i];
         genPromises.push(this.requestGenerate(cx + dx, cz + dz));
         if (i % 3 === 2) {
-          onProgress?.((i + 1) / list.length * 0.5);
+          onProgress?.(((i + 1) / list.length) * 0.5);
           await new Promise((r) => setTimeout(r, 0));
         }
       }
@@ -1225,10 +1444,15 @@ export class ChunkManager implements System {
 
       const promises: Promise<void>[] = [];
       for (const [dx, dz] of list) {
-        const key = chunkKey(cx + dx, cz + dz);
-        this.world.dirty.delete(key);
-        // 预载需要等待完成：显式要 Promise
-        promises.push(this.requestMesh(cx + dx, cz + dz, true) as Promise<void>);
+        const colX = cx + dx;
+        const colZ = cz + dz;
+        for (let sy = 0; sy < SECTIONS; sy++) this.world.dirty.delete(sectionKey(colX, sy, colZ));
+        // 一列 5 个 section 都完成才算这一列预载完成，进度按列走
+        const parts: Promise<void>[] = [];
+        for (let sy = 0; sy < SECTIONS; sy++) {
+          parts.push(this.requestMesh(colX, colZ, sy, true) as Promise<void>);
+        }
+        promises.push(Promise.all(parts).then(() => undefined));
       }
       let done = 0;
       for (const p of promises) {

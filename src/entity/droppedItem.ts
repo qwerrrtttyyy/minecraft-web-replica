@@ -6,16 +6,14 @@
  * 拾取 / 消失只从 scene 移除，绝不 dispose 共享资源。
  */
 import * as THREE from 'three';
-import { DROPS } from '../core/tuning';
-import { ITEMS } from '../player/survival';
-import { moveBody, type PhysicsBody } from '../player/physics';
-import {
-  advanceWater, canPickup, dropsMerge, scatterOffset, shouldDespawn,
-} from '../world/dropLogic';
-import type { TextureAtlas } from '../gfx/atlas';
-import type { World } from '../world/world';
-import type { Particles } from '../gfx/particles';
 import type { SoundEngine } from '../audio/sound';
+import { DROPS } from '../core/tuning';
+import type { TextureAtlas } from '../gfx/atlas';
+import type { Particles } from '../gfx/particles';
+import { moveBody, type PhysicsBody } from '../player/physics';
+import { ITEMS } from '../player/survival';
+import { advanceWater, canPickup, dropsMerge, scatterOffset, shouldDespawn } from '../world/dropLogic';
+import type { World } from '../world/world';
 
 /** 掉落物碰撞盒：小方块，脚底中心为 pos */
 const BODY_SIZE = 0.25;
@@ -46,7 +44,9 @@ export class DroppedItem implements PhysicsBody {
   constructor(
     readonly name: string,
     public count: number,
-    x: number, y: number, z: number,
+    x: number,
+    y: number,
+    z: number,
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
     bobPhase: number,
@@ -105,15 +105,8 @@ export class DropManager {
     }
     if (remaining <= 0) return;
 
-    const item = new DroppedItem(
-      name, remaining, px, py, pz,
-      this.geometryFor(name), this.material, index * 0.7,
-    );
-    item.vel.set(
-      scatter.vx * DROPS.popSpeed,
-      scatter.vy * DROPS.popSpeed,
-      scatter.vz * DROPS.popSpeed,
-    );
+    const item = new DroppedItem(name, remaining, px, py, pz, this.geometryFor(name), this.material, index * 0.7);
+    item.vel.set(scatter.vx * DROPS.popSpeed, scatter.vy * DROPS.popSpeed, scatter.vz * DROPS.popSpeed);
     this.opts.scene.add(item.mesh);
     this.items.push(item);
   }
@@ -131,11 +124,7 @@ export class DropManager {
 
       // 入水判定：取身体中部所在格，液体（本作只有水）才触发
       const inWater = world.registry.get(
-        world.getBlock(
-          Math.floor(item.pos.x),
-          Math.floor(item.pos.y + item.height / 2),
-          Math.floor(item.pos.z),
-        ),
+        world.getBlock(Math.floor(item.pos.x), Math.floor(item.pos.y + item.height / 2), Math.floor(item.pos.z)),
       ).liquid;
       if (inWater && !item.wasInWater) {
         const color = this.colorOf(item.name);
@@ -145,9 +134,7 @@ export class DropManager {
       item.wasInWater = inWater;
 
       // 水中终端下沉 + 水平指数衰减；出水把重力交回 moveBody 处理落地
-      const vel = advanceWater(
-        { vx: item.vel.x, vy: item.vel.y, vz: item.vel.z }, dt, inWater,
-      );
+      const vel = advanceWater({ vx: item.vel.x, vy: item.vel.y, vz: item.vel.z }, dt, inWater);
       item.vel.set(vel.vx, vel.vy, vel.vz);
       moveBody(world, item, dt);
       if (item.onGround) {
@@ -156,10 +143,7 @@ export class DropManager {
       }
       item.applyVisual(dt);
 
-      if (canPickup(
-        { x: item.pos.x, y: item.pos.y, z: item.pos.z, age: item.age },
-        playerPos,
-      )) {
+      if (canPickup({ x: item.pos.x, y: item.pos.y, z: item.pos.z, age: item.age }, playerPos)) {
         this.opts.onPickup(item.name, item.count);
         this.opts.particles?.burst(item.pos.x, item.pos.y + 0.3, item.pos.z, this.colorOf(item.name), 6, 0.25, 1);
         this.opts.sound?.click(880);
@@ -189,9 +173,7 @@ export class DropManager {
       geo = this.opts.atlas.makeItemGeometry(def ? def.tile : name);
     } else {
       const def = this.opts.world.registry.byNameGet(name);
-      geo = def
-        ? this.opts.atlas.makeBlockGeometry(def)
-        : this.opts.atlas.makeItemGeometry(name);
+      geo = def ? this.opts.atlas.makeBlockGeometry(def) : this.opts.atlas.makeItemGeometry(name);
       // 方块几何原点在底部（0..1），下移半格让 mesh 以身体中心对齐
       geo.translate(0, -0.5, 0);
     }

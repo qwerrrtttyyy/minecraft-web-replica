@@ -1,13 +1,32 @@
-import { CHUNK_SIZE, WORLD_HEIGHT, chunkKey, type BlockId } from '../core/types';
+import {
+  type BlockId,
+  CHUNK_SIZE,
+  chunkKey,
+  parseChunkKey,
+  SECTIONS,
+  sectionKey,
+  sectionOfY,
+  WORLD_HEIGHT,
+} from '../core/types';
 import { AIR } from './blocks';
 import type { Chunk, World } from './world';
 
 const CS = CHUNK_SIZE;
 const H = WORLD_HEIGHT;
 const DIRS: readonly (readonly [number, number, number])[] = [
-  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
 ];
-const HORIZ: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const HORIZ: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 
 /**
  * 体素光照：天空光 + 方块光，均为 0~15。
@@ -23,6 +42,12 @@ export class LightEngine {
   private blockQ: number[] = [];
   /** 光照发生变化的区块，最后统一并入 world.dirty */
   private touched = new Set<string>();
+  /**
+   * 本轮光照实际改动的 y 范围：flush 只标脏覆盖这段的 section，
+   * 避免「改一格就把整列 5 段全部重网格」。BFS 弹出/直写时都会更新。
+   */
+  private touchedY0 = WORLD_HEIGHT;
+  private touchedY1 = -1;
   private cacheCx = NaN;
   private cacheCz = NaN;
   private cacheChunk: Chunk | undefined;
@@ -77,8 +102,8 @@ export class LightEngine {
           const back = lz > 0 ? chunk.sky[idx - CS] : 16;
           const front = lz < CS - 1 ? chunk.sky[idx + CS] : 16;
           const below = y > 0 ? chunk.sky[idx - CS * CS] : 16;
-          let seed = left < level - 1 || right < level - 1 || back < level - 1 ||
-            front < level - 1 || below < level - 1;
+          let seed =
+            left < level - 1 || right < level - 1 || back < level - 1 || front < level - 1 || below < level - 1;
           // 边界格：只有能照亮外侧已点亮的邻居时才需要作为种子（角格两侧都查）
           if (!seed && lx === 0) seed = this.borderSkyImproves(x0 - 1, y, z0 + lz, level);
           if (!seed && lx === CS - 1) seed = this.borderSkyImproves(x0 + CS, y, z0 + lz, level);
@@ -165,7 +190,7 @@ export class LightEngine {
       if (chunk && chunk.lit) {
         const idx = chunk.idx(x & 15, y, z & 15);
         chunk.block[idx] = newDef.lightEmission;
-        this.touched.add(chunkKey(chunk.cx, chunk.cz));
+        this.markTouched(chunk.cx, chunk.cz, y);
         this.blockQ.push(x, y, z, newDef.lightEmission);
       }
     }
@@ -195,6 +220,12 @@ export class LightEngine {
     this.cacheCx = NaN;
     this.cacheCz = NaN;
     this.cacheChunk = undefined;
+  }
+
+  private markTouched(cx: number, cz: number, y: number): void {
+    this.touched.add(chunkKey(cx, cz));
+    if (y < this.touchedY0) this.touchedY0 = y;
+    if (y > this.touchedY1) this.touchedY1 = y;
   }
 
   private chunkAt(cx: number, cz: number): Chunk | undefined {
@@ -254,6 +285,8 @@ export class LightEngine {
       const y = q[head++];
       const z = q[head++];
       const level = q[head++];
+      if (y < this.touchedY0) this.touchedY0 = y;
+      if (y > this.touchedY1) this.touchedY1 = y;
       if (level <= 1) continue;
       const sc = this.chunkAt(x >> 4, z >> 4);
       if (!sc || !sc.lit) continue;
@@ -273,7 +306,7 @@ export class LightEngine {
         const arr = sky ? nc.sky : nc.block;
         if (next <= 0 || next <= arr[nidx]) continue;
         arr[nidx] = next;
-        this.touched.add(chunkKey(nc.cx, nc.cz));
+        this.markTouched(nc.cx, nc.cz, ny);
         q.push(nx, ny, nz, next);
       }
       if (performance.now() - start >= maxMs) break;
@@ -334,7 +367,7 @@ export class LightEngine {
         if (nl === 0) continue;
         if (nl < pl && !this.isEmitter(nc.data[nidx], nl)) {
           nArr[nidx] = 0;
-          this.touched.add(chunkKey(nc.cx, nc.cz));
+          this.markTouched(nc.cx, nc.cz, ny);
           q.push(nx, ny, nz, nl);
         } else {
           // 独立光源或更亮的边界：稍后从这里重新扩散
@@ -383,7 +416,7 @@ export class LightEngine {
         if (nl === 0) continue;
         if (nl < pl && !this.isEmitter(nc.data[nidx], nl)) {
           nc.sky[nidx] = 0;
-          this.touched.add(chunkKey(nc.cx, nc.cz));
+          this.markTouched(nc.cx, nc.cz, ny);
           q.push(nx, ny, nz, nl);
         } else {
           // 独立光源或更亮的边界：稍后从这里重新扩散
@@ -409,7 +442,7 @@ export class LightEngine {
       if (level <= 0) break;
       if (chunk.sky[idx] < level) {
         chunk.sky[idx] = level;
-        this.touched.add(chunkKey(chunk.cx, chunk.cz));
+        this.markTouched(chunk.cx, chunk.cz, y);
         this.skyQ.push(x, y, z, level);
       }
     }
@@ -433,7 +466,17 @@ export class LightEngine {
 
   flush() {
     if (this.touched.size === 0) return;
-    for (const key of this.touched) this.world.dirty.add(key);
+    // 只标脏本轮实际改动覆盖到的 section。没有 y 记录（例如只做了区块初始化）时
+    // 退回整列，保证不会漏刷。直接写 world.dirty，便于光照引擎跑在轻量 stub 上。
+    const hasRange = this.touchedY1 >= this.touchedY0;
+    const sy0 = hasRange ? sectionOfY(this.touchedY0) : 0;
+    const sy1 = hasRange ? sectionOfY(this.touchedY1) : SECTIONS - 1;
+    for (const key of this.touched) {
+      const [cx, cz] = parseChunkKey(key);
+      for (let sy = sy0; sy <= sy1; sy++) this.world.dirty.add(sectionKey(cx, sy, cz));
+    }
     this.touched.clear();
+    this.touchedY0 = WORLD_HEIGHT;
+    this.touchedY1 = -1;
   }
 }

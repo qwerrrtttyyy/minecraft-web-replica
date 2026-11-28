@@ -9,12 +9,14 @@
   padding: 18px 22px;
   pointer-events: none;
   color: #f2f2f2;
-  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 13px;
   text-shadow: 1px 1px 0 #1a1a1a;
 }
 /* 显示态由类切换：flex 布局 / 上下分栏 / hints 居中只在可见时生效 */
-#photo-overlay.photo-overlay.photo-visible { display: flex; }
+#photo-overlay.photo-overlay.photo-visible {
+  display: flex;
+}
 #photo-overlay .mc-panel {
   align-self: flex-start;
   max-width: min(560px, 92vw);
@@ -32,7 +34,9 @@
   letter-spacing: 2px;
   margin-bottom: 6px;
 }
-#photo-overlay .photo-line { line-height: 1.65; }
+#photo-overlay .photo-line {
+  line-height: 1.65;
+}
 #photo-overlay .photo-actions {
   position: absolute;
   top: 18px;
@@ -57,8 +61,12 @@
   text-shadow: 1px 1px 0 #303030;
   cursor: pointer;
 }
-#photo-overlay .photo-actions button:hover { background: #838383; }
-#photo-overlay .photo-actions button:active { background: #555555; }
+#photo-overlay .photo-actions button:hover {
+  background: #838383;
+}
+#photo-overlay .photo-actions button:active {
+  background: #555555;
+}
 #photo-overlay .photo-hints {
   align-self: center;
   text-align: center;
@@ -85,11 +93,31 @@
   cursor: pointer;
   pointer-events: auto;
 }
-#photo-enter.photo-enter-visible { display: block; }
-#photo-enter:hover { background: rgba(82, 82, 88, 0.9); }
+#photo-enter.photo-enter-visible {
+  display: block;
+}
+#photo-enter:hover {
+  background: rgba(82, 82, 88, 0.9);
+}
 @media (pointer: coarse) {
-  #photo-overlay.photo-overlay { padding: 12px 14px; font-size: 12px; }
-  #photo-overlay .photo-actions { top: 12px; right: 14px; max-width: 60vw; }
-  #photo-overlay .photo-actions button { min-width: 64px; min-height: 44px; padding: 10px 12px; }
-  #photo-enter { right: 10px; bottom: 118px; min-height: 48px; padding: 10px 12px; }
+  #photo-overlay.photo-overlay {
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+  #photo-overlay .photo-actions {
+    top: 12px;
+    right: 14px;
+    max-width: 60vw;
+  }
+  #photo-overlay .photo-actions button {
+    min-width: 64px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  #photo-enter {
+    right: 10px;
+    bottom: 118px;
+    min-height: 48px;
+    padding: 10px 12px;
+  }
 }
