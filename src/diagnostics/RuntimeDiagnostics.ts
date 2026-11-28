@@ -66,6 +66,12 @@ export interface DiagnosticSnapshot {
     /** 恢复后发现的能量越界条目数，正常应为 0 */
     invalidEnergy: number;
   };
+  /** v1.6.0-beta.3：摄影模式快照（可选，旧快照缺字段时跳过相关检查） */
+  photo?: {
+    active: boolean;
+    cameraOwner: string | null;
+    fov: number;
+  };
   /** 四季与天候快照（可选，旧快照缺字段时跳过相关检查） */
   weather?: {
     kind: string;
@@ -226,6 +232,16 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
       finite(pl.avgEnergy) && pl.avgEnergy >= 0 && pl.avgEnergy <= 100 &&
       Number.isInteger(pl.invalidEnergy) && pl.invalidEnergy === 0,
       `植物能量快照异常：avg=${pl.avgEnergy} invalid=${pl.invalidEnergy}`);
+  }
+
+  // ---- 摄影模式（v1.6.0-beta.3）----
+  // 相机归属必须与模式一致：取景时若被玩家控制回路抢回，或退出后没有归还，
+  // 都会留下「模式与相机不一致」的隐蔽故障，必须在诊断里报出来。
+  const photoSnap = s.photo;
+  if (photoSnap) {
+    check('photo-camera-owner',
+      photoSnap.active ? photoSnap.cameraOwner === 'photo' : photoSnap.cameraOwner !== 'photo',
+      `摄影模式 active=${photoSnap.active} 但相机归属为 ${photoSnap.cameraOwner}`);
   }
 
   // ---- WASM（v1.5.0）----

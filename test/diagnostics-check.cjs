@@ -304,4 +304,23 @@ console.log('运行时诊断组回归');
   ok('方块光 / 实体光天气因子漂移被捕获', has(drift, 'weather.channels'), ids(drift).join(','));
 }
 
+{
+  // v1.6.0-beta.3：摄影模式相机归属护栏（旧快照缺 photo 字段时跳过）
+  const healthy = runRuntimeDiagnostics(clone((s) => {
+    s.photo = { active: true, cameraOwner: 'photo', fov: 72 };
+  }));
+  ok('健康摄影快照不产生 photo 检查项', !has(healthy, 'photo-camera-owner'), ids(healthy).join(','));
+  const bad = runRuntimeDiagnostics(clone((s) => {
+    s.photo = { active: true, cameraOwner: 'player', fov: 72 };
+  }));
+  ok('摄影模式激活但相机归属 player 被捕获',
+    has(bad, 'photo-camera-owner') && bad.errors >= 1, ids(bad).join(','));
+  const leaked = runRuntimeDiagnostics(clone((s) => {
+    s.photo = { active: false, cameraOwner: 'photo', fov: 72 };
+  }));
+  ok('非摄影模式但相机归属 photo 被捕获', has(leaked, 'photo-camera-owner'), ids(leaked).join(','));
+  const absent = runRuntimeDiagnostics(base());
+  ok('旧快照缺 photo 字段时跳过该检查', !has(absent, 'photo-camera-owner'), ids(absent).join(','));
+}
+
 console.log(`\nPASS 运行时诊断组：${passed} 组断言全部通过`);

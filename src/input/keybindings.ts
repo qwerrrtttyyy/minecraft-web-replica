@@ -23,6 +23,7 @@ export const ACTION_LABELS = {
   debug: '调试信息',
   hud: '显示 / 隐藏界面',
   pause: '暂停 / 菜单',
+  photo: '摄影模式',
 } as const;
 
 export type GameAction = keyof typeof ACTION_LABELS;
@@ -42,6 +43,7 @@ export interface KeyBindings {
   debug: string;
   hud: string;
   pause: string;
+  photo: string;
 }
 
 export const DEFAULT_BINDINGS: KeyBindings = {
@@ -58,6 +60,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   debug: 'F3',
   hud: 'F1',
   pause: 'Escape',
+  photo: 'KeyP',
 };
 
 const STORAGE_KEY = 'minecraft-ts-keybindings-v1';

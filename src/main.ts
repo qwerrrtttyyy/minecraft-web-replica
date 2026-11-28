@@ -70,6 +70,8 @@ import {
   DiagnosticsRunner,
   type DiagnosticSnapshot, type DiagnosticReport,
 } from './diagnostics/RuntimeDiagnostics';
+import { PhotoMode } from './photo/PhotoMode';
+import { canWritePlayerCamera } from './photo/photoFrames';
 
 /**
  * 组装根（composition root）。
@@ -466,6 +468,8 @@ async function boot() {
   // N3：单 Mesh 裂痕覆盖层，跟随准星目标方块
   const crackOverlay = new CrackOverlay(engine.scene);
   let mode: Mode = 'title';
+  /** 摄影模式运行时（HUD 建好后实例化）；collectSave 需要它来保证不写入预览时刻 */
+  let photo: PhotoMode | null = null;
   // 开发者设置「显示调试信息」：常显 F3 面板
   let debugOn = settings.debugOverlay;
   let dirtySave = false;
@@ -514,11 +518,13 @@ async function boot() {
     edits: [...world.edits.entries()],
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, fly: player.fly },
     survival: survival.serialize(),
-    dayTime: sky.dayTime,
+    // 摄影模式的时刻是运行时预览：退出前若自动保存触发，写回进入前的原值
+    dayTime: photo?.active && photo.savedDayTime !== null ? photo.savedDayTime : sky.dayTime,
     hotbar: [...hotbar.slots],
     slot: hotbar.index,
     settings: { ...settings },
-    dayCount: sky.dayCount,
+    // sky.update 即使冻结 dayTime 也会推进 localTime；跨日时存档天数同样取进入前快照
+    dayCount: photo?.active && photo.savedDayCount !== null ? photo.savedDayCount : sky.dayCount,
     botany: botany.serializeEcology(),
     furnaces: { v: 1, cells: smelting.serialize() },
     // 标题界面尚未进入世界，数据袋未 load：沿用已读入存档的插件数据，避免导出丢失
@@ -911,6 +917,17 @@ async function boot() {
     onResetBindings: () => input.resetBindings(),
     isSurvival: () => survival.isSurvival,
     getCount: (s) => survival.countStack(s),
+  });
+
+  // ---- 摄影模式：接管相机 / 覆盖层 / 同帧导出；世界系统继续跑，玩家单独冻结 ----
+  photo = new PhotoMode({
+    engine, input, player, sky, weather, hud, uiRoot,
+    canEnter: () => mode === 'playing' && !survival.dead &&
+      !hud.menuOpen && !hud.craftingOpen && !hud.campfireOpen && !hud.paletteOpen &&
+      !hud.optionsOpen && !hud.optionsIOOpen && !hud.aboutOpen && !hud.keybindOpen &&
+      !hud.helpOpen && !panelHost.openId,
+    biomeAt: (x, z) => world.generator.biomeAt?.(x, z) ?? 'unknown',
+    getRenderDistance: () => chunks.renderDistance,
   });
 
   // 按键捕获阶段优先于 Input：重绑定面板等待按键时消费该事件，避免触发游戏动作
@@ -1381,6 +1398,7 @@ async function boot() {
   }
 
   function quitToTitle() {
+    photo?.exit(false); // 先还原取景预览，再让 collectSave 写回原始时刻
     saveNow();
     saved = collectSave();
     mode = 'title';
@@ -1584,6 +1602,11 @@ async function boot() {
         }
         return { tracked: stats.tracked, avgEnergy: stats.avgEnergy, invalidEnergy };
       })(),
+      photo: {
+        active: photo?.active ?? false,
+        cameraOwner: engine.cameraOwner,
+        fov: engine.camera.fov,
+      },
       save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
     };
   };
@@ -1606,6 +1629,7 @@ async function boot() {
     saveNow,
     onDeath: () => {
       // 状态机属于组装根，UI / 音效 / 触感由插件负责
+      photo?.exit(false); // 死亡流程接管输入，摄影模式不能在这里恢复指针锁
       mode = 'dead';
       input.enabled = false;
       input.reset();
@@ -1648,6 +1672,8 @@ async function boot() {
   const api = createCraftAPI({
     engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
     wasm, extensions,
+    // photo 已在 HUD 建好后实例化；此处仅把运行时视图挂到门面供控制台 / 测试使用
+    photo: photo!,
     getSaveProvider: () => provider,
     setSaveProvider: (p) => { provider = p; },
     input: {
@@ -1705,7 +1731,10 @@ async function boot() {
 
   // ---- 输入边缘事件 ----
   function processEdges() {
-    const edges = input.consumeEdges();
+    // 摄影模式期间只保留进出与调试边沿：滚轮的 slot 边沿不能改玩家快捷栏，
+    // 其余 gameplay 边沿也不能在玩家冻结时改动角色 / 打开面板。
+    const edges = input.consumeEdges().filter((e) =>
+      !photo?.active || e.type === 'photo' || e.type === 'pause' || e.type === 'debug');
     // Esc 与 pointerlockchange 可能同帧产生两个 pause 边沿，去重避免菜单闪开又自动关闭
     let pauseHandled = false;
     for (const e of edges) {
@@ -1715,6 +1744,13 @@ async function boot() {
       }
       switch (e.type) {
         case 'pause':
+          // 摄影模式吞掉暂停：Esc 只退出摄影模式，不开菜单
+          if (photo?.active) {
+            // 进入时主动释放指针锁会补发一条 pause 边沿，吞掉它避免瞬间退出
+            if (photo.consumeLockPause()) break;
+            photo.exit();
+            break;
+          }
           // 导入/导出面板与关于页盖在最上层，Esc 先关它们，再轮到设置页
           if (hud.aboutOpen) {
             hud.showAbout(false);
@@ -1763,6 +1799,10 @@ async function boot() {
           break;
         case 'hud':
           if (mode === 'playing') hud.toggleHudHidden();
+          break;
+        case 'photo':
+          if (photo?.active) photo.exit();
+          else photo?.enter();
           break;
         case 'tapBreak':
           if (mode === 'playing') player.tapBreak();
@@ -1817,6 +1857,7 @@ async function boot() {
 
   // ---- 系统注册 ----
   engine.addSystem({ name: 'edges', update: () => processEdges() });
+  if (photo) engine.addSystem(photo);
   engine.addSystem({
     name: 'sky',
     update: (dt, t) => {
@@ -1853,7 +1894,9 @@ async function boot() {
       drops.update(dt, player.pos, mode === 'playing');
       arrows.update(dt, mode === 'playing');
       if (mode === 'playing') {
-        player.update(dt);
+        // 冻结玩家而不是世界：摄影模式只跳过玩家更新（含玩家侧相机写入），
+        // 天气 / 实体 / 火焰 / 植物 / AI 继续推进，区块中心仍跟着玩家。
+        if (!photo?.active && canWritePlayerCamera(engine.cameraOwner)) player.update(dt);
         aiService.update(dt, { playerPos: player.pos, daylight: sky.daylight, playerDead: survival.dead });
         entities.update(dt, {
           playerPos: player.pos,
@@ -1955,7 +1998,7 @@ async function boot() {
         .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
         .multiply(sky.sunTint);
       const hlShape = player.target ? registry.get(player.target.block).shape : '';
-      const hlTarget = mode === 'playing' && player.target &&
+      const hlTarget = mode === 'playing' && !photo?.active && player.target &&
         hlShape !== 'cross' && hlShape !== 'slab' && hlShape !== 'candle'
         ? player.target : null;
       highlight.set(hlTarget);
@@ -2051,6 +2094,7 @@ async function boot() {
   // M05：顶层资源释放（Worker / 网格几何 / 材质 / 渲染器）。
   // bfcache 恢复的页面仍需要这些资源，因此 persisted=true 的 pagehide 不释放。
   const teardown = () => {
+    photo?.dispose(); // 先归还相机 / 渲染钩子并移除摄影模式的全局监听
     diagnostics.dispose();
     chunks.dispose();
     engine.dispose();
@@ -2064,7 +2108,7 @@ async function boot() {
     get mode() { return mode; },
     get gameMode() { return survival.mode; },
     engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling, arrows, fire, smelting, weather, cold, weatherParticles,
+    botany, falling, arrows, fire, smelting, weather, cold, weatherParticles, photo,
     /** 测试钩子：强制天气（null 恢复历法推导） */
     weatherSetForced: (kind: WeatherKind | null) => { weather.forced = kind; },
     services: container, events, plugins, api, wasm,

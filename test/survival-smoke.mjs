@@ -394,6 +394,131 @@ try {
   });
   ok('输入禁用期间 keyup 仍会清理按键', stuckKeys.length === 0, stuckKeys.join(','));
 
+  // ---- 摄影模式（P）：暂停态不可进入 / 冻结玩家 / 同帧 PNG ----
+  await page.evaluate(() => window.__mc.openMenu());
+  await page.keyboard.press('KeyP');
+  await sleep(150);
+  const pausedPhoto = await page.evaluate(() => ({
+    active: CraftAPI.photo.active,
+    display: getComputedStyle(document.querySelector('#photo-overlay')).display,
+    mode: window.__mc.mode,
+  }));
+  ok('暂停态按 P 不进入摄影模式',
+    !pausedPhoto.active && pausedPhoto.display === 'none' && pausedPhoto.mode === 'paused',
+    JSON.stringify(pausedPhoto));
+  await page.evaluate(() => window.__mc.resumeGame());
+  await sleep(150);
+
+  const beforePhoto = await page.evaluate(() => ({
+    dayTime: window.__mc.sky.dayTime,
+    dayCount: window.__mc.sky.dayCount,
+    pos: { ...window.__mc.player.pos },
+    cam: { ...window.__mc.engine.camera.position },
+  }));
+  await page.keyboard.press('KeyP');
+  await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
+  const inPhoto = await page.evaluate(() => {
+    const overlay = document.querySelector('#photo-overlay');
+    const style = getComputedStyle(overlay);
+    const info = overlay.querySelector('.photo-info').getBoundingClientRect();
+    const hints = overlay.querySelector('.photo-hints').getBoundingClientRect();
+    return {
+      active: CraftAPI.photo.active,
+      display: style.display,
+      flexDirection: style.flexDirection,
+      justifyContent: style.justifyContent,
+      hintsBelowInfo: hints.top > info.bottom,
+      visible: overlay.offsetParent !== null,
+      hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
+      owner: window.__mc.engine.cameraOwner,
+    };
+  });
+  ok('按 P 进入摄影模式：覆盖层可见 / HUD 隐藏 / 相机归属 photo',
+    inPhoto.active && inPhoto.visible && inPhoto.display !== 'none' &&
+      inPhoto.hudHidden && inPhoto.owner === 'photo', JSON.stringify(inPhoto));
+  ok('摄影覆盖层 flex 生效：上下分栏且操作提示在底部',
+    inPhoto.display === 'flex' && inPhoto.flexDirection === 'column' &&
+      inPhoto.justifyContent === 'space-between' && inPhoto.hintsBelowInfo, JSON.stringify(inPhoto));
+
+  // 按住 W：玩家绝不能移动（否则会标脏、挪动区块中心、污染存档坐标），相机应自由平移
+  await page.keyboard.down('KeyW');
+  for (let i = 0; i < 6; i++) await sleep(150);
+  await page.keyboard.up('KeyW');
+  const photoMove = await page.evaluate((before) => {
+    const p = window.__mc.player.pos;
+    const c = window.__mc.engine.camera.position;
+    return {
+      player: Math.hypot(p.x - before.pos.x, p.z - before.pos.z),
+      camera: Math.hypot(c.x - before.cam.x, c.z - before.cam.z),
+    };
+  }, beforePhoto);
+  ok('摄影模式冻结玩家坐标', photoMove.player < 1e-6, `位移 ${photoMove.player}`);
+  ok('摄影模式自由相机可平移', photoMove.camera > 0.5, `位移 ${photoMove.camera.toFixed(2)}`);
+
+  // sky.update 无条件推进 localTime：即使 dayTime 冻结，dayCount 也会跨日。
+  // 手动推进超过一整天，验证 collectSave 暴露的 dayCount/dayTime 仍是进入前快照。
+  const savePreview = await page.evaluate((before) => {
+    const sky = window.__mc.sky;
+    sky.update(sky.dayLength + 1, 0);
+    const data = CraftAPI.save.export();
+    return {
+      liveDayCount: sky.dayCount,
+      savedDayCount: data.dayCount,
+      savedDayTime: data.dayTime,
+      beforeDayCount: before.dayCount,
+      beforeDayTime: before.dayTime,
+    };
+  }, beforePhoto);
+  ok('摄影跨日后 collectSave 的 dayCount/dayTime 仍取进入前快照',
+    savePreview.liveDayCount === savePreview.beforeDayCount + 1 &&
+      savePreview.savedDayCount === savePreview.beforeDayCount &&
+      Math.abs(savePreview.savedDayTime - savePreview.beforeDayTime) < 1e-9,
+    JSON.stringify(savePreview));
+
+  await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
+  await page.keyboard.press('Enter');
+  await page.waitForFunction('CraftAPI.photo.lastDataUrl.length > 0', { timeout: 10000 }).catch(() => {});
+  const shot = await page.evaluate(async () => {
+    const url = CraftAPI.photo.lastDataUrl || '';
+    const png = url.startsWith('data:image/png;base64');
+    if (!png) return { prefix: url.slice(0, 32), png, colors: 0, length: url.length };
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+    const c = document.createElement('canvas');
+    c.width = 16; c.height = 16;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16).data;
+    const colors = new Set();
+    for (let i = 0; i < data.length; i += 4) colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    return { prefix: url.slice(0, 22), png, colors: colors.size, length: url.length };
+  });
+  ok('摄影模式回车导出非空 PNG 截图',
+    shot.png && shot.colors > 1 && shot.length > 2000,
+    JSON.stringify(shot));
+
+  await page.keyboard.press('KeyP');
+  await page.waitForFunction('CraftAPI.photo.active === false', { timeout: 10000 }).catch(() => {});
+  const afterPhoto = await page.evaluate((before) => ({
+    active: CraftAPI.photo.active,
+    display: getComputedStyle(document.querySelector('#photo-overlay')).display,
+    owner: window.__mc.engine.cameraOwner,
+    hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
+    timeDelta: Math.abs(window.__mc.sky.dayTime - before.dayTime),
+    dayCountDelta: window.__mc.sky.dayCount - before.dayCount,
+    posDelta: Math.hypot(
+      window.__mc.player.pos.x - before.pos.x,
+      window.__mc.player.pos.z - before.pos.z,
+    ),
+  }), beforePhoto);
+  ok('按 P 退出摄影模式：覆盖层隐藏 / 相机与 HUD 恢复',
+    !afterPhoto.active && afterPhoto.display === 'none' && afterPhoto.owner === null &&
+      !afterPhoto.hudHidden, JSON.stringify(afterPhoto));
+  ok('摄影预览未污染时刻、天数与玩家坐标',
+    afterPhoto.timeDelta < 0.01 && afterPhoto.dayCountDelta === 0 && afterPhoto.posDelta < 1e-6,
+    `dt=${afterPhoto.timeDelta} dd=${afterPhoto.dayCountDelta} dp=${afterPhoto.posDelta}`);
+  await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
+
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
   const mineCell = await page.evaluate(() => {
     const mc = window.__mc;
