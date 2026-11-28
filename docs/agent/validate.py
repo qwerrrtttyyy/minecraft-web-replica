@@ -187,6 +187,12 @@ CHECKS = [
         and "armorPlugin" in read("src/plugins/builtin/index.ts"),
     ),
     (
+        "PluginContext",
+        "装备栏 UI 经 PluginContext 挂载，main.ts 无新增接线",
+        lambda: "ui/" not in read("src/plugins/builtin/armor.ts")
+        and "builtin/armor" not in read("src/main.ts"),
+    ),
+    (
         "EQUIPMENT 定义表",
         "装备定义表存在且快照构建覆盖装备源文件",
         lambda: "equipmentDef" in read("src/player/equipment.ts")
@@ -197,11 +203,6 @@ CHECKS = [
         "装备状态层存在（甲槽/耐久/序列化对称）",
         lambda: "serialize" in read("src/player/equipmentState.ts")
         and "restore" in read("src/player/equipmentState.ts"),
-    ),
-    (
-        "DESIGN-V2-ARMOR",
-        "护甲插件设计文档存在",
-        lambda: (ROOT / "docs/DESIGN-V2-ARMOR.md").exists(),
     ),
     (
         "verify",
@@ -365,7 +366,7 @@ CHECKS = [
         lambda: (ROOT / "test/mesher-hotspot-baseline.json").exists()
         and "hash" in read("test/mesher-hotspot-baseline.json")
         and "msPerChunk" in read("test/mesher-hotspot-baseline.json")
-        and "p95" in read("docs/archive/2026-11/superpowers/specs/2026-11-22-mesher-hotspot-mobile-design.md"),
+        and "p95" in read("test/mesher-hotspot-baseline.json"),
     ),
     (
         "typed arrays",

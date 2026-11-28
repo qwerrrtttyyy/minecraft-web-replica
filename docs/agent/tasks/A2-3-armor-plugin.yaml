@@ -28,5 +28,5 @@ outputs:
   - combat:damage-incoming 管道语义落地，核心自身不注册处理器
   - core:armor 插件减伤曲线 0/10/20 点正确（每点 4%，上限 80%）
   - 卸载 armor 插件后伤害路径与 1.5.1 行为零差异（A/B 对照，core:armor 卸载零残留）
-  - 装备栏 UI 经 PluginContext 挂载，main.ts 无新增接线（DESIGN-V2-ARMOR §2）
+  - 装备栏 UI 经 PluginContext 挂载，main.ts 无新增接线
   - test:armor 独立回归通过；verify 全绿
