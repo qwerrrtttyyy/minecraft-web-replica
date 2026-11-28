@@ -30,6 +30,17 @@ const MAX_IMAGE_DIMENSION = 4096;
 const MAX_IMAGE_PIXELS = 16 * 1024 * 1024;
 const DEFAULT_DECODE_CONCURRENCY = 4;
 
+/**
+ * 动画纹理首帧（左上）的裁剪矩形。
+ * 条带（64×16）与网格（64×64）都是 16 倍数字节，取左上 16×16 那一帧；
+ * 非 16 倍数的自定义分辨率回退为左上 min(w,h) 正方形，避免把整张表压成一格。
+ */
+export function firstFrameRect(width: number, height: number): { x: number; y: number; w: number; h: number } {
+  const base = Math.min(width, height);
+  const size = width % 16 === 0 && height % 16 === 0 ? Math.min(16, base) : base;
+  return { x: 0, y: 0, w: size, h: size };
+}
+
 export interface TexturePackLoadResult {
   source: string;
   applied: string[];
@@ -99,9 +110,9 @@ async function imageDataOf(blob: Blob, ctx: CanvasRenderingContext2D): Promise<I
       bitmap.width * bitmap.height > MAX_IMAGE_PIXELS) {
       throw new Error(`纹理尺寸异常 ${bitmap.width}×${bitmap.height}`);
     }
-    const frame = Math.min(bitmap.width, bitmap.height);
+    const frame = firstFrameRect(bitmap.width, bitmap.height);
     ctx.clearRect(0, 0, 16, 16);
-    ctx.drawImage(bitmap, 0, 0, frame, frame, 0, 0, 16, 16);
+    ctx.drawImage(bitmap, frame.x, frame.y, frame.w, frame.h, 0, 0, 16, 16);
     return ctx.getImageData(0, 0, 16, 16);
   } finally {
     bitmap.close();

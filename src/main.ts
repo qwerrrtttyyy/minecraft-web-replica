@@ -73,7 +73,7 @@ import {
   type DiagnosticSnapshot, type DiagnosticReport,
 } from './diagnostics/RuntimeDiagnostics';
 import { PhotoMode } from './photo/PhotoMode';
-import { canWritePlayerCamera } from './photo/photoFrames';
+import { canWritePlayerCamera, isLockPauseEdge } from './photo/photoFrames';
 
 /**
  * 组装根（composition root）。
@@ -1821,8 +1821,8 @@ async function boot() {
         case 'pause':
           // 摄影模式吞掉暂停：Esc 只退出摄影模式，不开菜单
           if (photo?.active) {
-            // 进入时主动释放指针锁会补发一条 pause 边沿，吞掉它避免瞬间退出
-            if (photo.consumeLockPause()) break;
+            // 只吞指针锁释放产生的伪 pause；真实 Esc 一律退出，不受时间窗影响
+            if (isLockPauseEdge(e)) break;
             photo.exit();
             break;
           }
@@ -2205,6 +2205,9 @@ async function boot() {
     }),
     startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
     openCrafting, closeCrafting,
+    /** 测试钩子：JEI 面板（实验设置默认关，这里直接开启以覆盖禁用输入下的关闭键） */
+    jeiOpen: () => { settings.jei = true; openJei(); },
+    jeiIsOpen: () => jeiPanel?.isOpen ?? false,
   };
 }
 

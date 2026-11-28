@@ -20,13 +20,21 @@ describe('JEI 索引 · 构建倒排表', () => {
   it('keys 覆盖所有配方产物 / 材料与熔炼产物 / 燃料，且有序去重', () => {
     for (const r of CRAFTING_RECIPES) {
       expect(index.keys).toContain(r.result.material);
-      for (const i of r.shapeless ?? []) expect(index.keys).toContain(i);
+      for (const i of r.shapeless ?? []) {
+        for (const member of expandMaterial(i)) expect(index.keys).toContain(member);
+      }
     }
     for (const material of Object.keys(SMELT_RECIPES)) expect(index.keys).toContain(material);
     for (const fuel of Object.keys(FUEL_UNITS)) expect(index.keys).toContain(fuel);
     const sorted = [...index.keys].sort();
     expect(index.keys).toEqual(sorted);
     expect(new Set(index.keys).size).toBe(index.keys.length);
+  });
+
+  it('keys 不含 #planks 等组令牌，只保留展开后的具体材料（避免空图标伪物品）', () => {
+    expect(index.keys.some((key) => key.startsWith('#'))).toBe(false);
+    expect(index.keys).toContain('oak_planks');
+    expect(index.usesFor('oak_planks').some((v) => v.id === 'crafting_table')).toBe(true);
   });
 
   it('ordered 配方按 pattern 提取输入，空位不产生输入', () => {

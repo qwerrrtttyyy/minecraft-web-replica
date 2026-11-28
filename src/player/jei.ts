@@ -70,8 +70,9 @@ export class JEIIndex {
     fuels: Readonly<Record<string, number>> = FUEL_UNITS,
   ) {
     const all = new Set<MaterialId>();
+    // 材料组（'#planks'）只登记展开后的成员：组令牌不是可展示物品，
+    // 进入 keys 会在面板里渲染成空图标伪物品。
     const push = (m: MaterialId) => {
-      all.add(m);
       for (const e of expandMaterial(m)) all.add(e);
     };
     for (const r of recipes) {

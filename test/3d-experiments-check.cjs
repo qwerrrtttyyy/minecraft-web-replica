@@ -10,8 +10,9 @@ const {
   packLightVertex, unpackLightVertex, packVertexLights, unpackVertexLights,
 } = require(path.join(ROOT, 'world/lightPacking.js'));
 const {
-  nameToTile, tileForPath, filterKnownTiles, normalizeZipPath,
+  nameToTile, tileForPath, filterKnownTiles, normalizeZipPath, firstFrameRect,
 } = require(path.join(ROOT, 'gfx/texturePack.js'));
+const { readZip } = require(path.join(ROOT, 'gfx/zipReader.js'));
 
 let passed = 0;
 const ok = (name, cond, extra = '') => {
@@ -102,4 +103,54 @@ const filtered = filterKnownTiles(['stone', 'nope.png', 'grass_block_side_overla
   new Set(['stone', 'grass_top', 'grass_side']));
 ok('材质包匹配统计', filtered.known.join(',') === 'stone' && filtered.missed.join(',') === 'nope.png');
 
-console.log(`3D experiments PASS (${passed})`);
+// 动画纹理首帧：条带与网格都要取左上 16×16，不能把整张表压成一格
+{
+  const rect = (w, h) => `${firstFrameRect(w, h).w}x${firstFrameRect(w, h).h}`;
+  ok('动画首帧·单格 16×16', rect(16, 16) === '16x16');
+  ok('动画首帧·横向条带 64×16', rect(64, 16) === '16x16');
+  ok('动画首帧·纵向条带 16×64', rect(16, 64) === '16x16');
+  ok('动画首帧·网格 64×64', rect(64, 64) === '16x16');
+  ok('动画首帧·非 16 倍数回退到缩略取整张', rect(100, 50) === '50x50');
+}
+
+// 真实资源包含数千个声音 / 模型文件；条目上限必须只数过滤后的纹理，否则合法包被拒
+function makeZip(names) {
+  const locals = [];
+  const central = [];
+  let offset = 0;
+  for (const name of names) {
+    const nb = Buffer.from(name, 'utf8');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(nb.length, 26);
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(20, 4);
+    dir.writeUInt16LE(20, 6);
+    dir.writeUInt16LE(nb.length, 28);
+    dir.writeUInt32LE(offset, 42);
+    locals.push(local, nb);
+    central.push(dir, nb);
+    offset += local.length + nb.length;
+  }
+  const dirBuf = Buffer.concat(central);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(names.length, 8);
+  eocd.writeUInt16LE(names.length, 10);
+  eocd.writeUInt32LE(dirBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, dirBuf, eocd]);
+}
+
+(async () => {
+  const names = [...Array(300).keys()].map((i) => `assets/sounds/step${i}.ogg`);
+  names.push('assets/minecraft/textures/block/grass_block_top.png');
+  const buffer = makeZip(names);
+  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const entries = await readZip(arrayBuffer, { filter: (n) => n.endsWith('.png') });
+  ok('大资源包：只按过滤后的纹理数计条目上限', entries.size === 1 && entries.has(names[300]));
+  console.log(`3D experiments PASS (${passed})`);
+})().catch((e) => { console.error(e); process.exit(1); });

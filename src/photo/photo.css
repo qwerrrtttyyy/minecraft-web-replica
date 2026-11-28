@@ -65,8 +65,31 @@
   line-height: 1.6;
   color: #dddddd;
 }
+/* 游戏内摄影入口：桌面 P 键与移动端按钮共用同一 enter() 路径 */
+#photo-enter {
+  display: none;
+  position: absolute;
+  right: 14px;
+  bottom: 92px;
+  z-index: 19;
+  min-width: 48px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 2px solid #373737;
+  border-top-color: #7a7a7a;
+  border-left-color: #5a5a5a;
+  background: rgba(46, 46, 52, 0.82);
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+#photo-enter.photo-enter-visible { display: block; }
+#photo-enter:hover { background: rgba(82, 82, 88, 0.9); }
 @media (pointer: coarse) {
   #photo-overlay.photo-overlay { padding: 12px 14px; font-size: 12px; }
   #photo-overlay .photo-actions { top: 12px; right: 14px; max-width: 60vw; }
   #photo-overlay .photo-actions button { min-width: 64px; min-height: 44px; padding: 10px 12px; }
+  #photo-enter { right: 10px; bottom: 118px; min-height: 48px; padding: 10px 12px; }
 }

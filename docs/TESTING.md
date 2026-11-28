@@ -32,11 +32,11 @@ npm run verify
 | 18 | `npm run test:light` | 天空光 / 方块光 21 项 | ✓ |
 | 19 | `npm run test:mesher` | 网格快照保真、Greedy 等价与收益、slab / candle 盒几何、N4 未知来源液面 | ✓ |
 | 20 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档校验 59 项（含可选生态 / 熔炉字段与坏档隔离） | ✓ |
-| 21 | `npm run test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入，含植物能量快照） | ✓ |
+| 21 | `npm run test:diagnostics` | 运行时诊断 40 组（健康快照 + 异常注入，含植物能量 / 摄影相机归属快照） | ✓ |
 | 22 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 23 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 24 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 25 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）+ 阶段管线 + 11 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 繁殖与植物特性 90 组 | ✓ |
+| 25 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）+ 阶段管线 + 18 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 繁殖与植物特性 104 组 | ✓ |
 | 26 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住）+ 挖掘裂痕阶段 | ✓ |
 | 27 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 34 组 | ✓ |
 | 28 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 54 组 | ✓ |
@@ -53,6 +53,9 @@ npm run verify
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |
 | 38 | `npm run test:hooks` | A2-5 玩家扩展点回归 | ✓ |
 | 39 | `npm run test:structure` | 静态结构：模板纯度 / 确定性 / 跨区块连续 / 群系与出生点守卫 / Worker 一致性 21 项 | ✓ |
+| 40 | `npm run test:photo` | 摄影模式纯逻辑：FOV / 时刻 / 天气 / 相机边界 / 元数据 / 真实 Esc 与伪 pause 边沿区分 50 项 | ✓ |
+| 41 | `node test/3d-experiments-check.cjs` | 3D 实验：密度地形确定性 / 8 位光照打包往返 / 材质包路径·首帧·ZIP 过滤后条目上限 23 项（`verify` 内联；独立入口 `npm run test:experiments3d` 会先重建快照） | ✓ |
+| — | `npm run test:jei:vitest` | JEI 只读索引（倒排表 / 材料组展开 / 搜索）10 项；独立入口，暂未挂 `verify` | — |
 
 ## 当前内容口径
 
@@ -86,8 +89,8 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   入水终端下沉 `-waterSink` 与水平 `exp(-8*dt)` 衰减、出水恢复重力，以及
   `DropManager.update(dt, pos, false)` 不推进 age（暂停期间掉落物不过期）。
 - **terrain-system**：方块是否末位追加（id 45~147，92~97 保留给插件；火光地基
-  174~177）、`TERRAIN_STAGES` 顺序契约、`BIOME_PROFILES` 是否覆盖 11 个群系
-  （原 7 + 恶地 / 沼泥 / 干草原 / 樱花林）并驱动地表 / 装饰 / 树种 / 水下植物，
+  174~177）、`TERRAIN_STAGES` 顺序契约、`BIOME_PROFILES` 是否覆盖 18 个群系
+  （原 7 + 恶地 / 沼泥 / 干草原 / 樱花林等）并驱动地表 / 装饰 / 树种 / 水下植物，
   以及黏土（浅海床）、灰化土（针叶林地表）、仙人掌（沙漠 / 恶地）、甘蔗（临水浅岸）、
   新花卉（草甸 / 森林 / 针叶林）、白桦 / 云杉 / 金合欢 / 樱花（对应群系）、
   恶地彩色陶瓦层（`strata`）、沼泥、海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）
@@ -116,6 +119,14 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   2×2 个人格与 3×3 工作台的尺寸差异，以及背包取料 → 合成 → 产出 → 扣料的完整闭环，以及煤炭 + 木棍 → 4 火把（`torch_fuel`）配方可合成。
 - **smelting-check**：远端熔炉烧炼纯逻辑 35 项（配方 / 燃料表 / `putFuelFrom` 统一校验 /
   扣背包 / 加燃料 / tick 状态机 / `serialize` 往返），已挂入 `verify`。
+- **photo-check**：摄影模式纯逻辑与源码契约——FOV 钳制、时刻 / 天气循环、相机水平半径、
+  文件名 / 水印文本、玩家相机写入守卫，以及 pause 边沿按来源区分（只吞 `pointerlock`，
+  真实 Esc 一律退出）、移动端进入按钮与存档快照；依赖 `test:snapshot`。
+- **jei**：Vitest 直接消费 `src/player/jei.ts`，校验产物 / 材料倒排表、材料组只展开为
+  具体成员（不把 `#planks` 这类组令牌当物品渲染）、搜索与中文标签；独立入口 `test:jei:vitest`。
+- **3d-experiments**：密度地形确定性 / 每列顶面与玩家头部净空、8 位光照打包往返、
+  材质包路径别名与首帧裁剪（条带 / 网格）、ZIP 条目上限只数过滤后的纹理；
+  依赖 `test:snapshot`，`verify` 内联执行。
 | 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |

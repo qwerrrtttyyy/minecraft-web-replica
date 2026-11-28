@@ -112,3 +112,12 @@ export function photoCaption(meta: PhotoMetadata): string {
 export function canWritePlayerCamera(cameraOwner: string | null): boolean {
   return cameraOwner === null;
 }
+
+/**
+ * 摄影模式进入时主动 exitPointerLock 会产生一条伪 pause 边沿。
+ * 只按来源（而非进入后的时间窗）识别它：headless / iframe 里伪边沿不来时，
+ * 紧随其后的真实 Esc 不会再被误当成伪边沿吞掉。
+ */
+export function isLockPauseEdge(edge: { type: string; source?: string }): boolean {
+  return edge.type === 'pause' && edge.source === 'pointerlock';
+}

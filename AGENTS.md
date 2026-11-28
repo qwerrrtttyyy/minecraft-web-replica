@@ -28,18 +28,21 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `check:version` | 双轨版本号格式、`package.json` / `version.ts` / README 三处一致、源码禁硬编码版本字面量 |
 | `test:snapshot` | 由 `scripts/build-test-snapshot.mjs` 用项目自己的 `tsc` 编译 `test/logic/`、`test/terrain-logic/` |
 | `test:logic` | 生存状态机 9 组 + 地形基础 23 组 + 篮球弹跳 / 拾取 76 项 |
-| `test:vitest` | Vitest 全量（直接消费 `src` TS）：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting |
+| `test:vitest` | Vitest 全量（直接消费 `src` TS）：fire / warmth / campfire / survival-saturation / ai / logic / terrain / crafting / jei |
 | `test:light` | 天空光 / 方块光 21 项 |
 | `test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例、slab / candle 盒几何、N4 未知来源液面 |
 | `test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
 | `test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
-| `test:diagnostics` | 运行时诊断 28 组（健康快照 + 异常注入） |
+| `test:diagnostics` | 运行时诊断 40 组（健康快照 + 异常注入，含摄影相机归属） |
 | `test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
-| `test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 11 群系、90 组 |
+| `test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 18 群系、104 组 |
+| `test:photo` | 摄影模式纯逻辑 50 项：FOV / 时刻 / 天气 / 相机边界 / 元数据 / 伪 pause 来源 / 移动端入口 |
+| `test:experiments3d` | 3D 实验 23 项：密度地形 / 8 位光照打包 / 材质包首帧与 ZIP 过滤上限 |
+| `test:jei:vitest` | JEI 只读索引 10 项（倒排表 / 材料组展开 / 搜索），独立入口未挂 `verify` |
 | `test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 / 攀爬 / 发光植物 34 组 |
 | `test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 54 组 |
-| `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 94 项 |
+| `test:crafting` | 合成系统：配方表结构 / 有序与无序匹配 / 3×3 内偏移摆放 / 材料组 / 2×2 与 3×3 尺寸差异 / 背包取放闭环 99 项 |
 | `test:smelting` | 远端熔炉烧炼纯逻辑 35 项（配方 / 燃料 / `putFuelFrom` / tick / 序列化） |
 | `test:smoke` | Chromium 实景（桌面 + 移动端）125 项，产物写 `test/artifacts/` |
 | `test:mobile` | 移动端组合：mesher + 旋转引导 + 手感 + 裂纹覆盖层 |

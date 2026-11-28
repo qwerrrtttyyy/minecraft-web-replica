@@ -475,13 +475,27 @@ frostline 规则衰减（spawn 后即枯死）——该规则属既有生态逻�
 - 移除 `packedLighting` 普通设置项。压缩布局改为默认，`?lighting=float2` 只用于开发和 A/B 对照。
 - 材质导入串行化并带序号校验，较新的导入请求不会被较旧结果覆盖。
 
-复现：
+### E16 受控 A/B（顶点布局，硬规则 #14）
+
+- **假设**：8 位打包布局与 float2 对照在**同一场景**下像素等价；收益是每顶点光照 8 B → 1 B。
+- **对照 / 翻转方式**：同一页内调用已有运行时钩子 `window.__mc.chunks.setPackedLighting(v)`，
+  依次测 A（packed8）→ B（float2）→ A′（再翻回 packed8），A′ 单独作为噪声底。
+  不跨页比较——跨页区块集合不一致。
+- **判据**：三态 `vertexLightBytes` 精确为 1 / 8 / 1；A 与 B 的采样像素差不超过 A 与 A′
+  的噪声底 + 2 个采样点；场景网格数不变；页面无运行时错误。
+- **执行**：`npm run test:experiment-light`（脚本 `test/experiment-light-layout.mjs`，
+  结果写 `test/artifacts/experiment-light-layout.json`）。该测量工具**不挂 `verify`**。
+- **状态**：本地环境无可用 Chromium（`/usr/bin/chromium-browser` 是缺失的 snap，
+  puppeteer 缓存的压缩包不完整），A/B 未执行，需在 CI 的浏览器环境跑一次。
+  逻辑层证据已由 `test:experiments3d` 覆盖：打包往返误差 ≤ 1/15、每顶点 8 B → 1 B。
+
+复现（逻辑层，离线）：
 
 ```bash
 npm run test:experiments3d
 ```
 
-浏览器实景验证（本机 Chromium + SwiftShader）：
+浏览器实景验证（CI Chromium + SwiftShader）：
 
 - `?terrain=density` 启动后 `chunks.lightingMode === 'packed8'`、`vertexLightBytes === 1`、生成器配置 `densityTerrain === true`。
 - 设置页只保留「3D 密度场地形（新区块）」和「导入材质包」；旧的「8 位顶点光照 / 材质包」循环行已移除。

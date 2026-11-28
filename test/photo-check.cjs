@@ -19,11 +19,13 @@ const {
   photoFileName,
   photoCaption,
   canWritePlayerCamera,
+  isLockPauseEdge,
 } = require('./logic/photo/photoFrames.js');
 const {
   ACTION_LABELS,
   ACTION_KEYS,
   DEFAULT_BINDINGS,
+  emitsEdgeWhileDisabled,
 } = require('./logic/input/keybindings.js');
 
 let passed = 0;
@@ -186,6 +188,7 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   const path = require('node:path');
   const modeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'PhotoMode.ts'), 'utf8');
   const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.ts'), 'utf8');
+  const inputSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'input', 'input.ts'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'photo.css'), 'utf8');
   ok('CSS 默认隐藏覆盖层，.photo-visible 才切回 flex',
     /#photo-overlay\.photo-overlay\s*\{[\s\S]*?display:\s*none;/.test(css) &&
@@ -197,10 +200,24 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
     !/overlay\.style\.display/.test(modeSource) &&
     /overlay\.classList\.add\('photo-visible'\)/.test(modeSource) &&
     /overlay\.classList\.remove\('photo-visible'\)/.test(modeSource));
-  ok('伪 pause 吞掉带短窗口，超时后真实 Esc 不被吞',
-    /LOCK_PAUSE_GRACE_MS\s*=\s*\d+/.test(modeSource) &&
-    /swallowLockPauseUntil\s*=\s*this\.savedLocked\s*\?\s*performance\.now\(\)\s*\+\s*LOCK_PAUSE_GRACE_MS\s*:\s*0/.test(modeSource) &&
-    /performance\.now\(\)\s*<=\s*this\.swallowLockPauseUntil/.test(modeSource));
+  ok('只有 pointerlockchange 的伪 pause 被吞，真实 Esc 永不按时间窗误吞',
+    isLockPauseEdge({ type: 'pause', source: 'pointerlock' }) === true &&
+    isLockPauseEdge({ type: 'pause', source: 'key' }) === false &&
+    isLockPauseEdge({ type: 'pause' }) === false &&
+    !/LOCK_PAUSE_GRACE_MS/.test(modeSource) &&
+    /source:\s*'pointerlock'/.test(inputSource) &&
+    /source:\s*'key'/.test(inputSource) &&
+    /isLockPauseEdge\(e\)/.test(mainSource));
+  ok('输入禁用期间 pause 与 jei 仍上报边沿（面板内 J / Esc 可关闭）',
+    emitsEdgeWhileDisabled('pause') === true &&
+    emitsEdgeWhileDisabled('jei') === true &&
+    emitsEdgeWhileDisabled('forward') === false &&
+    /emitsEdgeWhileDisabled\(action\)/.test(inputSource));
+  ok('摄影模式带独立进入按钮（桌面 / 触控共用）',
+    /\.id\s*=\s*['"]photo-enter['"]/.test(modeSource) &&
+    /#photo-enter/.test(css) &&
+    /photoEnter\.addEventListener\('click'/.test(modeSource) &&
+    /canEnter\(\)/.test(modeSource));
   ok('PhotoMode.dispose 移除五条全局监听并归还引擎状态',
     /dispose\(\): void/.test(modeSource) &&
     /removeEventListener\('keydown', this\.onKeyDown\)/.test(modeSource) &&

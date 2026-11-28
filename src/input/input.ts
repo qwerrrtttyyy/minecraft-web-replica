@@ -8,11 +8,13 @@
 
 import {
   type GameAction, type KeyBindings, ACTION_KEYS,
-  DEFAULT_BINDINGS, loadBindings, saveBindings,
+  DEFAULT_BINDINGS, loadBindings, saveBindings, emitsEdgeWhileDisabled,
 } from './keybindings';
 
 export interface InputEdge {
   type: 'slot' | 'camera' | 'debug' | 'palette' | 'pause' | 'fly' | 'pick' | 'tapBreak' | 'hud' | 'photo' | 'jei';
+  /** pause 边沿的来源：摄影模式只吞 pointerlockchange 的伪暂停，不吞真实 Esc */
+  source?: 'key' | 'pointerlock' | 'gamepad';
   value?: number;
   absolute?: boolean;
 }
@@ -158,7 +160,7 @@ export class Input {
       if (!this.isMobile && this.enabled && !locked && this.wasLocked) {
         this.breakHeld = false;
         this.placeHeld = false;
-        this.edges.push({ type: 'pause' });
+        this.edges.push({ type: 'pause', source: 'pointerlock' });
       }
       this.wasLocked = locked;
     });
@@ -172,8 +174,11 @@ export class Input {
 
   private onKey(e: KeyboardEvent, down: boolean) {
     const action = this.actionOf(e.code);
-    if (action === 'pause') {
-      if (down) this.edges.push({ type: 'pause' });
+    if (emitsEdgeWhileDisabled(action)) {
+      // 面板打开时 enabled=false，但 Esc / J 关闭键必须照常上报
+      if (down) this.edges.push(action === 'pause'
+        ? { type: 'pause', source: 'key' }
+        : { type: 'jei', source: 'key' });
       return;
     }
     const boundKeys = ACTION_KEYS.map((a) => this.bindings[a]);
@@ -415,7 +420,7 @@ export class Input {
     const prev = this.padPrevButtons;
     const pressed = (i: number) => b(i) && !prev[i];
     if (pressed(4)) this.edges.push({ type: 'slot', value: -1 });       // LB 上一槽
-    if (pressed(9)) this.edges.push({ type: 'pause' });                 // Start 菜单
+    if (pressed(9)) this.edges.push({ type: 'pause', source: 'gamepad' }); // Start 菜单
     if (pressed(8)) this.edges.push({ type: 'debug' });                 // Back 调试
     if (pressed(3)) this.edges.push({ type: 'palette' });               // Y 方块库
     if (pressed(12)) this.edges.push({ type: 'camera' });               // 十字键上 视角

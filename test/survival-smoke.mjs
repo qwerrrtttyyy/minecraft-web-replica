@@ -521,6 +521,35 @@ try {
     `dt=${afterPhoto.timeDelta} dd=${afterPhoto.dayCountDelta} dp=${afterPhoto.posDelta}`);
   await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
 
+  // ---- 摄影常驻入口（触控可点）与真实 Esc 不被伪 pause 吞掉 ----
+  const enterBtn = await page.evaluate(() => {
+    const el = document.querySelector('#photo-enter');
+    return el ? { display: getComputedStyle(el).display, label: el.getAttribute('aria-label') } : null;
+  });
+  ok('摄影模式常驻入口按钮在游戏中可见', !!enterBtn && enterBtn.display !== 'none', JSON.stringify(enterBtn));
+  await page.evaluate(() => document.querySelector('#photo-enter').click());
+  await page.waitForFunction('CraftAPI.photo.active === true', { timeout: 10000 }).catch(() => {});
+  const viaButton = await page.evaluate(() => ({
+    active: CraftAPI.photo.active, owner: window.__mc.engine.cameraOwner,
+  }));
+  ok('点击常驻入口进入摄影模式', viaButton.active && viaButton.owner === 'photo', JSON.stringify(viaButton));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction('CraftAPI.photo.active === false', { timeout: 10000 }).catch(() => {});
+  const escaped = await page.evaluate(() => ({
+    active: CraftAPI.photo.active, mode: window.__mc.mode, menu: window.__mc.hud.menuOpen,
+  }));
+  ok('Esc 退出摄影模式且不开暂停菜单（伪 pause 不吞真实 Esc）',
+    !escaped.active && escaped.mode === 'playing' && !escaped.menu, JSON.stringify(escaped));
+
+  // ---- JEI 面板在输入禁用期间仍能按 J 关闭 ----
+  await page.evaluate(() => window.__mc.jeiOpen());
+  const jeiOpened = await page.evaluate(() => window.__mc.jeiIsOpen());
+  ok('JEI 面板可打开', jeiOpened === true, String(jeiOpened));
+  await page.keyboard.press('KeyJ');
+  await sleep(100);
+  const jeiClosed = await page.evaluate(() => window.__mc.jeiIsOpen());
+  ok('JEI 面板内按 J 可关闭（禁用输入下 jei 边沿仍上报）', jeiClosed === false, String(jeiClosed));
+
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
   const mineCell = await page.evaluate(() => {
     const mc = window.__mc;

@@ -30,6 +30,15 @@ export const ACTION_LABELS = {
 export type GameAction = keyof typeof ACTION_LABELS;
 export const ACTION_KEYS = Object.keys(ACTION_LABELS) as GameAction[];
 
+/**
+ * 输入被面板禁用时仍需上报的动作。
+ * pause（Esc）与 jei（J）是面板的关闭键，和 pause 一样必须在 enabled=false 时透传，
+ * 否则打开 JEI 后按 J 无法关闭（旧实现所有非 pause 边沿都被吞）。
+ */
+export function emitsEdgeWhileDisabled(action: GameAction | null): boolean {
+  return action === 'pause' || action === 'jei';
+}
+
 export interface KeyBindings {
   forward: string;
   back: string;

@@ -14,6 +14,8 @@ const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 const DEFAULT_MAX_ENTRIES = 256;
+/** 防御恶意中央目录的硬上限；真实 Java / Bedrock 资源包可能含有数千个声音 / 模型文件 */
+const MAX_RAW_ENTRIES = 20_000;
 const DEFAULT_MAX_ENTRY_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 32 * 1024 * 1024;
 
@@ -70,13 +72,15 @@ export async function readZip(buffer: ArrayBuffer, options: ZipReadOptions = {})
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxEntryBytes = options.maxEntryBytes ?? DEFAULT_MAX_ENTRY_BYTES;
   const maxTotalBytes = options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES;
-  if (count > maxEntries) throw new Error(`ZIP 条目过多，最多支持 ${maxEntries} 个文件`);
+  if (count > MAX_RAW_ENTRIES) throw new Error('ZIP 中央目录条目过多');
   if (dirOffset < 0 || dirOffset >= view.byteLength) throw new Error('ZIP 中央目录损坏');
 
   const decoder = new TextDecoder();
   const out = new Map<string, Uint8Array>();
   let p = dirOffset;
   let total = 0;
+  // 上限只数实际读取的条目：过滤掉声音 / 模型等非纹理文件后，资源包本身可以很大
+  let accepted = 0;
   for (let i = 0; i < count; i++) {
     if (u32(view, p) !== CENTRAL) throw new Error('ZIP 中央目录条目损坏');
     const flags = u16(view, p + 8);
@@ -93,6 +97,7 @@ export async function readZip(buffer: ArrayBuffer, options: ZipReadOptions = {})
     p = next;
     if (name.endsWith('/')) continue;
     if (options.filter && !options.filter(name)) continue;
+    if (++accepted > maxEntries) throw new Error(`ZIP 纹理条目过多，最多支持 ${maxEntries} 个文件`);
     if (flags & 1) throw new Error(`不支持加密 ZIP 条目：${name}`);
     if (uncompressedSize > maxEntryBytes) throw new Error(`ZIP 单文件过大：${name}`);
     if (total + uncompressedSize > maxTotalBytes) throw new Error('ZIP 解压总量超过限制');

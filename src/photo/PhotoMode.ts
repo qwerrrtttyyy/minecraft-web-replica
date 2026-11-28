@@ -57,8 +57,6 @@ const LOOK_SENSITIVITY = 0.0022;
 const MOVE_SPEED = 7;
 const FAST_SPEED = 14;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
-/** enter() 后仅在此窗口内吞掉 exitPointerLock 的伪 pause 边沿；超时后真实 Esc 必须照常退出 */
-const LOCK_PAUSE_GRACE_MS = 200;
 
 /** 取最接近当前 dayTime 的档位，第一次按 T 会切到下一档 */
 function presetFor(dayTime: number): TimePreset {
@@ -92,6 +90,8 @@ export class PhotoMode implements System {
   private readonly infoPlace: HTMLElement;
   private readonly infoSky: HTMLElement;
   private readonly stampButton: HTMLButtonElement;
+  /** 游戏内常驻入口（桌面 / 触控共用）；仅在 canEnter() 为真时显示 */
+  private readonly photoEnter: HTMLButtonElement;
 
   private readonly savedPos = new Vector3();
   private readonly savedQuat = new Quaternion();
@@ -105,10 +105,6 @@ export class PhotoMode implements System {
 
   /** null = 无待导出请求；boolean = 是否带水印 */
   private pendingCapture: boolean | null = null;
-  /** 进入时主动 exitPointerLock 会产生一次 pause 边沿，吞掉这一条以免立刻退出 */
-  private swallowLockPause = false;
-  /** 上述吞掉的截止时刻（performance.now()）；伪边沿不来时过期即失效 */
-  private swallowLockPauseUntil = 0;
   private disposed = false;
   private timePreset: TimePreset = 'day';
   private weatherPreset: PhotoWeather = 'clear';
@@ -153,6 +149,16 @@ export class PhotoMode implements System {
     this.infoPlace = this.overlay.querySelector('[data-photo="place"]')!;
     this.infoSky = this.overlay.querySelector('[data-photo="sky"]')!;
     this.stampButton = this.overlay.querySelector('[data-photo-action="stamp"]')!;
+
+    // 进入按钮独立于覆盖层：覆盖层隐藏时也能进入（移动端没有 P 键）
+    this.photoEnter = document.createElement('button');
+    this.photoEnter.id = 'photo-enter';
+    this.photoEnter.type = 'button';
+    this.photoEnter.textContent = '📷';
+    this.photoEnter.title = '摄影模式 (P)';
+    this.photoEnter.setAttribute('aria-label', '进入摄影模式');
+    opts.uiRoot.appendChild(this.photoEnter);
+    this.photoEnter.addEventListener('click', () => { this.enter(); });
 
     this.overlay.addEventListener('click', (e) => {
       if (!this.active) return;
@@ -204,8 +210,6 @@ export class PhotoMode implements System {
     this.stampButton.textContent = '水印：开';
     this.pendingCapture = null;
     this.lastDataUrl = '';
-    this.swallowLockPause = this.savedLocked;
-    this.swallowLockPauseUntil = this.savedLocked ? performance.now() + LOCK_PAUSE_GRACE_MS : 0;
     this.yaw = camera.rotation.y;
     this.pitch = camera.rotation.x;
     this.infoAcc = 0;
@@ -218,6 +222,7 @@ export class PhotoMode implements System {
     input.reset();
     input.exitLock();
     engine.onAfterRender = () => this.flushCapture();
+    this.photoEnter.classList.remove('photo-enter-visible');
     this.overlay.classList.add('photo-visible');
     this.refreshOverlay();
     return true;
@@ -249,8 +254,6 @@ export class PhotoMode implements System {
 
     this.overlay.classList.remove('photo-visible');
     this.pendingCapture = null;
-    this.swallowLockPause = false;
-    this.swallowLockPauseUntil = 0;
     this.savedDayTime = null;
     this.savedDayCount = null;
     this.dragging = false;
@@ -258,22 +261,11 @@ export class PhotoMode implements System {
     if (restoreLock && this.savedLocked) input.requestLock();
   }
 
-  /**
-   * 组装根用于忽略进入时 exitPointerLock 产生的那一条伪 pause 边沿。
-   * 仅在 enter() 后的短窗口内有效：伪边沿根本不来时，之后的真实 Esc 不会被吞掉。
-   */
-  consumeLockPause(): boolean {
-    if (!this.swallowLockPause) return false;
-    this.swallowLockPause = false;
-    const withinGrace = performance.now() <= this.swallowLockPauseUntil;
-    this.swallowLockPauseUntil = 0;
-    return withinGrace;
-  }
-
   /** 顶层 teardown：移除自己注册的全局监听并归还仍被摄影模式占用的引擎状态（幂等） */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.photoEnter.remove();
     removeEventListener('keydown', this.onKeyDown);
     this.canvas.removeEventListener('wheel', this.onWheel);
     this.canvas.removeEventListener('mousedown', this.onMouseDown, { capture: true });
@@ -294,7 +286,11 @@ export class PhotoMode implements System {
 
   /** System 回调：摄影模式激活时驱动自由相机（玩家已被组装根冻结） */
   update(dt: number): void {
-    if (!this.active) return;
+    if (!this.active) {
+      // 仅在可进入状态显示按钮；暂停 / 死亡 / 面板打开时隐藏，避免误触
+      this.photoEnter.classList.toggle('photo-enter-visible', this.opts.canEnter());
+      return;
+    }
     const { camera } = this.opts.engine;
     const [lookX, lookY] = this.opts.input.consumeLook();
     if (lookX !== 0 || lookY !== 0) {
