@@ -61,24 +61,20 @@ console.log('天气 / 寒冷回归');
 }
 
 // 4) 环境惩罚
-{
-  ok('雨天惩罚', environmentPenalty('rain', 'spring', 0.8, false) === COLD.rainPenalty);
-  ok('雪天惩罚更强', environmentPenalty('snow', 'spring', 0.8, false) === COLD.snowPenalty);
-  ok('雷暴最强', environmentPenalty('thunder', 'spring', 0.8, false) === COLD.stormPenalty);
-  ok('冬季叠加', environmentPenalty('rain', 'winter', 0.8, false) === COLD.rainPenalty + COLD.winterPenalty);
-  ok('夜间叠加', environmentPenalty('rain', 'spring', 0.1, false) === COLD.rainPenalty + COLD.nightPenalty);
-  ok('遮蔽缩放', environmentPenalty('snow', 'spring', 0.8, true) === COLD.snowPenalty * COLD.shelterMultiplier);
-  ok('关闭天气与季节后无任何寒冷（含冬季夜晚）',
-    environmentPenalty('thunder', 'winter', 0.1, false, false) === 0);
-}
+ok('雨天惩罚', environmentPenalty('rain', 'spring', 0.8, false) === COLD.rainPenalty);
+ok('雪天惩罚更强', environmentPenalty('snow', 'spring', 0.8, false) === COLD.snowPenalty);
+ok('雷暴最强', environmentPenalty('thunder', 'spring', 0.8, false) === COLD.stormPenalty);
+ok('冬季叠加', environmentPenalty('rain', 'winter', 0.8, false) === COLD.rainPenalty + COLD.winterPenalty);
+ok('夜间叠加', environmentPenalty('rain', 'spring', 0.1, false) === COLD.rainPenalty + COLD.nightPenalty);
+ok('遮蔽缩放', environmentPenalty('snow', 'spring', 0.8, true) === COLD.snowPenalty * COLD.shelterMultiplier);
+ok('关闭天气与季节后无任何寒冷（含冬季夜晚）',
+  environmentPenalty('thunder', 'winter', 0.1, false, false) === 0);
 
 // 5) 冻伤节拍
-{
-  ok('低温暖 + 足够时间 + 有惩罚 → 冻伤', freezeDue(10, COLD.damageInterval, COLD.rainPenalty));
-  ok('温暖达标不冻伤', !freezeDue(COLD.warmthThreshold + 1, COLD.damageInterval, COLD.rainPenalty));
-  ok('间隔不足不冻伤', !freezeDue(10, COLD.damageInterval - 0.1, COLD.rainPenalty));
-  ok('无惩罚不冻伤', !freezeDue(10, COLD.damageInterval, 0));
-}
+ok('低温暖 + 足够时间 + 有惩罚 → 冻伤', freezeDue(10, COLD.damageInterval, COLD.rainPenalty));
+ok('温暖达标不冻伤', !freezeDue(COLD.warmthThreshold + 1, COLD.damageInterval, COLD.rainPenalty));
+ok('间隔不足不冻伤', !freezeDue(10, COLD.damageInterval - 0.1, COLD.rainPenalty));
+ok('无惩罚不冻伤', !freezeDue(10, COLD.damageInterval, 0));
 
 // 6) ColdSystem 集成：开关必须真正关掉冻伤
 {

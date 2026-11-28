@@ -46,7 +46,7 @@ ok('adaptive(null,true)：ready，两侧 bench>0，backend 与工厂一致，输
   assert.strictEqual(noise.getNoiseBackendFactory() !== null, st.backend === 'wasm');
   const js = noiseMath.makeNoiseFunctions(noiseMath.makePermutation(2026));
   const n = new noise.Noise(2026);
-  for (const [x, y, z] of noiseMath.EQUIVALENCE_SAMPLES) {
+  for (const [x, y, _z] of noiseMath.EQUIVALENCE_SAMPLES) {
     assert.ok(Object.is(js.fbm2(x, y, 3, 2, 0.5), n.fbm2(x, y, 3, 2, 0.5)));
     assert.ok(Object.is(js.noise2(x, y), n.noise2(x, y)));
   }
