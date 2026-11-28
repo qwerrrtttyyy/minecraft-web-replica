@@ -166,10 +166,22 @@ console.log('运行时诊断组回归');
 }
 
 {
+  const atLimit = runRuntimeDiagnostics(
+    clone((s) => {
+      s.chunks.dirty = 40;
+      s.chunks.inFlight = 40;
+    }),
+  );
+  ok(
+    'section 队列恰好达到 BACKLOG_LIMIT 时不误报积压',
+    !has(atLimit, 'chunks.backlog'),
+    `warnings=${atLimit.warnings}`,
+  );
+
   const r = runRuntimeDiagnostics(
     clone((s) => {
-      s.chunks.dirty = 20;
-      s.chunks.inFlight = 10;
+      s.chunks.dirty = 50;
+      s.chunks.inFlight = 40;
     }),
   );
   ok('网格队列积压被标记为 warn', has(r, 'chunks.backlog') && r.warnings >= 1, `warnings=${r.warnings}`);

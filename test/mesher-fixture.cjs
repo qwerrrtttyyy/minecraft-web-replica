@@ -18,6 +18,7 @@ const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/
 const { World } = require('./terrain-logic/world/world.js');
 const { EventService } = require('./terrain-logic/core/events.js');
 const { buildMeshConfig, buildMeshSnapshot } = require('./terrain-logic/world/meshSource.js');
+const { SECTIONS, SECTION_HEIGHT } = require('./terrain-logic/core/types.js');
 const { packMesh } = require('./terrain-logic/world/meshTypes.js');
 
 const SEED = 2026;
@@ -63,7 +64,9 @@ function makeMeshSet() {
   const set = [];
   for (let cz = CZ_MIN; cz <= CZ_MAX; cz++) {
     for (let cx = CX_MIN; cx <= CX_MAX; cx++) {
-      set.push({ cx, cz, config, snapshot: buildMeshSnapshot(world, cx, cz) });
+      // 16³ section 化后一次快照只覆盖一段；逐段取齐 5 段才能保持原「整列逐字节」护栏语义。
+      const snapshots = Array.from({ length: SECTIONS }, (_, sy) => buildMeshSnapshot(world, cx, cz, sy));
+      set.push({ cx, cz, config, snapshots, sectionHeight: SECTION_HEIGHT });
     }
   }
   return set;

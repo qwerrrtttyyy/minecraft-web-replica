@@ -36,13 +36,20 @@ const set = makeMeshSet();
 assert.strictEqual(set.length, 24, `fixture 应含 24 个区块，实得 ${set.length}`);
 console.log(`  ✓ fixture 24 区块（cx 0..5 × cz 0..3）`);
 
-const sources = set.map(({ config, snapshot }) => new SnapshotMeshSource(config, snapshot));
+// 每段单独网格化（yBase = sy*16），串联全部 section 的输出才是整列护栏。
+const sources = set.flatMap(({ config, snapshots, sectionHeight }) =>
+  snapshots.map((snapshot, sy) => ({
+    src: new SnapshotMeshSource(config, snapshot),
+    yBase: sy * sectionHeight,
+    yCount: sectionHeight,
+  })),
+);
 
 /** 集合哈希：按 fixture 顺序串联 24 个单块 meshHash 的 hex 后再 sha256 */
 function setHash() {
   const h = createHash('sha256');
-  for (const src of sources) {
-    const one = meshHash(meshChunk(src));
+  for (const { src, yBase, yCount } of sources) {
+    const one = meshHash(meshChunk(src, yBase, yCount));
     assert.match(one, /^[0-9a-f]{64}$/, '单块 hash 必须是 64 位 sha256 hex');
     h.update(one);
   }
@@ -51,11 +58,11 @@ function setHash() {
 
 /** 8 轮计时：先跑 8 轮预热让 JIT 进入稳态；返回每块平均 ms */
 function measureMsPerChunk() {
-  for (let r = 0; r < WARMUP_ROUNDS; r++) for (const src of sources) meshChunk(src);
+  for (let r = 0; r < WARMUP_ROUNDS; r++) for (const { src, yBase, yCount } of sources) meshChunk(src, yBase, yCount);
   let total = 0;
   for (let r = 0; r < ROUNDS; r++) {
     const t0 = performance.now();
-    for (const src of sources) meshChunk(src);
+    for (const { src, yBase, yCount } of sources) meshChunk(src, yBase, yCount);
     total += performance.now() - t0;
   }
   return total / (ROUNDS * sources.length);
@@ -66,7 +73,7 @@ function measureMsPerChunk() {
 const msPerChunk = measureMsPerChunk();
 const hash = setHash();
 console.log(`  集合 hash : ${hash}`);
-console.log(`  8 轮平均  : ${msPerChunk.toFixed(3)} ms/区块（${set.length} 块 × ${ROUNDS} 轮）`);
+console.log(`  8 轮平均  : ${msPerChunk.toFixed(3)} ms/段（${set.length} 块 × ${ROUNDS} 轮）`);
 
 if (record) {
   const baseline = {
@@ -94,9 +101,9 @@ if (record) {
   const baseMs = baseline.msPerChunk;
   const mult = baseMs / msPerChunk;
   const target = baseMs / 1.5;
-  console.log(`  基线      : ${baseMs.toFixed(3)} ms/区块；提速 ${mult.toFixed(2)}×`);
+  console.log(`  基线      : ${baseMs.toFixed(3)} ms/段；提速 ${mult.toFixed(2)}×`);
   console.log(
-    `  1.5× 目标 : <= ${target.toFixed(3)} ms/区块 → ${msPerChunk <= target ? '达标' : '未达标（如实记录，hash 一致优先）'}`,
+    `  1.5× 目标 : <= ${target.toFixed(3)} ms/段 → ${msPerChunk <= target ? '达标' : '未达标（如实记录，hash 一致优先）'}`,
   );
 }
 

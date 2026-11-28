@@ -12,6 +12,13 @@ import { parseDependency } from '../services/plugins/semver';
  *   暂停态输入残留、插件生命周期、死亡状态一致性、保存脏标记。
  */
 
+/**
+ * section 化后 dirty / inFlight 都按 section key 计数（每列最多 5 段），
+ * 与 chunkManager.BACKLOG_LIMIT 保持一致。诊断模块只读快照，不 import 业务模块，
+ * 因此在此镜像该常量；改动 chunkManager.BACKLOG_LIMIT 时必须同步。
+ */
+const BACKLOG_WARN_LIMIT = 80;
+
 export type DiagnosticSeverity = 'error' | 'warn';
 
 export interface DiagnosticIssue {
@@ -169,7 +176,7 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
     );
     check(
       'chunks.backlog',
-      c.dirty + c.inFlight <= 24,
+      c.dirty + c.inFlight <= BACKLOG_WARN_LIMIT,
       `网格队列积压：dirty=${c.dirty} inFlight=${c.inFlight}`,
       'warn',
     );
