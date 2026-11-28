@@ -1,6 +1,6 @@
 import { clamp, type BlockId, type GameMode } from '../core/types';
 import { WARMTH, COLD } from '../core/tuning';
-import type { MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
+import type { FrameTarget, GenThreads, MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
 import type { BlockRegistry } from '../world/blocks';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
@@ -41,6 +41,12 @@ export interface HUDOptions {
   onOptionsClose: () => void;
   getOptions: () => Options;
   onQuality: (v: QualityMode) => void;
+  /** 动态分辨率开关（auto 画质下允许 governor 逐帧调分辨率） */
+  onDynamicResolution: (v: boolean) => void;
+  /** 目标帧率档（governor 的预算来源） */
+  onFrameTarget: (v: FrameTarget) => void;
+  /** 开发者：地形生成线程（0 = 主线程同步） */
+  onGenThreads: (v: GenThreads) => void;
   onParticles: (v: boolean) => void;
   onViewBob: (v: boolean) => void;
   onAutoJump: (v: boolean) => void;
@@ -124,6 +130,21 @@ const QUALITY_CHOICES: { value: QualityMode; label: string }[] = [
 const THREAD_CHOICES: { value: MesherThreads; label: string }[] = [
   { value: 'auto', label: '自动' },
   { value: 'main', label: '主线程' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 4, label: '4' },
+];
+/** 目标帧率候选（自动 = 跟随屏幕实测刷新率） */
+const FRAME_TARGET_CHOICES: { value: FrameTarget; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: 30, label: '30' },
+  { value: 60, label: '60' },
+  { value: 120, label: '120' },
+];
+/** 地形生成线程候选（与网格化线程同风格；主线程项用 0 表达） */
+const GEN_THREAD_CHOICES: { value: GenThreads; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: 0, label: '主线程' },
   { value: 1, label: '1' },
   { value: 2, label: '2' },
   { value: 4, label: '4' },
@@ -218,6 +239,12 @@ export class HUD {
   private touchSensSlider!: HTMLInputElement;
   private touchSensVal!: HTMLElement;
   private qualityRow!: HTMLButtonElement;
+  /** 动态分辨率开关行（auto 画质下生效） */
+  private dynamicResRow!: HTMLButtonElement;
+  /** 目标帧率循环行 */
+  private frameTargetRow!: HTMLButtonElement;
+  /** 开发者：地形生成线程循环行 */
+  private genThreadsRow!: HTMLButtonElement;
   private particlesRow!: HTMLButtonElement;
   private viewBobRow!: HTMLButtonElement;
   private autoJumpRow!: HTMLButtonElement;
@@ -966,6 +993,15 @@ export class HUD {
     this.qualityRow = this.cycleRow('画质', QUALITY_CHOICES,
       () => this.opts.getOptions().quality, (v) => this.opts.onQuality(v));
     video.appendChild(this.qualityRow);
+    this.dynamicResRow = this.optionRow('动态分辨率', () => {
+      this.opts.onDynamicResolution(!this.opts.getOptions().dynamicResolution);
+      this.syncOptions(this.opts.getOptions());
+    });
+    video.appendChild(this.dynamicResRow);
+    video.appendChild(h('div', 'menu-note', '自动档按帧耗时实时升降渲染分辨率，桌面与移动端均可。'));
+    this.frameTargetRow = this.cycleRow('目标帧率', FRAME_TARGET_CHOICES,
+      () => this.opts.getOptions().frameTarget, (v) => this.opts.onFrameTarget(v));
+    video.appendChild(this.frameTargetRow);
     this.particlesRow = this.optionRow('粒子效果', () => {
       this.opts.onParticles(!this.opts.getOptions().particles);
       this.syncOptions(this.opts.getOptions());
@@ -1085,6 +1121,9 @@ export class HUD {
     this.threadsRow = this.cycleRow('网格化线程', THREAD_CHOICES,
       () => this.opts.getOptions().mesherThreads, (v) => this.opts.onMesherThreads(v));
     dev.appendChild(this.threadsRow);
+    this.genThreadsRow = this.cycleRow('生成线程', GEN_THREAD_CHOICES,
+      () => this.opts.getOptions().genThreads, (v) => this.opts.onGenThreads(v));
+    dev.appendChild(this.genThreadsRow);
     this.autosaveRow = this.cycleRow('自动保存间隔', AUTOSAVE_CHOICES,
       () => this.opts.getOptions().autosaveInterval, (v) => this.opts.onAutosaveInterval(v));
     dev.appendChild(this.autosaveRow);
@@ -1171,7 +1210,10 @@ export class HUD {
     this.setRowVal(this.debugRow, o.debugOverlay ? '开' : '关', !o.debugOverlay);
     this.setRowVal(this.greedyRow, o.greedy ? '开' : '关', !o.greedy);
     this.setRowVal(this.qualityRow, choiceLabel(QUALITY_CHOICES, o.quality));
+    this.setRowVal(this.dynamicResRow, o.dynamicResolution ? '开' : '关', !o.dynamicResolution);
+    this.setRowVal(this.frameTargetRow, choiceLabel(FRAME_TARGET_CHOICES, o.frameTarget));
     this.setRowVal(this.threadsRow, choiceLabel(THREAD_CHOICES, o.mesherThreads));
+    this.setRowVal(this.genThreadsRow, choiceLabel(GEN_THREAD_CHOICES, o.genThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
     if (this.landscapeRow) this.setRowVal(this.landscapeRow, o.landscapeMode ? '开' : '关', !o.landscapeMode);

@@ -20,6 +20,10 @@ export const AA_MODES: readonly AAMode[] = ['off', 'msaa', 'ssaa'];
 export const SSAA_SCALE = 1.5;
 /** 像素比硬上限：避免 ssaa 在高 DPI 屏上把填充率放大到不可玩 */
 export const MAX_PIXEL_RATIO = 2.5;
+/** 动态分辨率下限： governor 最低降到 25%（移动端保命档），更低会糊到无法辨认 */
+export const MIN_QUALITY_SCALE = 0.25;
+/** 动态分辨率上限：固定档最高 100%，ssaa 的额外像素由 aaMode 自己乘 */
+export const MAX_QUALITY_SCALE = 1.5;
 
 /**
  * 引擎主循环：渲染器、场景、相机、系统调度、尺寸自适应。
@@ -47,6 +51,8 @@ export class Engine {
   private disposed = false;
   private fpsAcc = 0;
   private fpsCount = 0;
+  /** 每帧原始（未钳制）帧耗时回调：供动态分辨率等观察者使用，不受 50ms 上限影响 */
+  onRawFrame: ((dtSeconds: number) => void) | null = null;
   /** 保存监听器引用，dispose 时解绑，避免组件化复用时累积泄漏 */
   private readonly onWindowResize: () => void;
   private readonly onOrientation: () => void;
@@ -102,9 +108,9 @@ export class Engine {
     }
   }
 
-  /** 动态分辨率：FPS 不足时降低渲染像素倍率（移动端主要省电/提帧手段） */
+  /** 动态分辨率：FPS 不足时降低渲染像素倍率（桌面 / 移动端共用同一 governor 驱动） */
   setQualityScale(scale: number) {
-    const s = clamp(scale, 0.5, 1);
+    const s = clamp(scale, MIN_QUALITY_SCALE, MAX_QUALITY_SCALE);
     if (Math.abs(s - this.qualityScale) < 0.02) return;
     this.qualityScale = s;
     this.applyPixelRatio();
@@ -136,6 +142,7 @@ export class Engine {
       if (this.disposed) return;
       this.raf = requestAnimationFrame(loop);
       const rawDt = this.clock.getDelta();
+      this.onRawFrame?.(rawDt);
       const dt = clamp(rawDt, 0.0001, 0.05);
       this.fpsAcc += rawDt;
       this.fpsCount++;

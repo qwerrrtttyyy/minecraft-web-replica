@@ -8,6 +8,7 @@ import {
   loadOptions, normalizeOptions, persistOptions, qualityScale,
   type MesherThreads, type Options, type QualityMode, type RandomTickSpeed,
 } from './core/options';
+import { QualityGovernor } from './gfx/qualityGovernor';
 import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
 import { TextureAtlas } from './gfx/atlas';
 import { DefaultGenerator } from './world/generator';
@@ -105,6 +106,16 @@ async function boot() {
   const atlas = new TextureAtlas();
   const sound = new SoundEngine();
   const isMobile = engine.isMobile;
+
+  // ---- 帧预算 governor：跨端动态分辨率的大脑（桌面 / 移动同一套，仅起点与下限不同）----
+  const qualityGovernor = new QualityGovernor({
+    // targetFps 为「设置档」；effective 取 min(它, 屏幕实测刷新率)
+    targetFps: 120,
+    minScale: isMobile ? 0.4 : 0.5,
+    maxScale: 1,
+  });
+  let rawFrameMs = 16.7;
+  engine.onRawFrame = (dtSeconds) => { rawFrameMs = dtSeconds * 1000; };
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
   const weatherParticles = new WeatherParticles(engine.scene, engine.camera, isMobile);
 
@@ -244,6 +255,7 @@ async function boot() {
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
   // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
   const workersParam = qs.get('workers');
+  const genWorkersParam = qs.get('genWorkers');
   const maxChunksParam = qs.get('maxChunks');
   // 实验对照：?emerge=0 保留 v1.5.1 的独立 emissive 通道（默认并入不透明通道）
   const chunks = new ChunkManager(world, engine.scene, atlas, events, settings.renderDistance, {
@@ -251,6 +263,10 @@ async function boot() {
     greedy: qs.get('greedy') !== '0',
     mergeEmissive: qs.get('emerge') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
+    // 地形生成池：URL ?genWorkers=N 优先，其次看设置页 genThreads（0 = 不启用，主线程同步）
+    genWorkers: genWorkersParam != null
+      ? Number(genWorkersParam)
+      : (settings.genThreads === 'auto' ? undefined : settings.genThreads),
     maxChunks: maxChunksParam != null ? Number(maxChunksParam) : undefined,
     camera: engine.camera,
   });
@@ -401,9 +417,26 @@ async function boot() {
     }
     survival.dead = false;
   }
-  /** 画质档位：自动档回到 100% 分辨率，交给自适应逐帧调整 */
+  /**
+   * 画质档位应用：
+   * - high/balanced/power：固定倍率，governor 不参与；
+   * - auto + 开启动态分辨率：回到上限，由 governor 按帧耗时逐帧调；
+   * - auto + 关闭动态分辨率：固定在 100%。
+   */
   const applyQuality = (mode: QualityMode) => {
-    engine.setQualityScale(qualityScale(mode) ?? 1);
+    const fixed = qualityScale(mode);
+    if (fixed !== null) { engine.setQualityScale(fixed); return; }
+    if (!settings.dynamicResolution) {
+      qualityGovernor.reset();
+      engine.setQualityScale(1);
+      return;
+    }
+    qualityGovernor.configure({
+      maxScale: 1,
+      targetFps: settings.frameTarget === 'auto' ? 120 : settings.frameTarget,
+    });
+    qualityGovernor.reset();
+    engine.setQualityScale(qualityGovernor.scale);
   };
 
   engine.camera.fov = settings.fov;
@@ -416,6 +449,7 @@ async function boot() {
   player.viewBob = settings.viewBob;
   player.autoJump = settings.autoJump;
   applyQuality(settings.quality);
+  chunks.setGenThreads(settings.genThreads);
   // 实验性玩法初始值（从 localStorage / 存档还原后立即推送到子系统）
   botany.setTickSpeed(settings.randomTickSpeed);
   sky.advanceTime = settings.doDaylightCycle;
@@ -717,6 +751,19 @@ async function boot() {
     onVolume: (v) => { settings.volume = v; sound.setVolume(v); persistOptions(settings); markDirty(); },
     onInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); markDirty(); },
     onQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); markDirty(); },
+    onDynamicResolution: (v) => {
+      settings.dynamicResolution = v;
+      applyQuality(settings.quality);
+      persistOptions(settings);
+      markDirty();
+    },
+    onFrameTarget: (v) => {
+      settings.frameTarget = v;
+      qualityGovernor.configure({ targetFps: v === 'auto' ? 120 : v });
+      persistOptions(settings);
+      markDirty();
+    },
+    onGenThreads: (v) => { settings.genThreads = v; chunks.setGenThreads(v); persistOptions(settings); markDirty(); },
     onParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); markDirty(); },
     onViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); markDirty(); },
     onAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); markDirty(); },
@@ -1745,9 +1792,13 @@ async function boot() {
       ? `正常（${diag.checked} 项）`
       : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
     const plants = botany.stats(p.x, p.z);
+    const qstats = qualityGovernor.stats();
     return [
       `Minecraft TS ${RELEASE} (${VERSION}) · three.js r170`,
-      `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%`,
+      `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%` +
+      (settings.quality === 'auto'
+        ? `  动态: ${Math.round(qstats.scale * 100)}%/${qstats.effectiveTargetFps}fps 目标 (p75 ${qstats.p75.toFixed(1)}ms, 屏幕${qstats.displayHz || '?'}Hz)`
+        : ''),
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
@@ -1956,23 +2007,14 @@ async function boot() {
     },
   });
 
-  // ---- 移动端动态分辨率：帧率不足则逐级降像素比，富余再抬回 ----
-  let qualityAcc = 0;
+  // ---- 动态分辨率：帧预算 governor（桌面 / 移动端同一套；固定画质档不参与）----
   engine.addSystem({
     name: 'quality',
-    update: (dt) => {
-      if (!isMobile || mode !== 'playing') return;
-      // 固定画质档位不做自适应（仅「自动」档逐帧调分辨率）
-      if (settings.quality !== 'auto') return;
-      qualityAcc += dt;
-      if (qualityAcc < 1.2) return;
-      qualityAcc = 0;
-      const fps = engine.fps;
-      if (fps < 40 && engine.qualityScale > 0.6) {
-        engine.setQualityScale(engine.qualityScale - 0.1);
-      } else if (fps > 58 && engine.qualityScale < 1) {
-        engine.setQualityScale(engine.qualityScale + 0.05);
-      }
+    update: () => {
+      if (mode !== 'playing') return;
+      if (settings.quality !== 'auto' || !settings.dynamicResolution) return;
+      const scale = qualityGovernor.update(rawFrameMs);
+      if (Math.abs(scale - engine.qualityScale) > 1e-6) engine.setQualityScale(scale);
     },
   });
 

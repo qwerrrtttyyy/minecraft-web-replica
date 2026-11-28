@@ -150,52 +150,79 @@ export class World {
       if (this.everGenerated.has(key)) this.regeneratedCount++;
       else this.everGenerated.add(key);
       this.generator.generateChunk(cx, cz, chunk.data);
-      // v1.6.0：世界生成扩展点。插件（JS / WASM）可在地形落地后改写列内容，
-      // 发生在玩家编辑差分与光照初始化之前：编辑仍优先，新方块参与光照计算。
-      if (this.extensions?.has(EXTENSION_POINTS.WORLDGEN_COLUMN)) {
-        const x0 = cx * CS, z0 = cz * CS;
-        const payload: WorldgenColumnPayload = {
-          cx, cz, data: chunk.data,
-          get: (x, y, z) => {
-            if (y < 0 || y >= H) return 0;
-            const lx = x - x0, lz = z - z0;
-            if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return 0;
-            return chunk.data[chunk.idx(lx, y, lz)];
-          },
-          set: (x, y, z, id) => {
-            if (y < 1 || y >= H) return;
-            const lx = x - x0, lz = z - z0;
-            if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return;
-            chunk.data[chunk.idx(lx, y, lz)] = id;
-          },
-        };
-        this.extensions.emit(EXTENSION_POINTS.WORLDGEN_COLUMN, payload);
-      }
-      // 应用玩家编辑差分（分桶后不再扫描全档，也不再逐条 split 坐标字符串）
-      const x0 = cx * CS;
-      const z0 = cz * CS;
-      const bucket = this.editsByChunk.get(key);
-      if (bucket) {
-        for (const e of bucket.values()) {
-          if (e.x >= x0 && e.x < x0 + CS && e.z >= z0 && e.z < z0 + CS &&
-              e.y >= 0 && e.y < H) {
-            chunk.data[chunk.idx(e.x - x0, e.y, e.z - z0)] = e.id;
-          }
-        }
-      }
-      chunk.generated = true;
-      // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
-      this.light.initChunk(chunk);
-      // 邻接已网格化区块需要重绘边界面；对角块也要算，因为 AO / 角点光照会采样对角 halo 格。
-      for (const [dx, dz] of [
-        [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
-      ] as const) {
-        const nk = chunkKey(cx + dx, cz + dz);
-        if (this.chunks.get(nk)?.generated) this.dirty.add(nk);
-      }
-      this.events.emit('chunk:generated', { cx, cz });
+      this.finalizeGenerated(cx, cz, chunk);
     }
     return chunk;
+  }
+
+  /**
+   * Worker 生成路径：接收已算好的地形 data（Worker 只算 data，光照仍在这里初始化），
+   * 其余收尾与 ensureChunk 完全一致。已存在同 key 区块时忽略并返回 false。
+   */
+  acceptGeneratedChunk(cx: number, cz: number, data: Uint8Array): boolean {
+    const key = chunkKey(cx, cz);
+    if (this.chunks.has(key)) return false;
+    const chunk = new Chunk(cx, cz);
+    chunk.data.set(data);
+    chunk.createdAt = this.time;
+    chunk.lastTouch = this.time;
+    this.chunks.set(key, chunk);
+    // M01：热路径缓存可能已把该 key 记成 null（未生成），插入后失效
+    this.cacheCx = Number.NaN;
+    this.generatedCount++;
+    if (this.everGenerated.has(key)) this.regeneratedCount++;
+    else this.everGenerated.add(key);
+    this.finalizeGenerated(cx, cz, chunk);
+    return true;
+  }
+
+  /** 生成落地后的公共收尾：扩展点改写 → 玩家差分 → 光照初始化 → 邻居回脏 */
+  private finalizeGenerated(cx: number, cz: number, chunk: Chunk): void {
+    const key = chunkKey(cx, cz);
+    // v1.6.0：世界生成扩展点。插件（JS / WASM）可在地形落地后改写列内容，
+    // 发生在玩家编辑差分与光照初始化之前：编辑仍优先，新方块参与光照计算。
+    if (this.extensions?.has(EXTENSION_POINTS.WORLDGEN_COLUMN)) {
+      const x0 = cx * CS, z0 = cz * CS;
+      const payload: WorldgenColumnPayload = {
+        cx, cz, data: chunk.data,
+        get: (x, y, z) => {
+          if (y < 0 || y >= H) return 0;
+          const lx = x - x0, lz = z - z0;
+          if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return 0;
+          return chunk.data[chunk.idx(lx, y, lz)];
+        },
+        set: (x, y, z, id) => {
+          if (y < 1 || y >= H) return;
+          const lx = x - x0, lz = z - z0;
+          if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) return;
+          chunk.data[chunk.idx(lx, y, lz)] = id;
+        },
+      };
+      this.extensions.emit(EXTENSION_POINTS.WORLDGEN_COLUMN, payload);
+    }
+    // 应用玩家编辑差分（分桶后不再扫描全档，也不再逐条 split 坐标字符串）
+    const x0 = cx * CS;
+    const z0 = cz * CS;
+    const bucket = this.editsByChunk.get(key);
+    if (bucket) {
+      for (const e of bucket.values()) {
+        if (e.x >= x0 && e.x < x0 + CS && e.z >= z0 && e.z < z0 + CS &&
+            e.y >= 0 && e.y < H) {
+          chunk.data[chunk.idx(e.x - x0, e.y, e.z - z0)] = e.id;
+        }
+      }
+    }
+    chunk.generated = true;
+    // 生成 + 存档差分都已落地，再初始化天空光 / 方块光
+    this.light.initChunk(chunk);
+    // 邻接已网格化区块需要重绘边界面；对角块也要算，因为 AO / 角点光照会采样对角 halo 格。
+    for (const [dx, dz] of [
+      [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+    ] as const) {
+      const nk = chunkKey(cx + dx, cz + dz);
+      if (this.chunks.get(nk)?.generated) this.dirty.add(nk);
+    }
+    this.events.emit('chunk:generated', { cx, cz });
   }
 
   getBlock(x: number, y: number, z: number): BlockId {

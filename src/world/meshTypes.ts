@@ -1,4 +1,5 @@
 import type { BlockId } from '../core/types';
+import type { TerrainOptions } from './generator';
 
 /**
  * 网格数据契约（主线程 / Worker 共享）。
@@ -87,9 +88,10 @@ export interface MeshSnapshot {
   block: Uint8Array;
   /**
    * 1 = 该 halo 格来自真实已生成区块；0 = 邻居缺失，data 里的 0 只是空气占位。
-   * 与 data 同尺寸同索引。旧调用方缺此字段时 SnapshotMeshSource 按全已知兼容。
+   * 与 data 同尺寸同索引。null = 全部 halo 格均来自真实区块（等价于全 1），
+   * SnapshotMeshSource 按全已知处理；旧调用方缺此字段时同样按全已知兼容。
    */
-  known: Uint8Array;
+  known: Uint8Array | null;
 }
 
 /**
@@ -236,6 +238,16 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
 
 // ---- Worker 消息协议 ----
 
+/**
+ * 地形生成的最小配置：Worker 内没有 BlockRegistry / World，
+ * 只靠「种子 + 方块名→id + 地形参数」即可复刻 DefaultGenerator。
+ */
+export interface GenConfig {
+  seed: number;
+  ids: Record<string, BlockId>;
+  options: TerrainOptions;
+}
+
 export interface MeshRequest {
   type: 'mesh';
   cx: number;
@@ -249,12 +261,25 @@ export interface MeshRequest {
   wid: number;
 }
 
+/** 区块生成请求（Worker 只算地形 data，光照初始化仍留主线程） */
+export interface GenRequest {
+  type: 'gen';
+  cx: number;
+  cz: number;
+  generation: number;
+  wid: number;
+}
+
 export type WorkerRequest =
   | { type: 'config'; config: MeshConfig; wid: number }
-  | MeshRequest;
+  | { type: 'genConfig'; config: GenConfig; wid: number }
+  | MeshRequest
+  | GenRequest;
 
 export interface MeshResult {
   type: 'result';
+  /** 任务来源通道：网格化与地形生成共用一个 Worker 类，回传据此分流 */
+  channel: 'mesh';
   /** 处理此请求的 Worker 序号（原样回显，用于主线程回传计数） */
   wid: number;
   cx: number;
@@ -267,12 +292,24 @@ export interface MeshResult {
   stats: MeshStats;
 }
 
+/** 生成结果：只回传地形数据（60KB 级），天空光 / 方块光由主线程 initChunk 计算 */
+export interface GenResult {
+  type: 'genResult';
+  channel: 'gen';
+  wid: number;
+  cx: number;
+  cz: number;
+  generation: number;
+  data: Uint8Array;
+}
+
 export type WorkerResponse =
   | MeshResult
+  | GenResult
   | { type: 'config-ack'; wid: number; revision: number }
   | {
-    type: 'error'; wid: number; cx: number; cz: number; generation: number;
-    configRevision: number; message: string;
+    type: 'error'; channel: 'mesh' | 'gen'; wid: number; cx: number; cz: number;
+    generation: number; configRevision: number; message: string;
   };
 
 /**

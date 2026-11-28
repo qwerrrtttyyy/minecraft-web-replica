@@ -80,8 +80,6 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
   // 未生成邻居按露天处理（与 World.getSkyLight 一致），避免世界边缘发黑
   const sky = new Uint8Array(W * H * W).fill(15);
   const block = new Uint8Array(W * H * W);
-  // N4：区分「已知空气」与「邻居未生成时的空气占位」，供液体面保守剔除使用
-  const known = new Uint8Array(W * H * W);
   const chunk = world.getChunk(cx, cz);
 
   // 3×3 邻居一次取齐；缺失 / 未生成的区块在快照里保持 0（等价于 getBlock 返回空气）
@@ -93,9 +91,14 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
     }
   }
 
+  // 9 格全在且已生成时 known 恒为全 1：传 null 让 Worker 走「全已知」路径，
+  // 省掉一次 25.9KB 分配与每行 fill（派发是移动场景的 GC 与尾延迟来源之一）。
+  const allKnown = !!chunk && chunk.generated && nb.every((c) => c !== null);
+  const known: Uint8Array | null = allKnown ? null : new Uint8Array(W * H * W);
+
   const copy = (dst: Uint8Array, arr: (c: Chunk) => Uint8Array, trackKnown = false) => {
     // 只在写 data 时同步记录来源可信度；缺失邻居保持 0，不被当作已知空气
-    const mark = (i: number) => { if (trackKnown) known[i] = 1; };
+    const mark = (i: number) => { if (known && trackKnown) known[i] = 1; };
     // 中心区：每行 16 字节连续
     if (chunk) {
       const src = arr(chunk);
@@ -106,7 +109,7 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
           const s = srcRow + lz * CS;
           const d = (y * W + lz + 1) * W + 1;
           dst.set(src.subarray(s, s + CS), d);
-          if (trackKnown && centerKnown) known.fill(1, d, d + CS);
+          if (known && trackKnown && centerKnown) known.fill(1, d, d + CS);
         }
       }
     }
@@ -130,10 +133,10 @@ export function buildMeshSnapshot(world: World, cx: number, cz: number): MeshSna
       const nRow = yRow + (CS - 1) * CS;
       const sRow = yRow;
       if (north) { dst[nBase] = north[nRow + CS - 1]; mark(nBase); }
-      if (northMid) { dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1); if (trackKnown) known.fill(1, nBase + 1, nBase + 1 + CS); }
+      if (northMid) { dst.set(northMid.subarray(nRow, nRow + CS), nBase + 1); if (known && trackKnown) known.fill(1, nBase + 1, nBase + 1 + CS); }
       if (northE) { dst[nBase + CS + 1] = northE[nRow]; mark(nBase + CS + 1); }
       if (south) { dst[sBase] = south[sRow + CS - 1]; mark(sBase); }
-      if (southMid) { dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1); if (trackKnown) known.fill(1, sBase + 1, sBase + 1 + CS); }
+      if (southMid) { dst.set(southMid.subarray(sRow, sRow + CS), sBase + 1); if (known && trackKnown) known.fill(1, sBase + 1, sBase + 1 + CS); }
       if (southE) { dst[sBase + CS + 1] = southE[sRow]; mark(sBase + CS + 1); }
 
       // 西 / 东两列

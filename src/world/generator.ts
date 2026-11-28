@@ -1,9 +1,27 @@
 import {
   CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL, clamp, lerp, smoothstep, mulberry32,
+  type BlockId,
 } from '../core/types';
 import { Noise } from './noise';
-import type { BlockRegistry } from './blocks';
 import { buildTree, type TreeSpecies } from './trees';
+
+/**
+ * 生成器构造所需的「按名查 id」能力（BlockRegistry 的结构子集）。
+ * Worker 内没有注册表实例，用纯数据表等价替代（见 blockIdSource）。
+ */
+export interface BlockIdSource {
+  byNameGet(name: string): { readonly id: BlockId } | undefined;
+}
+
+/** 纯数据 id 表 → BlockIdSource：供 Worker 复刻 DefaultGenerator 使用 */
+export function blockIdSource(ids: Record<string, BlockId>): BlockIdSource {
+  return {
+    byNameGet(name) {
+      const id = ids[name];
+      return id === undefined ? undefined : { id };
+    },
+  };
+}
 
 /**
  * 世界生成器接口（扩展点：CraftAPI.setGenerator 可整体替换地形算法）。
@@ -546,12 +564,23 @@ export class DefaultGenerator implements IWorldGenerator {
   /** 群系配置表（测试 / 调试可读；方块 id 在构造时解析） */
   readonly biomeProfiles = BIOME_PROFILES;
 
+  /**
+   * Worker 侧复刻同一份生成器所需的全部输入（种子 / 方块名→id / 地形参数）。
+   * 噪声后端不影响逐位结果：WASM 内核接管前已通过 Object.is 等价自检。
+   */
+  get workerConfig(): { seed: number; ids: Record<string, BlockId>; options: TerrainOptions } {
+    return { seed: this.seed, ids: this.ids, options: this.opt };
+  }
+
   private readonly heightCache = new Map<string, number>();
   private readonly baseCache = new Map<string, ColumnBase>();
 
+  /** 标记本生成器可由 Worker 逐位复刻（自定义生成器无此标记，调用方须回退主线程同步生成） */
+  readonly supportsWorkerGeneration = true;
+
   constructor(
     readonly seed: number,
-    registry: BlockRegistry,
+    ids: BlockIdSource,
     options: Partial<TerrainOptions> = {},
   ) {
     this.opt = {
@@ -571,7 +600,7 @@ export class DefaultGenerator implements IWorldGenerator {
     this.cave = n(0xc2b2ae35);
     this.cave2 = n(0x5bf03675);
 
-    const id = (name: string) => registry.byNameGet(name)?.id ?? 0;
+    const id = (name: string) => ids.byNameGet(name)?.id ?? 0;
     this.ids = {
       stone: id('stone'), water: id('water'), bedrock: id('bedrock'),
       log: id('oak_log'), leaves: id('oak_leaves'),
