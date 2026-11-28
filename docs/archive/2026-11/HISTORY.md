@@ -1,6 +1,6 @@
 # 历史版本记录（v1.1.1 ~ v1.5.0）
 
-> 从 README 迁移的各版本演进实录；当前的变更摘要见 [CHANGELOG.md](../CHANGELOG.md)，
+> 从 README 迁移的各版本演进实录；当前的变更摘要见 [CHANGELOG.md](../../../CHANGELOG.md)，
 > 版本唯一来源为 `src/core/version.ts`。
 
 ## 审查修复记录（v1.1.1）

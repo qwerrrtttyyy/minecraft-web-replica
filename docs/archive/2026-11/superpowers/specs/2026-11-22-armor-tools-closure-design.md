@@ -1,7 +1,7 @@
 # 护甲穿戴闭环 + 工具档位 — 设计文档（草案）
 
 > 状态：**已确认（2026-11-22）**，§6 四项决策均按推荐方案定稿；任务卡见 §7（`docs/agent/tasks/A2-5..A2-8`）。
-> 定位：V2 路线图「护甲 / 联机」中**护甲支柱的收尾**（承接 [DESIGN-V2-ARMOR.md](../../DESIGN-V2-ARMOR.md) 与任务卡 A2-1~A2-4）。
+> 定位：V2 路线图「护甲 / 联机」中**护甲支柱的收尾**（承接 [DESIGN-V2-ARMOR.md](../../../../DESIGN-V2-ARMOR.md) 与任务卡 A2-1~A2-4）。
 
 ---
 
@@ -158,10 +158,10 @@ PanelHost 服务 + HUD 锚点                        │
 
 | 卡 | 内容 | touch 重点 | 验收 |
 |---|---|---|---|
-| [A2-5](../../agent/tasks/A2-5-core-hooks.yaml) | 核心通用接口：`DamageKind`、5 个扩展点、`SaveData.plugins?` + `save:collect/restore`、PanelHost / 锚点 / 格装饰 | `survival.ts`、`player.ts`、`extensions.ts`、`save.ts`、`hud.ts`、`main.ts`（仅通用接线） | 无插件注册时伤害 / 挖掘 / 攻击数值与当前**逐项相等**（新增 `test/hooks-check.cjs`）；旧档 / 新档 `validateSave` 往返 |
-| [A2-6](../../agent/tasks/A2-6-armor-closure.yaml) | core:armor 闭环：右键穿戴、甲槽面板、护甲条、伤害类型过滤、死亡清甲、数据袋持久化 + 旧 storage 迁移 | `plugins/builtin/armor.ts`、`armorPanel.ts` | `armor-check` 扩到：穿戴互换 / 类型过滤 / 死亡清甲 / 串档修复 / 迁移 / 停用零残留 |
-| [A2-7](../../agent/tasks/A2-7-tools-plugin.yaml) | core:tools：规则表、挖掘倍率、采集等级、剑伤害、手持耐久、耐久条、`requireCorrectTool` 开关 | `player/toolRules.ts`、`plugins/builtin/tools.ts`、`core/options.ts` | 新增 `test/tools-check.cjs`：全方块都有规则归属 / 倍率 / 采集等级 / 耐久损坏 / 停用零差异 |
-| [A2-8](../../agent/tasks/A2-8-armor-tools-release.yaml) | 浏览器实景 + 文档 + 版本 1.5.5 | `test/survival-smoke.mjs`、README / CHANGELOG / TESTING / ARCHITECTURE | smoke：合成铁甲 → 右键穿戴 → 僵尸攻击伤害下降；木镐挖石头掉圆石、空手不掉；`npm run verify` 全绿 |
+| [A2-5](../../../../agent/tasks/A2-5-core-hooks.yaml) | 核心通用接口：`DamageKind`、5 个扩展点、`SaveData.plugins?` + `save:collect/restore`、PanelHost / 锚点 / 格装饰 | `survival.ts`、`player.ts`、`extensions.ts`、`save.ts`、`hud.ts`、`main.ts`（仅通用接线） | 无插件注册时伤害 / 挖掘 / 攻击数值与当前**逐项相等**（新增 `test/hooks-check.cjs`）；旧档 / 新档 `validateSave` 往返 |
+| [A2-6](../../../../agent/tasks/A2-6-armor-closure.yaml) | core:armor 闭环：右键穿戴、甲槽面板、护甲条、伤害类型过滤、死亡清甲、数据袋持久化 + 旧 storage 迁移 | `plugins/builtin/armor.ts`、`armorPanel.ts` | `armor-check` 扩到：穿戴互换 / 类型过滤 / 死亡清甲 / 串档修复 / 迁移 / 停用零残留 |
+| [A2-7](../../../../agent/tasks/A2-7-tools-plugin.yaml) | core:tools：规则表、挖掘倍率、采集等级、剑伤害、手持耐久、耐久条、`requireCorrectTool` 开关 | `player/toolRules.ts`、`plugins/builtin/tools.ts`、`core/options.ts` | 新增 `test/tools-check.cjs`：全方块都有规则归属 / 倍率 / 采集等级 / 耐久损坏 / 停用零差异 |
+| [A2-8](../../../../agent/tasks/A2-8-armor-tools-release.yaml) | 浏览器实景 + 文档 + 版本 1.5.5 | `test/survival-smoke.mjs`、README / CHANGELOG / TESTING / ARCHITECTURE | smoke：合成铁甲 → 右键穿戴 → 僵尸攻击伤害下降；木镐挖石头掉圆石、空手不掉；`npm run verify` 全绿 |
 
 A2-5 是前置；A2-6 与 A2-7 互不依赖可并行；A2-8 收尾并推进版本。
 `docs/agent/validate.py` 已为四张卡的 outputs 加阶段 A 检查（关键词在卡中声明），各实现卡落地时收紧为真实符号检查。
