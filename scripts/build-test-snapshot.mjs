@@ -57,6 +57,7 @@ const entries = [
   'src/world/weather.ts',
   'src/world/cold.ts',
   'src/world/trees.ts',
+  'src/world/structures.ts',
   'src/world/light.ts',
   'src/world/world.ts',
   'src/world/workerPool.ts',
