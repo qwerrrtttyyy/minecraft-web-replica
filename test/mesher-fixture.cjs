@@ -21,8 +21,10 @@ const { buildMeshConfig, buildMeshSnapshot } = require('./terrain-logic/world/me
 const { packMesh } = require('./terrain-logic/world/meshTypes.js');
 
 const SEED = 2026;
-const CX_MIN = 0, CX_MAX = 5;
-const CZ_MIN = 0, CZ_MAX = 3;
+const CX_MIN = 0,
+  CX_MAX = 5;
+const CZ_MIN = 0,
+  CZ_MAX = 3;
 /** 保证 24 个目标块各有完整 3×3 邻域，halo 全部来自已生成区块 */
 const HALO = 1;
 

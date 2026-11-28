@@ -1,14 +1,18 @@
-import {
-  CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL, clamp, lerp, smoothstep, mulberry32,
-  type BlockId,
-} from '../core/types';
+import { type BlockId, CHUNK_SIZE, clamp, lerp, mulberry32, SEA_LEVEL, smoothstep, WORLD_HEIGHT } from '../core/types';
 import { Noise } from './noise';
-import { buildTree, type TreeSpecies } from './trees';
 import {
-  STRUCTURE_BLOCK_NAMES, STRUCTURE_CELL, STRUCTURE_CHANCE, STRUCTURE_DEPTH,
-  STRUCTURE_KINDS, STRUCTURE_SALT, MINE_PALETTE, DUNGEON_PALETTE,
-  buildStructure, paletteFor,
+  buildStructure,
+  DUNGEON_PALETTE,
+  MINE_PALETTE,
+  paletteFor,
+  STRUCTURE_BLOCK_NAMES,
+  STRUCTURE_CELL,
+  STRUCTURE_CHANCE,
+  STRUCTURE_DEPTH,
+  STRUCTURE_KINDS,
+  STRUCTURE_SALT,
 } from './structures';
+import { buildTree, type TreeSpecies } from './trees';
 
 /**
  * 生成器构造所需的「按名查 id」能力（BlockRegistry 的结构子集）。
@@ -41,11 +45,25 @@ export interface IWorldGenerator {
 }
 
 export type BiomeId =
-  | 'ocean' | 'beach' | 'desert' | 'plains' | 'forest' | 'taiga' | 'alpine'
-  | 'mesa' | 'swamp' | 'savanna' | 'cherry'
+  | 'ocean'
+  | 'beach'
+  | 'desert'
+  | 'plains'
+  | 'forest'
+  | 'taiga'
+  | 'alpine'
+  | 'mesa'
+  | 'swamp'
+  | 'savanna'
+  | 'cherry'
   // 11 → 18 群系扩展：仅在末尾追加，既有 11 项顺序不动（存档 / 诊断按字符串记录 biome 名）
-  | 'jungle' | 'snowy_tundra' | 'mushroom_grove' | 'bamboo_grove'
-  | 'dark_forest' | 'birch_forest' | 'snowy_taiga';
+  | 'jungle'
+  | 'snowy_tundra'
+  | 'mushroom_grove'
+  | 'bamboo_grove'
+  | 'dark_forest'
+  | 'birch_forest'
+  | 'snowy_taiga';
 
 /** 地表一列的自然属性（不依赖区块是否已生成） */
 export interface ColumnInfo {
@@ -92,11 +110,22 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
   spawnUplift: 3,
   spawnRadius: 82,
   treeDensity: {
-    plains: 0.08, forest: 0.42, taiga: 0.34, alpine: 0.05,
-    mesa: 0, swamp: 0.1, savanna: 0.06, cherry: 0.3,
+    plains: 0.08,
+    forest: 0.42,
+    taiga: 0.34,
+    alpine: 0.05,
+    mesa: 0,
+    swamp: 0.1,
+    savanna: 0.06,
+    cherry: 0.3,
     // 11 → 18 群系扩展：雪原 / 竹林无乔木，其余按设计表逐群系给值
-    jungle: 0.38, snowy_tundra: 0, mushroom_grove: 0.18, bamboo_grove: 0,
-    dark_forest: 0.45, birch_forest: 0.4, snowy_taiga: 0.3,
+    jungle: 0.38,
+    snowy_tundra: 0,
+    mushroom_grove: 0.18,
+    bamboo_grove: 0,
+    dark_forest: 0.45,
+    birch_forest: 0.4,
+    snowy_taiga: 0.3,
   },
   oreRichness: 1,
 };
@@ -160,101 +189,168 @@ export interface BiomeProfile {
 
 export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
   ocean: {
-    surface: 'sand', filler: 'sand', plants: [],
-    clayChance: 0.5, cactusChance: 0, caneChance: 0,
+    surface: 'sand',
+    filler: 'sand',
+    plants: [],
+    clayChance: 0.5,
+    cactusChance: 0,
+    caneChance: 0,
     waterPlants: [
-      { name: 'seagrass', weight: 0.35 }, { name: 'kelp', weight: 0.2 },
-      { name: 'red_algae', weight: 0.25 }, { name: 'sea_anemone', weight: 0.2 },
+      { name: 'seagrass', weight: 0.35 },
+      { name: 'kelp', weight: 0.2 },
+      { name: 'red_algae', weight: 0.25 },
+      { name: 'sea_anemone', weight: 0.2 },
     ],
     waterPlantChance: 0.2,
-    floaters: [{ name: 'lily_pad', weight: 0.72 }, { name: 'duckweed', weight: 0.28 }],
+    floaters: [
+      { name: 'lily_pad', weight: 0.72 },
+      { name: 'duckweed', weight: 0.28 },
+    ],
     lilyChance: 0.035,
   },
   beach: {
-    surface: 'sand', filler: 'sand',
+    surface: 'sand',
+    filler: 'sand',
     // 沙滩本身不长花草，但临水处是甘蔗最自然的落脚点；海岸草与海石竹只成片点缀
-    plants: [{ name: 'beach_grass', weight: 0.02 }, { name: 'sea_thrift', weight: 0.012 }],
-    clayChance: 0, cactusChance: 0, caneChance: 0.08,
+    plants: [
+      { name: 'beach_grass', weight: 0.02 },
+      { name: 'sea_thrift', weight: 0.012 },
+    ],
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.08,
     flowerBeds: {
-      chance: 0.04, radius: 1,
-      plants: [{ name: 'sea_thrift', weight: 3 }, { name: 'beach_grass', weight: 2 }],
+      chance: 0.04,
+      radius: 1,
+      plants: [
+        { name: 'sea_thrift', weight: 3 },
+        { name: 'beach_grass', weight: 2 },
+      ],
     },
   },
   desert: {
-    surface: 'sand', filler: 'sand',
+    surface: 'sand',
+    filler: 'sand',
     // 沙石地层：沙层之下按深度间隔出现砂岩 / 切制砂岩 / 平滑砂岩，
     // 仍以沙为主，不改变地表外观与仙人掌生成规则。
     strata: ['sand', 'sandstone', 'sand', 'sand', 'cut_sandstone', 'sand', 'smooth_sandstone', 'sand'],
     plants: [
-      { name: 'dead_bush', weight: 0.006 }, { name: 'desert_marigold', weight: 0.004 },
-      { name: 'yucca', weight: 0.0025 }, { name: 'ghost_flower', weight: 0.0012 },
+      { name: 'dead_bush', weight: 0.006 },
+      { name: 'desert_marigold', weight: 0.004 },
+      { name: 'yucca', weight: 0.0025 },
+      { name: 'ghost_flower', weight: 0.0012 },
     ],
-    clayChance: 0, cactusChance: 0.02, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0.02,
+    caneChance: 0,
     flowerBeds: {
-      chance: 0.05, radius: 1,
-      plants: [{ name: 'desert_marigold', weight: 3 }, { name: 'ghost_flower', weight: 1 }],
+      chance: 0.05,
+      radius: 1,
+      plants: [
+        { name: 'desert_marigold', weight: 3 },
+        { name: 'ghost_flower', weight: 1 },
+      ],
     },
   },
   plains: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.05 }, { name: 'poppy', weight: 0.012 },
-      { name: 'dandelion', weight: 0.012 }, { name: 'fern', weight: 0.006 },
-      { name: 'azure_bluet', weight: 0.012 }, { name: 'oxeye_daisy', weight: 0.012 },
-      { name: 'cornflower', weight: 0.01 }, { name: 'tulip_red', weight: 0.006 },
-      { name: 'tulip_orange', weight: 0.005 }, { name: 'tulip_white', weight: 0.005 },
-      { name: 'tulip_pink', weight: 0.005 }, { name: 'bluebell', weight: 0.006 },
-      { name: 'allium', weight: 0.004 }, { name: 'sunflower', weight: 0.004 },
-      { name: 'lavender', weight: 0.012 }, { name: 'buttercup', weight: 0.014 },
-      { name: 'forget_me_not', weight: 0.012 }, { name: 'marigold', weight: 0.008 },
-      { name: 'violet', weight: 0.01 }, { name: 'foxglove', weight: 0.003 },
+      { name: 'tall_grass', weight: 0.05 },
+      { name: 'poppy', weight: 0.012 },
+      { name: 'dandelion', weight: 0.012 },
+      { name: 'fern', weight: 0.006 },
+      { name: 'azure_bluet', weight: 0.012 },
+      { name: 'oxeye_daisy', weight: 0.012 },
+      { name: 'cornflower', weight: 0.01 },
+      { name: 'tulip_red', weight: 0.006 },
+      { name: 'tulip_orange', weight: 0.005 },
+      { name: 'tulip_white', weight: 0.005 },
+      { name: 'tulip_pink', weight: 0.005 },
+      { name: 'bluebell', weight: 0.006 },
+      { name: 'allium', weight: 0.004 },
+      { name: 'sunflower', weight: 0.004 },
+      { name: 'lavender', weight: 0.012 },
+      { name: 'buttercup', weight: 0.014 },
+      { name: 'forget_me_not', weight: 0.012 },
+      { name: 'marigold', weight: 0.008 },
+      { name: 'violet', weight: 0.01 },
+      { name: 'foxglove', weight: 0.003 },
       { name: 'hollyhock', weight: 0.003 },
       // v1.7.0：经济作物零星野化在平原
-      { name: 'cotton_bush', weight: 0.0035 }, { name: 'grape_vine', weight: 0.0025 },
+      { name: 'cotton_bush', weight: 0.0035 },
+      { name: 'grape_vine', weight: 0.0025 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.025,
-    trees: [{ species: 'oak', weight: 1 }], pumpkinChance: 0.0015,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.025,
+    trees: [{ species: 'oak', weight: 1 }],
+    pumpkinChance: 0.0015,
     flowerBeds: {
-      chance: 0.16, radius: 2,
+      chance: 0.16,
+      radius: 2,
       plants: [
-        { name: 'lavender', weight: 3 }, { name: 'buttercup', weight: 3 },
-        { name: 'forget_me_not', weight: 2 }, { name: 'violet', weight: 2 },
-        { name: 'marigold', weight: 2 }, { name: 'oxeye_daisy', weight: 2 },
-        { name: 'cornflower', weight: 1 }, { name: 'poppy', weight: 1 },
+        { name: 'lavender', weight: 3 },
+        { name: 'buttercup', weight: 3 },
+        { name: 'forget_me_not', weight: 2 },
+        { name: 'violet', weight: 2 },
+        { name: 'marigold', weight: 2 },
+        { name: 'oxeye_daisy', weight: 2 },
+        { name: 'cornflower', weight: 1 },
+        { name: 'poppy', weight: 1 },
         { name: 'foxglove', weight: 1 },
       ],
     },
   },
   forest: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.06 }, { name: 'poppy', weight: 0.01 },
-      { name: 'dandelion', weight: 0.01 }, { name: 'fern', weight: 0.01 },
+      { name: 'tall_grass', weight: 0.06 },
+      { name: 'poppy', weight: 0.01 },
+      { name: 'dandelion', weight: 0.01 },
+      { name: 'fern', weight: 0.01 },
       { name: 'tall_fern', weight: 0.012 },
-      { name: 'lily_of_the_valley', weight: 0.012 }, { name: 'bluebell', weight: 0.012 },
-      { name: 'rose_bush', weight: 0.006 }, { name: 'lilac', weight: 0.005 },
+      { name: 'lily_of_the_valley', weight: 0.012 },
+      { name: 'bluebell', weight: 0.012 },
+      { name: 'rose_bush', weight: 0.006 },
+      { name: 'lilac', weight: 0.005 },
       { name: 'peony', weight: 0.005 },
-      { name: 'red_mushroom', weight: 0.004 }, { name: 'brown_mushroom', weight: 0.004 },
-      { name: 'wood_anemone', weight: 0.008 }, { name: 'wild_garlic', weight: 0.007 },
-      { name: 'hyacinth', weight: 0.005 }, { name: 'ivy', weight: 0.0015 },
+      { name: 'red_mushroom', weight: 0.004 },
+      { name: 'brown_mushroom', weight: 0.004 },
+      { name: 'wood_anemone', weight: 0.008 },
+      { name: 'wild_garlic', weight: 0.007 },
+      { name: 'hyacinth', weight: 0.005 },
+      { name: 'ivy', weight: 0.0015 },
       // v1.7.0：葡萄藤与兰花长在林下
-      { name: 'grape_vine', weight: 0.0035 }, { name: 'orchid', weight: 0.003 },
+      { name: 'grape_vine', weight: 0.0035 },
+      { name: 'orchid', weight: 0.003 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.03,
-    trees: [{ species: 'oak', weight: 0.65 }, { species: 'birch', weight: 0.35 }],
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.03,
+    trees: [
+      { species: 'oak', weight: 0.65 },
+      { species: 'birch', weight: 0.35 },
+    ],
     pumpkinChance: 0.001,
     flowerBeds: {
-      chance: 0.14, radius: 2,
+      chance: 0.14,
+      radius: 2,
       plants: [
-        { name: 'wood_anemone', weight: 3 }, { name: 'bluebell', weight: 2 },
-        { name: 'lily_of_the_valley', weight: 2 }, { name: 'forget_me_not', weight: 2 },
-        { name: 'wild_garlic', weight: 2 }, { name: 'hyacinth', weight: 1 },
+        { name: 'wood_anemone', weight: 3 },
+        { name: 'bluebell', weight: 2 },
+        { name: 'lily_of_the_valley', weight: 2 },
+        { name: 'forget_me_not', weight: 2 },
+        { name: 'wild_garlic', weight: 2 },
+        { name: 'hyacinth', weight: 1 },
         { name: 'poppy', weight: 1 },
       ],
     },
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
       { name: 'moonflower', weight: 0.15 },
       // v1.7.0：发光虫菌是荧光火把的野外来源
       { name: 'glow_cordyceps', weight: 0.26 },
@@ -262,27 +358,38 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     caveChance: 0.06,
   },
   taiga: {
-    surface: 'podzol', filler: 'dirt',
+    surface: 'podzol',
+    filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.01 }, { name: 'fern', weight: 0.025 },
-      { name: 'tall_fern', weight: 0.03 }, { name: 'poppy', weight: 0.004 },
+      { name: 'tall_grass', weight: 0.01 },
+      { name: 'fern', weight: 0.025 },
+      { name: 'tall_fern', weight: 0.03 },
+      { name: 'poppy', weight: 0.004 },
       { name: 'lily_of_the_valley', weight: 0.004 },
-      { name: 'red_mushroom', weight: 0.004 }, { name: 'brown_mushroom', weight: 0.006 },
+      { name: 'red_mushroom', weight: 0.004 },
+      { name: 'brown_mushroom', weight: 0.006 },
       { name: 'sweet_berry_bush', weight: 0.008 },
-      { name: 'lingonberry_bush', weight: 0.01 }, { name: 'snowdrop', weight: 0.006 },
+      { name: 'lingonberry_bush', weight: 0.01 },
+      { name: 'snowdrop', weight: 0.006 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.02,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.02,
     trees: [{ species: 'spruce', weight: 1 }],
     flowerBeds: {
-      chance: 0.1, radius: 2,
+      chance: 0.1,
+      radius: 2,
       plants: [
-        { name: 'snowdrop', weight: 3 }, { name: 'lingonberry_bush', weight: 2 },
-        { name: 'fern', weight: 2 }, { name: 'wild_garlic', weight: 1 },
+        { name: 'snowdrop', weight: 3 },
+        { name: 'lingonberry_bush', weight: 2 },
+        { name: 'fern', weight: 2 },
+        { name: 'wild_garlic', weight: 1 },
       ],
     },
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
       { name: 'moonflower', weight: 0.15 },
       // v1.7.0：发光虫菌是荧光火把的野外来源
       { name: 'glow_cordyceps', weight: 0.26 },
@@ -290,26 +397,35 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     caveChance: 0.055,
   },
   alpine: {
-    surface: 'snow', filler: 'dirt',
+    surface: 'snow',
+    filler: 'dirt',
     plants: [
-      { name: 'edelweiss', weight: 0.012 }, { name: 'crocus', weight: 0.014 },
-      { name: 'gentian', weight: 0.008 }, { name: 'snow_lily', weight: 0.007 },
+      { name: 'edelweiss', weight: 0.012 },
+      { name: 'crocus', weight: 0.014 },
+      { name: 'gentian', weight: 0.008 },
+      { name: 'snow_lily', weight: 0.007 },
       { name: 'snowdrop', weight: 0.006 },
       // v1.7.0：山鼠尾草点缀高山草甸
       { name: 'sage', weight: 0.005 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     trees: [{ species: 'spruce', weight: 1 }],
     flowerBeds: {
-      chance: 0.2, radius: 2,
+      chance: 0.2,
+      radius: 2,
       plants: [
-        { name: 'crocus', weight: 3 }, { name: 'edelweiss', weight: 3 },
-        { name: 'snow_lily', weight: 2 }, { name: 'gentian', weight: 2 },
+        { name: 'crocus', weight: 3 },
+        { name: 'edelweiss', weight: 3 },
+        { name: 'snow_lily', weight: 2 },
+        { name: 'gentian', weight: 2 },
       ],
     },
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
       { name: 'moonflower', weight: 0.15 },
       // v1.7.0：发光虫菌是荧光火把的野外来源
       { name: 'glow_cordyceps', weight: 0.26 },
@@ -317,142 +433,209 @@ export const BIOME_PROFILES: Readonly<Record<BiomeId, BiomeProfile>> = {
     caveChance: 0.055,
   },
   mesa: {
-    surface: 'red_sand', filler: 'terracotta_orange',
+    surface: 'red_sand',
+    filler: 'terracotta_orange',
     strata: ['terracotta_red', 'terracotta_orange', 'terracotta_yellow', 'terracotta_white', 'terracotta_blue'],
     plants: [{ name: 'dead_bush', weight: 0.01 }],
-    clayChance: 0, cactusChance: 0.015, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0.015,
+    caneChance: 0,
   },
   swamp: {
-    surface: 'mud', filler: 'mud',
+    surface: 'mud',
+    filler: 'mud',
     // 植物只用地形装饰允许出现在沼泽的名单（fern / 蘑菇因乔木与生态指示角色留出）
     plants: [
-      { name: 'moss_carpet', weight: 0.05 }, { name: 'tall_grass', weight: 0.03 },
+      { name: 'moss_carpet', weight: 0.05 },
+      { name: 'tall_grass', weight: 0.03 },
       // v1.7.0：沼泽是稻与猪笼草的原生地
-      { name: 'rice_plant', weight: 0.006 }, { name: 'pitcher_plant', weight: 0.004 },
+      { name: 'rice_plant', weight: 0.006 },
+      { name: 'pitcher_plant', weight: 0.004 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.06,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.06,
     lilyChance: 0.03,
-    floaters: [{ name: 'lily_pad', weight: 0.7 }, { name: 'duckweed', weight: 0.18 },
-      { name: 'lotus', weight: 0.12 }],
+    floaters: [
+      { name: 'lily_pad', weight: 0.7 },
+      { name: 'duckweed', weight: 0.18 },
+      { name: 'lotus', weight: 0.12 },
+    ],
     trees: [{ species: 'oak', weight: 1 }],
   },
   savanna: {
-    surface: 'dry_grass', filler: 'dirt',
+    surface: 'dry_grass',
+    filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.05 }, { name: 'dead_bush', weight: 0.004 },
+      { name: 'tall_grass', weight: 0.05 },
+      { name: 'dead_bush', weight: 0.004 },
       // v1.7.0：辣椒丛适应干热气候
       { name: 'chili_bush', weight: 0.0045 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     trees: [{ species: 'acacia', weight: 1 }],
   },
   cherry: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'tall_grass', weight: 0.03 }, { name: 'moss_carpet', weight: 0.03 },
-      { name: 'poppy', weight: 0.006 }, { name: 'dandelion', weight: 0.006 },
+      { name: 'tall_grass', weight: 0.03 },
+      { name: 'moss_carpet', weight: 0.03 },
+      { name: 'poppy', weight: 0.006 },
+      { name: 'dandelion', weight: 0.006 },
       // v1.7.0：兰花开在樱花林下
       { name: 'orchid', weight: 0.004 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.02,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.02,
     trees: [{ species: 'cherry', weight: 1 }],
   },
 
   // ---------- 11 → 18 群系扩展（零新方块 id / 零新 tile） ----------
   // 以下 7 项全部复用已注册方块，仅靠表层 / 填充 / 植物 / 树种组合做区分。
   jungle: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'bamboo', weight: 0.03 }, { name: 'tall_fern', weight: 0.02 },
-      { name: 'vine', weight: 0.012 }, { name: 'fern', weight: 0.01 },
+      { name: 'bamboo', weight: 0.03 },
+      { name: 'tall_fern', weight: 0.02 },
+      { name: 'vine', weight: 0.012 },
+      { name: 'fern', weight: 0.01 },
       { name: 'moss_carpet', weight: 0.02 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.03,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.03,
     trees: [{ species: 'oak', weight: 1 }],
   },
   snowy_tundra: {
-    surface: 'snow', filler: 'dirt',
+    surface: 'snow',
+    filler: 'dirt',
     plants: [
-      { name: 'snowdrop', weight: 0.01 }, { name: 'edelweiss', weight: 0.008 },
+      { name: 'snowdrop', weight: 0.01 },
+      { name: 'edelweiss', weight: 0.008 },
       { name: 'snow_lily', weight: 0.006 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     // 新群系花圃权重按设计表口径取相对权重，总和 ≤ 1
     flowerBeds: {
-      chance: 0.1, radius: 2,
+      chance: 0.1,
+      radius: 2,
       plants: [
-        { name: 'snowdrop', weight: 0.5 }, { name: 'edelweiss', weight: 0.3 },
+        { name: 'snowdrop', weight: 0.5 },
+        { name: 'edelweiss', weight: 0.3 },
         { name: 'snow_lily', weight: 0.2 },
       ],
     },
   },
   mushroom_grove: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'red_mushroom', weight: 0.02 }, { name: 'brown_mushroom', weight: 0.02 },
-      { name: 'moss_carpet', weight: 0.04 }, { name: 'glow_moss', weight: 0.02 },
+      { name: 'red_mushroom', weight: 0.02 },
+      { name: 'brown_mushroom', weight: 0.02 },
+      { name: 'moss_carpet', weight: 0.04 },
+      { name: 'glow_moss', weight: 0.02 },
       { name: 'ivy', weight: 0.004 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     trees: [{ species: 'oak', weight: 1 }],
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
-      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.06,
   },
   bamboo_grove: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'bamboo', weight: 0.06 }, { name: 'tall_grass', weight: 0.03 },
-      { name: 'sugar_cane', weight: 0.01 }, { name: 'vine', weight: 0.01 },
+      { name: 'bamboo', weight: 0.06 },
+      { name: 'tall_grass', weight: 0.03 },
+      { name: 'sugar_cane', weight: 0.01 },
+      { name: 'vine', weight: 0.01 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0.04,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0.04,
   },
   dark_forest: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'ivy', weight: 0.006 }, { name: 'moss_carpet', weight: 0.03 },
-      { name: 'red_mushroom', weight: 0.008 }, { name: 'brown_mushroom', weight: 0.008 },
+      { name: 'ivy', weight: 0.006 },
+      { name: 'moss_carpet', weight: 0.03 },
+      { name: 'red_mushroom', weight: 0.008 },
+      { name: 'brown_mushroom', weight: 0.008 },
       { name: 'fern', weight: 0.012 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
-    trees: [{ species: 'oak', weight: 0.7 }, { species: 'birch', weight: 0.3 }],
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
+    trees: [
+      { species: 'oak', weight: 0.7 },
+      { species: 'birch', weight: 0.3 },
+    ],
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
-      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.06,
   },
   birch_forest: {
-    surface: 'grass', filler: 'dirt',
+    surface: 'grass',
+    filler: 'dirt',
     plants: [
-      { name: 'fern', weight: 0.015 }, { name: 'tall_grass', weight: 0.03 },
-      { name: 'azure_bluet', weight: 0.008 }, { name: 'lily_of_the_valley', weight: 0.006 },
+      { name: 'fern', weight: 0.015 },
+      { name: 'tall_grass', weight: 0.03 },
+      { name: 'azure_bluet', weight: 0.008 },
+      { name: 'lily_of_the_valley', weight: 0.006 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     trees: [{ species: 'birch', weight: 1 }],
   },
   snowy_taiga: {
-    surface: 'podzol', filler: 'dirt',
+    surface: 'podzol',
+    filler: 'dirt',
     plants: [
-      { name: 'snowdrop', weight: 0.01 }, { name: 'lingonberry_bush', weight: 0.012 },
-      { name: 'fern', weight: 0.02 }, { name: 'tall_fern', weight: 0.02 },
+      { name: 'snowdrop', weight: 0.01 },
+      { name: 'lingonberry_bush', weight: 0.012 },
+      { name: 'fern', weight: 0.02 },
+      { name: 'tall_fern', weight: 0.02 },
     ],
-    clayChance: 0, cactusChance: 0, caneChance: 0,
+    clayChance: 0,
+    cactusChance: 0,
+    caneChance: 0,
     trees: [{ species: 'spruce', weight: 1 }],
     flowerBeds: {
-      chance: 0.1, radius: 2,
+      chance: 0.1,
+      radius: 2,
       plants: [
-        { name: 'snowdrop', weight: 0.6 }, { name: 'lingonberry_bush', weight: 0.4 },
+        { name: 'snowdrop', weight: 0.6 },
+        { name: 'lingonberry_bush', weight: 0.4 },
       ],
     },
     cavePlants: [
       // 权重总和不得超过 1：生成按 [0,1) 均匀分布顺序累加选取
-      { name: 'glow_moss', weight: 0.37 }, { name: 'glow_fern', weight: 0.22 },
-      { name: 'moonflower', weight: 0.15 }, { name: 'glow_cordyceps', weight: 0.26 },
+      { name: 'glow_moss', weight: 0.37 },
+      { name: 'glow_fern', weight: 0.22 },
+      { name: 'moonflower', weight: 0.15 },
+      { name: 'glow_cordyceps', weight: 0.26 },
     ],
     caveChance: 0.06,
   },
@@ -608,19 +791,36 @@ export class DefaultGenerator implements IWorldGenerator {
 
     const id = (name: string) => ids.byNameGet(name)?.id ?? 0;
     this.ids = {
-      stone: id('stone'), water: id('water'), bedrock: id('bedrock'),
-      log: id('oak_log'), leaves: id('oak_leaves'),
-      birchLog: id('birch_log'), birchLeaves: id('birch_leaves'),
-      spruceLog: id('spruce_log'), spruceLeaves: id('spruce_leaves'),
-      coal: id('coal_ore'), iron: id('iron_ore'), gold: id('gold_ore'),
-      diamond: id('diamond_ore'), glowstone: id('glowstone'),
-      copper: id('copper_ore'), emerald: id('emerald_ore'), lapis: id('lapis_ore'),
-      redstone: id('redstone_ore'), granite: id('granite'),
-      clay: id('clay'), cactus: id('cactus'), cane: id('sugar_cane'),
-      seagrass: id('seagrass'), kelp: id('kelp'), lilyPad: id('lily_pad'),
+      stone: id('stone'),
+      water: id('water'),
+      bedrock: id('bedrock'),
+      log: id('oak_log'),
+      leaves: id('oak_leaves'),
+      birchLog: id('birch_log'),
+      birchLeaves: id('birch_leaves'),
+      spruceLog: id('spruce_log'),
+      spruceLeaves: id('spruce_leaves'),
+      coal: id('coal_ore'),
+      iron: id('iron_ore'),
+      gold: id('gold_ore'),
+      diamond: id('diamond_ore'),
+      glowstone: id('glowstone'),
+      copper: id('copper_ore'),
+      emerald: id('emerald_ore'),
+      lapis: id('lapis_ore'),
+      redstone: id('redstone_ore'),
+      granite: id('granite'),
+      clay: id('clay'),
+      cactus: id('cactus'),
+      cane: id('sugar_cane'),
+      seagrass: id('seagrass'),
+      kelp: id('kelp'),
+      lilyPad: id('lily_pad'),
       pumpkin: id('pumpkin'),
-      acaciaLog: id('acacia_log'), acaciaLeaves: id('acacia_leaves'),
-      cherryLog: id('cherry_log'), cherryLeaves: id('cherry_leaves'),
+      acaciaLog: id('acacia_log'),
+      acaciaLeaves: id('acacia_leaves'),
+      cherryLog: id('cherry_log'),
+      cherryLeaves: id('cherry_leaves'),
     };
     // 结构模板按方块名解析；Worker 用同一份全量 id 表复刻，缺方块时该方块静默跳过
     for (const name of STRUCTURE_BLOCK_NAMES) this.ids[name] = id(name);
@@ -631,10 +831,11 @@ export class DefaultGenerator implements IWorldGenerator {
       const plants = p.plants.map((pl) => ({ id: id(pl.name), weight: pl.weight }));
       const waterPlants = (p.waterPlants ?? []).map((pl) => ({ id: id(pl.name), weight: pl.weight }));
       const trees = [...(p.trees ?? [])];
-      const floaters = (p.floaters ?? [{ name: 'lily_pad', weight: 1 }])
-        .map((pl) => ({ id: id(pl.name), weight: pl.weight }));
-      const flowerBedPlants = (p.flowerBeds?.plants ?? [])
-        .map((pl) => ({ id: id(pl.name), weight: pl.weight }));
+      const floaters = (p.floaters ?? [{ name: 'lily_pad', weight: 1 }]).map((pl) => ({
+        id: id(pl.name),
+        weight: pl.weight,
+      }));
+      const flowerBedPlants = (p.flowerBeds?.plants ?? []).map((pl) => ({ id: id(pl.name), weight: pl.weight }));
       const cavePlants = (p.cavePlants ?? []).map((pl) => ({ id: id(pl.name), weight: pl.weight }));
       resolved[biome] = {
         surface: id(p.surface),
@@ -676,8 +877,13 @@ export class DefaultGenerator implements IWorldGenerator {
   }
 
   private hashInt(a: number, b: number, c: number, d: number): number {
-    let h = (Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^
-      Math.imul(c, 83492791) ^ Math.imul(d, 2654435761) ^ this.seed) | 0;
+    let h =
+      (Math.imul(a, 73856093) ^
+        Math.imul(b, 19349663) ^
+        Math.imul(c, 83492791) ^
+        Math.imul(d, 2654435761) ^
+        this.seed) |
+      0;
     h = Math.imul(h ^ (h >>> 15), 2246822519);
     h ^= h >>> 13;
     return h >>> 0;
@@ -768,28 +974,28 @@ export class DefaultGenerator implements IWorldGenerator {
     if (height < SEA_LEVEL) biome = 'ocean';
     else if (height <= SEA_LEVEL + 1) biome = 'beach';
     // 沼泽：高湿（m>0.62）中温（0.3~0.62）低平（海拔 +8 内）
-    else if (m > 0.62 && t >= 0.30 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp';
+    else if (m > 0.62 && t >= 0.3 && t <= 0.62 && height <= SEA_LEVEL + 8) biome = 'swamp';
     else if (alt > 0.55 || (t < 0.2 && height > 50)) biome = 'alpine';
     // 新：寒冷干燥低地苔原（抢占 taiga 的干燥低温格）
-    else if (t < 0.30 && m < 0.40 && height <= SEA_LEVEL + 12) biome = 'snowy_tundra';
+    else if (t < 0.3 && m < 0.4 && height <= SEA_LEVEL + 12) biome = 'snowy_tundra';
     // 新：最冷且较湿的积雪针叶林（抢占 taiga 的最冷格）
-    else if (t < 0.20 && m >= 0.40 && height <= 50) biome = 'snowy_taiga';
+    else if (t < 0.2 && m >= 0.4 && height <= 50) biome = 'snowy_taiga';
     else if (t < 0.3) biome = 'taiga';
     // 恶地：比沙漠更热更干
     else if (t > 0.68 && m < 0.28) biome = 'mesa';
     else if (t > 0.68 && m < 0.45) biome = 'desert';
     // 樱花林：温和至暖 + 高湿度区，优先于高湿群系（湿度阈值靠末端增宽，稀有度归因）
-    else if (m >= 0.60 && m < 0.70 && t >= 0.40 && t <= 0.68) biome = 'cherry';
+    else if (m >= 0.6 && m < 0.7 && t >= 0.4 && t <= 0.68) biome = 'cherry';
     // 新：湿热阔叶林（原 forest 兜底过宽）
     else if (t > 0.68 && m >= 0.62 && m < 0.78) biome = 'jungle';
     // 新：cherry 湿度带以上的暖区竹林
-    else if (t > 0.60 && t <= 0.68 && m > 0.70 && height <= SEA_LEVEL + 16) biome = 'bamboo_grove';
+    else if (t > 0.6 && t <= 0.68 && m > 0.7 && height <= SEA_LEVEL + 16) biome = 'bamboo_grove';
     // 新：m>0.70 的温和高地真菌林；低海拔高湿仍归 swamp
-    else if (t >= 0.30 && t <= 0.60 && m > 0.70 && height <= SEA_LEVEL + 20) biome = 'mushroom_grove';
+    else if (t >= 0.3 && t <= 0.6 && m > 0.7 && height <= SEA_LEVEL + 20) biome = 'mushroom_grove';
     // 新：cherry 带之外的中温高湿暗林
-    else if (t >= 0.30 && t <= 0.55 && m > 0.56 && m <= 0.70 && height <= SEA_LEVEL + 24) biome = 'dark_forest';
+    else if (t >= 0.3 && t <= 0.55 && m > 0.56 && m <= 0.7 && height <= SEA_LEVEL + 24) biome = 'dark_forest';
     // 新：m∈(0.45,0.56] 的温和格从 plains 细化
-    else if (t >= 0.30 && t <= 0.55 && m > 0.45 && m <= 0.56 && height <= SEA_LEVEL + 24) biome = 'birch_forest';
+    else if (t >= 0.3 && t <= 0.55 && m > 0.45 && m <= 0.56 && height <= SEA_LEVEL + 24) biome = 'birch_forest';
     // 热带草原：暖且湿度中等（0.45~0.62）
     else if (t > 0.6 && m >= 0.45 && m < 0.62) biome = 'savanna';
     else if (m > 0.56) biome = 'forest';
@@ -827,11 +1033,21 @@ export class DefaultGenerator implements IWorldGenerator {
 
   private runStage(stage: TerrainStage, ctx: GenContext, data: Uint8Array): void {
     switch (stage) {
-      case 'columns': this.stageColumns(ctx, data); break;
-      case 'ores': this.stageOres(ctx, data); break;
-      case 'trees': this.stageTrees(ctx, data); break;
-      case 'decorate': this.stageDecorate(ctx, data); break;
-      case 'structures': this.stageStructures(ctx, data); break;
+      case 'columns':
+        this.stageColumns(ctx, data);
+        break;
+      case 'ores':
+        this.stageOres(ctx, data);
+        break;
+      case 'trees':
+        this.stageTrees(ctx, data);
+        break;
+      case 'decorate':
+        this.stageDecorate(ctx, data);
+        break;
+      case 'structures':
+        this.stageStructures(ctx, data);
+        break;
     }
   }
 
@@ -854,15 +1070,17 @@ export class DefaultGenerator implements IWorldGenerator {
     for (let gz = 0; gz < GRID; gz++) {
       for (let gx = 0; gx < GRID; gx++) {
         const k = gz * GRID + gx;
-        const hx = heights[gz * GRID + Math.min(GRID - 1, gx + 1)] -
-          heights[gz * GRID + Math.max(0, gx - 1)];
-        const hz = heights[Math.min(GRID - 1, gz + 1) * GRID + gx] -
-          heights[Math.max(0, gz - 1) * GRID + gx];
+        const hx = heights[gz * GRID + Math.min(GRID - 1, gx + 1)] - heights[gz * GRID + Math.max(0, gx - 1)];
+        const hz = heights[Math.min(GRID - 1, gz + 1) * GRID + gx] - heights[Math.max(0, gz - 1) * GRID + gx];
         cols[k].slope = clamp(Math.hypot(hx, hz) / (2 * 1.4), 0, 1);
       }
     }
     return {
-      cx, cz, x0, z0, cols,
+      cx,
+      cz,
+      x0,
+      z0,
+      cols,
       idx: (x: number, y: number, z: number) => (y * CS + z) * CS + x,
       at: (lx: number, lz: number) => cols[(lz + PAD) * GRID + lx + PAD],
       groundAt: (wx: number, wz: number) => {
@@ -898,8 +1116,12 @@ export class DefaultGenerator implements IWorldGenerator {
           top = I.stone;
         }
         // 浅水海床铺黏土：只在海平面下 3 格内的浅滩，深水保持沙床
-        if (c.biome === 'ocean' && profile.clayChance > 0 &&
-          SEA_LEVEL - h <= 3 && this.hash2i(wx, wz, 0x0c1a) < profile.clayChance) {
+        if (
+          c.biome === 'ocean' &&
+          profile.clayChance > 0 &&
+          SEA_LEVEL - h <= 3 &&
+          this.hash2i(wx, wz, 0x0c1a) < profile.clayChance
+        ) {
           top = I.clay;
         }
 
@@ -983,8 +1205,7 @@ export class DefaultGenerator implements IWorldGenerator {
             const j = ctx.idx(px, py, pz);
             // 恶地用彩色陶瓦代替石头，允许煤 / 铁等替换底部的陶瓦层（废弃矿井效果）
             const top = data[j];
-            const writable = top === I.stone ||
-              (ctx.at(px, pz).biome === 'mesa' && top !== 0 && top !== I.bedrock);
+            const writable = top === I.stone || (ctx.at(px, pz).biome === 'mesa' && top !== 0 && top !== I.bedrock);
             if (writable) data[j] = v.id;
           }
           px += ((rng() * 3) | 0) - 1;
@@ -1006,11 +1227,25 @@ export class DefaultGenerator implements IWorldGenerator {
     const gz0 = Math.floor((z0 - PAD - TREE_CELL) / TREE_CELL);
     const gz1 = Math.floor((z0 + CS + PAD) / TREE_CELL);
     const logOf = (s: TreeSpecies) =>
-      s === 'birch' ? I.birchLog : s === 'spruce' ? I.spruceLog :
-      s === 'acacia' ? I.acaciaLog : s === 'cherry' ? I.cherryLog : I.log;
+      s === 'birch'
+        ? I.birchLog
+        : s === 'spruce'
+          ? I.spruceLog
+          : s === 'acacia'
+            ? I.acaciaLog
+            : s === 'cherry'
+              ? I.cherryLog
+              : I.log;
     const leafOf = (s: TreeSpecies) =>
-      s === 'birch' ? I.birchLeaves : s === 'spruce' ? I.spruceLeaves :
-      s === 'acacia' ? I.acaciaLeaves : s === 'cherry' ? I.cherryLeaves : I.leaves;
+      s === 'birch'
+        ? I.birchLeaves
+        : s === 'spruce'
+          ? I.spruceLeaves
+          : s === 'acacia'
+            ? I.acaciaLeaves
+            : s === 'cherry'
+              ? I.cherryLeaves
+              : I.leaves;
 
     for (let gz = gz0; gz <= gz1; gz++) {
       for (let gx = gx0; gx <= gx1; gx++) {
@@ -1081,8 +1316,7 @@ export class DefaultGenerator implements IWorldGenerator {
         const wz = z0 + lz;
 
         // 地下弱光植物：深处空气洞穴里成片生长，给地下一点生气（不占用地表装饰）
-        if (profile.caveChance > 0 && h > SEA_LEVEL + 6 &&
-          this.hash2i(wx, wz, 0xcafe) < profile.caveChance) {
+        if (profile.caveChance > 0 && h > SEA_LEVEL + 6 && this.hash2i(wx, wz, 0xcafe) < profile.caveChance) {
           const span = h - 8;
           if (span > 1) {
             // 一列最多试 4 个深度，命中洞穴空洞就停；避免依赖单个采样点而几乎不生成
@@ -1106,9 +1340,12 @@ export class DefaultGenerator implements IWorldGenerator {
 
         // 水下装饰：海草 / 海带长在海床上，浅水水面铺睡莲
         if (h < SEA_LEVEL) {
-          if (profile.waterPlantTotal > 0 && profile.waterPlantChance > 0 &&
+          if (
+            profile.waterPlantTotal > 0 &&
+            profile.waterPlantChance > 0 &&
             data[idx(lx, h + 1, lz)] === I.water &&
-            this.hash2i(wx, wz, 0x0cea) < profile.waterPlantChance) {
+            this.hash2i(wx, wz, 0x0cea) < profile.waterPlantChance
+          ) {
             let acc = 0;
             const r = this.hash2i(wx, wz, 0x0ceb);
             for (const pl of profile.waterPlants) {
@@ -1130,10 +1367,14 @@ export class DefaultGenerator implements IWorldGenerator {
               break;
             }
           }
-          if (profile.lilyChance > 0 && SEA_LEVEL - h <= 3 &&
+          if (
+            profile.lilyChance > 0 &&
+            SEA_LEVEL - h <= 3 &&
             profile.floaterTotal > 0 &&
             this.hash2i(wx, wz, 0x1a7e) < profile.lilyChance &&
-            SEA_LEVEL + 1 < H && data[idx(lx, SEA_LEVEL + 1, lz)] === 0) {
+            SEA_LEVEL + 1 < H &&
+            data[idx(lx, SEA_LEVEL + 1, lz)] === 0
+          ) {
             let acc = 0;
             const rf = this.hash2i(wx, wz, 0x1a7f);
             for (const fl of profile.floaters) {
@@ -1151,9 +1392,13 @@ export class DefaultGenerator implements IWorldGenerator {
         if (data[idx(lx, h + 1, lz)] !== 0) continue;
 
         // 甘蔗：紧邻水面的浅岸（含与水面同高的沙滩），1~2 格高
-        if (profile.caneChance > 0 && h >= SEA_LEVEL && h <= SEA_LEVEL + 3 &&
+        if (
+          profile.caneChance > 0 &&
+          h >= SEA_LEVEL &&
+          h <= SEA_LEVEL + 3 &&
           this.hash2i(wx, wz, 0x6a1e) < profile.caneChance &&
-          this.nearWater(wx, wz, h, groundAt)) {
+          this.nearWater(wx, wz, h, groundAt)
+        ) {
           const n = this.hash2i(wx, wz, 0x6a1f) < 0.5 ? 2 : 1;
           for (let k = 0; k < n && h + 1 + k < H; k++) {
             const j = idx(lx, h + 1 + k, lz);
@@ -1166,8 +1411,7 @@ export class DefaultGenerator implements IWorldGenerator {
         if (h <= SEA_LEVEL) continue;
 
         // 沙漠仙人掌：成列 1~3 格
-        if (profile.cactusChance > 0 && c.slope <= 0.35 &&
-          this.hash2i(wx, wz, 0xcac7) < profile.cactusChance) {
+        if (profile.cactusChance > 0 && c.slope <= 0.35 && this.hash2i(wx, wz, 0xcac7) < profile.cactusChance) {
           const n = 1 + ((this.hash2i(wx, wz, 0xcac8) * 3) | 0);
           for (let k = 0; k < n && h + 1 + k < H; k++) {
             const j = idx(lx, h + 1 + k, lz);
@@ -1178,8 +1422,7 @@ export class DefaultGenerator implements IWorldGenerator {
         }
 
         // 南瓜：草甸 / 森林地表的稀有野生成丛，也是南瓜藤生长机制的种子来源
-        if (profile.pumpkinChance > 0 && c.slope <= 0.4 &&
-          this.hash2i(wx, wz, 0x9c3d) < profile.pumpkinChance) {
+        if (profile.pumpkinChance > 0 && c.slope <= 0.4 && this.hash2i(wx, wz, 0x9c3d) < profile.pumpkinChance) {
           data[idx(lx, h + 1, lz)] = I.pumpkin;
           continue;
         }
@@ -1230,8 +1473,7 @@ export class DefaultGenerator implements IWorldGenerator {
         if (d === r && this.hash2i(wx, wz, 0x7b0f) < 0.45) continue;
         // 18% 的植株换成另一花色，避免整片颜色过于机械
         const mixed = this.hash2i(wx, wz, 0x7b10) < 0.18;
-        const pick = (mixed ? this.hash2i(wx, wz, 0x7b11) : this.hash2i(gx, gz, 0x7b12)) *
-          profile.flowerBedTotal;
+        const pick = (mixed ? this.hash2i(wx, wz, 0x7b11) : this.hash2i(gx, gz, 0x7b12)) * profile.flowerBedTotal;
         let acc = 0;
         for (const pl of profile.flowerBedPlants) {
           acc += pl.weight;
@@ -1246,12 +1488,13 @@ export class DefaultGenerator implements IWorldGenerator {
   }
 
   /** 四邻中是否有比自己更低的水面（甘蔗只长在临水浅岸） */
-  private nearWater(
-    wx: number, wz: number, height: number,
-    groundAt: (wx: number, wz: number) => number,
-  ): boolean {
-    return groundAt(wx + 1, wz) < height || groundAt(wx - 1, wz) < height ||
-      groundAt(wx, wz + 1) < height || groundAt(wx, wz - 1) < height;
+  private nearWater(wx: number, wz: number, height: number, groundAt: (wx: number, wz: number) => number): boolean {
+    return (
+      groundAt(wx + 1, wz) < height ||
+      groundAt(wx - 1, wz) < height ||
+      groundAt(wx, wz + 1) < height ||
+      groundAt(wx, wz - 1) < height
+    );
   }
 
   // ---------- 阶段 5：静态结构（世界网格哈希 + 跨区块裁剪） ----------
@@ -1281,8 +1524,8 @@ export class DefaultGenerator implements IWorldGenerator {
           } else if (originHeight - depth < 5) {
             continue;
           }
-          const palette = kind === 'village_house' ? paletteFor(originBiome) :
-            kind === 'mineshaft' ? MINE_PALETTE : DUNGEON_PALETTE;
+          const palette =
+            kind === 'village_house' ? paletteFor(originBiome) : kind === 'mineshaft' ? MINE_PALETTE : DUNGEON_PALETTE;
           const shape = buildStructure(kind, palette);
           const baseY = originHeight - depth;
           // 群系 / 出生点按整座结构判定一次：逐格跳过会让跨区块结构在群系边界
@@ -1293,8 +1536,7 @@ export class DefaultGenerator implements IWorldGenerator {
               const bx = wx + dx;
               const bz = wz + dz;
               const b = this.biomeAt(bx, bz);
-              if (b === 'ocean' || b === 'beach' ||
-                  (kind === 'village_house' && Math.hypot(bx, bz) <= 16)) {
+              if (b === 'ocean' || b === 'beach' || (kind === 'village_house' && Math.hypot(bx, bz) <= 16)) {
                 unsuitable = true;
                 break;
               }

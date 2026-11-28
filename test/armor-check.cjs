@@ -22,7 +22,10 @@ const ok = (name, cond, detail = '') => {
 
 // ---------- 定义表 ----------
 ok('装备定义表非空且可查询', equipmentDef('iron_chestplate')?.slot === 'chest');
-ok('盔甲定义带护甲点数与耐久', equipmentDef('iron_chestplate').armor > 0 && equipmentDef('iron_chestplate').durability > 0);
+ok(
+  '盔甲定义带护甲点数与耐久',
+  equipmentDef('iron_chestplate').armor > 0 && equipmentDef('iron_chestplate').durability > 0,
+);
 
 // ---------- EquipmentState ----------
 const ev = new EventBus();

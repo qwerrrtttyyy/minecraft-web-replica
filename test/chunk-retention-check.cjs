@@ -25,9 +25,14 @@ const ok = (name, cond) => {
 const chunk = (cx, cz, lastTouch = 0, createdAt = 0) => ({ cx, cz, lastTouch, createdAt });
 const entries = (...chunks) => chunks.map((c) => [`${c.cx},${c.cz}`, c]);
 const base = {
-  centerX: 0, centerZ: 0, renderDistance: 4,
-  keepRadius: 6, hardRadius: 12, maxResident: 10,
-  minResidencySec: 0, now: 100,
+  centerX: 0,
+  centerZ: 0,
+  renderDistance: 4,
+  keepRadius: 6,
+  hardRadius: 12,
+  maxResident: 10,
+  minResidencySec: 0,
+  now: 100,
 };
 
 // 1) keepRadius 内必留；硬外沿之外必卸
@@ -40,10 +45,7 @@ const base = {
 
 // 2) 上限触发：按 lastTouch 从旧到新
 {
-  const list = entries(
-    chunk(7, 0, 5), chunk(8, 0, 2), chunk(9, 0, 4),
-    chunk(10, 0, 1), chunk(11, 0, 3),
-  );
+  const list = entries(chunk(7, 0, 5), chunk(8, 0, 2), chunk(9, 0, 4), chunk(10, 0, 1), chunk(11, 0, 3));
   const got = selectEvictions(list, { ...base, maxResident: 2 });
   // 淘汰顺序为 touch 升序 [10,0(1), 8,0(2), 11,0(3)]；断言里排序后是字典序
   ok('超上限时淘汰最旧的缓冲区区块', JSON.stringify(got) === JSON.stringify(['10,0', '8,0', '11,0']));
@@ -69,7 +71,9 @@ const base = {
 // 5) 硬外沿不受最短驻留保护
 {
   const got = selectEvictions(entries(chunk(13, 0, 1, 99)), {
-    ...base, maxResident: 100, minResidencySec: 10,
+    ...base,
+    maxResident: 100,
+    minResidencySec: 10,
   });
   ok('硬外沿之外的年轻区块仍被无条件淘汰', got.includes('13,0'));
 }
@@ -79,7 +83,16 @@ const base = {
   const reg = new BlockRegistry();
   registerBuiltinBlocks(reg);
   const stone = reg.byNameGet('stone').id;
-  const w = new World(reg, { generateChunk() {}, surfaceHeight() { return 32; } }, { emit() {} });
+  const w = new World(
+    reg,
+    {
+      generateChunk() {},
+      surfaceHeight() {
+        return 32;
+      },
+    },
+    { emit() {} },
+  );
 
   w.time = 5;
   const first = w.ensureChunk(0, 0);
@@ -146,15 +159,24 @@ const base = {
     return out;
   });
   // 新策略：视距必留 + 缓冲区 LRU + 硬外沿 R+8 + 上限 512 + 最短驻留 10s
-  const newWay = simulate((resident, centerX, now) => selectEvictions(resident, {
-    centerX, centerZ: 0, keepRadius: R + 2, hardRadius: R + 8,
-    maxResident: 512, minResidencySec: 10, now,
-  }));
+  const newWay = simulate((resident, centerX, now) =>
+    selectEvictions(resident, {
+      centerX,
+      centerZ: 0,
+      keepRadius: R + 2,
+      hardRadius: R + 8,
+      maxResident: 512,
+      minResidencySec: 10,
+      now,
+    }),
+  );
 
   ok('仿真：旧策略确实发生重复生成', oldWay.regenerated > 0, `旧=${oldWay.regenerated}`);
-  ok('仿真：新策略重复生成次数下降 ≥30%',
+  ok(
+    '仿真：新策略重复生成次数下降 ≥30%',
     newWay.regenerated <= oldWay.regenerated * 0.7,
-    `旧=${oldWay.regenerated} 新=${newWay.regenerated}`);
+    `旧=${oldWay.regenerated} 新=${newWay.regenerated}`,
+  );
   ok('仿真：新策略驻留区块不超过上限', newWay.resident <= 512, `驻留=${newWay.resident}`);
 }
 
@@ -164,7 +186,10 @@ const base = {
   const parsed = keys.map(parseChunkKey);
   const expected = keys.map((k) => k.split(',').map(Number));
   ok('chunk key 解析与 split+map 等价', JSON.stringify(parsed) === JSON.stringify(expected));
-  ok('解析结果是 [x, z] 数值对', parsed.every((p) => p.length === 2 && p.every(Number.isFinite)));
+  ok(
+    '解析结果是 [x, z] 数值对',
+    parsed.every((p) => p.length === 2 && p.every(Number.isFinite)),
+  );
 }
 
 console.log(`\nPASS 区块驻留策略回归：${passed} 组断言`);

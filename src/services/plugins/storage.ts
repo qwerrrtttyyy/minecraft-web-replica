@@ -41,9 +41,7 @@ export class LocalStoragePluginStorageProvider implements PluginStorageProvider 
       const raw = globalThis.localStorage?.getItem(PREFIX + ns);
       if (!raw) return {};
       const parsed: unknown = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed as Record<string, unknown>
-        : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
     } catch {
       // 存档损坏 / 隐私模式禁用 localStorage：降级为空，不拖垮插件启用
       return {};
@@ -81,7 +79,7 @@ export function createPluginStorage(provider: PluginStorageProvider, ns: string)
   return {
     get<T>(key: string, fallback?: T): T | undefined {
       const value = provider.read(ns)[key];
-      return value === undefined ? fallback : value as T;
+      return value === undefined ? fallback : (value as T);
     },
     set(key: string, value: unknown): void {
       const data = provider.read(ns);

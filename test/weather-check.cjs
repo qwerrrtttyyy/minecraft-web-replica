@@ -6,8 +6,13 @@
  */
 const assert = require('node:assert');
 const {
-  weatherTarget, weatherKindAt, precipitationForm, weatherFactor,
-  lightningRoll, isLightning, approachWeather,
+  weatherTarget,
+  weatherKindAt,
+  precipitationForm,
+  weatherFactor,
+  lightningRoll,
+  isLightning,
+  approachWeather,
 } = require('./logic/world/weather.js');
 const { environmentPenalty, freezeDue, ColdSystem } = require('./logic/world/cold.js');
 const { COLD } = require('./logic/core/tuning.js');
@@ -53,32 +58,24 @@ console.log('天气 / 寒冷回归');
   const one = approachWeather(from, to, 0.2);
   const half1 = approachWeather(from, to, 0.1);
   const half2 = approachWeather(half1, to, 0.1);
-  ok('逼近后亮度介于起止之间', one.darkness <= Math.max(from.darkness, to.darkness) &&
-    one.darkness >= Math.min(from.darkness, to.darkness));
-  ok('两个半步 ≈ 一个整步', Math.abs(one.darkness - half2.darkness) < 1e-9,
-    `${one.darkness} vs ${half2.darkness}`);
+  ok(
+    '逼近后亮度介于起止之间',
+    one.darkness <= Math.max(from.darkness, to.darkness) && one.darkness >= Math.min(from.darkness, to.darkness),
+  );
+  ok('两个半步 ≈ 一个整步', Math.abs(one.darkness - half2.darkness) < 1e-9, `${one.darkness} vs ${half2.darkness}`);
   ok('kind/form 原子切换', one.kind === to.kind && one.form === to.form);
 }
-
-// 4) 环境惩罚
-{
-  ok('雨天惩罚', environmentPenalty('rain', 'spring', 0.8, false) === COLD.rainPenalty);
-  ok('雪天惩罚更强', environmentPenalty('snow', 'spring', 0.8, false) === COLD.snowPenalty);
-  ok('雷暴最强', environmentPenalty('thunder', 'spring', 0.8, false) === COLD.stormPenalty);
-  ok('冬季叠加', environmentPenalty('rain', 'winter', 0.8, false) === COLD.rainPenalty + COLD.winterPenalty);
-  ok('夜间叠加', environmentPenalty('rain', 'spring', 0.1, false) === COLD.rainPenalty + COLD.nightPenalty);
-  ok('遮蔽缩放', environmentPenalty('snow', 'spring', 0.8, true) === COLD.snowPenalty * COLD.shelterMultiplier);
-  ok('关闭天气与季节后无任何寒冷（含冬季夜晚）',
-    environmentPenalty('thunder', 'winter', 0.1, false, false) === 0);
-}
-
-// 5) 冻伤节拍
-{
-  ok('低温暖 + 足够时间 + 有惩罚 → 冻伤', freezeDue(10, COLD.damageInterval, COLD.rainPenalty));
-  ok('温暖达标不冻伤', !freezeDue(COLD.warmthThreshold + 1, COLD.damageInterval, COLD.rainPenalty));
-  ok('间隔不足不冻伤', !freezeDue(10, COLD.damageInterval - 0.1, COLD.rainPenalty));
-  ok('无惩罚不冻伤', !freezeDue(10, COLD.damageInterval, 0));
-}
+ok('雨天惩罚', environmentPenalty('rain', 'spring', 0.8, false) === COLD.rainPenalty);
+ok('雪天惩罚更强', environmentPenalty('snow', 'spring', 0.8, false) === COLD.snowPenalty);
+ok('雷暴最强', environmentPenalty('thunder', 'spring', 0.8, false) === COLD.stormPenalty);
+ok('冬季叠加', environmentPenalty('rain', 'winter', 0.8, false) === COLD.rainPenalty + COLD.winterPenalty);
+ok('夜间叠加', environmentPenalty('rain', 'spring', 0.1, false) === COLD.rainPenalty + COLD.nightPenalty);
+ok('遮蔽缩放', environmentPenalty('snow', 'spring', 0.8, true) === COLD.snowPenalty * COLD.shelterMultiplier);
+ok('关闭天气与季节后无任何寒冷（含冬季夜晚）', environmentPenalty('thunder', 'winter', 0.1, false, false) === 0);
+ok('低温暖 + 足够时间 + 有惩罚 → 冻伤', freezeDue(10, COLD.damageInterval, COLD.rainPenalty));
+ok('温暖达标不冻伤', !freezeDue(COLD.warmthThreshold + 1, COLD.damageInterval, COLD.rainPenalty));
+ok('间隔不足不冻伤', !freezeDue(10, COLD.damageInterval - 0.1, COLD.rainPenalty));
+ok('无惩罚不冻伤', !freezeDue(10, COLD.damageInterval, 0));
 
 // 6) ColdSystem 集成：开关必须真正关掉冻伤
 {
@@ -96,9 +93,11 @@ console.log('天气 / 寒冷回归');
   const off = run(false);
   ok('关闭天气与季节：冻伤完全停止', off.length === 0);
   const on = run(true);
-  ok('开启后按节拍冻伤，cause/kind 正确',
+  ok(
+    '开启后按节拍冻伤，cause/kind 正确',
     on.length === 1 && on[0].amount === COLD.damage && on[0].cause === '冻伤' && on[0].kind === 'freeze',
-    JSON.stringify(on));
+    JSON.stringify(on),
+  );
 }
 
 console.log(`\nPASS 天气 / 寒冷回归：${passed} 组断言全部通过`);

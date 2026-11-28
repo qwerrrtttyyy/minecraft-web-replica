@@ -46,8 +46,8 @@ export function createOrientationGate(root: HTMLElement): OrientationGate {
 
   const refresh = (): void => {
     // iOS Safari 用 navigator.standalone 表达安装态；其余浏览器看 display-mode
-    const standalone = standaloneQuery.matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const standalone =
+      standaloneQuery.matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
     el.hidden = dismissed || !portrait.matches || !coarse.matches || standalone;
   };
 
@@ -66,6 +66,8 @@ export function createOrientationGate(root: HTMLElement): OrientationGate {
     el,
     refresh,
     dismiss,
-    get dismissed() { return dismissed; },
+    get dismissed() {
+      return dismissed;
+    },
   };
 }

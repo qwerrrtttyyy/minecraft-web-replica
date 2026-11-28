@@ -83,8 +83,11 @@ if (record) {
   console.log(`  已写入基线 ${path.relative(process.cwd(), BASELINE_PATH)}`);
 } else {
   const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
-  assert.strictEqual(hash, baseline.hash,
-    `输出 hash 漂移：期望 ${baseline.hash}，实得 ${hash}（quad 顺序或顶点属性被改动）`);
+  assert.strictEqual(
+    hash,
+    baseline.hash,
+    `输出 hash 漂移：期望 ${baseline.hash}，实得 ${hash}（quad 顺序或顶点属性被改动）`,
+  );
   console.log(`  ✓ 输出 hash 与基线一致`);
 
   // 目标达成情况如实报告，不作为失败条件（机器噪声 / 无浏览器环境）。
@@ -92,7 +95,9 @@ if (record) {
   const mult = baseMs / msPerChunk;
   const target = baseMs / 1.5;
   console.log(`  基线      : ${baseMs.toFixed(3)} ms/区块；提速 ${mult.toFixed(2)}×`);
-  console.log(`  1.5× 目标 : <= ${target.toFixed(3)} ms/区块 → ${msPerChunk <= target ? '达标' : '未达标（如实记录，hash 一致优先）'}`);
+  console.log(
+    `  1.5× 目标 : <= ${target.toFixed(3)} ms/区块 → ${msPerChunk <= target ? '达标' : '未达标（如实记录，hash 一致优先）'}`,
+  );
 }
 
 console.log('\nPASS');

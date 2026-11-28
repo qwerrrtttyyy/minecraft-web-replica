@@ -1,25 +1,36 @@
 /** QA 独立探针：采集快捷栏槽位 pointer-events 计算值、命中元素与真实点击前后 hotbar.index（含反证）。 */
-import puppeteer from 'puppeteer-core';
-import path from 'node:path';
+
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CHROME = process.env.CHROME_PATH ??
-  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
-    .find((p) => fs.existsSync(p)) ?? '/usr/local/bin/chromium';
+const CHROME =
+  process.env.CHROME_PATH ??
+  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome'].find((p) =>
+    fs.existsSync(p),
+  ) ??
+  '/usr/local/bin/chromium';
 const URL_UNDER_TEST = `file://${path.join(ROOT, 'dist', 'index.html')}`;
 const HEADLESS = process.env.MC_HEADLESS !== '0';
-const GL_ARGS = (process.env.MC_GL ?? 'swiftshader') === 'desktop'
-  ? ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox', '--use-gl=desktop']
-  : ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox', '--use-gl=angle', '--use-angle=swiftshader'];
+const GL_ARGS =
+  (process.env.MC_GL ?? 'swiftshader') === 'desktop'
+    ? ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox', '--use-gl=desktop']
+    : ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox', '--use-gl=angle', '--use-angle=swiftshader'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: HEADLESS,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', ...GL_ARGS,
-    '--allow-file-access-from-files', '--window-size=1280,760', '--mute-audio'],
+  args: [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    ...GL_ARGS,
+    '--allow-file-access-from-files',
+    '--window-size=1280,760',
+    '--mute-audio',
+  ],
 });
 
 async function probe(mobile, slotIndex, poison = false) {
@@ -27,7 +38,8 @@ async function probe(mobile, slotIndex, poison = false) {
   if (mobile) {
     await page.emulate({
       viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true, isLandscape: false },
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
     });
   } else {
     await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
@@ -36,7 +48,7 @@ async function probe(mobile, slotIndex, poison = false) {
   // 无法验证槽位命中。此 no-op 仅注入本探针页面，不改产品源码。
   if (!mobile) {
     await page.evaluateOnNewDocument(() => {
-      HTMLCanvasElement.prototype.requestPointerLock = function () { return Promise.resolve(); };
+      HTMLCanvasElement.prototype.requestPointerLock = () => Promise.resolve();
     });
   }
   await page.goto(URL_UNDER_TEST, { waitUntil: 'load' });
@@ -82,7 +94,9 @@ async function probe(mobile, slotIndex, poison = false) {
       return el ? getComputedStyle(el).pointerEvents : 'n/a';
     };
     return {
-      slotIndex: idx, x, y,
+      slotIndex: idx,
+      x,
+      y,
       computed: {
         ui: cs('#ui'),
         gameHud: cs('.game-hud'),

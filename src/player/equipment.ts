@@ -8,16 +8,7 @@
  * - 前缀：wooden / stone / iron / golden / diamond / leather / copper（仅铜有 hoe）
  */
 
-export type EquipKind =
-  | 'sword'
-  | 'pickaxe'
-  | 'axe'
-  | 'shovel'
-  | 'hoe'
-  | 'helmet'
-  | 'chestplate'
-  | 'leggings'
-  | 'boots';
+export type EquipKind = 'sword' | 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'helmet' | 'chestplate' | 'leggings' | 'boots';
 
 export type EquipSlot = 'head' | 'chest' | 'legs' | 'feet';
 export type EquipMaterial = 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'leather' | 'copper';
@@ -78,22 +69,30 @@ interface ArmorMaterial {
 
 const ARMOR_MATERIALS: ArmorMaterial[] = [
   {
-    material: 'leather', prefix: 'leather', label: '皮',
+    material: 'leather',
+    prefix: 'leather',
+    label: '皮',
     armor: { head: 1, chest: 3, legs: 2, feet: 1 },
     durability: { head: 55, chest: 80, legs: 75, feet: 65 },
   },
   {
-    material: 'iron', prefix: 'iron', label: '铁',
+    material: 'iron',
+    prefix: 'iron',
+    label: '铁',
     armor: { head: 2, chest: 6, legs: 5, feet: 2 },
     durability: { head: 165, chest: 240, legs: 225, feet: 195 },
   },
   {
-    material: 'gold', prefix: 'golden', label: '金',
+    material: 'gold',
+    prefix: 'golden',
+    label: '金',
     armor: { head: 2, chest: 5, legs: 3, feet: 1 },
     durability: { head: 110, chest: 165, legs: 150, feet: 130 },
   },
   {
-    material: 'diamond', prefix: 'diamond', label: '钻石',
+    material: 'diamond',
+    prefix: 'diamond',
+    label: '钻石',
     armor: { head: 3, chest: 8, legs: 6, feet: 3 },
     durability: { head: 396, chest: 592, legs: 528, feet: 429 },
   },
@@ -111,29 +110,48 @@ function buildEquipment(): Record<string, EquipmentDef> {
   for (const tier of TOOL_TIERS) {
     const sword = `${tier.prefix}_sword`;
     out[sword] = {
-      id: sword, label: `${tier.label}剑`, tile: sword, kind: 'sword',
-      material: tier.material, attack: tier.attack, durability: tier.durability,
+      id: sword,
+      label: `${tier.label}剑`,
+      tile: sword,
+      kind: 'sword',
+      material: tier.material,
+      attack: tier.attack,
+      durability: tier.durability,
     };
     for (const tool of TOOL_KINDS) {
       const id = `${tier.prefix}_${tool.kind}`;
       out[id] = {
-        id, label: `${tier.label}${tool.label}`, tile: id, kind: tool.kind,
-        material: tier.material, miningSpeed: tier.miningSpeed, durability: tier.durability,
+        id,
+        label: `${tier.label}${tool.label}`,
+        tile: id,
+        kind: tool.kind,
+        material: tier.material,
+        miningSpeed: tier.miningSpeed,
+        durability: tier.durability,
       };
     }
   }
   // 铜锄：现有档位没有锄，只为铜单独补一件，其他材质结构保持不变
   out.copper_hoe = {
-    id: 'copper_hoe', label: '铜锄', tile: 'copper_hoe', kind: 'hoe',
-    material: 'copper', durability: 190,
+    id: 'copper_hoe',
+    label: '铜锄',
+    tile: 'copper_hoe',
+    kind: 'hoe',
+    material: 'copper',
+    durability: 190,
   };
   for (const mat of ARMOR_MATERIALS) {
     for (const kind of ARMOR_KINDS) {
       const id = `${mat.prefix}_${kind.kind}`;
       out[id] = {
-        id, label: `${mat.label}${kind.label}`, tile: id, kind: kind.kind,
-        material: mat.material, slot: kind.slot,
-        armor: mat.armor[kind.slot], durability: mat.durability[kind.slot],
+        id,
+        label: `${mat.label}${kind.label}`,
+        tile: id,
+        kind: kind.kind,
+        material: mat.material,
+        slot: kind.slot,
+        armor: mat.armor[kind.slot],
+        durability: mat.durability[kind.slot],
       };
     }
   }
@@ -155,7 +173,13 @@ export function isEquipmentId(id: string): boolean {
 /** 盔甲种类 → 槽位 */
 export function slotOfKind(kind: EquipKind): EquipSlot | null {
   return kind === 'helmet' || kind === 'chestplate' || kind === 'leggings' || kind === 'boots'
-    ? (kind === 'helmet' ? 'head' : kind === 'chestplate' ? 'chest' : kind === 'leggings' ? 'legs' : 'feet')
+    ? kind === 'helmet'
+      ? 'head'
+      : kind === 'chestplate'
+        ? 'chest'
+        : kind === 'leggings'
+          ? 'legs'
+          : 'feet'
     : null;
 }
 

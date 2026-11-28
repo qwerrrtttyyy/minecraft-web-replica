@@ -62,12 +62,14 @@ log('地形生成回归');
   const { gen } = make(2026);
   const h0 = gen.surfaceHeight(0, 0);
   ok('出生点 (0,0) 是陆地', h0 > SEA_LEVEL, `h=${h0}`);
-  let min = Infinity, max = -Infinity;
+  let min = Infinity,
+    max = -Infinity;
   for (let i = 0; i < 4000; i++) {
     const x = ((i * 37) % 2001) - 1000;
     const z = ((i * 91) % 2001) - 1000;
     const h = gen.surfaceHeight(x, z);
-    min = Math.min(min, h); max = Math.max(max, h);
+    min = Math.min(min, h);
+    max = Math.max(max, h);
   }
   ok('高度始终在合法区间', min >= 4 && max <= H - 14, `${min}..${max}`);
   ok('地形有明显起伏', max - min >= 18, `跨度 ${max - min}`);
@@ -79,15 +81,20 @@ log('地形生成回归');
 {
   const { reg, gen } = make(777);
   const I = ids(reg);
-  for (const [cx, cz] of [[0, 0], [1, 0], [-2, 3], [5, -4]]) {
+  for (const [cx, cz] of [
+    [0, 0],
+    [1, 0],
+    [-2, 3],
+    [5, -4],
+  ]) {
     const data = chunk(gen, cx, cz);
     for (let lz = 0; lz < CS; lz++) {
       for (let lx = 0; lx < CS; lx++) {
-        const wx = cx * CS + lx, wz = cz * CS + lz;
+        const wx = cx * CS + lx,
+          wz = cz * CS + lz;
         const h = gen.surfaceHeight(wx, wz);
         const top = data[idx(lx, h, lz)];
-        assert.ok(top !== 0 && top !== I.water,
-          `列 ${wx},${wz} 地形顶不应是空气/水 (top=${top})`);
+        assert.ok(top !== 0 && top !== I.water, `列 ${wx},${wz} 地形顶不应是空气/水 (top=${top})`);
         // 地表 4 层必须是实心，洞穴不能塌陷到地表
         for (let y = Math.max(1, h - 3); y <= h; y++) {
           assert.ok(data[idx(lx, y, lz)] !== 0, `列 ${wx},${wz} 第 ${y} 层被洞穴挖穿`);
@@ -122,16 +129,30 @@ log('地形生成回归');
       for (let lx = 0; lx < CS; lx++) {
         const v = data[idx(lx, y, lz)];
         if (v === 0 && y > 3 && y < 45) counts.cave++;
-        if (v === I.coal) { counts.coal++; assert.ok(y <= depthMax.coal, '煤矿超深'); }
-        else if (v === I.iron) { counts.iron++; assert.ok(y <= depthMax.iron, '铁矿超深'); }
-        else if (v === I.gold) { counts.gold++; assert.ok(y <= depthMax.gold, '金矿超深'); }
-        else if (v === I.diamond) { counts.diamond++; assert.ok(y <= depthMax.diamond, '钻石超深'); }
-        else if (v === I.glowstone) { counts.glowstone++; assert.ok(y <= depthMax.glowstone, '萤石超深'); }
+        if (v === I.coal) {
+          counts.coal++;
+          assert.ok(y <= depthMax.coal, '煤矿超深');
+        } else if (v === I.iron) {
+          counts.iron++;
+          assert.ok(y <= depthMax.iron, '铁矿超深');
+        } else if (v === I.gold) {
+          counts.gold++;
+          assert.ok(y <= depthMax.gold, '金矿超深');
+        } else if (v === I.diamond) {
+          counts.diamond++;
+          assert.ok(y <= depthMax.diamond, '钻石超深');
+        } else if (v === I.glowstone) {
+          counts.glowstone++;
+          assert.ok(y <= depthMax.glowstone, '萤石超深');
+        }
       }
     }
   }
-  ok('矿脉按深度分层', counts.coal > 0 && counts.iron > 0,
-    `煤${counts.coal} 铁${counts.iron} 金${counts.gold} 钻${counts.diamond} 萤石${counts.glowstone}`);
+  ok(
+    '矿脉按深度分层',
+    counts.coal > 0 && counts.iron > 0,
+    `煤${counts.coal} 铁${counts.iron} 金${counts.gold} 钻${counts.diamond} 萤石${counts.glowstone}`,
+  );
   ok('地下存在洞穴空腔', counts.cave > 50, `空气体素 ${counts.cave}`);
 }
 
@@ -157,15 +178,21 @@ log('地形生成回归');
               }
             }
           }
-          if (leaves > 0) { found = { seed, lx, lz, y, leaves }; break; }
+          if (leaves > 0) {
+            found = { seed, lx, lz, y, leaves };
+            break;
+          }
         }
         if (found) break;
       }
       if (found) break;
     }
   }
-  ok('跨区块树冠连续（无半棵树）', !!found,
-    found ? `seed=${found.seed} 树干@lx${found.lx},lz${found.lz},y${found.y} 邻块树叶 ${found.leaves}` : '未找到边界树');
+  ok(
+    '跨区块树冠连续（无半棵树）',
+    !!found,
+    found ? `seed=${found.seed} 树干@lx${found.lx},lz${found.lz},y${found.y} 邻块树叶 ${found.leaves}` : '未找到边界树',
+  );
 }
 
 // 6) 可调参数生效
@@ -173,7 +200,8 @@ log('地形生成回归');
   const { gen } = make(99, { oreRichness: 0, treeDensity: {} });
   const I = ids(make(1).reg);
   const data = chunk(gen, 0, 0);
-  let logs = 0, ores = 0;
+  let logs = 0,
+    ores = 0;
   for (const v of data) {
     if (v === I.log) logs++;
     if (v === I.coal || v === I.iron || v === I.gold || v === I.diamond) ores++;
@@ -198,7 +226,8 @@ log('地形生成回归');
     }
   }
   ok('存在成片海洋', oceanChunks.length >= 3, `${oceanChunks.length} 个海洋区块`);
-  let air = 0, total = 0;
+  let air = 0,
+    total = 0;
   for (const [cx, cz] of oceanChunks.slice(0, 8)) {
     const data = chunk(gen, cx, cz);
     for (let lz = 0; lz < CS; lz++) {
@@ -220,7 +249,9 @@ log('地形生成回归');
 {
   const withRiver = make(2026, { riverDepth: 7 }).gen;
   const noRiver = make(2026, { riverDepth: 0 }).gen;
-  let changed = 0, cutSeabed = 0, maxDrop = 0;
+  let changed = 0,
+    cutSeabed = 0,
+    maxDrop = 0;
   for (let x = -400; x < 400; x += 3) {
     for (let z = -400; z < 400; z += 3) {
       if (x * x + z * z < 220 * 220) continue; // 排除出生抬升的耦合
@@ -250,13 +281,38 @@ log('地形生成回归');
 // 10) 旧存档兼容：内置方块 id 不变，矿石追加在表尾
 {
   const { reg } = make(1);
-  const legacy = ['grass', 'dirt', 'stone', 'cobblestone', 'sand', 'oak_log', 'oak_planks',
-    'oak_leaves', 'glass', 'bricks', 'water', 'bedrock', 'glowstone', 'snow', 'tnt',
-    'white_wool', 'red_wool', 'blue_wool', 'yellow_wool', 'tall_grass', 'poppy', 'dandelion'];
+  const legacy = [
+    'grass',
+    'dirt',
+    'stone',
+    'cobblestone',
+    'sand',
+    'oak_log',
+    'oak_planks',
+    'oak_leaves',
+    'glass',
+    'bricks',
+    'water',
+    'bedrock',
+    'glowstone',
+    'snow',
+    'tnt',
+    'white_wool',
+    'red_wool',
+    'blue_wool',
+    'yellow_wool',
+    'tall_grass',
+    'poppy',
+    'dandelion',
+  ];
   const stable = legacy.every((n, i) => reg.byNameGet(n).id === i + 1);
   const ores = ['coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore'].map((n) => reg.byNameGet(n).id);
   ok('旧 22 种方块 id 未变（edits 差分兼容）', stable);
-  ok('4 种矿石追加在表尾', ores.every((v, i) => v === legacy.length + 1 + i), ores.join(','));
+  ok(
+    '4 种矿石追加在表尾',
+    ores.every((v, i) => v === legacy.length + 1 + i),
+    ores.join(','),
+  );
 }
 
 // 11) 跨区块树冠双向对称（-x 方向也不能缺半边）
@@ -265,8 +321,8 @@ log('地形生成回归');
   let found = null;
   for (let seed = 1; seed <= 120 && !found; seed++) {
     const gen = make(seed).gen;
-    const right = chunk(gen, 0, 0);   // 树干在本区块左边界
-    const left = chunk(gen, -1, 0);   // 树冠应延伸到左邻块
+    const right = chunk(gen, 0, 0); // 树干在本区块左边界
+    const left = chunk(gen, -1, 0); // 树冠应延伸到左邻块
     for (let lx = 0; lx < 4 && !found; lx++) {
       for (let lz = 2; lz < CS - 2 && !found; lz++) {
         for (let y = SEA_LEVEL + 2; y < SEA_LEVEL + 14; y++) {
@@ -281,13 +337,15 @@ log('地形生成回归');
               }
             }
           }
-          if (leaves > 0) { found = { seed, lx, lz, y, leaves }; break; }
+          if (leaves > 0) {
+            found = { seed, lx, lz, y, leaves };
+            break;
+          }
         }
       }
     }
   }
-  ok('跨区块树冠双向连续（-x 方向）', !!found,
-    found ? `seed=${found.seed} 邻块树叶 ${found.leaves}` : '未找到边界树');
+  ok('跨区块树冠双向连续（-x 方向）', !!found, found ? `seed=${found.seed} 邻块树叶 ${found.leaves}` : '未找到边界树');
 }
 
 // 12) 性能基准（防止地形算法把 4ms 帧预算拖垮）

@@ -10,13 +10,13 @@ jobs:
     # 浏览器测试在 Xvfb 下以 headful + Mesa llvmpipe 运行，要求 100% PASS。
     # MC_HEADLESS / MC_GL 是全站统一的，CHROME_PATH 由「准备可用的 Chromium」步骤探测后写入 GITHUB_ENV。
     env:
-      MC_HEADLESS: '0'
+      MC_HEADLESS: "0"
       MC_GL: desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
       - name: 安装 Xvfb / Mesa 软件渲染
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri mesa-utils
@@ -50,7 +50,7 @@ jobs:
       - name: 阶段 1/7 · 版本与静态门禁
         run: xvfb-run -a -s "-screen 0 1280x760x24" npm run check:version && npm run test:permtable && npm run wasm:check
       - name: 阶段 2/7 · Lint 与类型检查
-        run: npm run lint && npm run typecheck
+        run: npm run lint && npm run check && npm run typecheck
       - name: 阶段 3/7 · 构建单文件产物
         run: npm run build
       - name: 阶段 4/7 · 快照重建与核心逻辑

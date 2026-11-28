@@ -12,9 +12,9 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cSrc = path.join(root, 'native', 'mc_kernel.c');
@@ -22,12 +22,26 @@ const wasmPath = path.join(root, 'native', 'mc_kernel.wasm');
 const outPath = path.join(root, 'src', 'wasm', 'kernelBinary.ts');
 const ABI = 2;
 const REQUIRED_EXPORTS = [
-  'memory', 'mc_abi', 'mc_perm_ptr', 'mc_scratch_ptr', 'mc_scratch_size',
-  'mc_fingerprint', 'mc_noise2', 'mc_noise3', 'mc_fbm2', 'mc_fbm3',
-  'mc_ridged2', 'mc_fbm2_batch', 'mc_ao', 'mc_crc32',
+  'memory',
+  'mc_abi',
+  'mc_perm_ptr',
+  'mc_scratch_ptr',
+  'mc_scratch_size',
+  'mc_fingerprint',
+  'mc_noise2',
+  'mc_noise3',
+  'mc_fbm2',
+  'mc_fbm3',
+  'mc_ridged2',
+  'mc_fbm2_batch',
+  'mc_ao',
+  'mc_crc32',
 ];
 
-const fail = (msg) => { console.error(`[wasm] ${msg}`); process.exit(1); };
+const fail = (msg) => {
+  console.error(`[wasm] ${msg}`);
+  process.exit(1);
+};
 
 /** 与 C 侧 mc_fingerprint / TS 侧 fingerprint 完全相同的纯 JS 参考 */
 const jsFingerprint = () => {
@@ -44,8 +58,11 @@ function validate(bytes) {
     fail('不是合法的 wasm 二进制（magic 错误）');
   }
   let mod;
-  try { mod = new WebAssembly.Module(bytes); }
-  catch (e) { fail(`WebAssembly 编译失败：${e.message}`); }
+  try {
+    mod = new WebAssembly.Module(bytes);
+  } catch (e) {
+    fail(`WebAssembly 编译失败：${e.message}`);
+  }
   const imports = WebAssembly.Module.imports(mod);
   if (imports.length !== 0) fail(`内核含有 ${imports.length} 个 import，freestanding 约束被破坏`);
   const names = new Set(WebAssembly.Module.exports(mod).map((e) => e.name));
@@ -56,7 +73,9 @@ function validate(bytes) {
   if (!Object.is(ex.mc_fingerprint(), jsFingerprint())) fail('内核指纹与 JS 参考不一致（编译产物可能被替换）');
   const mem = ex.memory;
   if (!(mem instanceof WebAssembly.Memory)) fail('memory 导出类型错误');
-  const pp = ex.mc_perm_ptr(), sp = ex.mc_scratch_ptr(), ss = ex.mc_scratch_size();
+  const pp = ex.mc_perm_ptr(),
+    sp = ex.mc_scratch_ptr(),
+    ss = ex.mc_scratch_size();
   if (pp < 0 || sp < 0 || ss < 0 || pp + 512 > mem.buffer.byteLength) fail('perm / scratch 地址越界');
   console.log(`[wasm] ABI 校验通过：${bytes.length} 字节，${names.size} 个导出，0 个 import`);
 }
@@ -92,11 +111,21 @@ if (checkOnly) {
 
 const clang = process.env.CLANG || 'clang';
 const args = [
-  '--target=wasm32', '-O2', '-ffreestanding', '-nostdlib', '-fno-exceptions',
-  '-Wall', '-Wextra',
-  '-Wl,--no-entry', '-Wl,--export-memory',
-  '-Wl,--initial-memory=131072', '-Wl,--max-memory=1048576', '-Wl,--strip-all',
-  '-o', wasmPath, cSrc,
+  '--target=wasm32',
+  '-O2',
+  '-ffreestanding',
+  '-nostdlib',
+  '-fno-exceptions',
+  '-Wall',
+  '-Wextra',
+  '-Wl,--no-entry',
+  '-Wl,--export-memory',
+  '-Wl,--initial-memory=131072',
+  '-Wl,--max-memory=1048576',
+  '-Wl,--strip-all',
+  '-o',
+  wasmPath,
+  cSrc,
 ];
 try {
   execFileSync(clang, args, { cwd: root, stdio: 'inherit' });

@@ -52,7 +52,7 @@ export function rollDrops(specs: readonly DropSpec[], ctx: DropContext): RolledD
     if (hash / 4294967296 >= chance) continue;
     let count = spec.count ?? 1;
     if (spec.min !== undefined && spec.max !== undefined && spec.max >= spec.min) {
-      count = spec.min + (hash >>> 8) % (spec.max - spec.min + 1);
+      count = spec.min + ((hash >>> 8) % (spec.max - spec.min + 1));
     }
     result.push({ name: spec.name, count });
   }

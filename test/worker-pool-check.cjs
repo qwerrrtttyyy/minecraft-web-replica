@@ -19,7 +19,12 @@ function makeCtor(failAt = -1, created = []) {
   let n = 0;
   return function MockWorker() {
     if (n++ === failAt) throw new Error('mock construct failure');
-    const w = { terminated: false, terminate() { this.terminated = true; } };
+    const w = {
+      terminated: false,
+      terminate() {
+        this.terminated = true;
+      },
+    };
     created.push(w);
     return w;
   };
@@ -29,7 +34,10 @@ function makeCtor(failAt = -1, created = []) {
   const made = [];
   const r = createWorkerPool(makeCtor(-1, made), 4);
   ok('全部构造成功 → partial=false / 4 个实例', r.partial === false && r.workers.length === 4 && made.length === 4);
-  ok('全部构造成功 → 没有实例被 terminate', made.every((w) => !w.terminated));
+  ok(
+    '全部构造成功 → 没有实例被 terminate',
+    made.every((w) => !w.terminated),
+  );
 }
 {
   const made = [];

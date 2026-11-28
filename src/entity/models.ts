@@ -49,13 +49,18 @@ function steveHeadMaterials(): THREE.Material[] {
     ctx.fillRect(0, 0, 8, 8);
     ctx.fillStyle = '#3c2e1e';
     ctx.fillRect(0, 0, 8, 2);
-    px(ctx, 0, 2, '#3c2e1e'); px(ctx, 7, 2, '#3c2e1e');
+    px(ctx, 0, 2, '#3c2e1e');
+    px(ctx, 7, 2, '#3c2e1e');
     // 眼睛
-    px(ctx, 2, 3, '#ffffff'); px(ctx, 3, 3, '#523d8c');
-    px(ctx, 5, 3, '#523d8c'); px(ctx, 6, 3, '#ffffff');
+    px(ctx, 2, 3, '#ffffff');
+    px(ctx, 3, 3, '#523d8c');
+    px(ctx, 5, 3, '#523d8c');
+    px(ctx, 6, 3, '#ffffff');
     // 鼻子与嘴
-    px(ctx, 3, 4, '#a06a44'); px(ctx, 4, 4, '#a06a44');
-    px(ctx, 3, 5, '#6e4a32'); px(ctx, 4, 5, '#6e4a32');
+    px(ctx, 3, 4, '#a06a44');
+    px(ctx, 4, 4, '#a06a44');
+    px(ctx, 3, 5, '#6e4a32');
+    px(ctx, 4, 5, '#6e4a32');
   });
   const side = faceTexture((ctx) => {
     ctx.fillStyle = '#b9855c';
@@ -151,7 +156,12 @@ export function buildPig(): MobModel {
   const eyeR = eyeL.clone();
   eyeR.position.x = 0.14;
   const legs: THREE.Group[] = [];
-  for (const [x, z] of [[-0.2, 0.32], [0.2, 0.32], [-0.2, -0.32], [0.2, -0.32]] as const) {
+  for (const [x, z] of [
+    [-0.2, 0.32],
+    [0.2, 0.32],
+    [-0.2, -0.32],
+    [0.2, -0.32],
+  ] as const) {
     const leg = limb(0.2, 0.45, 0.2, pink);
     leg.position.set(x, 0.45, z);
     legs.push(leg);
@@ -188,7 +198,12 @@ export function buildSheep(): MobModel {
   const eyeR = eyeL.clone();
   eyeR.position.x = 0.11;
   const legs: THREE.Group[] = [];
-  for (const [x, z] of [[-0.24, 0.34], [0.24, 0.34], [-0.24, -0.34], [0.24, -0.34]] as const) {
+  for (const [x, z] of [
+    [-0.24, 0.34],
+    [0.24, 0.34],
+    [-0.24, -0.34],
+    [0.24, -0.34],
+  ] as const) {
     const leg = limb(0.18, 0.5, 0.18, legM);
     leg.position.set(x, 0.5, z);
     legs.push(leg);
@@ -337,7 +352,12 @@ export function buildCow(): MobModel {
   const eyeR = eyeL.clone();
   eyeR.position.x = 0.16;
   const legs: THREE.Group[] = [];
-  for (const [x, z] of [[-0.26, 0.38], [0.26, 0.38], [-0.26, -0.38], [0.26, -0.38]] as const) {
+  for (const [x, z] of [
+    [-0.26, 0.38],
+    [0.26, 0.38],
+    [-0.26, -0.38],
+    [0.26, -0.38],
+  ] as const) {
     const leg = limb(0.2, 0.6, 0.2, brown);
     leg.position.set(x, 0.6, z);
     legs.push(leg);
@@ -416,7 +436,12 @@ export function buildRabbit(): MobModel {
   const eyeR = eyeL.clone();
   eyeR.position.x = 0.1;
   const legs: THREE.Group[] = [];
-  for (const [x, z] of [[-0.14, 0.18], [0.14, 0.18], [-0.14, -0.18], [0.14, -0.18]] as const) {
+  for (const [x, z] of [
+    [-0.14, 0.18],
+    [0.14, 0.18],
+    [-0.14, -0.18],
+    [0.14, -0.18],
+  ] as const) {
     const leg = limb(0.12, 0.24, 0.14, fur);
     leg.position.set(x, 0.24, z);
     legs.push(leg);
@@ -483,7 +508,12 @@ export function buildSpider(): MobModel {
   abdomen.position.set(0, 0.5, -0.32);
   const head = box(0.42, 0.34, 0.4, headM);
   head.position.set(0, 0.48, 0.25);
-  for (const [x, y] of [[-0.12, 0.56], [0.12, 0.56], [-0.16, 0.48], [0.16, 0.48]] as const) {
+  for (const [x, y] of [
+    [-0.12, 0.56],
+    [0.12, 0.56],
+    [-0.16, 0.48],
+    [0.16, 0.48],
+  ] as const) {
     const eye = box(0.06, 0.06, 0.02, eyeM);
     eye.position.set(x, y, 0.46);
     group.add(eye);
@@ -508,7 +538,9 @@ export function buildSpider(): MobModel {
     group,
     animate(phase, moving) {
       const s = moving ? Math.sin(phase) * 0.5 : 0;
-      legs.forEach((leg, i) => { leg.rotation.x = (i % 2 ? -s : s) * 0.6; });
+      legs.forEach((leg, i) => {
+        leg.rotation.x = (i % 2 ? -s : s) * 0.6;
+      });
     },
   };
 }
@@ -569,10 +601,14 @@ export function buildBasketball(): MobModel {
     ctx.fillRect(3, 0, 1, 8);
     ctx.fillRect(0, 3, 8, 1);
     // 四角弧缝（阶梯像素），让球面辨识为篮球而非橙色球
-    ctx.fillRect(1, 1, 1, 1); ctx.fillRect(2, 2, 1, 1);
-    ctx.fillRect(5, 5, 1, 1); ctx.fillRect(6, 6, 1, 1);
-    ctx.fillRect(6, 1, 1, 1); ctx.fillRect(5, 2, 1, 1);
-    ctx.fillRect(1, 6, 1, 1); ctx.fillRect(2, 5, 1, 1);
+    ctx.fillRect(1, 1, 1, 1);
+    ctx.fillRect(2, 2, 1, 1);
+    ctx.fillRect(5, 5, 1, 1);
+    ctx.fillRect(6, 6, 1, 1);
+    ctx.fillRect(6, 1, 1, 1);
+    ctx.fillRect(5, 2, 1, 1);
+    ctx.fillRect(1, 6, 1, 1);
+    ctx.fillRect(2, 5, 1, 1);
   });
   const mat = new THREE.MeshLambertMaterial({ map: tex });
   // 球体位于 group 原点；group 渲染时整体上移一个半径（见 Entity.updateBounce）

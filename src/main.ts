@@ -1,75 +1,85 @@
 import './ui/styles.css';
 import './ui/vanilla-ui.css';
 import * as THREE from 'three';
-import { Engine } from './core/engine';
-import { VERSION, RELEASE } from './core/version';
-import { blockKey, clamp, type BlockId, type GameMode } from './core/types';
-import {
-  loadOptions, normalizeOptions, persistOptions, qualityScale,
-  type MesherThreads, type Options, type QualityMode, type RandomTickSpeed,
-} from './core/options';
-import { QualityGovernor } from './gfx/qualityGovernor';
-import { BlockRegistry, registerBuiltinBlocks, AIR } from './world/blocks';
-import { TextureAtlas } from './gfx/atlas';
-import { DefaultGenerator } from './world/generator';
-import { World } from './world/world';
-import { Botany } from './world/botany';
-import { seasonAt, weatherAt } from './world/ecology';
-import { weatherFactor, type WeatherKind } from './world/weather';
-import { WeatherSystem } from './world/weatherSystem';
-import { ColdSystem, environmentPenalty } from './world/cold';
-import { ChunkManager } from './world/chunkManager';
-import { Sky } from './gfx/sky';
-import { Particles } from './gfx/particles';
-import { WeatherParticles } from './gfx/weatherParticles';
-import { BlockHighlight } from './gfx/highlight';
-import { CrackOverlay, quantizeCrackStage } from './gfx/crackOverlay';
-import { Player, type HotbarState } from './player/player';
-import { SurvivalState, ITEMS, MAX_HUNGER, MAX_HEALTH, parseKey, type Stack } from './player/survival';
-import { Smelting } from './player/smelting';
-import { FurnacePanel } from './ui/furnace';
-import {
-  inventoryKeyToMaterial,
-  materialToStack,
-  type MaterialId,
-} from './player/crafting';
-import type { CraftingHost, CraftingMaterial } from './ui/crafting';
-import { Input } from './input/input';
-import { TouchControls } from './input/touch';
-import { EntityManager } from './entity/entity';
 import { AIService } from './ai/AIService';
 import {
-  pigBehavior, sheepBehavior, zombieBehavior, skeletonBehavior,
-  creeperBehavior, spiderBehavior, squidBehavior,
+  creeperBehavior,
+  pigBehavior,
+  sheepBehavior,
+  skeletonBehavior,
+  spiderBehavior,
+  squidBehavior,
+  zombieBehavior,
 } from './ai/behaviors';
-import { DropManager } from './entity/droppedItem';
-import { buildBasketball } from './entity/models';
+import { createCraftAPI } from './api';
+import { SoundEngine } from './audio/sound';
+import { Engine } from './core/engine';
+import {
+  loadOptions,
+  type MesherThreads,
+  normalizeOptions,
+  type Options,
+  persistOptions,
+  type QualityMode,
+  qualityScale,
+  type RandomTickSpeed,
+} from './core/options';
+import { type BlockId, blockKey, clamp, type GameMode } from './core/types';
+import { RELEASE, VERSION } from './core/version';
+import { type DiagnosticReport, type DiagnosticSnapshot, DiagnosticsRunner } from './diagnostics/RuntimeDiagnostics';
 import { canPickup, registerBasketball } from './entity/basketball';
+import { DropManager } from './entity/droppedItem';
+import { EntityManager } from './entity/entity';
+import { FallingSystem } from './entity/falling';
+import { buildBasketball } from './entity/models';
 import { ArrowManager } from './entity/projectile';
 import { PrimedTnt } from './entity/tnt';
-import { FallingSystem } from './entity/falling';
-import { FireSystem, isHeatBlock } from './world/fire';
-import { WarmthSystem } from './world/warmth';
-import { SoundEngine } from './audio/sound';
-import { HUD } from './ui/hud';
-import { createOrientationGate } from './ui/orientationGate';
-import { ACTION_LABELS, ACTION_KEYS, codeLabel } from './input/keybindings';
-import {
-  createDefaultSaveProvider, downloadSave, loadSaveResult, normalizeSave, pickSaveFile,
-  validateSave, type ISaveProvider, type SaveData,
-} from './save/save';
+import { TextureAtlas } from './gfx/atlas';
+import { CrackOverlay, quantizeCrackStage } from './gfx/crackOverlay';
+import { BlockHighlight } from './gfx/highlight';
+import { Particles } from './gfx/particles';
+import { QualityGovernor } from './gfx/qualityGovernor';
+import { Sky } from './gfx/sky';
+import { WeatherParticles } from './gfx/weatherParticles';
+import { Input } from './input/input';
+import { ACTION_KEYS, ACTION_LABELS, codeLabel } from './input/keybindings';
+import { TouchControls } from './input/touch';
+import { inventoryKeyToMaterial, type MaterialId, materialToStack } from './player/crafting';
 import { boxIntersectsBlock } from './player/physics';
-import { createCraftAPI } from './api';
+import { type HotbarState, Player } from './player/player';
+import { Smelting } from './player/smelting';
+import { ITEMS, MAX_HEALTH, MAX_HUNGER, parseKey, type Stack, SurvivalState } from './player/survival';
+import { builtinPlugins } from './plugins/builtin';
+import type { BuiltinDeps } from './plugins/builtin/deps';
+import {
+  createDefaultSaveProvider,
+  downloadSave,
+  type ISaveProvider,
+  loadSaveResult,
+  normalizeSave,
+  pickSaveFile,
+  type SaveData,
+  validateSave,
+} from './save/save';
 import { createServices, TOKENS } from './services';
 import { PluginSaveBag } from './services/plugins/saveBag';
 import { PanelHost } from './services/ui/PanelHost';
+import type { CraftingHost, CraftingMaterial } from './ui/crafting';
+import { FurnacePanel } from './ui/furnace';
+import { HUD } from './ui/hud';
+import { createOrientationGate } from './ui/orientationGate';
 import { WasmRuntime } from './wasm/runtime';
-import type { BuiltinDeps } from './plugins/builtin/deps';
-import { builtinPlugins } from './plugins/builtin';
-import {
-  DiagnosticsRunner,
-  type DiagnosticSnapshot, type DiagnosticReport,
-} from './diagnostics/RuntimeDiagnostics';
+import { AIR, BlockRegistry, registerBuiltinBlocks } from './world/blocks';
+import { Botany } from './world/botany';
+import { ChunkManager } from './world/chunkManager';
+import { ColdSystem, environmentPenalty } from './world/cold';
+import { seasonAt, weatherAt } from './world/ecology';
+import { FireSystem, isHeatBlock } from './world/fire';
+import { DefaultGenerator } from './world/generator';
+import { WarmthSystem } from './world/warmth';
+import { type WeatherKind, weatherFactor } from './world/weather';
+import { WeatherSystem } from './world/weatherSystem';
+import { World } from './world/world';
 
 /**
  * 组装根（composition root）。
@@ -96,7 +106,8 @@ async function boot() {
   try {
     engine = new Engine(app, { aa: aaParam === 'msaa' || aaParam === 'ssaa' ? aaParam : 'off' });
   } catch {
-    uiRoot.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#e8e8e8;font-size:15px;background:#1a1a22;padding:24px;text-align:center">当前浏览器不支持 WebGL，无法运行本演示。请更换现代浏览器（Chrome / Edge / Safari / Firefox）。</div>';
+    uiRoot.innerHTML =
+      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#e8e8e8;font-size:15px;background:#1a1a22;padding:24px;text-align:center">当前浏览器不支持 WebGL，无法运行本演示。请更换现代浏览器（Chrome / Edge / Safari / Firefox）。</div>';
     return;
   }
 
@@ -115,15 +126,19 @@ async function boot() {
     maxScale: 1,
   });
   let rawFrameMs = 16.7;
-  engine.onRawFrame = (dtSeconds) => { rawFrameMs = dtSeconds * 1000; };
+  engine.onRawFrame = (dtSeconds) => {
+    rawFrameMs = dtSeconds * 1000;
+  };
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
   const weatherParticles = new WeatherParticles(engine.scene, engine.camera, isMobile);
 
   const idOf = (n: string) => registry.byNameGet(n)!.id;
   // 创造栏固定 9 格（HUD 只渲染 9 格）：8 个常用方块 + 篮球物品
   const creativeSlots: Stack[] = [
-    ...['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'glass', 'torch']
-      .map((n) => ({ kind: 'block' as const, id: idOf(n) })),
+    ...['grass', 'dirt', 'stone', 'cobblestone', 'oak_planks', 'oak_log', 'glass', 'torch'].map((n) => ({
+      kind: 'block' as const,
+      id: idOf(n),
+    })),
     { kind: 'item', id: 'basketball' },
   ];
   const hotbar: HotbarState = { slots: [...creativeSlots], index: 0 };
@@ -163,7 +178,9 @@ async function boot() {
           void provider.save(mirror);
         }
       }
-    } catch { /* 镜像损坏则忽略 */ }
+    } catch {
+      /* 镜像损坏则忽略 */
+    }
   }
   let seed: number;
   let gameMode: GameMode = saved?.mode ?? 'survival';
@@ -249,8 +266,9 @@ async function boot() {
   // 跳过坐标上已不是熔炉的条目（edits 可能已把该方块改掉），避免幽灵炉继续 tick
   const smelting = new Smelting();
   if (saved?.furnaces) {
-    smelting.restore(saved.furnaces.cells.filter((f) =>
-      registry.get(world.getBlock(f.pos[0], f.pos[1], f.pos[2])).name === 'furnace'));
+    smelting.restore(
+      saved.furnaces.cells.filter((f) => registry.get(world.getBlock(f.pos[0], f.pos[1], f.pos[2])).name === 'furnace'),
+    );
   }
   // 调试/基准开关：?mesher=main 强制同步路径，?greedy=0 关闭合并，?workers=N 覆盖 Worker 池大小
   // ?aa=off|msaa|ssaa 选抗锯齿档位（msaa 需重启上下文，故在 boot 开头解析）
@@ -264,9 +282,12 @@ async function boot() {
     mergeEmissive: qs.get('emerge') !== '0',
     workers: workersParam != null ? Number(workersParam) : undefined,
     // 地形生成池：URL ?genWorkers=N 优先，其次看设置页 genThreads（0 = 不启用，主线程同步）
-    genWorkers: genWorkersParam != null
-      ? Number(genWorkersParam)
-      : (settings.genThreads === 'auto' ? undefined : settings.genThreads),
+    genWorkers:
+      genWorkersParam != null
+        ? Number(genWorkersParam)
+        : settings.genThreads === 'auto'
+          ? undefined
+          : settings.genThreads,
     maxChunks: maxChunksParam != null ? Number(maxChunksParam) : undefined,
     camera: engine.camera,
   });
@@ -311,13 +332,31 @@ async function boot() {
 
   // 可见掉落物：拾取回写生存背包；几何与材质由 DropManager 内部共享缓存
   const drops = new DropManager({
-    scene: engine.scene, atlas, seed: world.generator.seed, world, particles, sound,
+    scene: engine.scene,
+    atlas,
+    seed: world.generator.seed,
+    world,
+    particles,
+    sound,
     onPickup: (name, count) => survival.addDrop(name, count),
   });
 
   const input = new Input(engine.renderer.domElement, isMobile);
-  const player = new Player(world, engine.camera, input, registry, atlas, events, sound, particles,
-    survival, hotbar, entities, engine.scene, isMobile);
+  const player = new Player(
+    world,
+    engine.camera,
+    input,
+    registry,
+    atlas,
+    events,
+    sound,
+    particles,
+    survival,
+    hotbar,
+    entities,
+    engine.scene,
+    isMobile,
+  );
   player.dropManager = drops;
   // 弓箭投射物：复用实体射线判定，命中走 Entity.hurt；网格几何共享，命中即回收
   const arrows = new ArrowManager(engine.scene, atlas, world, entities, events, particles);
@@ -358,7 +397,9 @@ async function boot() {
     // 内置侧无音效；此订阅供插件观察火焰熄灭（如生态统计）。
   });
   // 雷暴闪光：低频轰鸣复用爆炸音色，叠一记高频裂帛
-  events.on('weather:lightning', () => { sound.thunder(); });
+  events.on('weather:lightning', () => {
+    sound.thunder();
+  });
   // 头顶有实心方块视为有遮蔽：寒冷惩罚大幅衰减（靠近营火 / 进屋都能保暖）
   const isSheltered = (): boolean => {
     const p = player.pos;
@@ -371,11 +412,10 @@ async function boot() {
     survival,
     isHeatAt: (x, y, z) => {
       const name = registry.get(world.getBlock(x, y, z)).name;
-      return isHeatBlock(name) || name === 'lantern' || name === 'candle' ||
-        smelting.cell(x, y, z).burn > 0;
+      return isHeatBlock(name) || name === 'lantern' || name === 'candle' || smelting.cell(x, y, z).burn > 0;
     },
-    environmentPenalty: () => environmentPenalty(
-      weather.current.kind, seasonAt(sky.dayCount), sky.daylight, isSheltered()),
+    environmentPenalty: () =>
+      environmentPenalty(weather.current.kind, seasonAt(sky.dayCount), sky.daylight, isSheltered()),
   });
   // 天候系统（四季与天候内容更新）：确定性天气 + 统一变暗真源。
   // 当前快照写在 weather.current 上，方块光 / 实体光 / 寒冷 / 粒子共用同一份。
@@ -396,7 +436,9 @@ async function boot() {
       sheltered: isSheltered(),
       enabled: settings.weather,
     }),
-    hurt: (amount, cause, kind) => { survival.damage(amount, cause, false, kind); },
+    hurt: (amount, cause, kind) => {
+      survival.damage(amount, cause, false, kind);
+    },
   });
   // 植物蓄能开花：以粒子反馈「这不是纯装饰」——能量越高，生态越活跃
   events.on('plant:bloom', ({ x, y, z, block }) => {
@@ -425,7 +467,10 @@ async function boot() {
    */
   const applyQuality = (mode: QualityMode) => {
     const fixed = qualityScale(mode);
-    if (fixed !== null) { engine.setQualityScale(fixed); return; }
+    if (fixed !== null) {
+      engine.setQualityScale(fixed);
+      return;
+    }
     if (!settings.dynamicResolution) {
       qualityGovernor.reset();
       engine.setQualityScale(1);
@@ -496,7 +541,11 @@ async function boot() {
   /** 关键操作的轻触感反馈（仅移动端、不支持时静默跳过） */
   const buzz = (ms: number) => {
     if (!isMobile) return;
-    try { navigator.vibrate?.(ms); } catch { /* 忽略 */ }
+    try {
+      navigator.vibrate?.(ms);
+    } catch {
+      /* 忽略 */
+    }
   };
 
   // ---- 存档逻辑 ----
@@ -512,7 +561,14 @@ async function boot() {
     seed,
     mode: survival.mode,
     edits: [...world.edits.entries()],
-    player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, fly: player.fly },
+    player: {
+      x: player.pos.x,
+      y: player.pos.y,
+      z: player.pos.z,
+      yaw: player.yaw,
+      pitch: player.pitch,
+      fly: player.fly,
+    },
     survival: survival.serialize(),
     dayTime: sky.dayTime,
     hotbar: [...hotbar.slots],
@@ -530,7 +586,8 @@ async function boot() {
     const data = collectSave();
     const seq = ++saveSeq;
     const version = dirtyVersion;
-    provider.save(data)
+    provider
+      .save(data)
       .then((bytes) => {
         // 仅当没有更新的保存、且快照之后没有新编辑时才清脏；
         // 否则异步 provider 的旧回调会吞掉新编辑的脏标记。
@@ -583,7 +640,9 @@ async function boot() {
       for (let dy = -ri; dy <= ri; dy++) {
         for (let dz = -ri; dz <= ri; dz++) {
           if (dx * dx + dy * dy + dz * dz > r * r) continue;
-          const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy, z = Math.floor(cz) + dz;
+          const x = Math.floor(cx) + dx,
+            y = Math.floor(cy) + dy,
+            z = Math.floor(cz) + dz;
           const id = world.getBlock(x, y, z);
           const def = registry.get(id);
           if (id === AIR || def.liquid || !Number.isFinite(def.hardness)) continue;
@@ -694,11 +753,18 @@ async function boot() {
   };
 
   const hud = new HUD({
-    uiRoot, atlas, registry, hotbar, isMobile,
+    uiRoot,
+    atlas,
+    registry,
+    hotbar,
+    isMobile,
     craftingHost,
     onCampfireClose: () => closeCampfire(),
     onStart: (cont, chosen) => {
-      if (cont) { void startGame(true); return; } // 继续游戏保留存档模式
+      if (cont) {
+        void startGame(true);
+        return;
+      } // 继续游戏保留存档模式
       // 标题页选的模式必须真正写回状态机，否则选「创造」仍会进入生存
       survival.mode = chosen;
       gameMode = chosen;
@@ -718,7 +784,9 @@ async function boot() {
     onNewWorld: (s, m) => void newWorld(s, m),
     onResume: () => resumeGame(),
     onQuitToTitle: () => quitToTitle(),
-    onSlot: (i) => { if (mode === 'playing') selectSlot(i); },
+    onSlot: (i) => {
+      if (mode === 'playing') selectSlot(i);
+    },
     onAssign: (id) => {
       events.emit('hotbar:select', { index: hotbar.index, block: id });
       markDirty();
@@ -731,7 +799,9 @@ async function boot() {
       persistOptions(settings);
       markDirty();
     },
-    onCamera: () => { if (mode === 'playing') cycleCamera(); },
+    onCamera: () => {
+      if (mode === 'playing') cycleCamera();
+    },
     onFly: () => {
       if (mode !== 'playing') return;
       if (!player.toggleFly()) {
@@ -745,12 +815,43 @@ async function boot() {
       if (mode === 'playing') openMenu();
       else if (mode === 'paused') resumeGame();
     },
-    onRenderDistance: (v) => { settings.renderDistance = v; chunks.setRenderDistance(v); persistOptions(settings); markDirty(); },
-    onSensitivity: (v) => { settings.sensitivity = v; input.sensitivity = v; persistOptions(settings); markDirty(); },
-    onFov: (v) => { settings.fov = v; engine.camera.fov = v; engine.camera.updateProjectionMatrix(); persistOptions(settings); markDirty(); },
-    onVolume: (v) => { settings.volume = v; sound.setVolume(v); persistOptions(settings); markDirty(); },
-    onInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); markDirty(); },
-    onQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); markDirty(); },
+    onRenderDistance: (v) => {
+      settings.renderDistance = v;
+      chunks.setRenderDistance(v);
+      persistOptions(settings);
+      markDirty();
+    },
+    onSensitivity: (v) => {
+      settings.sensitivity = v;
+      input.sensitivity = v;
+      persistOptions(settings);
+      markDirty();
+    },
+    onFov: (v) => {
+      settings.fov = v;
+      engine.camera.fov = v;
+      engine.camera.updateProjectionMatrix();
+      persistOptions(settings);
+      markDirty();
+    },
+    onVolume: (v) => {
+      settings.volume = v;
+      sound.setVolume(v);
+      persistOptions(settings);
+      markDirty();
+    },
+    onInvertY: (v) => {
+      settings.invertY = v;
+      input.invertY = v;
+      persistOptions(settings);
+      markDirty();
+    },
+    onQuality: (v) => {
+      settings.quality = v;
+      applyQuality(v);
+      persistOptions(settings);
+      markDirty();
+    },
     onDynamicResolution: (v) => {
       settings.dynamicResolution = v;
       applyQuality(settings.quality);
@@ -763,10 +864,30 @@ async function boot() {
       persistOptions(settings);
       markDirty();
     },
-    onGenThreads: (v) => { settings.genThreads = v; chunks.setGenThreads(v); persistOptions(settings); markDirty(); },
-    onParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); markDirty(); },
-    onViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); markDirty(); },
-    onAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); markDirty(); },
+    onGenThreads: (v) => {
+      settings.genThreads = v;
+      chunks.setGenThreads(v);
+      persistOptions(settings);
+      markDirty();
+    },
+    onParticles: (v) => {
+      settings.particles = v;
+      particles.enabled = v;
+      persistOptions(settings);
+      markDirty();
+    },
+    onViewBob: (v) => {
+      settings.viewBob = v;
+      player.viewBob = v;
+      persistOptions(settings);
+      markDirty();
+    },
+    onAutoJump: (v) => {
+      settings.autoJump = v;
+      player.autoJump = v;
+      persistOptions(settings);
+      markDirty();
+    },
     onTouchSensitivity: (v) => {
       settings.touchSensitivity = v;
       if (touch) touch.lookScale = v;
@@ -780,7 +901,12 @@ async function boot() {
       persistOptions(settings);
       markDirty();
     },
-    onGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); markDirty(); },
+    onGreedy: (v) => {
+      settings.greedy = v;
+      chunks.greedy = v;
+      persistOptions(settings);
+      markDirty();
+    },
     onMesherThreads: (v) => {
       settings.mesherThreads = v;
       applyMesherThreads(v);
@@ -788,7 +914,12 @@ async function boot() {
       persistOptions(settings);
       markDirty();
     },
-    onAutosaveInterval: (v) => { settings.autosaveInterval = v; saveAcc = 0; persistOptions(settings); markDirty(); },
+    onAutosaveInterval: (v) => {
+      settings.autosaveInterval = v;
+      saveAcc = 0;
+      persistOptions(settings);
+      markDirty();
+    },
     onExperimental: (v) => setExperimental(v),
     // ---- 实验性玩法：即时生效 + 反馈 + 持久化 ----
     onRandomTickSpeed: (v: RandomTickSpeed) => {
@@ -894,12 +1025,15 @@ async function boot() {
       hud.toast('存档已导出为 .json 文件');
     },
     onImportSave: () => {
-      void pickSaveFile().then((data) => {
-        if (!data) return;
-        void applySaveData(data);
-      }, (e) => {
-        hud.toast(`导入失败：${e instanceof Error ? e.message : '文件无法读取'}`);
-      });
+      void pickSaveFile().then(
+        (data) => {
+          if (!data) return;
+          void applySaveData(data);
+        },
+        (e) => {
+          hud.toast(`导入失败：${e instanceof Error ? e.message : '文件无法读取'}`);
+        },
+      );
     },
     getBindings: () => {
       const b = input.getBindings();
@@ -914,12 +1048,16 @@ async function boot() {
   });
 
   // 按键捕获阶段优先于 Input：重绑定面板等待按键时消费该事件，避免触发游戏动作
-  addEventListener('keydown', (e) => {
-    if (hud.keybindOpen && hud.captureKey(e.code)) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }
-  }, true);
+  addEventListener(
+    'keydown',
+    (e) => {
+      if (hud.keybindOpen && hud.captureKey(e.code)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
   hud.setSound(settings.sound);
   hud.refreshTitleButtons(!!saved, saved?.mode);
   hud.setFlyActive(player.fly);
@@ -973,12 +1111,15 @@ async function boot() {
     } else {
       try {
         (screen.orientation as { unlock?: () => void } | undefined)?.unlock?.();
-      } catch { /* 忽略 */ }
+      } catch {
+        /* 忽略 */
+      }
     }
   };
   // 方向 / 尺寸变化时重算提示（引擎已各自监听 resize 处理画布，这里只管 UI 提示）
   addEventListener('orientationchange', () =>
-    window.setTimeout(() => hud.refreshRotateHint(landscapeActive, needRotateHint()), 160));
+    window.setTimeout(() => hud.refreshRotateHint(landscapeActive, needRotateHint()), 160),
+  );
   addEventListener('resize', () => hud.refreshRotateHint(landscapeActive, needRotateHint()));
   applyLandscapeMode(settings.landscapeMode, false);
 
@@ -1065,51 +1206,60 @@ async function boot() {
   // ---- 熔炉烧炼界面：右键熔炉打开，暂停态与合成界面同款 ----
   let furnaceTarget: { x: number; y: number; z: number } | null = null;
   let furnaceReturn: 'game' | 'menu' = 'game';
-  const furnacePanel = new FurnacePanel({
-    cell: () =>
-      furnaceTarget ? smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z)
-        : { input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 },
-    getMaterials: () => {
-      const out: { material: string; count: number }[] = [];
-      for (const [key, count] of survival.inventory) {
-        if (count <= 0) continue;
-        if (key.startsWith('i:')) out.push({ material: `i:${key.slice(2)}`, count });
-        else {
-          const def = registry.get(Number(key.slice(2)));
-          if (def && def.name) out.push({ material: def.name, count });
+  const furnacePanel = new FurnacePanel(
+    {
+      cell: () =>
+        furnaceTarget
+          ? smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z)
+          : { input: null, fuel: null, output: null, burn: 0, burnMax: 0, progress: 0 },
+      getMaterials: () => {
+        const out: { material: string; count: number }[] = [];
+        for (const [key, count] of survival.inventory) {
+          if (count <= 0) continue;
+          if (key.startsWith('i:')) out.push({ material: `i:${key.slice(2)}`, count });
+          else {
+            const def = registry.get(Number(key.slice(2)));
+            if (def && def.name) out.push({ material: def.name, count });
+          }
         }
-      }
-      return out;
+        return out;
+      },
+      put: (material) => {
+        if (!furnaceTarget) return false;
+        const { x, y, z } = furnaceTarget;
+        if (material.startsWith('i:')) {
+          const name = material.slice(2);
+          const stack: Stack = { kind: 'item', id: name };
+          return (
+            smelting.putInput(survival, x, y, z, name, 1, stack) > 0 ||
+            smelting.putFuelFrom(survival, x, y, z, name, 1, stack) > 0
+          );
+        }
+        const def = registry.byNameGet(material);
+        if (!def) return false;
+        const stack: Stack = { kind: 'block', id: def.id };
+        return (
+          smelting.putInput(survival, x, y, z, material, 1, stack) > 0 ||
+          smelting.putFuelFrom(survival, x, y, z, material, 1, stack) > 0
+        );
+      },
+      returnSlot: (slot) => {
+        if (!furnaceTarget) return;
+        const cell = smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
+        const s = cell[slot];
+        if (!s) return;
+        if (s.material.startsWith('b:')) survival.addBlock(Number(s.material.slice(2)), s.count);
+        else survival.addItem(s.material, s.count);
+        cell[slot] = null;
+      },
+      collect: () => {
+        if (furnaceTarget) smelting.takeOutput(survival, furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
+      },
+      onClose: () => closeFurnace(),
     },
-    put: (material) => {
-      if (!furnaceTarget) return false;
-      const { x, y, z } = furnaceTarget;
-      if (material.startsWith('i:')) {
-        const name = material.slice(2);
-        const stack: Stack = { kind: 'item', id: name };
-        return smelting.putInput(survival, x, y, z, name, 1, stack) > 0 ||
-          smelting.putFuelFrom(survival, x, y, z, name, 1, stack) > 0;
-      }
-      const def = registry.byNameGet(material);
-      if (!def) return false;
-      const stack: Stack = { kind: 'block', id: def.id };
-      return smelting.putInput(survival, x, y, z, material, 1, stack) > 0 ||
-        smelting.putFuelFrom(survival, x, y, z, material, 1, stack) > 0;
-    },
-    returnSlot: (slot) => {
-      if (!furnaceTarget) return;
-      const cell = smelting.cell(furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
-      const s = cell[slot];
-      if (!s) return;
-      if (s.material.startsWith('b:')) survival.addBlock(Number(s.material.slice(2)), s.count);
-      else survival.addItem(s.material, s.count);
-      cell[slot] = null;
-    },
-    collect: () => {
-      if (furnaceTarget) smelting.takeOutput(survival, furnaceTarget.x, furnaceTarget.y, furnaceTarget.z);
-    },
-    onClose: () => closeFurnace(),
-  }, atlas, registry);
+    atlas,
+    registry,
+  );
   uiRoot.appendChild(furnacePanel.root);
 
   function openFurnace(p: { x: number; y: number; z: number }) {
@@ -1166,8 +1316,7 @@ async function boot() {
   // 篮球落地反馈由事件解耦：实体层只发事件，音效与粒子在这里订阅
   events.on('basketball:bounce', ({ x, y, z, strength }) => {
     sound.bounce(strength);
-    particles.burst(x, y + 0.1, z, [0.92, 0.45, 0.12],
-      Math.min(8, 2 + Math.floor(strength / 4)), 0.16, 1.6);
+    particles.burst(x, y + 0.1, z, [0.92, 0.45, 0.12], Math.min(8, 2 + Math.floor(strength / 4)), 0.16, 1.6);
   });
 
   // ---- 状态机 ----
@@ -1190,8 +1339,9 @@ async function boot() {
       player.spawn();
       survival.spawn = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
     }
-    await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3),
-      (p) => hud.setLoading(p));
+    await chunks.initialLoad(player.pos.x, player.pos.z, Math.min(settings.renderDistance, 3), (p) =>
+      hud.setLoading(p),
+    );
     // 生态状态在区块就绪后恢复：恢复函数会逐条校验当前方块是否仍是该植物
     if (cont && saved?.botany) botany.restoreEcology(saved.botany);
     pluginBag.load(cont ? saved?.plugins : undefined);
@@ -1229,7 +1379,9 @@ async function boot() {
     events.emit('game:start', { seed });
     for (let i = 0; i < 5; i++) entities.trySpawnNear(player.pos);
     if (survival.isSurvival) {
-      hud.toast(isMobile ? '生存模式：挖方块、吃苹果、躲僵尸' : '生存模式：按住左键挖掘 · 右键放置/进食 · 夜晚小心僵尸');
+      hud.toast(
+        isMobile ? '生存模式：挖方块、吃苹果、躲僵尸' : '生存模式：按住左键挖掘 · 右键放置/进食 · 夜晚小心僵尸',
+      );
     } else {
       hud.toast(isMobile ? '左侧摇杆移动 · 右侧拖动视角 · 轻点破坏' : 'WASD 移动 · 左键破坏 · 右键放置 · E 打开方块库');
     }
@@ -1479,17 +1631,19 @@ async function boot() {
   /** 生存 / 创造切换 */
   function toggleGameMode() {
     applyMode(survival.mode === 'survival' ? 'creative' : 'survival');
-    hud.toast(survival.mode === 'survival'
-      ? '已切换到生存模式：注意生命、饥饿与夜晚的僵尸'
-      : '已切换到创造模式：无限方块、可飞行');
+    hud.toast(
+      survival.mode === 'survival'
+        ? '已切换到生存模式：注意生命、饥饿与夜晚的僵尸'
+        : '已切换到创造模式：无限方块、可飞行',
+    );
   }
 
   /** 移动端“放置”键的语义跟随手持物 */
   function syncUseMode() {
     const s = player.selectedStack();
-    touch?.setUseMode(!s ? 'none'
-      : s.kind === 'item' && s.id === 'basketball' ? 'throw'
-        : s.kind === 'item' ? 'item' : 'block');
+    touch?.setUseMode(
+      !s ? 'none' : s.kind === 'item' && s.id === 'basketball' ? 'throw' : s.kind === 'item' ? 'item' : 'block',
+    );
   }
 
   // ---- 运行时诊断组：只读快照 / API / F3 面板共用同一套检查 ----
@@ -1515,7 +1669,9 @@ async function boot() {
       mode,
       gameMode: survival.mode,
       player: {
-        x: player.pos.x, y: player.pos.y, z: player.pos.z,
+        x: player.pos.x,
+        y: player.pos.y,
+        z: player.pos.z,
         fallDistance: player.fallDistance,
       },
       input: { enabled: input.enabled, pressedKeys: input.pressedKeys },
@@ -1561,8 +1717,10 @@ async function boot() {
         emitted: Object.values(ev.emitted).reduce((a, b) => a + b, 0),
       },
       survival: {
-        health: survival.health, hunger: survival.hunger,
-        breath: survival.breath, dead: survival.dead,
+        health: survival.health,
+        hunger: survival.hunger,
+        breath: survival.breath,
+        dead: survival.dead,
       },
       entities: entities.entities.length,
       weather: {
@@ -1598,7 +1756,12 @@ async function boot() {
 
   // ---- 服务装配：横切逻辑下沉，boot() 不再持有事件接线 ----
   const builtinDeps: BuiltinDeps = {
-    hud, sound, player, survival, registry, hotbar,
+    hud,
+    sound,
+    player,
+    survival,
+    registry,
+    hotbar,
     buzz,
     parseKey,
     syncUseMode,
@@ -1646,15 +1809,32 @@ async function boot() {
   container.provide(TOKENS.PanelHost, panelHost);
 
   const api = createCraftAPI({
-    engine, events, plugins, registry, atlas, world, player, entities, sky, chunks, sound, survival, botany,
-    wasm, extensions,
+    engine,
+    events,
+    plugins,
+    registry,
+    atlas,
+    world,
+    player,
+    entities,
+    sky,
+    chunks,
+    sound,
+    survival,
+    botany,
+    wasm,
+    extensions,
     getSaveProvider: () => provider,
-    setSaveProvider: (p) => { provider = p; },
+    setSaveProvider: (p) => {
+      provider = p;
+    },
     input: {
       getBinding: (a) => input.getBinding(a as Parameters<typeof input.getBinding>[0]),
       setBinding: (a, code) => input.setBinding(a as Parameters<typeof input.setBinding>[0], code),
       resetBindings: () => input.resetBindings(),
-      get gamepadConnected() { return input.gamepadConnected; },
+      get gamepadConnected() {
+        return input.gamepadConnected;
+      },
     },
     collectSave,
     applySave: applySaveData,
@@ -1664,16 +1844,55 @@ async function boot() {
       // 新方块/新纹理会改变网格化的元数据，必须让 Worker 重新加载 config
       chunks.invalidateConfig();
     },
-    setRenderDistance: (v) => { settings.renderDistance = clamp(v, 2, 8); chunks.setRenderDistance(settings.renderDistance); },
-    setSensitivity: (v) => { settings.sensitivity = clamp(v, 0.4, 2); input.sensitivity = settings.sensitivity; },
-    setFov: (v) => { settings.fov = clamp(v, 60, 95); engine.camera.fov = settings.fov; engine.camera.updateProjectionMatrix(); },
-    setSound: (v) => { settings.sound = v; sound.setEnabled(v); hud.setSound(v); persistOptions(settings); },
-    setVolume: (v) => { settings.volume = clamp(v, 0, 100); sound.setVolume(settings.volume); persistOptions(settings); },
-    setInvertY: (v) => { settings.invertY = v; input.invertY = v; persistOptions(settings); },
-    setQuality: (v) => { settings.quality = v; applyQuality(v); persistOptions(settings); },
-    setParticles: (v) => { settings.particles = v; particles.enabled = v; persistOptions(settings); },
-    setViewBob: (v) => { settings.viewBob = v; player.viewBob = v; persistOptions(settings); },
-    setAutoJump: (v) => { settings.autoJump = v; player.autoJump = v; persistOptions(settings); },
+    setRenderDistance: (v) => {
+      settings.renderDistance = clamp(v, 2, 8);
+      chunks.setRenderDistance(settings.renderDistance);
+    },
+    setSensitivity: (v) => {
+      settings.sensitivity = clamp(v, 0.4, 2);
+      input.sensitivity = settings.sensitivity;
+    },
+    setFov: (v) => {
+      settings.fov = clamp(v, 60, 95);
+      engine.camera.fov = settings.fov;
+      engine.camera.updateProjectionMatrix();
+    },
+    setSound: (v) => {
+      settings.sound = v;
+      sound.setEnabled(v);
+      hud.setSound(v);
+      persistOptions(settings);
+    },
+    setVolume: (v) => {
+      settings.volume = clamp(v, 0, 100);
+      sound.setVolume(settings.volume);
+      persistOptions(settings);
+    },
+    setInvertY: (v) => {
+      settings.invertY = v;
+      input.invertY = v;
+      persistOptions(settings);
+    },
+    setQuality: (v) => {
+      settings.quality = v;
+      applyQuality(v);
+      persistOptions(settings);
+    },
+    setParticles: (v) => {
+      settings.particles = v;
+      particles.enabled = v;
+      persistOptions(settings);
+    },
+    setViewBob: (v) => {
+      settings.viewBob = v;
+      player.viewBob = v;
+      persistOptions(settings);
+    },
+    setAutoJump: (v) => {
+      settings.autoJump = v;
+      player.autoJump = v;
+      persistOptions(settings);
+    },
     setTouchSensitivity: (v) => {
       settings.touchSensitivity = clamp(v, 0.5, 2);
       if (touch) touch.lookScale = settings.touchSensitivity;
@@ -1685,9 +1904,20 @@ async function boot() {
       if (!v) hud.setDebug(null);
       persistOptions(settings);
     },
-    setGreedy: (v) => { settings.greedy = v; chunks.greedy = v; persistOptions(settings); },
-    setMesherThreads: (v) => { settings.mesherThreads = v; applyMesherThreads(v); persistOptions(settings); },
-    setAutosaveInterval: (v) => { settings.autosaveInterval = clamp(v, 0, 120); persistOptions(settings); },
+    setGreedy: (v) => {
+      settings.greedy = v;
+      chunks.greedy = v;
+      persistOptions(settings);
+    },
+    setMesherThreads: (v) => {
+      settings.mesherThreads = v;
+      applyMesherThreads(v);
+      persistOptions(settings);
+    },
+    setAutosaveInterval: (v) => {
+      settings.autosaveInterval = clamp(v, 0, 120);
+      persistOptions(settings);
+    },
     exportOptions: () => JSON.stringify(settings, null, 2),
     importOptions: (json) => importOptions(json),
     setMode: (m) => applyMode(m),
@@ -1780,25 +2010,46 @@ async function boot() {
   }
 
   // ---- 调试面板 ----
+  /** F3 每 0.2s 刷新一次，但诊断要遍历全部区块、植物统计要序列化生态；
+   *  两者按 1s 缓存，面板显示滞后最多 1s，换掉每秒 5 次全量扫描。 */
+  let diagCacheAt = -1e9;
+  let plantStatsCache: ReturnType<typeof botany.stats> | null = null;
+  let plantStatsAt = -1e9;
+  let diagCache: ReturnType<DiagnosticsRunner['run']> | null = null;
+  function cachedDiagnostics(): ReturnType<DiagnosticsRunner['run']> {
+    const now = performance.now();
+    if (!diagCache || now - diagCacheAt > 1000) {
+      diagCache = diagnostics.run();
+      diagCacheAt = now;
+    }
+    return diagCache;
+  }
+
   function debugText(): string {
     const p = player.pos;
     const info = engine.renderer.info.render;
-    const yawDeg = ((player.yaw * 180 / Math.PI) % 360 + 360) % 360;
+    const yawDeg = ((((player.yaw * 180) / Math.PI) % 360) + 360) % 360;
     const facing = ['北 (-Z)', '西 (-X)', '南 (+Z)', '东 (+X)'][Math.round(yawDeg / 90) % 4];
     const t = player.target;
     const targetStr = t ? `${registry.get(t.block).label} (${t.x}, ${t.y}, ${t.z})` : '无';
-    const diag = diagnostics.run();
+    const diag = cachedDiagnostics();
     const diagStr = diag.ok
       ? `正常（${diag.checked} 项）`
       : `${diag.errors} error / ${diag.warnings} warn${diag.issues[0] ? ` · ${diag.issues[0].id}` : ''}`;
-    const plants = botany.stats(p.x, p.z);
+    // 植物统计同理：1s 缓存，避免 F3 打开时每帧序列化全部植物
+    let plants = plantStatsCache;
+    if (!plants || performance.now() - plantStatsAt > 1000) {
+      plants = botany.stats(p.x, p.z);
+      plantStatsCache = plants;
+      plantStatsAt = performance.now();
+    }
     const qstats = qualityGovernor.stats();
     return [
       `Minecraft TS ${RELEASE} (${VERSION}) · three.js r170`,
       `FPS: ${engine.fps}  DrawCalls: ${info.calls}  三角形: ${(info.triangles / 1000).toFixed(1)}k  分辨率: ${Math.round(engine.qualityScale * 100)}%` +
-      (settings.quality === 'auto'
-        ? `  动态: ${Math.round(qstats.scale * 100)}%/${qstats.effectiveTargetFps}fps 目标 (p75 ${qstats.p75.toFixed(1)}ms, 屏幕${qstats.displayHz || '?'}Hz)`
-        : ''),
+        (settings.quality === 'auto'
+          ? `  动态: ${Math.round(qstats.scale * 100)}%/${qstats.effectiveTargetFps}fps 目标 (p75 ${qstats.p75.toFixed(1)}ms, 屏幕${qstats.displayHz || '?'}Hz)`
+          : ''),
       `XYZ: ${p.x.toFixed(2)} / ${p.y.toFixed(2)} / ${p.z.toFixed(2)}`,
       `区块: ${Math.floor(p.x / 16)}, ${Math.floor(p.z / 16)}  朝向: ${facing}`,
       `准星: ${targetStr}`,
@@ -1811,7 +2062,7 @@ async function boot() {
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  饱和度 ${Math.ceil(survival.saturation)}/${MAX_HUNGER}  温暖 ${Math.round(survival.warmth)}/100  背包 ${survival.inventory.size} 种`
         : `模式: 创造${player.fly ? '（飞行）' : ''}`,
       `渲染距离: ${chunks.renderDistance}${isMobile ? '（移动端）' : ''}`,
-      `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrder.length}`,
+      `脱困次数: ${player.unstuckCount}  透明排序条目: ${chunks.transparentOrderCount}`,
     ].join('\n');
   }
 
@@ -1864,8 +2115,12 @@ async function boot() {
           explode: (x, y, z, radius) => explode(x, y, z, radius),
         });
         // 篮球走近自动拾取（无地面掉落物系统的降级方案，Q3）
-        for (const e of [...entities.entities]) {
-          if (e.type.id !== 'basketball') continue;
+        // 倒序原地遍历：despawn 会从数组里删除元素，倒序不会被索引位移带偏，
+        // 也省掉每帧一次整个实体数组的浅拷贝。
+        const entityList = entities.entities;
+        for (let ei = entityList.length - 1; ei >= 0; ei--) {
+          const e = entityList[ei];
+          if (!e || e.type.id !== 'basketball') continue;
           const dx = e.pos.x - player.pos.x;
           const dz = e.pos.z - player.pos.z;
           const dy = e.pos.y - player.pos.y;
@@ -1879,9 +2134,10 @@ async function boot() {
           events.emit('basketball:pickup', { x, y, z });
         }
         entities.maintainPopulation(dt, player.pos, { survival: survival.isSurvival, daylight: sky.daylight });
-        for (const tnt of [...tntList]) {
+        for (let ti = tntList.length - 1; ti >= 0; ti--) {
+          const tnt = tntList[ti];
           tnt.update(dt);
-          if (tnt.done) tntList.splice(tntList.indexOf(tnt), 1);
+          if (tnt.done) tntList.splice(ti, 1);
         }
         falling.update(dt);
         // 熔炉随游戏推进：燃烧 / 进度 / 产出（暂停时不推进，与昼夜同规则）
@@ -1951,13 +2207,12 @@ async function boot() {
       const eyeZ = Math.floor(player.pos.z);
       const skyL = world.getSkyLight(eyeX, eyeY, eyeZ) / 15;
       const blockL = world.getBlockLight(eyeX, eyeY, eyeZ) / 15;
-      player.heldMaterial.color
-        .setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL))
-        .multiply(sky.sunTint);
+      player.heldMaterial.color.setScalar(0.12 + 0.88 * Math.max(skyL * daylight, blockL)).multiply(sky.sunTint);
       const hlShape = player.target ? registry.get(player.target.block).shape : '';
-      const hlTarget = mode === 'playing' && player.target &&
-        hlShape !== 'cross' && hlShape !== 'slab' && hlShape !== 'candle'
-        ? player.target : null;
+      const hlTarget =
+        mode === 'playing' && player.target && hlShape !== 'cross' && hlShape !== 'slab' && hlShape !== 'candle'
+          ? player.target
+          : null;
       highlight.set(hlTarget);
       const uw = mode === 'playing' && player.eyeInWater;
       if (uw && !wasUnderwater) sound.splash();
@@ -1967,14 +2222,15 @@ async function boot() {
       sky.setUnderwater(player.eyeInWater && (mode === 'playing' || mode === 'paused'));
       if (mode === 'playing' || mode === 'paused' || mode === 'dead') {
         hud.setSurvival({ ...survival, weather: weather.current.kind });
-        const mining = mode === 'playing' && player.miningProgress !== null && player.miningBlock
-          ? {
-            progress: player.miningProgress,
-            block: player.miningBlock,
-            stage: quantizeCrackStage(player.miningProgress),
-            targetKey: blockKey(hlTarget?.x ?? 0, hlTarget?.y ?? 0, hlTarget?.z ?? 0),
-          }
-          : null;
+        const mining =
+          mode === 'playing' && player.miningProgress !== null && player.miningBlock
+            ? {
+                progress: player.miningProgress,
+                block: player.miningBlock,
+                stage: quantizeCrackStage(player.miningProgress),
+                targetKey: blockKey(hlTarget?.x ?? 0, hlTarget?.y ?? 0, hlTarget?.z ?? 0),
+              }
+            : null;
         hud.setMining(mining);
         // 目标丢失 / 换块 / 松开挖掘时当帧清除，阶段变化才换 UV
         crackOverlay.set(mining && hlTarget ? hlTarget : null, mining?.stage ?? 0);
@@ -2038,7 +2294,9 @@ async function boot() {
     if (mode !== 'playing' && mode !== 'paused') return;
     try {
       localStorage.setItem('minecraft-ts-save-v1-unload', JSON.stringify(collectSave()));
-    } catch { /* 配额超限：IndexedDB 路径仍在尝试 */ }
+    } catch {
+      /* 配额超限：IndexedDB 路径仍在尝试 */
+    }
     saveNow();
   };
   addEventListener('pagehide', unloadSave);
@@ -2061,14 +2319,45 @@ async function boot() {
 
   // ---- 内部调试钩子（自动化测试 / 控制台把玩用）----
   (window as unknown as Record<string, unknown>).__mc = {
-    get mode() { return mode; },
-    get gameMode() { return survival.mode; },
-    engine, player, world, chunks, sky, input, hud, entities, atlas, registry, sound, particles, tntList, survival,
-    botany, falling, arrows, fire, smelting, weather, cold, weatherParticles,
+    get mode() {
+      return mode;
+    },
+    get gameMode() {
+      return survival.mode;
+    },
+    engine,
+    player,
+    world,
+    chunks,
+    sky,
+    input,
+    hud,
+    entities,
+    atlas,
+    registry,
+    sound,
+    particles,
+    tntList,
+    survival,
+    botany,
+    falling,
+    arrows,
+    fire,
+    smelting,
+    weather,
+    cold,
+    weatherParticles,
     /** 测试钩子：强制天气（null 恢复历法推导） */
-    weatherSetForced: (kind: WeatherKind | null) => { weather.forced = kind; },
-    services: container, events, plugins, api, wasm,
-    diagnostics, diagnosticsReport: () => diagnostics.run(),
+    weatherSetForced: (kind: WeatherKind | null) => {
+      weather.forced = kind;
+    },
+    services: container,
+    events,
+    plugins,
+    api,
+    wasm,
+    diagnostics,
+    diagnosticsReport: () => diagnostics.run(),
     dispose: teardown,
     chunkStats: () => ({
       generated: world.generatedCount,
@@ -2077,8 +2366,17 @@ async function boot() {
       maxResident: chunks.maxResident,
       time: world.time,
     }),
-    startGame, newWorld, selectSlot, igniteTnt, explode, openMenu, resumeGame, respawn, toggleGameMode,
-    openCrafting, closeCrafting,
+    startGame,
+    newWorld,
+    selectSlot,
+    igniteTnt,
+    explode,
+    openMenu,
+    resumeGame,
+    respawn,
+    toggleGameMode,
+    openCrafting,
+    closeCrafting,
   };
 }
 

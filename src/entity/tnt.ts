@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { World } from '../world/world';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { BlockRegistry } from '../world/blocks';
+import type { World } from '../world/world';
 
 /**
  * 点燃的 TNT：闪烁倒数 → 爆炸破坏球形区域内方块。
@@ -36,7 +36,9 @@ export class PrimedTnt {
     // 轻微抛起后落下
     this.vel.y -= 18 * dt;
     const ny = this.mesh.position.y + this.vel.y * dt;
-    if (this.world.isSolidAt(Math.floor(this.mesh.position.x), Math.floor(ny - 0.5), Math.floor(this.mesh.position.z))) {
+    if (
+      this.world.isSolidAt(Math.floor(this.mesh.position.x), Math.floor(ny - 0.5), Math.floor(this.mesh.position.z))
+    ) {
       this.vel.y = 0;
       this.vel.x *= 0.6;
       this.vel.z *= 0.6;

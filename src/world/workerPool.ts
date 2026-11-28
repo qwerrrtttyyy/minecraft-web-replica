@@ -20,17 +20,18 @@ export interface WorkerPoolResult<W extends Terminable> {
  * 按 want 逐个构造；任一失败即整体回滚。
  * 运行期失败（onerror）由调用方挂接，不在本函数职责内。
  */
-export function createWorkerPool<W extends Terminable>(
-  Ctor: new () => W,
-  want: number,
-): WorkerPoolResult<W> {
+export function createWorkerPool<W extends Terminable>(Ctor: new () => W, want: number): WorkerPoolResult<W> {
   const workers: W[] = [];
   for (let i = 0; i < want; i++) {
     try {
       workers.push(new Ctor());
     } catch {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* 已销毁 */ }
+        try {
+          w.terminate();
+        } catch {
+          /* 已销毁 */
+        }
       }
       return { workers: [], partial: true };
     }

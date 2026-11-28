@@ -1,38 +1,41 @@
 import * as THREE from 'three';
+import type { SoundEngine } from '../audio/sound';
+import type { Engine } from '../core/engine';
+import type { MesherThreads, QualityMode } from '../core/options';
+import type { GameMode } from '../core/types';
+import { RELEASE, VERSION } from '../core/version';
+import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
+import type { EntityManager, EntityType } from '../entity/entity';
+import type { TextureAtlas } from '../gfx/atlas';
+import type { Sky } from '../gfx/sky';
+import type { Player } from '../player/player';
+import type { SurvivalState } from '../player/survival';
+import { downloadSave, type ISaveProvider, parseSaveFile, type SaveData } from '../save/save';
 import type {
-  EventService,
-  GameEvents,
+  AnyEventHandler,
   EventChannel,
   EventChannelOptions,
+  EventService,
   EventStats,
-  AnyEventHandler,
+  GameEvents,
 } from '../services/events';
 import type {
-  PluginService, PluginDefinition, PluginRecord, PluginStats,
-  ExtensionRegistry, ExtensionInfo, ExtensionStats,
+  ExtensionInfo,
+  ExtensionRegistry,
+  ExtensionStats,
+  PluginDefinition,
+  PluginRecord,
+  PluginService,
+  PluginStats,
 } from '../services/plugins';
-import type {
-  WasmRuntime, WasmStatus, WasmStats, WasmBenchmark, WasmModuleInfo,
-} from '../wasm/runtime';
-import { VERSION, RELEASE } from '../core/version';
-import type { MesherThreads, QualityMode } from '../core/options';
-import type { Engine } from '../core/engine';
-import type { BlockRegistry, BlockInput, BlockDefinition } from '../world/blocks';
-import type { World } from '../world/world';
-import type { IWorldGenerator, BiomeId, ColumnInfo } from '../world/generator';
-import type { Player } from '../player/player';
-import type { EntityManager, EntityType } from '../entity/entity';
-import type { Sky } from '../gfx/sky';
-import type { ChunkManager } from '../world/chunkManager';
-import type { TextureAtlas } from '../gfx/atlas';
-import { downloadSave, parseSaveFile, type ISaveProvider, type SaveData } from '../save/save';
-import type { SoundEngine } from '../audio/sound';
-import type { SurvivalState } from '../player/survival';
-import type { GameMode } from '../core/types';
-import type { DiagnosticReport } from '../diagnostics/RuntimeDiagnostics';
+import type { WasmBenchmark, WasmModuleInfo, WasmRuntime, WasmStats, WasmStatus } from '../wasm/runtime';
+import type { BlockDefinition, BlockInput, BlockRegistry } from '../world/blocks';
 import type { Botany, BotanyStats } from '../world/botany';
-import type { PlantTrait } from '../world/plantTraits';
+import type { ChunkManager } from '../world/chunkManager';
+import type { BiomeId, ColumnInfo, IWorldGenerator } from '../world/generator';
 import type { PlantRule, PlantRuleInfo } from '../world/plantRules';
+import type { PlantTrait } from '../world/plantTraits';
+import type { World } from '../world/world';
 
 /**
  * 公开扩展门面（挂载到 window.CraftAPI）。
@@ -48,7 +51,10 @@ export interface CraftAPI {
   /** 注册新方块（tiles 必须是已注册纹理名） */
   registerBlock(input: BlockInput): BlockDefinition;
   /** 注册自定义 16×16 像素纹理 */
-  registerTile(name: string, painter: (setPixel: (x: number, y: number, hex: number, alpha?: number) => void, rng: () => number) => void): void;
+  registerTile(
+    name: string,
+    painter: (setPixel: (x: number, y: number, hex: number, alpha?: number) => void, rng: () => number) => void,
+  ): void;
   /** 注册新实体类型 */
   registerEntity(type: EntityType): void;
   /** 替换世界生成器（只影响未生成的区块） */
@@ -130,7 +136,11 @@ export interface CraftAPI {
     biomeAt(x: number, z: number): BiomeId | 'unknown';
     /** 完整列信息（高度/群系/温湿度/坡度）；自定义生成器未实现时返回 null */
     terrain(x: number, z: number): ColumnInfo | null;
-    raycast(origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, maxDist: number): unknown;
+    raycast(
+      origin: { x: number; y: number; z: number },
+      dir: { x: number; y: number; z: number },
+      maxDist: number,
+    ): unknown;
   };
   player: {
     position(): { x: number; y: number; z: number };
@@ -359,16 +369,25 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
     player: {
       position: () => ({ x: d.player.pos.x, y: d.player.pos.y, z: d.player.pos.z }),
       teleport: (x, y, z) => d.player.teleport(x, y, z),
-      setFly: (v) => { if (v && d.survival.isSurvival) return; d.player.fly = v; },
-      setCamera: (m) => { d.player.cameraMode = m; },
+      setFly: (v) => {
+        if (v && d.survival.isSurvival) return;
+        d.player.fly = v;
+      },
+      setCamera: (m) => {
+        d.player.cameraMode = m;
+      },
       break: () => d.player.breakBlock(),
       place: () => d.player.doPlace(),
       selectedBlock: () => d.player.selectedBlock(),
     },
     time: {
       get: () => d.sky.dayTime,
-      set: (v) => { d.sky.dayTime = ((v % 1) + 1) % 1; },
-      setDayLength: (s) => { d.sky.dayLength = Math.max(10, s); },
+      set: (v) => {
+        d.sky.dayTime = ((v % 1) + 1) % 1;
+      },
+      setDayLength: (s) => {
+        d.sky.dayLength = Math.max(10, s);
+      },
       text: () => d.sky.timeString(),
     },
     entities: {
@@ -410,7 +429,9 @@ export function createCraftAPI(d: APIDeps): CraftAPI {
       getBinding: (a) => d.input.getBinding(a),
       setBinding: (a, code) => d.input.setBinding(a, code),
       resetBindings: () => d.input.resetBindings(),
-      get gamepadConnected() { return d.input.gamepadConnected; },
+      get gamepadConnected() {
+        return d.input.gamepadConnected;
+      },
     },
     survival: {
       mode: () => d.survival.mode,

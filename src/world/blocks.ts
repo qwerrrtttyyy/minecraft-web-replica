@@ -99,9 +99,19 @@ export class BlockRegistry {
   private solidFlags = new Uint8Array(64);
 
   readonly air: BlockDefinition = {
-    id: AIR, name: 'air', label: '空气', shape: 'cube', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 0, hardness: 0, sound: 'dirt',
-    tiles: { top: '', bottom: '', side: '' }, drops: [],
+    id: AIR,
+    name: 'air',
+    label: '空气',
+    shape: 'cube',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'dirt',
+    tiles: { top: '', bottom: '', side: '' },
+    drops: [],
   };
 
   constructor() {
@@ -172,42 +182,82 @@ export class BlockRegistry {
 /** 注册内置基础方块 */
 export function registerBuiltinBlocks(reg: BlockRegistry) {
   const cube = (
-    name: string, label: string, tiles: Partial<BlockDefinition['tiles']>,
+    name: string,
+    label: string,
+    tiles: Partial<BlockDefinition['tiles']>,
     extra: Partial<BlockInput> = {},
   ) => {
     const t = { top: name, bottom: name, side: name, ...tiles };
     reg.register({
-      name, label, shape: 'cube', solid: true, opaque: true, liquid: false,
-      transparentPass: false, lightEmission: 0, hardness: 1, sound: 'stone', tiles: t, ...extra,
+      name,
+      label,
+      shape: 'cube',
+      solid: true,
+      opaque: true,
+      liquid: false,
+      transparentPass: false,
+      lightEmission: 0,
+      hardness: 1,
+      sound: 'stone',
+      tiles: t,
+      ...extra,
     });
   };
 
-  cube('grass', '草方块', { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
-    { sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true });
+  cube(
+    'grass',
+    '草方块',
+    { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
+    { sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true },
+  );
   cube('dirt', '泥土', {}, { sound: 'dirt', hardness: 0.5 });
   cube('stone', '石头', {}, { hardness: 1.5, drops: [{ name: 'cobblestone' }] });
   cube('cobblestone', '圆石', {}, { hardness: 2 });
   cube('sand', '沙子', {}, { sound: 'sand', hardness: 0.5, falling: true });
   cube('oak_log', '橡木原木', { top: 'log_top', bottom: 'log_top', side: 'log_side' }, { sound: 'wood', hardness: 2 });
   cube('oak_planks', '橡木木板', {}, { sound: 'wood', hardness: 2 });
-  cube('oak_leaves', '橡树树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
-    drops: [
-      { name: 'oak_sapling', chance: 0.08 },
-      { name: 'oak_leaves', chance: 0.5 },
-      { name: 'item:apple', chance: 0.2 },
-    ],
-  });
+  cube(
+    'oak_leaves',
+    '橡树树叶',
+    {},
+    {
+      opaque: false,
+      cullSame: true,
+      sound: 'plant',
+      hardness: 0.2,
+      tint: true,
+      drops: [
+        { name: 'oak_sapling', chance: 0.08 },
+        { name: 'oak_leaves', chance: 0.5 },
+        { name: 'item:apple', chance: 0.2 },
+      ],
+    },
+  );
   cube('glass', '玻璃', {}, { opaque: false, transparentPass: true, sound: 'glass', hardness: 0.3, drops: [] });
   cube('bricks', '红砖块', {}, { hardness: 2 });
-  cube('water', '水', {}, {
-    solid: false, opaque: false, liquid: true, transparentPass: true, sound: 'liquid', hardness: 100, drops: [],
-  });
+  cube(
+    'water',
+    '水',
+    {},
+    {
+      solid: false,
+      opaque: false,
+      liquid: true,
+      transparentPass: true,
+      sound: 'liquid',
+      hardness: 100,
+      drops: [],
+    },
+  );
   cube('bedrock', '基岩', {}, { hardness: Infinity, drops: [] });
   cube('glowstone', '萤石', {}, { lightEmission: 15, sound: 'glass', hardness: 0.3 });
   cube('snow', '雪块', {}, { sound: 'cloth', hardness: 0.2 });
-  cube('tnt', 'TNT', { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt_side' },
-    { sound: 'cloth', hardness: 0, drops: [] });
+  cube(
+    'tnt',
+    'TNT',
+    { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt_side' },
+    { sound: 'cloth', hardness: 0, drops: [] },
+  );
   cube('white_wool', '白色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('red_wool', '红色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
   cube('blue_wool', '蓝色羊毛', {}, { sound: 'cloth', hardness: 0.8 });
@@ -218,40 +268,100 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
    * 矮花 / 地被 / 苔藓贴近地面，穗状花与作物长满整格，观感层次更接近真实草甸。
    */
   const PLANT_HEIGHTS: Readonly<Record<string, number>> = {
-    tall_grass: 0.9, poppy: 0.72, dandelion: 0.68,
-    red_mushroom: 0.55, brown_mushroom: 0.6, dead_bush: 0.72,
-    sugar_cane: 1, fern: 0.58, bamboo: 1,
-    bluebell: 0.62, allium: 0.72, azure_bluet: 0.46, oxeye_daisy: 0.66,
-    cornflower: 0.7, lily_of_the_valley: 0.68,
-    tulip_red: 0.6, tulip_orange: 0.6, tulip_white: 0.6, tulip_pink: 0.6,
-    sunflower: 1, lilac: 0.92, rose_bush: 0.86, peony: 0.9, tall_fern: 0.95,
-    vine: 1, lily_pad: 0.32,
-    glow_lichen: 0.55, moss_carpet: 0.3,
-    wheat_seedling: 0.3, wheat_growing: 0.55, wheat: 0.9,
-    sweet_berry_bush: 0.7, sweet_berry_bush_ripe: 0.7, pumpkin_stem: 0.82,
-    oak_sapling: 0.7, birch_sapling: 0.7, spruce_sapling: 0.72,
-    acacia_sapling: 0.7, cherry_sapling: 0.72,
+    tall_grass: 0.9,
+    poppy: 0.72,
+    dandelion: 0.68,
+    red_mushroom: 0.55,
+    brown_mushroom: 0.6,
+    dead_bush: 0.72,
+    sugar_cane: 1,
+    fern: 0.58,
+    bamboo: 1,
+    bluebell: 0.62,
+    allium: 0.72,
+    azure_bluet: 0.46,
+    oxeye_daisy: 0.66,
+    cornflower: 0.7,
+    lily_of_the_valley: 0.68,
+    tulip_red: 0.6,
+    tulip_orange: 0.6,
+    tulip_white: 0.6,
+    tulip_pink: 0.6,
+    sunflower: 1,
+    lilac: 0.92,
+    rose_bush: 0.86,
+    peony: 0.9,
+    tall_fern: 0.95,
+    vine: 1,
+    lily_pad: 0.32,
+    glow_lichen: 0.55,
+    moss_carpet: 0.3,
+    wheat_seedling: 0.3,
+    wheat_growing: 0.55,
+    wheat: 0.9,
+    sweet_berry_bush: 0.7,
+    sweet_berry_bush_ripe: 0.7,
+    pumpkin_stem: 0.82,
+    oak_sapling: 0.7,
+    birch_sapling: 0.7,
+    spruce_sapling: 0.72,
+    acacia_sapling: 0.7,
+    cherry_sapling: 0.72,
     // v1.6.0 花海扩充
-    lavender: 0.9, buttercup: 0.5, forget_me_not: 0.44, marigold: 0.58,
-    foxglove: 1, hollyhock: 1, violet: 0.4,
-    wood_anemone: 0.46, wild_garlic: 0.52, hyacinth: 0.68, ivy: 1, glow_moss: 0.34,
-    lingonberry_bush: 0.58, snowdrop: 0.5,
-    edelweiss: 0.42, snow_lily: 0.58, crocus: 0.38, gentian: 0.5,
-    yucca: 0.92, desert_marigold: 0.5, ghost_flower: 0.66,
-    beach_grass: 0.84, sea_thrift: 0.42,
-    duckweed: 0.16, sea_anemone: 0.5, red_algae: 0.62,
-    moonflower: 0.6, glow_fern: 0.78,
+    lavender: 0.9,
+    buttercup: 0.5,
+    forget_me_not: 0.44,
+    marigold: 0.58,
+    foxglove: 1,
+    hollyhock: 1,
+    violet: 0.4,
+    wood_anemone: 0.46,
+    wild_garlic: 0.52,
+    hyacinth: 0.68,
+    ivy: 1,
+    glow_moss: 0.34,
+    lingonberry_bush: 0.58,
+    snowdrop: 0.5,
+    edelweiss: 0.42,
+    snow_lily: 0.58,
+    crocus: 0.38,
+    gentian: 0.5,
+    yucca: 0.92,
+    desert_marigold: 0.5,
+    ghost_flower: 0.66,
+    beach_grass: 0.84,
+    sea_thrift: 0.42,
+    duckweed: 0.16,
+    sea_anemone: 0.5,
+    red_algae: 0.62,
+    moonflower: 0.6,
+    glow_fern: 0.78,
     // v1.7.0 内容植物扩充
-    cotton_bush: 0.72, rice_plant: 0.86, grape_vine: 0.95, chili_bush: 0.68,
-    orchid: 0.7, sage: 0.62, pitcher_plant: 0.78,
+    cotton_bush: 0.72,
+    rice_plant: 0.86,
+    grape_vine: 0.95,
+    chili_bush: 0.68,
+    orchid: 0.7,
+    sage: 0.62,
+    pitcher_plant: 0.78,
   };
 
   const plant = (name: string, label: string, drops?: DropSpec[], extra: Partial<BlockInput> = {}) =>
     reg.register({
-      name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
-      transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-      tiles: { top: name, bottom: name, side: name }, drops,
-      crossHeight: PLANT_HEIGHTS[name] ?? 0.8, ...extra,
+      name,
+      label,
+      shape: 'cross',
+      solid: false,
+      opaque: false,
+      liquid: false,
+      transparentPass: false,
+      lightEmission: 0,
+      hardness: 0,
+      sound: 'plant',
+      tiles: { top: name, bottom: name, side: name },
+      drops,
+      crossHeight: PLANT_HEIGHTS[name] ?? 0.8,
+      ...extra,
     });
   // 草丛是生存模式最早的小麦种子来源（对应原版打草掉种子）
   plant('tall_grass', '草丛', [{ name: 'self' }, { name: 'item:wheat_seeds', chance: 0.25 }], { tint: true });
@@ -268,30 +378,63 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   // ---- 追加方块（id 27 起，末位追加，旧存档差分保持有效） ----
   // 光源方块：火把（地面十字面）与南瓜灯（完整方块）
   reg.register({
-    name: 'torch', label: '火把', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 14, hardness: 0.1, sound: 'wood',
+    name: 'torch',
+    label: '火把',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 14,
+    hardness: 0.1,
+    sound: 'wood',
     tiles: { top: 'torch', bottom: 'torch', side: 'torch' },
   });
-  cube('jack_o_lantern', '南瓜灯', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_face' },
-    { lightEmission: 15, sound: 'wood', hardness: 1 });
+  cube(
+    'jack_o_lantern',
+    '南瓜灯',
+    { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_face' },
+    { lightEmission: 15, sound: 'wood', hardness: 1 },
+  );
 
   // 建材
   cube('stone_bricks', '石砖', {}, { hardness: 2 });
   cube('mossy_cobblestone', '苔石圆石', {}, { hardness: 2 });
   cube('obsidian', '黑曜石', {}, { hardness: 12 });
-  cube('gravel', '沙砾', {}, {
-    sound: 'sand', hardness: 0.6, falling: true,
-    drops: [{ name: 'self' }, { name: 'item:flint', chance: 0.3 }],
-  });
+  cube(
+    'gravel',
+    '沙砾',
+    {},
+    {
+      sound: 'sand',
+      hardness: 0.6,
+      falling: true,
+      drops: [{ name: 'self' }, { name: 'item:flint', chance: 0.3 }],
+    },
+  );
   cube('sandstone', '砂岩', {}, { sound: 'sand', hardness: 1.2 });
-  cube('ice', '冰', {}, {
-    // cullSame：相邻冰方块之间的内部面与玻璃一样剔除，避免透明通道多出无用面片。
-    opaque: false, cullSame: true, transparentPass: true, sound: 'glass', hardness: 0.5, drops: [],
-  });
+  cube(
+    'ice',
+    '冰',
+    {},
+    {
+      // cullSame：相邻冰方块之间的内部面与玻璃一样剔除，避免透明通道多出无用面片。
+      opaque: false,
+      cullSame: true,
+      transparentPass: true,
+      sound: 'glass',
+      hardness: 0.5,
+      drops: [],
+    },
+  );
   cube('spruce_planks', '云杉木板', {}, { sound: 'wood', hardness: 2 });
   cube('birch_planks', '白桦木板', {}, { sound: 'wood', hardness: 2 });
-  cube('crafting_table', '工作台', { top: 'crafting_top', bottom: 'oak_planks', side: 'crafting_side' },
-    { sound: 'wood', hardness: 3.5 });
+  cube(
+    'crafting_table',
+    '工作台',
+    { top: 'crafting_top', bottom: 'oak_planks', side: 'crafting_side' },
+    { sound: 'wood', hardness: 3.5 },
+  );
   // 植物（十字面，需放在实心方块上）
   plant('red_mushroom', '红蘑菇');
   plant('brown_mushroom', '棕蘑菇');
@@ -310,8 +453,12 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('redstone_ore', '红石矿石', {}, { hardness: 2.4, drops: [{ name: 'item:redstone', min: 4, max: 5 }] });
   // 地表 / 建材
   cube('clay', '黏土', {}, { sound: 'dirt', hardness: 0.6 });
-  cube('podzol', '灰化土', { top: 'podzol_top', bottom: 'dirt', side: 'podzol_side' },
-    { sound: 'dirt', hardness: 0.5, drops: [{ name: 'dirt' }] });
+  cube(
+    'podzol',
+    '灰化土',
+    { top: 'podzol_top', bottom: 'dirt', side: 'podzol_side' },
+    { sound: 'dirt', hardness: 0.5, drops: [{ name: 'dirt' }] },
+  );
   cube('cactus', '仙人掌', {}, { sound: 'plant', hardness: 0.4 });
   // 植物（十字面，地形装饰生成）
   plant('sugar_cane', '甘蔗');
@@ -319,10 +466,18 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   cube('granite', '花岗岩', {}, { hardness: 1.5 });
 
   // ---- 新增方块（id 55、56，末位追加，旧存档 edits 差分保持有效） ----
-  cube('pumpkin', '南瓜', { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_side' },
-    { sound: 'wood', hardness: 1 });
-  cube('bookshelf', '书架', { top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf_side' },
-    { sound: 'wood', hardness: 1.5 });
+  cube(
+    'pumpkin',
+    '南瓜',
+    { top: 'pumpkin_top', bottom: 'pumpkin_bottom', side: 'pumpkin_side' },
+    { sound: 'wood', hardness: 1 },
+  );
+  cube(
+    'bookshelf',
+    '书架',
+    { top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf_side' },
+    { sound: 'wood', hardness: 1.5 },
+  );
 
   // ---- v1.4.1 植物大扩充（id 57 起，仍为末位追加，旧存档差分保持有效） ----
   // 花卉：全部走群系配置表自然生成，也会由邻近同类随机蔓延
@@ -346,38 +501,74 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('vine', '藤蔓', undefined, { tint: true });
   plant('lily_pad', '睡莲');
   reg.register({
-    name: 'seagrass', label: '海草', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
-    tiles: { top: 'seagrass', bottom: 'seagrass', side: 'seagrass' }, crossHeight: 1,
+    name: 'seagrass',
+    label: '海草',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'plant',
+    waterPlant: true,
+    tiles: { top: 'seagrass', bottom: 'seagrass', side: 'seagrass' },
+    crossHeight: 1,
   });
   reg.register({
-    name: 'kelp', label: '海带', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
-    tiles: { top: 'kelp', bottom: 'kelp', side: 'kelp' }, crossHeight: 1,
+    name: 'kelp',
+    label: '海带',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'plant',
+    waterPlant: true,
+    tiles: { top: 'kelp', bottom: 'kelp', side: 'kelp' },
+    crossHeight: 1,
   });
   plant('bamboo', '竹子');
   reg.register({
-    name: 'glow_lichen', label: '发光地衣', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 7, hardness: 0, sound: 'plant',
-    tiles: { top: 'glow_lichen', bottom: 'glow_lichen', side: 'glow_lichen' }, crossHeight: 0.55,
+    name: 'glow_lichen',
+    label: '发光地衣',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 7,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'glow_lichen', bottom: 'glow_lichen', side: 'glow_lichen' },
+    crossHeight: 0.55,
   });
   plant('moss_carpet', '苔藓地毯');
 
   // 生长阶段：小麦（麦苗 → 抽穗 → 成熟）与甜浆果丛（青果 → 成熟）
   const growthPlant = (name: string, label: string, drops: DropSpec[]) =>
     reg.register({
-      name, label, shape: 'cross', solid: false, opaque: false, liquid: false,
-      transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-      tiles: { top: name, bottom: name, side: name }, drops,
+      name,
+      label,
+      shape: 'cross',
+      solid: false,
+      opaque: false,
+      liquid: false,
+      transparentPass: false,
+      lightEmission: 0,
+      hardness: 0,
+      sound: 'plant',
+      tiles: { top: name, bottom: name, side: name },
+      drops,
       crossHeight: PLANT_HEIGHTS[name] ?? 0.8,
     });
   growthPlant('wheat_seedling', '麦苗', [{ name: 'item:wheat_seeds', chance: 0.6 }]);
   growthPlant('wheat_growing', '小麦（抽穗）', [{ name: 'item:wheat_seeds', chance: 0.9 }]);
-  growthPlant('wheat', '小麦（成熟）',
-    [{ name: 'self' }, { name: 'item:wheat_seeds', count: 2 }]);
+  growthPlant('wheat', '小麦（成熟）', [{ name: 'self' }, { name: 'item:wheat_seeds', count: 2 }]);
   growthPlant('sweet_berry_bush', '甜浆果丛', [{ name: 'self' }]);
-  growthPlant('sweet_berry_bush_ripe', '成熟甜浆果丛',
-    [{ name: 'self' }, { name: 'item:sweet_berries', count: 2 }]);
+  growthPlant('sweet_berry_bush_ripe', '成熟甜浆果丛', [{ name: 'self' }, { name: 'item:sweet_berries', count: 2 }]);
   growthPlant('pumpkin_stem', '南瓜藤', [{ name: 'self' }]);
 
   // 树苗：随机刻后长成对应树种（橡树 / 白桦 / 云杉）
@@ -386,18 +577,50 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('spruce_sapling', '云杉树苗');
 
   // 树种方块：由森林 / 针叶林生成阶段按权重种植，也可由树苗长成
-  cube('birch_log', '白桦原木', { top: 'birch_log_top', bottom: 'birch_log_top', side: 'birch_log_side' },
-    { sound: 'wood', hardness: 2 });
-  cube('birch_leaves', '白桦树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
-    drops: [{ name: 'birch_sapling', chance: 0.08 }, { name: 'birch_leaves', chance: 0.5 }],
-  });
-  cube('spruce_log', '云杉原木', { top: 'spruce_log_top', bottom: 'spruce_log_top', side: 'spruce_log_side' },
-    { sound: 'wood', hardness: 2 });
-  cube('spruce_leaves', '云杉树叶', {}, {
-    opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
-    drops: [{ name: 'spruce_sapling', chance: 0.08 }, { name: 'spruce_leaves', chance: 0.5 }],
-  });
+  cube(
+    'birch_log',
+    '白桦原木',
+    { top: 'birch_log_top', bottom: 'birch_log_top', side: 'birch_log_side' },
+    { sound: 'wood', hardness: 2 },
+  );
+  cube(
+    'birch_leaves',
+    '白桦树叶',
+    {},
+    {
+      opaque: false,
+      cullSame: true,
+      sound: 'plant',
+      hardness: 0.2,
+      tint: true,
+      drops: [
+        { name: 'birch_sapling', chance: 0.08 },
+        { name: 'birch_leaves', chance: 0.5 },
+      ],
+    },
+  );
+  cube(
+    'spruce_log',
+    '云杉原木',
+    { top: 'spruce_log_top', bottom: 'spruce_log_top', side: 'spruce_log_side' },
+    { sound: 'wood', hardness: 2 },
+  );
+  cube(
+    'spruce_leaves',
+    '云杉树叶',
+    {},
+    {
+      opaque: false,
+      cullSame: true,
+      sound: 'plant',
+      hardness: 0.2,
+      tint: true,
+      drops: [
+        { name: 'spruce_sapling', chance: 0.08 },
+        { name: 'spruce_leaves', chance: 0.5 },
+      ],
+    },
+  );
 
   // ---- 群系扩充（id 98~110，末位追加） ----
   // 恶地彩色陶瓦：按深度分层，构成彩色丘陵地貌
@@ -410,37 +633,76 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   // 沼泽泥：沼泽群系的地表 / 填充
   cube('mud', '泥', {}, { id: 104, sound: 'dirt', hardness: 0.6 });
   // 干草原草皮：暖黄草色由 shader 的群系色调制
-  cube('dry_grass', '干草方块', { top: 'dry_grass_top', bottom: 'dirt', side: 'dry_grass_side' },
-    { id: 105, sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true });
+  cube(
+    'dry_grass',
+    '干草方块',
+    { top: 'dry_grass_top', bottom: 'dirt', side: 'dry_grass_side' },
+    { id: 105, sound: 'dirt', hardness: 0.6, drops: [{ name: 'dirt' }], tint: true },
+  );
   // 金合欢：热带草原的伞形乔木
-  cube('acacia_log', '金合欢原木',
+  cube(
+    'acacia_log',
+    '金合欢原木',
     { top: 'acacia_log_top', bottom: 'acacia_log_top', side: 'acacia_log_side' },
-    { id: 106, sound: 'wood', hardness: 2 });
-  cube('acacia_leaves', '金合欢树叶', {}, {
-    id: 107, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2, tint: true,
-    drops: [{ name: 'acacia_sapling', chance: 0.08 }, { name: 'self' }],
-  });
+    { id: 106, sound: 'wood', hardness: 2 },
+  );
+  cube(
+    'acacia_leaves',
+    '金合欢树叶',
+    {},
+    {
+      id: 107,
+      opaque: false,
+      cullSame: true,
+      sound: 'plant',
+      hardness: 0.2,
+      tint: true,
+      drops: [{ name: 'acacia_sapling', chance: 0.08 }, { name: 'self' }],
+    },
+  );
   // 樱花：樱花林的粉冠乔木
-  cube('cherry_log', '樱花原木',
+  cube(
+    'cherry_log',
+    '樱花原木',
     { top: 'cherry_log_top', bottom: 'cherry_log_top', side: 'cherry_log_side' },
-    { id: 108, sound: 'wood', hardness: 2 });
-  cube('cherry_leaves', '樱花树叶', {}, {
-    id: 109, opaque: false, cullSame: true, sound: 'plant', hardness: 0.2,
-    drops: [{ name: 'cherry_sapling', chance: 0.08 }, { name: 'self' }],
-  });
+    { id: 108, sound: 'wood', hardness: 2 },
+  );
+  cube(
+    'cherry_leaves',
+    '樱花树叶',
+    {},
+    {
+      id: 109,
+      opaque: false,
+      cullSame: true,
+      sound: 'plant',
+      hardness: 0.2,
+      drops: [{ name: 'cherry_sapling', chance: 0.08 }, { name: 'self' }],
+    },
+  );
 
   // ---- 堆肥桶（id 110~118，末位追加；等级编码进 block id，借 world.edits 免费持久化） ----
   for (let i = 0; i <= 7; i++) {
-    cube(i === 0 ? 'composter' : `composter_${i}`, i === 0 ? '堆肥桶' : `堆肥桶 ${i}/7`,
+    cube(
+      i === 0 ? 'composter' : `composter_${i}`,
+      i === 0 ? '堆肥桶' : `堆肥桶 ${i}/7`,
       { top: 'composter_top', bottom: 'composter_bottom', side: 'composter_side' },
-      { id: 110 + i, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
+      { id: 110 + i, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] },
+    );
   }
-  cube('composter_ready', '堆肥桶（成熟）',
+  cube(
+    'composter_ready',
+    '堆肥桶（成熟）',
     { top: 'composter_ready_top', bottom: 'composter_bottom', side: 'composter_side' },
-    { id: 118, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] });
+    { id: 118, sound: 'wood', hardness: 1.2, drops: [{ name: 'self' }] },
+  );
   // ---- 熔炉（E03，堆肥桶之后末位追加；右键打开烧炼界面） ----
-  cube('furnace', '熔炉', { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side' },
-    { id: 119, hardness: 2 });
+  cube(
+    'furnace',
+    '熔炉',
+    { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side' },
+    { id: 119, hardness: 2 },
+  );
   // ---- v1.6.0 花海扩充（熔炉之后自动顺延 120~147，仍为末位追加，旧存档差分保持有效） ----
   // 移植自 AtomGit v1.6.0（原 id 92~119，顺延至 120~147）
   // 温带花甸：从矮丛到高穗，和既有花卉一起组成成片花圃
@@ -457,13 +719,21 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('hyacinth', '风信子');
   plant('ivy', '常春藤', undefined, { tint: true });
   reg.register({
-    name: 'glow_moss', label: '荧光苔', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 4, hardness: 0, sound: 'plant',
-    tiles: { top: 'glow_moss', bottom: 'glow_moss', side: 'glow_moss' }, crossHeight: 0.34,
+    name: 'glow_moss',
+    label: '荧光苔',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 4,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'glow_moss', bottom: 'glow_moss', side: 'glow_moss' },
+    crossHeight: 0.34,
   });
   // 针叶林 / 高山：低矮灌木与雪线花卉
-  plant('lingonberry_bush', '越橘丛',
-    [{ name: 'self' }, { name: 'item:sweet_berries', chance: 0.35 }]);
+  plant('lingonberry_bush', '越橘丛', [{ name: 'self' }, { name: 'item:sweet_berries', chance: 0.35 }]);
   plant('snowdrop', '雪滴花');
   plant('edelweiss', '雪绒花');
   plant('snow_lily', '雪莲');
@@ -473,50 +743,102 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('yucca', '丝兰');
   plant('desert_marigold', '沙漠金盏');
   reg.register({
-    name: 'ghost_flower', label: '幽灵花', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 6, hardness: 0, sound: 'plant',
-    tiles: { top: 'ghost_flower', bottom: 'ghost_flower', side: 'ghost_flower' }, crossHeight: 0.66,
+    name: 'ghost_flower',
+    label: '幽灵花',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 6,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'ghost_flower', bottom: 'ghost_flower', side: 'ghost_flower' },
+    crossHeight: 0.66,
   });
   plant('beach_grass', '海滩草', undefined, { tint: true });
   plant('sea_thrift', '海石竹');
   // 水下 / 水面：浮萍铺水面，海葵与红藻成片生长
   plant('duckweed', '浮萍');
   reg.register({
-    name: 'sea_anemone', label: '海葵', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
-    tiles: { top: 'sea_anemone', bottom: 'sea_anemone', side: 'sea_anemone' }, crossHeight: 0.5,
+    name: 'sea_anemone',
+    label: '海葵',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'plant',
+    waterPlant: true,
+    tiles: { top: 'sea_anemone', bottom: 'sea_anemone', side: 'sea_anemone' },
+    crossHeight: 0.5,
   });
   reg.register({
-    name: 'red_algae', label: '红藻', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant', waterPlant: true,
-    tiles: { top: 'red_algae', bottom: 'red_algae', side: 'red_algae' }, crossHeight: 0.62,
+    name: 'red_algae',
+    label: '红藻',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'plant',
+    waterPlant: true,
+    tiles: { top: 'red_algae', bottom: 'red_algae', side: 'red_algae' },
+    crossHeight: 0.62,
   });
   // 洞穴弱光植物：自发光，给地下一点生气
   reg.register({
-    name: 'moonflower', label: '月光花', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 7, hardness: 0, sound: 'plant',
-    tiles: { top: 'moonflower', bottom: 'moonflower', side: 'moonflower' }, crossHeight: 0.6,
+    name: 'moonflower',
+    label: '月光花',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 7,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'moonflower', bottom: 'moonflower', side: 'moonflower' },
+    crossHeight: 0.6,
   });
   reg.register({
-    name: 'glow_fern', label: '荧光蕨', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 5, hardness: 0, sound: 'plant',
-    tiles: { top: 'glow_fern', bottom: 'glow_fern', side: 'glow_fern' }, crossHeight: 0.78,
+    name: 'glow_fern',
+    label: '荧光蕨',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 5,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'glow_fern', bottom: 'glow_fern', side: 'glow_fern' },
+    crossHeight: 0.78,
   });
   // ---- v1.7.0 内容植物扩充：作物 / 花卉 / 真菌与合成闭环（id 末位追加） ----
   // 作物：蓄能后采收，产出可进入合成闭环的新物品
-  plant('cotton_bush', '棉花丛',
-    [{ name: 'self' }, { name: 'item:cotton', chance: 0.85 }]);
-  plant('rice_plant', '稻',
-    [{ name: 'self' }, { name: 'item:rice', chance: 0.8 }]);
-  plant('grape_vine', '葡萄藤',
-    [{ name: 'self' }, { name: 'item:grapes', chance: 0.75 }]);
-  plant('chili_bush', '辣椒丛',
-    [{ name: 'self' }, { name: 'item:chili', chance: 0.8 }]);
+  plant('cotton_bush', '棉花丛', [{ name: 'self' }, { name: 'item:cotton', chance: 0.85 }]);
+  plant('rice_plant', '稻', [{ name: 'self' }, { name: 'item:rice', chance: 0.8 }]);
+  plant('grape_vine', '葡萄藤', [{ name: 'self' }, { name: 'item:grapes', chance: 0.75 }]);
+  plant('chili_bush', '辣椒丛', [{ name: 'self' }, { name: 'item:chili', chance: 0.8 }]);
   // 水生花卉：莲花漂在浅水水面（与睡莲同款漂浮方块，不加 waterPlant 入水标志）
   reg.register({
-    name: 'lotus', label: '莲花', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 0, hardness: 0, sound: 'plant',
-    tiles: { top: 'lotus', bottom: 'lotus', side: 'lotus' }, crossHeight: 0.42,
+    name: 'lotus',
+    label: '莲花',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 0,
+    hardness: 0,
+    sound: 'plant',
+    tiles: { top: 'lotus', bottom: 'lotus', side: 'lotus' },
+    crossHeight: 0.42,
   });
   // 群系花卉：与既有花卉同走花蜜循环
   plant('orchid', '兰花');
@@ -524,8 +846,16 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   plant('pitcher_plant', '猪笼草');
   // 洞穴真菌：采收荧光孢子，是荧光火把的原料
   reg.register({
-    name: 'glow_cordyceps', label: '发光虫菌', shape: 'cross', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 6, hardness: 0, sound: 'plant',
+    name: 'glow_cordyceps',
+    label: '发光虫菌',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 6,
+    hardness: 0,
+    sound: 'plant',
     tiles: { top: 'glow_cordyceps', bottom: 'glow_cordyceps', side: 'glow_cordyceps' },
     crossHeight: 0.62,
     drops: [{ name: 'self' }, { name: 'item:glow_spore', chance: 0.9 }],
@@ -533,9 +863,18 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   // 合成产物：棉花块（建材）与荧光火把（比火把略暗、耐看的照明）
   cube('cotton_block', '棉花块', {}, { sound: 'cloth', hardness: 0.4 });
   reg.register({
-    name: 'glow_torch', label: '荧光火把', shape: 'cross', solid: false, opaque: false, liquid: false,
-    transparentPass: false, lightEmission: 12, hardness: 0.1, sound: 'wood',
-    tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' }, crossHeight: 0.85,
+    name: 'glow_torch',
+    label: '荧光火把',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 12,
+    hardness: 0.1,
+    sound: 'wood',
+    tiles: { top: 'glow_torch', bottom: 'glow_torch', side: 'glow_torch' },
+    crossHeight: 0.85,
   });
 
   // ---- 铜与宝石工艺扩展（id 165~169，末位追加，旧存档 edits 差分保持有效） ----
@@ -557,26 +896,63 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
   // 营火 / 灯笼：半高板（slab），自发光；蜡烛：细柱（candle）；火焰：十字面（cross）。
   // 本 PR 只落地渲染地基，不含火焰蔓延与熔炉交互。
   reg.register({
-    id: 174, name: 'campfire', label: '营火', shape: 'slab', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    id: 174,
+    name: 'campfire',
+    label: '营火',
+    shape: 'slab',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 15,
+    hardness: 0.5,
+    sound: 'wood',
     tiles: { top: 'campfire_top', bottom: 'campfire_bottom', side: 'campfire_side' },
     drops: [{ name: 'self' }],
   });
   reg.register({
-    id: 175, name: 'lantern', label: '灯笼', shape: 'slab', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 15, hardness: 0.5, sound: 'wood',
+    id: 175,
+    name: 'lantern',
+    label: '灯笼',
+    shape: 'slab',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 15,
+    hardness: 0.5,
+    sound: 'wood',
     tiles: { top: 'lantern_top', bottom: 'lantern_bottom', side: 'lantern_side' },
     drops: [{ name: 'self' }],
   });
   reg.register({
-    id: 176, name: 'candle', label: '蜡烛', shape: 'candle', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 9, hardness: 0.1, sound: 'wood',
+    id: 176,
+    name: 'candle',
+    label: '蜡烛',
+    shape: 'candle',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 9,
+    hardness: 0.1,
+    sound: 'wood',
     tiles: { top: 'candle', bottom: 'candle', side: 'candle' },
     drops: [{ name: 'self' }],
   });
   reg.register({
-    id: 177, name: 'fire', label: '火焰', shape: 'cross', solid: false, opaque: false,
-    liquid: false, transparentPass: false, lightEmission: 15, hardness: Infinity, sound: 'dirt',
-    tiles: { top: 'fire', bottom: 'fire', side: 'fire' }, drops: [],
+    id: 177,
+    name: 'fire',
+    label: '火焰',
+    shape: 'cross',
+    solid: false,
+    opaque: false,
+    liquid: false,
+    transparentPass: false,
+    lightEmission: 15,
+    hardness: Infinity,
+    sound: 'dirt',
+    tiles: { top: 'fire', bottom: 'fire', side: 'fire' },
+    drops: [],
   });
 }

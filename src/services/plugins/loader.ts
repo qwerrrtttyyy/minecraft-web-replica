@@ -28,15 +28,20 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{1,63}$/i;
 // 必须与 PLUGIN_PERMISSIONS（PluginContext.ts）保持一致：install() 与 register()
 // 接受同一套权限，否则同一份插件定义经两条入口会出现一成功一报错。
 const VALID_PERMISSIONS: ReadonlySet<string> = new Set<PluginPermission>([
-  'world:write', 'player:write', 'save:write', 'api:emit',
-  'blocks:register', 'botany:register',
-  'time:write', 'settings:write', 'wasm:use', 'plugins:manage', 'events:subscribe',
+  'world:write',
+  'player:write',
+  'save:write',
+  'api:emit',
+  'blocks:register',
+  'botany:register',
+  'time:write',
+  'settings:write',
+  'wasm:use',
+  'plugins:manage',
+  'events:subscribe',
 ]);
 
-export function loadPluginDefinition(
-  source: string,
-  options: PluginSourceOptions = {},
-): PluginDefinition {
+export function loadPluginDefinition(source: string, options: PluginSourceOptions = {}): PluginDefinition {
   const maxBytes = options.maxBytes ?? 64 * 1024;
   if (typeof source !== 'string' || source.length === 0) {
     throw new PluginLoadError('插件源码为空');
@@ -46,8 +51,10 @@ export function loadPluginDefinition(
   }
   let module: { exports: Record<string, unknown> };
   try {
-    const fn = new Function('module', 'exports', `"use strict";\n${source}`) as
-      unknown as (m: unknown, e: unknown) => void;
+    const fn = new Function('module', 'exports', `"use strict";\n${source}`) as unknown as (
+      m: unknown,
+      e: unknown,
+    ) => void;
     module = { exports: {} };
     fn(module, module.exports);
   } catch (e) {

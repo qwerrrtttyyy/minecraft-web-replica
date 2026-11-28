@@ -7,8 +7,12 @@
  */
 
 import {
-  type GameAction, type KeyBindings, ACTION_KEYS,
-  DEFAULT_BINDINGS, loadBindings, saveBindings,
+  ACTION_KEYS,
+  DEFAULT_BINDINGS,
+  type GameAction,
+  type KeyBindings,
+  loadBindings,
+  saveBindings,
 } from './keybindings';
 
 export interface InputEdge {
@@ -75,7 +79,10 @@ export class Input {
   private lastClientX = 0;
   private lastClientY = 0;
 
-  constructor(private canvas: HTMLCanvasElement, readonly isMobile: boolean) {
+  constructor(
+    private canvas: HTMLCanvasElement,
+    readonly isMobile: boolean,
+  ) {
     this.bindings = loadBindings();
     addEventListener('keydown', (e) => this.onKey(e, true));
     addEventListener('keyup', (e) => this.onKey(e, false));
@@ -127,7 +134,10 @@ export class Input {
     });
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === canvas) {
-        if (this.ignoreNextMove) { this.ignoreNextMove = false; return; }
+        if (this.ignoreNextMove) {
+          this.ignoreNextMove = false;
+          return;
+        }
         // 单帧位移上限：合成事件或驱动异常时防止视角瞬移
         this.lookX += Math.max(-400, Math.min(400, e.movementX));
         this.lookY += Math.max(-400, Math.min(400, e.movementY));
@@ -140,11 +150,15 @@ export class Input {
       }
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    canvas.addEventListener('wheel', (e) => {
-      if (!this.enabled) return;
-      e.preventDefault();
-      this.edges.push({ type: 'slot', value: e.deltaY > 0 ? 1 : -1 });
-    }, { passive: false });
+    canvas.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.enabled) return;
+        e.preventDefault();
+        this.edges.push({ type: 'slot', value: e.deltaY > 0 ? 1 : -1 });
+      },
+      { passive: false },
+    );
 
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === canvas;
@@ -178,9 +192,20 @@ export class Input {
     }
     const boundKeys = ACTION_KEYS.map((a) => this.bindings[a]);
     const extraKeys = [
-      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab',
-      'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
-      'Digit6', 'Digit7', 'Digit8', 'Digit9',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'Tab',
+      'Digit1',
+      'Digit2',
+      'Digit3',
+      'Digit4',
+      'Digit5',
+      'Digit6',
+      'Digit7',
+      'Digit8',
+      'Digit9',
     ];
     // 绑定动作键无条件拦截：否则暂停 / 标题界面按 F5（默认相机键）会刷新页面。
     // 但输入框里不能拦截，否则 E / WASD 这些绑定的字母键会打不出字。
@@ -217,11 +242,21 @@ export class Input {
     }
     // 边缘动作走绑定表：重绑定后 F5→任意键都生效
     switch (action) {
-      case 'camera': this.edges.push({ type: 'camera' }); break;
-      case 'debug': this.edges.push({ type: 'debug' }); break;
-      case 'palette': this.edges.push({ type: 'palette' }); break;
-      case 'fly': this.edges.push({ type: 'fly' }); break;
-      case 'hud': this.edges.push({ type: 'hud' }); break;
+      case 'camera':
+        this.edges.push({ type: 'camera' });
+        break;
+      case 'debug':
+        this.edges.push({ type: 'debug' });
+        break;
+      case 'palette':
+        this.edges.push({ type: 'palette' });
+        break;
+      case 'fly':
+        this.edges.push({ type: 'fly' });
+        break;
+      case 'hud':
+        this.edges.push({ type: 'hud' });
+        break;
     }
   }
 
@@ -272,11 +307,8 @@ export class Input {
   }
 
   consumeLook(): [number, number] {
-    const dy = this.invertY ? -(this.lookY + this.padLookY) : (this.lookY + this.padLookY);
-    const v: [number, number] = [
-      (this.lookX + this.padLookX) * this.sensitivity,
-      dy * this.sensitivity,
-    ];
+    const dy = this.invertY ? -(this.lookY + this.padLookY) : this.lookY + this.padLookY;
+    const v: [number, number] = [(this.lookX + this.padLookX) * this.sensitivity, dy * this.sensitivity];
     this.lookX = 0;
     this.lookY = 0;
     this.padLookX = 0;
@@ -291,13 +323,15 @@ export class Input {
   }
 
   get moveX(): number {
-    const kb = (this.keys.has(this.bindings.right) || this.keys.has('ArrowRight') ? 1 : 0) -
+    const kb =
+      (this.keys.has(this.bindings.right) || this.keys.has('ArrowRight') ? 1 : 0) -
       (this.keys.has(this.bindings.left) || this.keys.has('ArrowLeft') ? 1 : 0);
     return Math.max(-1, Math.min(1, kb + this.touchMoveX + this.padMoveX));
   }
 
   get moveZ(): number {
-    const kb = (this.keys.has(this.bindings.forward) || this.keys.has('ArrowUp') ? 1 : 0) -
+    const kb =
+      (this.keys.has(this.bindings.forward) || this.keys.has('ArrowUp') ? 1 : 0) -
       (this.keys.has(this.bindings.back) || this.keys.has('ArrowDown') ? 1 : 0);
     return Math.max(-1, Math.min(1, kb + this.touchMoveZ + this.padMoveZ));
   }
@@ -324,14 +358,18 @@ export class Input {
 
   get sneak(): boolean {
     // 右 Shift 恒为蹲/下降备用键（与是否重绑定左 Shift 无关）
-    return this.keys.has(this.bindings.sneak) || this.keys.has('ShiftRight') ||
-      this.touchSneak || this.padSneak;
+    return this.keys.has(this.bindings.sneak) || this.keys.has('ShiftRight') || this.touchSneak || this.padSneak;
   }
 
   get sprint(): boolean {
     // 右 Ctrl 恒为冲刺备用键
-    return this.keys.has(this.bindings.sprint) || this.keys.has('ControlRight') ||
-      this.sprintLatch || this.touchSprint || this.padSprint;
+    return (
+      this.keys.has(this.bindings.sprint) ||
+      this.keys.has('ControlRight') ||
+      this.sprintLatch ||
+      this.touchSprint ||
+      this.padSprint
+    );
   }
 
   get breaking(): boolean {
@@ -354,7 +392,9 @@ export class Input {
       // v1.1.2 未捕获该 reject，冒出 NotAllowedError 未处理异常。
       const result = this.canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
       if (result && typeof result.catch === 'function') {
-        result.catch(() => { this.lockFailed = true; });
+        result.catch(() => {
+          this.lockFailed = true;
+        });
       }
     } catch {
       // 同步抛错（旧实现）也要转入降级，而不是冒泡成页面异常
@@ -392,35 +432,35 @@ export class Input {
     const pad = pads[this.gamepadIndex];
     if (!pad) return;
 
-    const dead = (v: number, t = 0.18) => Math.abs(v) < t ? 0 : v;
+    const dead = (v: number, t = 0.18) => (Math.abs(v) < t ? 0 : v);
     // 摇杆 → 移动 / 视角（视角按 dt 归一化，与鼠标增量单位对齐）
     this.padMoveX = dead(pad.axes[0] ?? 0);
     this.padMoveZ = -dead(pad.axes[1] ?? 0); // 摇杆上前推为负 → 前进为正
-    const lookScale = 900 * dt;               // 满摇杆每秒约转 900 像素当量
+    const lookScale = 900 * dt; // 满摇杆每秒约转 900 像素当量
     this.padLookX = dead(pad.axes[2] ?? 0) * lookScale;
     this.padLookY = dead(pad.axes[3] ?? 0) * lookScale;
 
     const b = (i: number) => !!pad.buttons[i]?.pressed;
     const analog = (i: number) => pad.buttons[i]?.value ?? 0;
     this.padJump = b(0);
-    this.padSneak = b(1) || b(11);            // B 或右摇杆按下
+    this.padSneak = b(1) || b(11); // B 或右摇杆按下
     this.padSprint = b(5) || analog(10) > 0.5; // RB 或左摇杆按下
-    this.padBreak = b(7) || analog(7) > 0.5;   // RT
-    this.padPlace = b(6) || analog(6) > 0.5;    // LT（X 改为取样，避免放置/取样同键）
+    this.padBreak = b(7) || analog(7) > 0.5; // RT
+    this.padPlace = b(6) || analog(6) > 0.5; // LT（X 改为取样，避免放置/取样同键）
 
     // 边沿事件无条件 push（与键盘 Escape 一致）：暂停时 Start 也要能恢复，
     // 具体是否响应由 processEdges 按 mode 判断；否则 enabled=false 会卡死在菜单。
     const prev = this.padPrevButtons;
     const pressed = (i: number) => b(i) && !prev[i];
-    if (pressed(4)) this.edges.push({ type: 'slot', value: -1 });       // LB 上一槽
-    if (pressed(9)) this.edges.push({ type: 'pause' });                 // Start 菜单
-    if (pressed(8)) this.edges.push({ type: 'debug' });                 // Back 调试
-    if (pressed(3)) this.edges.push({ type: 'palette' });               // Y 方块库
-    if (pressed(12)) this.edges.push({ type: 'camera' });               // 十字键上 视角
-    if (pressed(13)) this.edges.push({ type: 'fly' });                  // 十字键下 飞行
-    if (pressed(14)) this.edges.push({ type: 'slot', value: -1 });      // 十字键左 上一槽
-    if (pressed(15)) this.edges.push({ type: 'slot', value: 1 });       // 十字键右 下一槽
-    if (pressed(2)) this.edges.push({ type: 'pick' });                  // X 取方块
+    if (pressed(4)) this.edges.push({ type: 'slot', value: -1 }); // LB 上一槽
+    if (pressed(9)) this.edges.push({ type: 'pause' }); // Start 菜单
+    if (pressed(8)) this.edges.push({ type: 'debug' }); // Back 调试
+    if (pressed(3)) this.edges.push({ type: 'palette' }); // Y 方块库
+    if (pressed(12)) this.edges.push({ type: 'camera' }); // 十字键上 视角
+    if (pressed(13)) this.edges.push({ type: 'fly' }); // 十字键下 飞行
+    if (pressed(14)) this.edges.push({ type: 'slot', value: -1 }); // 十字键左 上一槽
+    if (pressed(15)) this.edges.push({ type: 'slot', value: 1 }); // 十字键右 下一槽
+    if (pressed(2)) this.edges.push({ type: 'pick' }); // X 取方块
     // 记录当前按钮状态供下一帧边沿检测（复用数组，避免每帧 map 分配）
     if (prev.length !== pad.buttons.length) prev.length = pad.buttons.length;
     for (let i = 0; i < pad.buttons.length; i++) prev[i] = !!pad.buttons[i]?.pressed;

@@ -1,6 +1,6 @@
+import { ITEMS } from '../../player/survival';
 import { TOKENS } from '../../services';
 import type { PluginDefinition } from '../../services/plugins';
-import { ITEMS } from '../../player/survival';
 import { AIR } from '../../world/blocks';
 
 /**

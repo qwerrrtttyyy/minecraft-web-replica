@@ -37,3 +37,6 @@ test/terrain-logic/
 /skills-lock.json
 /MinecraftTS-*.zip
 /minecraft-web-replica问题分析_精简版.txt
+
+# 多文件产物
+dist-web

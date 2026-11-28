@@ -51,34 +51,47 @@ log('合成系统回归');
 // ---- 1. 配方表结构 ----
 ok('配方表非空', CRAFTING_RECIPES.length > 0, `${CRAFTING_RECIPES.length} 条`);
 ok('配方 id 唯一', new Set(CRAFTING_RECIPES.map((r) => r.id)).size === CRAFTING_RECIPES.length);
-ok('每条配方都有产物与数量',
-  CRAFTING_RECIPES.every((r) => r.result && typeof r.result.material === 'string'
-    && Number.isInteger(r.result.count) && r.result.count > 0));
-ok('每条配方要么有序要么无序',
-  CRAFTING_RECIPES.every((r) => (!!r.pattern) !== (!!r.shapeless)));
-ok('有序配方的字符都在 key 里',
-  CRAFTING_RECIPES.every((r) => !r.pattern
-    || r.pattern.every((row) => [...row].every((ch) => ch === ' ' || (r.key && r.key[ch])))));
-ok('材料组非空且成员合法',
-  Object.values(CRAFTING_GROUPS).every((g) => g.length > 0
-    && g.every((m) => reg.byNameGet(m) !== undefined)));
+ok(
+  '每条配方都有产物与数量',
+  CRAFTING_RECIPES.every(
+    (r) => r.result && typeof r.result.material === 'string' && Number.isInteger(r.result.count) && r.result.count > 0,
+  ),
+);
+ok(
+  '每条配方要么有序要么无序',
+  CRAFTING_RECIPES.every((r) => !!r.pattern !== !!r.shapeless),
+);
+ok(
+  '有序配方的字符都在 key 里',
+  CRAFTING_RECIPES.every(
+    (r) => !r.pattern || r.pattern.every((row) => [...row].every((ch) => ch === ' ' || (r.key && r.key[ch]))),
+  ),
+);
+ok(
+  '材料组非空且成员合法',
+  Object.values(CRAFTING_GROUPS).every((g) => g.length > 0 && g.every((m) => reg.byNameGet(m) !== undefined)),
+);
 
 // ---- 2. 单材料无序配方：原木 → 4 木板 ----
 {
   const cells = grid(3);
   put(cells, 3, 1, 1, blk('oak_log'));
   const m = matchOf(cells, 3);
-  ok('1 原木 → 4 橡木木板', !!m && m.recipe.id === 'oak_planks' && m.recipe.result.count === 4,
-    m ? m.recipe.id : '无匹配');
-  ok('产物是方块 oak_planks',
-    !!m && m.recipe.result.material === 'oak_planks' && m.recipe.result.count === 4);
+  ok(
+    '1 原木 → 4 橡木木板',
+    !!m && m.recipe.id === 'oak_planks' && m.recipe.result.count === 4,
+    m ? m.recipe.id : '无匹配',
+  );
+  ok('产物是方块 oak_planks', !!m && m.recipe.result.material === 'oak_planks' && m.recipe.result.count === 4);
 
   const birch = grid(3);
   put(birch, 3, 0, 0, blk('birch_log'));
   const mb = matchOf(birch, 3);
-  ok('白桦原木 → 4 白桦木板（不串味）',
+  ok(
+    '白桦原木 → 4 白桦木板（不串味）',
     !!mb && mb.recipe.id === 'birch_planks' && mb.recipe.result.material === 'birch_planks',
-    mb ? mb.recipe.id : '无匹配');
+    mb ? mb.recipe.id : '无匹配',
+  );
 }
 
 // ---- 3. 无序配方不能多放材料 ----
@@ -97,10 +110,12 @@ ok('材料组非空且成员合法',
   put(cells, 3, 0, 1, blk('oak_planks'));
   put(cells, 3, 1, 1, blk('oak_planks'));
   const m = matchOf(cells, 3);
-  ok('4 木板（2×2）→ 工作台', !!m && m.recipe.id === 'crafting_table' && m.recipe.result.count === 1,
-    m ? m.recipe.id : '无匹配');
-  ok('工作台产物指向已注册方块',
-    !!m && reg.byNameGet(m.recipe.result.material)?.id === id('crafting_table'));
+  ok(
+    '4 木板（2×2）→ 工作台',
+    !!m && m.recipe.id === 'crafting_table' && m.recipe.result.count === 1,
+    m ? m.recipe.id : '无匹配',
+  );
+  ok('工作台产物指向已注册方块', !!m && reg.byNameGet(m.recipe.result.material)?.id === id('crafting_table'));
 
   // 偏移摆放：2×2 放在 3×3 的右下角也应匹配
   const off = grid(3);
@@ -109,8 +124,7 @@ ok('材料组非空且成员合法',
   put(off, 3, 1, 2, blk('oak_planks'));
   put(off, 3, 2, 2, blk('oak_planks'));
   const mo = matchOf(off, 3);
-  ok('2×2 配方在 3×3 内偏移摆放同样匹配', !!mo && mo.recipe.id === 'crafting_table',
-    mo ? mo.recipe.id : '无匹配');
+  ok('2×2 配方在 3×3 内偏移摆放同样匹配', !!mo && mo.recipe.id === 'crafting_table', mo ? mo.recipe.id : '无匹配');
 
   // 材料组：白桦木板也应能合成工作台
   const birchPlanks = grid(3);
@@ -119,8 +133,7 @@ ok('材料组非空且成员合法',
   put(birchPlanks, 3, 0, 1, blk('birch_planks'));
   put(birchPlanks, 3, 1, 1, blk('birch_planks'));
   const mb = matchOf(birchPlanks, 3);
-  ok('材料组 #planks 允许白桦木板合成工作台', !!mb && mb.recipe.id === 'crafting_table',
-    mb ? mb.recipe.id : '无匹配');
+  ok('材料组 #planks 允许白桦木板合成工作台', !!mb && mb.recipe.id === 'crafting_table', mb ? mb.recipe.id : '无匹配');
 }
 
 // ---- 5. 竖排 2 木板 → 4 木棍（新材料） ----
@@ -129,8 +142,7 @@ ok('材料组非空且成员合法',
   put(cells, 3, 0, 0, blk('oak_planks'));
   put(cells, 3, 0, 1, blk('oak_planks'));
   const m = matchOf(cells, 3);
-  ok('2 木板竖排 → 4 木棍', !!m && m.recipe.id === 'stick' && m.recipe.result.count === 4,
-    m ? m.recipe.id : '无匹配');
+  ok('2 木板竖排 → 4 木棍', !!m && m.recipe.id === 'stick' && m.recipe.result.count === 4, m ? m.recipe.id : '无匹配');
   ok('木棍是物品', !!m && m.recipe.result.material === 'item:stick');
   ok('木棍物品已登记在 ITEMS', !!ITEMS.stick && ITEMS.stick.tile === 'stick');
 
@@ -149,8 +161,7 @@ ok('材料组非空且成员合法',
   put(sand, 3, 0, 1, blk('sand'));
   put(sand, 3, 1, 1, blk('sand'));
   const ms = matchOf(sand, 3);
-  ok('4 沙 → 砂岩', !!ms && ms.recipe.id === 'sandstone',
-    ms ? ms.recipe.id : '无匹配');
+  ok('4 沙 → 砂岩', !!ms && ms.recipe.id === 'sandstone', ms ? ms.recipe.id : '无匹配');
 
   const cobble = grid(3);
   put(cobble, 3, 0, 0, blk('cobblestone'));
@@ -158,8 +169,7 @@ ok('材料组非空且成员合法',
   put(cobble, 3, 0, 1, blk('cobblestone'));
   put(cobble, 3, 1, 1, blk('cobblestone'));
   const mc = matchOf(cobble, 3);
-  ok('4 圆石 → 石砖', !!mc && mc.recipe.id === 'stone_bricks',
-    mc ? mc.recipe.id : '无匹配');
+  ok('4 圆石 → 石砖', !!mc && mc.recipe.id === 'stone_bricks', mc ? mc.recipe.id : '无匹配');
 }
 
 // ---- 7. 2×2 个人合成格：只放得下 2×2 配方 ----
@@ -170,16 +180,18 @@ ok('材料组非空且成员合法',
   put(cells, 2, 0, 1, blk('oak_planks'));
   put(cells, 2, 1, 1, blk('oak_planks'));
   const m = matchOf(cells, 2);
-  ok('2×2 格内 4 木板 → 工作台（个人合成即可起步）', !!m && m.recipe.id === 'crafting_table',
-    m ? m.recipe.id : '无匹配');
+  ok(
+    '2×2 格内 4 木板 → 工作台（个人合成即可起步）',
+    !!m && m.recipe.id === 'crafting_table',
+    m ? m.recipe.id : '无匹配',
+  );
 
   // 竖排木棍配方在 2×2 内同样放得下
   const stick = grid(2);
   put(stick, 2, 0, 0, blk('oak_planks'));
   put(stick, 2, 0, 1, blk('oak_planks'));
   const mst = matchOf(stick, 2);
-  ok('2×2 格内 2 木板竖排 → 木棍', !!mst && mst.recipe.id === 'stick',
-    mst ? mst.recipe.id : '无匹配');
+  ok('2×2 格内 2 木板竖排 → 木棍', !!mst && mst.recipe.id === 'stick', mst ? mst.recipe.id : '无匹配');
 }
 
 // ---- 8. 严格性：材料放错位置 / 放错种类都不该匹配 ----
@@ -208,8 +220,7 @@ ok('材料组非空且成员合法',
   const cells = grid(3);
   put(cells, 3, 1, 1, blk('oak_log'));
   const m = matchOf(cells, 3);
-  ok('匹配结果给出参与格子下标', !!m && m.cells.length === 1 && m.cells[0] === 4,
-    m ? `cells=[${m.cells}]` : '无匹配');
+  ok('匹配结果给出参与格子下标', !!m && m.cells.length === 1 && m.cells[0] === 4, m ? `cells=[${m.cells}]` : '无匹配');
 }
 
 // ---- 10. 背包取放闭环：取料 → 合成 → 产出，材料被扣除 ----
@@ -256,8 +267,7 @@ ok('材料组非空且成员合法',
   const m1 = matchOf(c1, 3);
   ok('取料后可匹配原木→木板', !!m1 && m1.recipe.id === 'oak_planks');
   host.produce(m1.result.material, m1.result.count);
-  ok('产出 4 橡木木板进背包', bag.get(`b:${id('oak_planks')}`) === 4,
-    `count=${bag.get(`b:${id('oak_planks')}`)}`);
+  ok('产出 4 橡木木板进背包', bag.get(`b:${id('oak_planks')}`) === 4, `count=${bag.get(`b:${id('oak_planks')}`)}`);
   ok('原木已被消耗', (bag.get(`b:${id('oak_log')}`) ?? 0) === 0);
 
   // 木板 → 工作台（2×2）
@@ -289,10 +299,8 @@ ok('材料组非空且成员合法',
   ok('物品材料 → 背包栈', !!itemStack && itemStack.kind === 'item' && itemStack.id === 'stick');
   ok('未知材料 → null', materialToStack('no_such_thing', reg) === null);
 
-  ok('背包键 → 方块材料',
-    inventoryKeyToMaterial(`b:${id('crafting_table')}`, reg) === 'crafting_table');
-  ok('背包键 → 物品材料',
-    inventoryKeyToMaterial('i:stick', reg) === 'item:stick');
+  ok('背包键 → 方块材料', inventoryKeyToMaterial(`b:${id('crafting_table')}`, reg) === 'crafting_table');
+  ok('背包键 → 物品材料', inventoryKeyToMaterial('i:stick', reg) === 'item:stick');
   ok('越界方块 id → null', inventoryKeyToMaterial('b:9999', reg) === null);
   ok('非法背包键 → null', inventoryKeyToMaterial('x:1', reg) === null);
 }
@@ -303,12 +311,18 @@ ok('材料组非空且成员合法',
   const equipRecipes = CRAFTING_RECIPES.filter((r) => !!EQUIPMENT[r.id]);
   ok('41 件装备各有配方（新增铜工具 4 + 铜锄 1）', equipRecipes.length === 41, String(equipRecipes.length));
   for (const r of equipRecipes) {
-    ok(`配方 ${r.id} 产物与 EQUIPMENT 一致`,
-      r.result.material === `item:${r.id}` && !!ITEMS[r.id] && r.result.count === 1);
+    ok(
+      `配方 ${r.id} 产物与 EQUIPMENT 一致`,
+      r.result.material === `item:${r.id}` && !!ITEMS[r.id] && r.result.count === 1,
+    );
   }
 
   // 铁剑/铁镐：材料 + 木棍
-  const grid = (rows, symbols) => rows.join('').split('').map((c) => symbols[c] ?? null);
+  const grid = (rows, symbols) =>
+    rows
+      .join('')
+      .split('')
+      .map((c) => symbols[c] ?? null);
   const iron = { I: 'item:iron_ingot', S: 'item:stick' };
   ok('铁剑配方可匹配', matchRecipe(grid(['I  ', 'I  ', 'S  '], iron), 3)?.recipe.id === 'iron_sword');
   ok('铁镐配方可匹配', matchRecipe(grid(['III', ' S ', ' S '], iron), 3)?.recipe.id === 'iron_pickaxe');
@@ -329,23 +343,42 @@ ok('材料组非空且成员合法',
 }
 
 // v1.7.0 内容植物闭环：棉花块与荧光火把
-const patternGrid = (rows, symbols) => rows.join('').split('').map((c) => symbols[c] ?? null);
-ok('棉花×4 可合成棉花块',
-  matchRecipe(patternGrid(['CC', 'CC'], { C: 'item:cotton' }), 2)?.recipe.id === 'cotton_block');
-ok('荧光孢子+木棍可合成 2 荧光火炬',
+const patternGrid = (rows, symbols) =>
+  rows
+    .join('')
+    .split('')
+    .map((c) => symbols[c] ?? null);
+ok(
+  '棉花×4 可合成棉花块',
+  matchRecipe(patternGrid(['CC', 'CC'], { C: 'item:cotton' }), 2)?.recipe.id === 'cotton_block',
+);
+ok(
+  '荧光孢子+木棍可合成 2 荧光火炬',
   (() => {
     const m = matchRecipe(['item:glow_spore', null, 'item:stick', null], 2);
     return m?.recipe.id === 'glow_torch' && m.recipe.result.count === 2;
-  })());
+  })(),
+);
 // 多一个不相干材料就不该匹配（合成必须严格）
-ok('棉花块混入多余材料不匹配',
-  matchRecipe(['item:cotton', 'item:cotton', 'item:cotton', 'dirt'], 2)?.recipe.id !== 'cotton_block');
+ok(
+  '棉花块混入多余材料不匹配',
+  matchRecipe(['item:cotton', 'item:cotton', 'item:cotton', 'dirt'], 2)?.recipe.id !== 'cotton_block',
+);
 
 // C01：煤炭 + 木棍 → 4 火把
-ok('煤炭+木棍可合成 4 火把', (() => {
-  const r = CRAFTING_RECIPES.find((x) => x.id === 'torch_fuel');
-  return !!r && r.result.material === 'torch' && r.result.count === 4 &&
-    r.pattern.join('') === 'CS' && r.key.C === 'item:coal' && r.key.S === 'item:stick';
-})());
+ok(
+  '煤炭+木棍可合成 4 火把',
+  (() => {
+    const r = CRAFTING_RECIPES.find((x) => x.id === 'torch_fuel');
+    return (
+      !!r &&
+      r.result.material === 'torch' &&
+      r.result.count === 4 &&
+      r.pattern.join('') === 'CS' &&
+      r.key.C === 'item:coal' &&
+      r.key.S === 'item:stick'
+    );
+  })(),
+);
 
 log(`\n合成回归全部通过（${passed} 项）`);

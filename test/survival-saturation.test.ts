@@ -4,9 +4,8 @@
  * 覆盖：进食叠加、饱和度上限、exhaustion 缓冲顺序、回血门槛、存档往返 / 旧档兼容。
  */
 import { describe, expect, it } from 'vitest';
-
-import { SurvivalState, MAX_HUNGER } from '../src/player/survival';
 import { EventBus } from '../src/core/events';
+import { MAX_HUNGER, SurvivalState } from '../src/player/survival';
 
 const registry = {
   get: (id: number) => ({ id, name: id === 5 ? 'dirt' : 'air' }),
@@ -33,7 +32,9 @@ describe('生存饱和度', () => {
     s.hunger = 10;
     s.saturation = 0;
     let payload: { item: string; hunger: number; saturation: number } | undefined;
-    ev.on('survival:eat', (p) => { payload = p; });
+    ev.on('survival:eat', (p) => {
+      payload = p;
+    });
     s.eat('apple');
     expect(payload).toMatchObject({ item: 'apple', hunger: 14, saturation: 2.4 });
   });
@@ -77,7 +78,10 @@ describe('生存饱和度', () => {
     noSat.saturation = 0;
     const heals: number[] = [];
     const origHeal = noSat.heal.bind(noSat);
-    noSat.heal = (a: number) => { heals.push(a); origHeal(a); };
+    noSat.heal = (a: number) => {
+      heals.push(a);
+      origHeal(a);
+    };
     for (let i = 0; i < 400; i++) noSat.tick(0.1, idle);
     expect(heals.length).toBe(0);
     expect(noSat.health).toBe(10);
@@ -88,7 +92,10 @@ describe('生存饱和度', () => {
     sat.saturation = 10;
     const heals2: number[] = [];
     const origHeal2 = sat.heal.bind(sat);
-    sat.heal = (a: number) => { heals2.push(a); origHeal2(a); };
+    sat.heal = (a: number) => {
+      heals2.push(a);
+      origHeal2(a);
+    };
     for (let i = 0; i < 400; i++) sat.tick(0.1, idle);
     expect(heals2.length).toBeGreaterThan(0);
     expect(sat.health).toBe(20);

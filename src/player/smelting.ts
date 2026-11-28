@@ -6,7 +6,7 @@
  * 数值与原版对齐：每件物品烧炼 10 秒；煤 / 木炭可烧 8 件，木板 / 原木 1.5 件，木棍 0.5 件。
  */
 
-import type { SurvivalState, Stack } from './survival';
+import type { Stack, SurvivalState } from './survival';
 
 /** 烧炼一件物品所需秒数（原版 10s） */
 export const SMELT_SECONDS = 10;
@@ -119,7 +119,15 @@ export class Smelting {
    * material 为燃料的材料名（木板 / 原木等方块燃料由调用方先解析出对应 Stack）。
    * 返回实际移入的数量；非燃料物品返回 0。
    */
-  putFuelFrom(survival: SurvivalState, x: number, y: number, z: number, material: string, count: number, stack: Stack): number {
+  putFuelFrom(
+    survival: SurvivalState,
+    x: number,
+    y: number,
+    z: number,
+    material: string,
+    count: number,
+    stack: Stack,
+  ): number {
     const units = fuelUnitsOf(material);
     if (units <= 0 || count <= 0) return 0;
     const have = survival.countStack(stack);
@@ -139,8 +147,13 @@ export class Smelting {
    * 方块在背包按数字 id 存，调用方须先经 materialToStack 解析出对应 Stack。
    */
   putInput(
-    survival: SurvivalState, x: number, y: number, z: number,
-    material: string, count: number, stack: Stack,
+    survival: SurvivalState,
+    x: number,
+    y: number,
+    z: number,
+    material: string,
+    count: number,
+    stack: Stack,
   ): number {
     if (smeltOutputOf(material) === null || count <= 0) return 0;
     const have = survival.countStack(stack);
@@ -200,7 +213,8 @@ export class Smelting {
       }
     } else {
       cell.progress = 0;
-    }  }
+    }
+  }
 
   serialize(): FurnaceSave[] {
     const round = (n: number) => Math.round(n * 100) / 100;
@@ -210,8 +224,13 @@ export class Smelting {
       if (!c.input && !c.fuel && !c.output && c.burn <= 0) continue;
       const [x, y, z] = key.split(',').map(Number) as [number, number, number];
       out.push({
-        pos: [x, y, z], input: slot(c.input), fuel: slot(c.fuel), output: slot(c.output),
-        burn: round(c.burn), burnMax: round(c.burnMax), progress: round(c.progress),
+        pos: [x, y, z],
+        input: slot(c.input),
+        fuel: slot(c.fuel),
+        output: slot(c.output),
+        burn: round(c.burn),
+        burnMax: round(c.burnMax),
+        progress: round(c.progress),
       });
     }
     return out;
@@ -222,8 +241,12 @@ export class Smelting {
       const key = cellKey(f.pos[0], f.pos[1], f.pos[2]);
       const slotOf = (s: [string, number] | null): Slot | null => (s ? { material: s[0], count: s[1] } : null);
       this.cells.set(key, {
-        input: slotOf(f.input), fuel: slotOf(f.fuel), output: slotOf(f.output),
-        burn: f.burn, burnMax: f.burnMax, progress: f.progress,
+        input: slotOf(f.input),
+        fuel: slotOf(f.fuel),
+        output: slotOf(f.output),
+        burn: f.burn,
+        burnMax: f.burnMax,
+        progress: f.progress,
       });
     }
   }

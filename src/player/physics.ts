@@ -111,10 +111,10 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
           const c = axis === 'x' ? x : axis === 'z' ? z : y;
           if (axis === 'y') {
             consider(c - body.height - EPS); // 从方块顶面上方退出
-            consider(c + 1 + EPS);            // 从方块底面下方退出
+            consider(c + 1 + EPS); // 从方块底面下方退出
           } else {
-            consider(c - half - EPS);         // 从方块 -面退出
-            consider(c + 1 + half + EPS);     // 从方块 +面退出
+            consider(c - half - EPS); // 从方块 -面退出
+            consider(c + 1 + half + EPS); // 从方块 +面退出
           }
           overlapping = true;
         }
@@ -137,13 +137,20 @@ export function moveBody(world: World, body: PhysicsBody, dt: number): MoveResul
 
 /** 检查某 AABB 是否与实体方块相交（放置方块时防止卡在实体里） */
 export function boxIntersectsBlock(
-  pos: THREE.Vector3, width: number, height: number,
-  bx: number, by: number, bz: number,
+  pos: THREE.Vector3,
+  width: number,
+  height: number,
+  bx: number,
+  by: number,
+  bz: number,
 ): boolean {
   const half = width / 2;
   return (
-    pos.x + half > bx && pos.x - half < bx + 1 &&
-    pos.y + height > by && pos.y < by + 1 &&
-    pos.z + half > bz && pos.z - half < bz + 1
+    pos.x + half > bx &&
+    pos.x - half < bx + 1 &&
+    pos.y + height > by &&
+    pos.y < by + 1 &&
+    pos.z + half > bz &&
+    pos.z - half < bz + 1
   );
 }

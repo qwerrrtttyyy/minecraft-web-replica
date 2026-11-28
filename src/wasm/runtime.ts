@@ -9,20 +9,22 @@
  * 纯 JS 路径，游戏行为与固定 seed 地形完全不变；失败原因进入 stats.lastError，
  * 并发出 wasm:fallback 事件供插件 / 诊断观测。
  */
-import { installNoiseBackend } from '../world/noise';
-import {
-  EQUIVALENCE_SAMPLES, makeNoiseFunctions, makePermutation,
-  type NoiseFunctions,
-} from '../world/noiseMath';
-import {
-  DEFAULT_CHECK_SEEDS, compileKernel, compilePluginModule, createNoiseBackend,
-  loadBuiltinKernel, verifyKernelEquivalence,
-  type PluginModuleRecord, type WasmKernelInstance, type WasmKernelModule,
-} from './kernel';
-import {
-  WasmKernelError, fnv1a, isWasmAvailable, type WasmErrorCode,
-} from './protocol';
+
 import type { Disposable } from '../services/ServiceContainer';
+import { installNoiseBackend } from '../world/noise';
+import { EQUIVALENCE_SAMPLES, makeNoiseFunctions, makePermutation, type NoiseFunctions } from '../world/noiseMath';
+import {
+  compileKernel,
+  compilePluginModule,
+  createNoiseBackend,
+  DEFAULT_CHECK_SEEDS,
+  loadBuiltinKernel,
+  type PluginModuleRecord,
+  verifyKernelEquivalence,
+  type WasmKernelInstance,
+  type WasmKernelModule,
+} from './kernel';
+import { fnv1a, isWasmAvailable, type WasmErrorCode, WasmKernelError } from './protocol';
 
 export type WasmStatus = 'disabled' | 'unavailable' | 'ready' | 'fallback';
 
@@ -102,11 +104,7 @@ export const NOISE_BENCH_SAMPLE = { noise2: 5, fbm2: 4, ridged2: 1, noise3: 2, f
  * 自适应后端选择：只有 WASM 明显更快（严格小于 jsMs * threshold）才接管。
  * 默认阈值 0.9，给测量噪声留 10% 余量；非法 / NaN 输入一律回到安全的 JS 路径。
  */
-export function chooseNoiseBackend(input: {
-  jsMs: number;
-  wasmMs: number;
-  threshold?: number;
-}): 'js' | 'wasm' {
+export function chooseNoiseBackend(input: { jsMs: number; wasmMs: number; threshold?: number }): 'js' | 'wasm' {
   const { jsMs, wasmMs, threshold = 0.9 } = input;
   if (!Number.isFinite(jsMs) || !Number.isFinite(wasmMs) || !Number.isFinite(threshold)) return 'js';
   // threshold >= 1 等于允许「不比 JS 快」的 WASM 接管，违背只在实测更快时安装的约定
@@ -128,8 +126,9 @@ type BenchOp = keyof typeof NOISE_BENCH_SAMPLE;
  * 一次采样的调用序列：严格按生成器的真实逐点组合展开（fbm3 计数为 0，不产生调用）。
  * 坐标固定，两侧共享同一序列，保证 JS / WASM 的负载逐项对齐。
  */
-const BENCH_OPS: readonly BenchOp[] = (Object.keys(NOISE_BENCH_SAMPLE) as BenchOp[])
-  .flatMap((op) => Array.from({ length: NOISE_BENCH_SAMPLE[op] }, () => op));
+const BENCH_OPS: readonly BenchOp[] = (Object.keys(NOISE_BENCH_SAMPLE) as BenchOp[]).flatMap((op) =>
+  Array.from({ length: NOISE_BENCH_SAMPLE[op] }, () => op),
+);
 
 /**
  * 对称基准：固定 perm / 坐标序列，JS 参考与 WASM 后端跑完全相同的调用组合与次数。
@@ -154,23 +153,38 @@ function benchmarkNoiseBackends(mod: WasmKernelModule, perm: Uint8Array): { jsMs
     for (let r = 0; r < rounds; r++) {
       for (let i = 0; i < n; i++) {
         switch (BENCH_OPS[i]) {
-          case 'noise2': sink += f.noise2(xs[i], ys[i]); break;
-          case 'noise3': sink += f.noise3(xs[i], ys[i], zs[i]); break;
-          case 'fbm2': sink += f.fbm2(xs[i], ys[i], 3, 2, 0.5); break;
-          case 'fbm3': sink += f.fbm3(xs[i], ys[i], zs[i], 3, 2, 0.5); break;
-          case 'ridged2': sink += f.ridged2(xs[i], ys[i], 3, 2, 0.5); break;
+          case 'noise2':
+            sink += f.noise2(xs[i], ys[i]);
+            break;
+          case 'noise3':
+            sink += f.noise3(xs[i], ys[i], zs[i]);
+            break;
+          case 'fbm2':
+            sink += f.fbm2(xs[i], ys[i], 3, 2, 0.5);
+            break;
+          case 'fbm3':
+            sink += f.fbm3(xs[i], ys[i], zs[i], 3, 2, 0.5);
+            break;
+          case 'ridged2':
+            sink += f.ridged2(xs[i], ys[i], 3, 2, 0.5);
+            break;
         }
       }
     }
     return sink;
   };
   try {
-    const warmup = 60, trials = 5, rounds = 400;
+    const warmup = 60,
+      trials = 5,
+      rounds = 400;
     // 充分预热后再计时：JS 闭包需要数千次调用才会被 V8 优化，预热不足会把
     // JIT 编译开销算进 JS 侧，导致决策翻转。两侧预热与试跑次数完全对称。
     run(js, warmup);
     run(wasm, warmup);
-    let jsMs = Infinity, wasmMs = Infinity, jsSink = 0, wasmSink = 0;
+    let jsMs = Infinity,
+      wasmMs = Infinity,
+      jsSink = 0,
+      wasmSink = 0;
     for (let t = 0; t < trials; t++) {
       // 奇数试跑反转测量顺序：两侧调用组合、坐标与累加仍完全对称，
       // 但交替先后可抵消机器负载单调漂移带来的系统性偏差。
@@ -184,11 +198,15 @@ function benchmarkNoiseBackends(mod: WasmKernelModule, perm: Uint8Array): { jsMs
       const secondSink = run(second, rounds);
       const secondMs = now() - t1;
       if (jsFirst) {
-        jsSink += firstSink; wasmSink += secondSink;
-        jsMs = Math.min(jsMs, firstMs); wasmMs = Math.min(wasmMs, secondMs);
+        jsSink += firstSink;
+        wasmSink += secondSink;
+        jsMs = Math.min(jsMs, firstMs);
+        wasmMs = Math.min(wasmMs, secondMs);
       } else {
-        wasmSink += firstSink; jsSink += secondSink;
-        wasmMs = Math.min(wasmMs, firstMs); jsMs = Math.min(jsMs, secondMs);
+        wasmSink += firstSink;
+        jsSink += secondSink;
+        wasmMs = Math.min(wasmMs, firstMs);
+        jsMs = Math.min(jsMs, secondMs);
       }
     }
     // 校验和参与结果判定，防止纯计算循环被 JIT 整体消掉；异常时安全回退 JS
@@ -201,13 +219,10 @@ function benchmarkNoiseBackends(mod: WasmKernelModule, perm: Uint8Array): { jsMs
 }
 
 const now = (): number =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now();
+  typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 
-const errorMessage = (e: unknown): string => e instanceof Error ? e.message : String(e);
-const errorCode = (e: unknown): WasmErrorCode | undefined =>
-  e instanceof WasmKernelError ? e.code : undefined;
+const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const errorCode = (e: unknown): WasmErrorCode | undefined => (e instanceof WasmKernelError ? e.code : undefined);
 
 export class WasmRuntime implements Disposable {
   private status: WasmStatus = 'disabled';
@@ -256,9 +271,7 @@ export class WasmRuntime implements Disposable {
     const started = now();
     try {
       const injected = this.options.bytes;
-      this.module = injected
-        ? compileKernel(injected, { sha256: fnv1a(injected) })
-        : loadBuiltinKernel();
+      this.module = injected ? compileKernel(injected, { sha256: fnv1a(injected) }) : loadBuiltinKernel();
       const report = verifyKernelEquivalence(this.module, this.options.checkSeeds ?? DEFAULT_CHECK_SEEDS);
       this.selfCheckSamples = report.samples;
       this.selfCheckMismatches = report.mismatches.length;
@@ -268,7 +281,7 @@ export class WasmRuntime implements Disposable {
         throw new WasmKernelError(
           'equivalence-failed',
           `等价性自检失败：${report.mismatches.length}/${report.samples} 项不等` +
-          (first ? `（seed=${first.seed} ${first.fn} js=${first.js} wasm=${first.wasm}）` : ''),
+            (first ? `（seed=${first.seed} ${first.fn} js=${first.js} wasm=${first.wasm}）` : ''),
         );
       }
       const mod = this.module;
@@ -285,10 +298,14 @@ export class WasmRuntime implements Disposable {
         useWasm = chooseNoiseBackend(bench) === 'wasm';
       }
       if (useWasm) {
-        installNoiseBackend((perm) => createNoiseBackend(mod, perm, {
-          onCall: () => { this.calls++; },
-          onFailure: (e) => this.reportRuntimeFailure(e),
-        }));
+        installNoiseBackend((perm) =>
+          createNoiseBackend(mod, perm, {
+            onCall: () => {
+              this.calls++;
+            },
+            onFailure: (e) => this.reportRuntimeFailure(e),
+          }),
+        );
         this.backend = 'wasm';
       } else {
         // 自适应判定 JS 更快（或基准失效）：确保不残留任何 WASM 后端工厂
@@ -299,7 +316,10 @@ export class WasmRuntime implements Disposable {
       this.lastError = null;
       this.status = 'ready';
       this.options.onReady?.({
-        abi: mod.abi, bytes: mod.bytes, sha256: mod.sha256, samples: report.samples,
+        abi: mod.abi,
+        bytes: mod.bytes,
+        sha256: mod.sha256,
+        samples: report.samples,
       });
     } catch (e) {
       return this.fallback(e);
@@ -328,7 +348,9 @@ export class WasmRuntime implements Disposable {
     this.options.onFallback?.({ reason: this.lastError, code: errorCode(e) });
   }
 
-  getState(): WasmStatus { return this.status; }
+  getState(): WasmStatus {
+    return this.status;
+  }
 
   stats(): WasmStats {
     return {
@@ -386,7 +408,10 @@ export class WasmRuntime implements Disposable {
       const got = EQUIVALENCE_SAMPLES.map(([x, y]) => backend.fbm2(x, y, 4, 2, 0.5));
       const pointCorrect = expected.every((v, i) => Object.is(v, got[i]));
 
-      const bx = -3.25, by = 7.5, step = 0.137, n = 64;
+      const bx = -3.25,
+        by = 7.5,
+        step = 0.137,
+        n = 64;
       let jsBatch = 0;
       for (let i = 0; i < n; i++) jsBatch += js.fbm2(bx + i * step, by, 4, 2, 0.5);
       const batchCorrect = Object.is(jsBatch, ex.mc_fbm2_batch(bx, by, step, n, 4, 2, 0.5));

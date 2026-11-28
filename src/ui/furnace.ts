@@ -1,7 +1,7 @@
 import type { TextureAtlas } from '../gfx/atlas';
-import type { BlockRegistry } from '../world/blocks';
+import { type FurnaceCell, type Slot, SMELT_SECONDS } from '../player/smelting';
 import { ITEMS } from '../player/survival';
-import { SMELT_SECONDS, type FurnaceCell, type Slot } from '../player/smelting';
+import type { BlockRegistry } from '../world/blocks';
 
 /**
  * 熔炉烧炼界面：输入 / 燃料 / 输出三槽 + 火焰与箭头进度。

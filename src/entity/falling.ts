@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { AIR, needsSupport, type BlockDefinition, type BlockRegistry } from '../world/blocks';
-import { WORLD_HEIGHT, type BlockId } from '../core/types';
-import type { World } from '../world/world';
+import { type BlockId, WORLD_HEIGHT } from '../core/types';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { EventService } from '../services/events';
+import { AIR, type BlockDefinition, type BlockRegistry, needsSupport } from '../world/blocks';
+import type { World } from '../world/world';
 
 /**
  * 沙 / 沙砾重力（借鉴原版 FallingBlock）。
@@ -154,8 +154,15 @@ export class FallingSystem {
         this.world.setBlock(x, yy, z, AIR);
         this.events.emit('block:break', { x, y: yy, z, block: id });
         const fb = new FallingBlock(
-          this.world, this.registry, this.atlas, this.scene, this.events,
-          x, yy, z, id,
+          this.world,
+          this.registry,
+          this.atlas,
+          this.scene,
+          this.events,
+          x,
+          yy,
+          z,
+          id,
           (lx, ly, lz) => this.triggerColumn(lx, ly, lz),
           this.onPlantDrop,
         );

@@ -1,6 +1,6 @@
 import {
-  EXTENSION_POINTS,
   type AttackPayload,
+  EXTENSION_POINTS,
   type ExtensionRegistry,
   type HookStack,
   type MiningPayload,

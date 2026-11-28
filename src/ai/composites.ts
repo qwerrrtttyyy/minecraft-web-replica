@@ -1,8 +1,10 @@
-import { Node, NodeStatus, TickContext } from './Node';
+import { Node, NodeStatus, type TickContext } from './Node';
 
 /** 遇到第一个成功的子节点即返回 Success；全部失败返回 Failure。 */
 export class Selector extends Node {
-  constructor(public readonly children: Node[]) { super(); }
+  constructor(public readonly children: Node[]) {
+    super();
+  }
   private runningIndex = 0;
   tick(ctx: TickContext): NodeStatus {
     for (let i = this.runningIndex; i < this.children.length; i++) {
@@ -27,7 +29,9 @@ export class Selector extends Node {
 
 /** 所有子节点成功才返回 Success；任一失败即 Failure。 */
 export class Sequence extends Node {
-  constructor(public readonly children: Node[]) { super(); }
+  constructor(public readonly children: Node[]) {
+    super();
+  }
   private runningIndex = 0;
   tick(ctx: TickContext): NodeStatus {
     for (let i = this.runningIndex; i < this.children.length; i++) {
@@ -56,7 +60,9 @@ export class Parallel extends Node {
     public readonly children: Node[],
     public readonly successCount?: number,
     public readonly failureCount?: number,
-  ) { super(); }
+  ) {
+    super();
+  }
   tick(ctx: TickContext): NodeStatus {
     let success = 0;
     let failure = 0;
@@ -76,7 +82,9 @@ export class Parallel extends Node {
 
 /** 按 rng 随机打乱子节点顺序后按 Selector 逻辑执行。 */
 export class RandomSelector extends Node {
-  constructor(public readonly children: Node[]) { super(); }
+  constructor(public readonly children: Node[]) {
+    super();
+  }
   private runningIndex = 0;
   private order: number[] = [];
   tick(ctx: TickContext): NodeStatus {

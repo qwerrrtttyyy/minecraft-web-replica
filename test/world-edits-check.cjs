@@ -22,19 +22,24 @@ const dirt = reg.byNameGet('dirt').id;
 const AIR = 0;
 
 function makeWorld() {
-  const generator = { generateChunk() {}, surfaceHeight() { return 32; } };
+  const generator = {
+    generateChunk() {},
+    surfaceHeight() {
+      return 32;
+    },
+  };
   const events = { emit() {} };
   return new World(reg, generator, events);
 }
 
 const w = makeWorld();
 w.loadEdits([
-  ['-1,10,-1', stone],       // chunk(-1,-1) 的右上角
-  ['-16,11,-16', stone],     // chunk(-1,-1) 的左下角
-  ['0,12,0', stone],         // chunk(0,0)
-  ['15,13,0', stone],        // chunk(0,0) 右边界
-  ['16,14,0', stone],        // 应落在 chunk(1,0)，不能串到 (0,0)
-  ['0,12,0', dirt],          // 同坐标后写覆盖
+  ['-1,10,-1', stone], // chunk(-1,-1) 的右上角
+  ['-16,11,-16', stone], // chunk(-1,-1) 的左下角
+  ['0,12,0', stone], // chunk(0,0)
+  ['15,13,0', stone], // chunk(0,0) 右边界
+  ['16,14,0', stone], // 应落在 chunk(1,0)，不能串到 (0,0)
+  ['0,12,0', dirt], // 同坐标后写覆盖
 ]);
 
 const c00 = w.ensureChunk(0, 0);
@@ -51,7 +56,10 @@ ok('存档导出的 edits 仍是字符串 key → 方块 id', [...w.edits.entrie
 
 w.setBlock(3, 20, 3, stone);
 ok('setBlock 路径仍正确记录编辑', w.edits.get('3,20,3') === stone);
-ok('setBlock 同 id 不重复记录', w.setBlock(3, 20, 3, stone) === false && [...w.edits.keys()].filter((k) => k === '3,20,3').length === 1);
+ok(
+  'setBlock 同 id 不重复记录',
+  w.setBlock(3, 20, 3, stone) === false && [...w.edits.keys()].filter((k) => k === '3,20,3').length === 1,
+);
 
 const w2 = makeWorld();
 w2.loadEdits([...w.edits.entries()]);
@@ -66,8 +74,16 @@ w3.setBlocks([
   [10, 21, 10, stone],
 ]);
 const c30 = w3.ensureChunk(0, 0);
-ok('M04 setBlocks 批量写入多格生效', c30.data[c30.idx(10, 20, 10)] === stone && c30.data[c30.idx(11, 20, 10)] === stone && c30.data[c30.idx(10, 21, 10)] === stone);
-ok('M04 setBlocks 编辑差分记录正确', w3.edits.get('10,20,10') === stone && w3.edits.get('11,20,10') === stone && w3.edits.get('10,21,10') === stone);
+ok(
+  'M04 setBlocks 批量写入多格生效',
+  c30.data[c30.idx(10, 20, 10)] === stone &&
+    c30.data[c30.idx(11, 20, 10)] === stone &&
+    c30.data[c30.idx(10, 21, 10)] === stone,
+);
+ok(
+  'M04 setBlocks 编辑差分记录正确',
+  w3.edits.get('10,20,10') === stone && w3.edits.get('11,20,10') === stone && w3.edits.get('10,21,10') === stone,
+);
 ok('M04 setBlocks 光照在 batch 内正确传播', c30.sky[c30.idx(10, 20, 10)] >= 0); // 光照计算已完成
 
 console.log(`\nPASS 编辑差分数值分桶回归：${passed} 组断言`);

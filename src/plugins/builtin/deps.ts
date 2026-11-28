@@ -1,7 +1,7 @@
-import type { HUD } from '../../ui/hud';
 import type { SoundEngine } from '../../audio/sound';
 import type { HotbarState, Player } from '../../player/player';
 import type { Stack, SurvivalState } from '../../player/survival';
+import type { HUD } from '../../ui/hud';
 import type { BlockRegistry } from '../../world/blocks';
 
 /**
