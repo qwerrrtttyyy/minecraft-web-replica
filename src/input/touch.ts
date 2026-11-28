@@ -11,6 +11,9 @@ export class TouchControls {
   private lookId: number | null = null;
   private lookLast = { x: 0, y: 0 };
   private lookStart = { x: 0, y: 0, t: 0 };
+  private lookDX = 0;
+  private lookDY = 0;
+  private lookRaf = 0;
   private lastJumpTap = 0;
   /** 视角拖动倍率（设置页「触控灵敏度」，1 = 默认） */
   lookScale = 1;
@@ -111,16 +114,20 @@ export class TouchControls {
     canvas.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.lookId) return;
       // 暂停 / 死亡期间 input 被禁用：丢弃这次拖动，避免恢复后把累积增量一次性应用。
-      if (!this.input.enabled) { this.lookId = null; return; }
+      if (!this.input.enabled) { this.dropLook(); this.lookId = null; return; }
       const dx = e.clientX - this.lookLast.x;
       const dy = e.clientY - this.lookLast.y;
       this.lookLast = { x: e.clientX, y: e.clientY };
-      // 基础系数 2.3 是触屏拖动相对鼠标的补偿；设置页「触控灵敏度」再乘在它之上
-      this.input.addLook(dx * 2.3 * this.lookScale, dy * 2.3 * this.lookScale);
+      // 基础系数 2.3 是触屏拖动相对鼠标的补偿；设置页「触控灵敏度」再乘在它之上。
+      // 120Hz 触控采样会高频写输入：先累积，每帧最多提交一次。
+      this.lookDX += dx * 2.3 * this.lookScale;
+      this.lookDY += dy * 2.3 * this.lookScale;
+      this.scheduleLook();
     });
     const lookEnd = (e: PointerEvent) => {
       if (e.pointerId !== this.lookId) return;
       this.lookId = null;
+      this.flushLook();
       if (!this.input.enabled) return; // 暂停 / 死亡期间不触发轻点破坏
       const dt = performance.now() - this.lookStart.t;
       const dist = Math.hypot(e.clientX - this.lookStart.x, e.clientY - this.lookStart.y);
@@ -128,6 +135,35 @@ export class TouchControls {
     };
     canvas.addEventListener('pointerup', lookEnd);
     canvas.addEventListener('pointercancel', lookEnd);
+  }
+
+  private scheduleLook() {
+    if (this.lookRaf !== 0) return;
+    this.lookRaf = requestAnimationFrame(() => {
+      this.lookRaf = 0;
+      this.flushLook();
+    });
+  }
+
+  private flushLook() {
+    if (this.lookRaf !== 0) {
+      cancelAnimationFrame(this.lookRaf);
+      this.lookRaf = 0;
+    }
+    const dx = this.lookDX;
+    const dy = this.lookDY;
+    this.lookDX = 0;
+    this.lookDY = 0;
+    if (this.input.enabled && (dx !== 0 || dy !== 0)) this.input.addLook(dx, dy);
+  }
+
+  private dropLook() {
+    if (this.lookRaf !== 0) {
+      cancelAnimationFrame(this.lookRaf);
+      this.lookRaf = 0;
+    }
+    this.lookDX = 0;
+    this.lookDY = 0;
   }
 
   private updateJoy(e: PointerEvent, zone: HTMLElement) {
@@ -154,8 +190,13 @@ export class TouchControls {
   setVisible(v: boolean) {
     if (!v) {
       // 隐藏时清掉进行中的指针，避免暂停期间残留的拖动/摇杆继续喂输入
+      this.dropLook();
       this.lookId = null;
       this.joyId = null;
+      this.input.touchMoveX = 0;
+      this.input.touchMoveZ = 0;
+      this.input.touchSprint = false;
+      this.knob.style.transform = 'translate(-50%, -50%)';
     }
     this.root.style.display = v ? '' : 'none';
   }

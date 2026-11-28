@@ -16,6 +16,7 @@ import {
   type WorkerResponse,
 } from './meshTypes';
 import { selectEvictions } from './chunkRetention';
+import { packVertexLights, unpackVertexLights, type VertexLightMode } from './lightPacking';
 
 /**
  * world.generator 可被 Worker 逐位复刻时的结构标记。
@@ -99,6 +100,10 @@ export interface ChunkManagerOptions {
   workers?: number;
   /** 地形生成 Worker 池大小覆盖（默认取 min(2, 网格池-1)，?genWorkers=N 传入；0 = 不启用） */
   genWorkers?: number;
+  /** 8 位打包顶点光照（默认 true；false 仅用于 float2 对照） */
+  packedLighting?: boolean;
+  /** 移动端：收紧默认 Worker 池（URL 显式覆盖仍优先） */
+  mobile?: boolean;
   /** 相机：用于透明通道按几何距离排序（不传则退化为固定 renderOrder） */
   camera?: THREE.Camera;
   /** 驻留区块总上限（视距内优先保留），默认 512；URL ?maxChunks=N */
@@ -115,14 +120,19 @@ export interface ChunkManagerOptions {
  */
 const CHUNK_BOUND_RADIUS = Math.hypot(CHUNK_SIZE / 2, WORLD_HEIGHT / 2, CHUNK_SIZE / 2);
 
-const buildGeo = (p: PackedGeo): THREE.BufferGeometry => {
+const buildGeo = (p: PackedGeo, packedLighting: boolean): THREE.BufferGeometry => {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(p.uvs, 2));
   // 每顶点明暗（面定向 × AO）：RGB 三通道同值，单分量即可
   g.setAttribute('aShade', new THREE.BufferAttribute(p.shade, 1));
   // 每顶点天空光 / 方块光，shader 与昼夜系数、太阳色一起决定最终亮度
-  g.setAttribute('aLight', new THREE.BufferAttribute(p.lights, 2));
+  g.setAttribute(
+    'aLight',
+    packedLighting
+      ? new THREE.BufferAttribute(packVertexLights(p.lights), 1)
+      : new THREE.BufferAttribute(p.lights, 2),
+  );
   // 每个顶点的图集 tile 起点，shader 用 fract(局部UV) × uTileSize 平铺
   g.setAttribute('aTileOrigin', new THREE.BufferAttribute(p.tile, 2));
   // 每个顶点的开关：0 普通 / 1 群系染色 / 2 自发光（不受光照与染色影响）
@@ -199,12 +209,21 @@ function injectLegacyEmissive(shader: ChunkShader) {
   );
 }
 
-function injectLight(shader: ChunkShader, daylight: { value: number }, sunTint: { value: THREE.Color }) {
+function injectLight(
+  shader: ChunkShader,
+  daylight: { value: number },
+  sunTint: { value: THREE.Color },
+  packed: boolean,
+) {
   shader.uniforms.uDaylight = daylight;
   shader.uniforms.uSunTint = sunTint;
-  shader.vertexShader = 'attribute vec2 aLight;\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n' + shader.vertexShader.replace(
+  const decl = packed ? 'attribute float aLight;' : 'attribute vec2 aLight;';
+  const assign = packed
+    ? 'float lp = floor(aLight + 0.5);\n\tvLight = vec2(floor(lp / 16.0), mod(lp, 16.0)) / 15.0;'
+    : 'vLight = aLight;';
+  shader.vertexShader = `${decl}\nattribute float aTint;\nattribute float aShade;\nvarying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\n` + shader.vertexShader.replace(
     '#include <begin_vertex>',
-    '#include <begin_vertex>\n\tvLight = aLight;\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;',
+    `#include <begin_vertex>\n\t${assign}\n\tvTint = aTint;\n\tvShade = aShade;\n\tvFolPos = (modelMatrix * vec4(position, 1.0)).xyz;`,
   );
   shader.fragmentShader = 'varying vec2 vLight;\nvarying float vTint;\nvarying float vShade;\nvarying vec3 vFolPos;\nuniform float uDaylight;\nuniform vec3 uSunTint;\n' + FOLIAGE_GLSL + shader.fragmentShader.replace(
     '#include <color_fragment>',
@@ -296,6 +315,8 @@ export class ChunkManager implements System {
   private mode: 'worker' | 'main' = 'worker';
   private greedyOption: boolean;
   private mergeEmissiveOption: boolean;
+  private packedLightingOption: boolean;
+  private readonly mobileMode: boolean;
   private config: MeshConfig | null = null;
   private configRevision = 0;
   private generation = 0;
@@ -347,6 +368,8 @@ export class ChunkManager implements System {
     this.minResidencySec = Number.isFinite(requestedResidency) ? Math.max(0, requestedResidency) : DEFAULT_MIN_RESIDENCY_SEC;
     this.greedyOption = options.greedy ?? true;
     this.mergeEmissiveOption = options.mergeEmissive ?? true;
+    this.packedLightingOption = options.packedLighting ?? true;
+    this.mobileMode = options.mobile ?? false;
     this.camera = options.camera ?? null;
     this.materials = {
       // 明暗走 aShade 单分量，不再需要 vertexColors
@@ -365,12 +388,14 @@ export class ChunkManager implements System {
     };
     // 不透明 / 半透明通道：烘焙光照 + 昼夜天空光
     for (const mat of [this.materials.opaque, this.materials.transparent]) {
-      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint);
+      mat.onBeforeCompile = (shader) => injectLight(shader, this.lightUniform, this.sunTint, this.packedLightingOption);
+      mat.customProgramCacheKey = () => `light-${this.packedLightingOption ? 'packed8' : 'float2'}`;
     }
     // 水面：光照 + 世界坐标驱动的微波动画（跨区块连续）
+    this.materials.water.customProgramCacheKey = () => `light-${this.packedLightingOption ? 'packed8' : 'float2'}`;
     this.materials.water.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.waterTime;
-      injectLight(shader, this.lightUniform, this.sunTint);
+      injectLight(shader, this.lightUniform, this.sunTint, this.packedLightingOption);
       shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -400,7 +425,7 @@ export class ChunkManager implements System {
     if (options.forceMainThread) {
       this.mode = 'main';
     } else {
-      this.spawnWorkers(ChunkManager.decidePoolSize(options.workers));
+      this.spawnWorkers(ChunkManager.decidePoolSize(options.workers, this.mobileMode));
     }
     this.getConfig(); // 建立低频配置并向所有 Worker 下发
     // 地形生成池：仅当 world.generator 可被 Worker 逐位复刻且未强制主线程时启用；
@@ -414,7 +439,7 @@ export class ChunkManager implements System {
       const ids: Record<string, number> = {};
       for (const b of this.world.registry.all()) ids[b.name] = b.id;
       this.genConfig = { seed: cfg.seed, ids, options: cfg.options };
-      this.spawnGenWorkers(ChunkManager.decideGenPoolSize(options.genWorkers, this.workers.length));
+      this.spawnGenWorkers(ChunkManager.decideGenPoolSize(options.genWorkers, this.workers.length, this.mobileMode));
     }
   }
 
@@ -441,9 +466,11 @@ export class ChunkManager implements System {
   }
 
   /** 推断生成 Worker 池规模：默认从网格池里匀出 1~2 个，避免小核机开太多线程 */
-  private static decideGenPoolSize(override: number | undefined, meshWorkers: number): number {
+  private static decideGenPoolSize(
+    override: number | undefined, meshWorkers: number, mobile: boolean,
+  ): number {
     if (override !== undefined) return Math.max(0, Math.min(4, Math.floor(override)));
-    return Math.max(1, Math.min(2, Math.max(1, meshWorkers - 1)));
+    return Math.max(1, Math.min(mobile ? 1 : 2, Math.max(1, meshWorkers - 1)));
   }
 
   /** 建立生成 Worker 池；构造不完整时整体回退主线程同步生成（不影响网格化池） */
@@ -480,7 +507,7 @@ export class ChunkManager implements System {
     this.genMode = 'main';
     if (!this.genSupported || !this.genConfig) return;
     const want = spec === 'auto'
-      ? ChunkManager.decideGenPoolSize(undefined, Math.max(1, this.workers.length))
+      ? ChunkManager.decideGenPoolSize(undefined, Math.max(1, this.workers.length), this.mobileMode)
       : spec;
     if (want <= 0) return;
     this.spawnGenWorkers(want);
@@ -548,11 +575,35 @@ export class ChunkManager implements System {
 
   /** 自动档推荐的 Worker 池规模（设置页展示用） */
   recommendedPoolSize(): number {
-    return ChunkManager.decidePoolSize(undefined);
+    return ChunkManager.decidePoolSize(undefined, this.mobileMode);
   }
 
   // ---- 可观测状态（调试面板 / 自动化测试 / 性能基准） ----
   get meshCount() { return this.meshes.size; }
+  get lightingMode(): VertexLightMode { return this.packedLightingOption ? 'packed8' : 'float2'; }
+  get vertexLightBytes(): number { return this.packedLightingOption ? 1 : 8; }
+
+  setPackedLighting(v: boolean): void {
+    if (this.packedLightingOption === v) return;
+    this.packedLightingOption = v;
+    for (const entry of this.meshes.values()) {
+      for (const mesh of [entry.opaque, entry.emissive, entry.transparent, entry.water]) {
+        if (!mesh) continue;
+        const attr = mesh.geometry.getAttribute('aLight') as THREE.BufferAttribute | undefined;
+        if (!attr) continue;
+        if (v && attr.itemSize === 2) {
+          const lights = attr.array as ArrayLike<number>;
+          mesh.geometry.setAttribute('aLight', new THREE.BufferAttribute(packVertexLights(lights), 1));
+        } else if (!v && attr.itemSize === 1) {
+          const packed = attr.array as ArrayLike<number>;
+          mesh.geometry.setAttribute('aLight', new THREE.BufferAttribute(unpackVertexLights(packed), 2));
+        }
+      }
+    }
+    for (const mat of [this.materials.opaque, this.materials.transparent, this.materials.water]) {
+      mat.needsUpdate = true;
+    }
+  }
   /** 当前驻留区块总数（诊断 / 基准用） */
   get residentCount() { return this.world.chunks.size; }
   get isLoading() { return this.loading; }
@@ -626,10 +677,10 @@ export class ChunkManager implements System {
    * 推断 Worker 池大小：默认按 CPU 核数留 1 给主线程、上限 4（避免小核机反而更慢）；
    * 传 override（?workers=N）时直接取 1..8 的夹紧值，便于基准对照。
    */
-  private static decidePoolSize(override?: number): number {
+  private static decidePoolSize(override?: number, mobile = false): number {
     if (override && override >= 1) return Math.min(Math.max(1, Math.floor(override)), 8);
     const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
-    return Math.max(1, Math.min(hc - 1, 4));
+    return Math.max(1, Math.min(hc - 1, mobile ? 2 : 4));
   }
 
   /** 选最空闲的 Worker（在途任务数最少），并记一笔在途 */
@@ -864,7 +915,7 @@ export class ChunkManager implements System {
     if (old) this.disposeMeshes(old);
     const make = (geo: PackedGeo | null, mat: THREE.Material, order: number): THREE.Mesh | undefined => {
       if (!geo || geo.indices.length === 0) return undefined;
-      const mesh = new THREE.Mesh(buildGeo(geo), mat);
+      const mesh = new THREE.Mesh(buildGeo(geo, this.packedLightingOption), mat);
       mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
       mesh.renderOrder = order;
       mesh.matrixAutoUpdate = false;

@@ -456,3 +456,35 @@ biome 过滤生效；`min/max` 控制 count ∈ [min,max]。
 **已知限制**：frost_bloom 在 snowy_tundra / snowy_taiga 的 spawn 权重被 `botanyContent.ts` 既有的
 frostline 规则衰减（spawn 后即枯死）——该规则属既有生态逻辑，本轮按范围锁定未改；若日后希望霜花
 在雪原存活，需单独一轮改规则。
+
+---
+
+## 10. 第 4 轮：3D 实验功能（2026-11-28）
+
+本轮保留两个用户入口；渲染光照压缩改为默认路径，不再占用普通设置。
+
+| 实验 | 入口 | 行为 | 对照 / 判据 |
+| --- | --- | --- | --- |
+| E15 3D 密度场地形 | 设置「3D 密度场地形（新区块）」/ `?terrain=density` | 在高度场基础上用 3D fBm 雕刻近地表空洞、陡坡岩檐与高空浮岛；保留每列顶面，且不在玩家头部两格新增实体方块 | 固定 seed 确定性；经典模式默认不变；只影响之后生成的区块 |
+| E16 8 位顶点光照 | **默认开启**；`?lighting=float2` 回退对照 | `aLight` 从 2×float32 压成 1×uint8（高 4 位天空光、低 4 位方块光），shader 解码 | 打包往返误差 ≤ 1/15；每顶点光照 8 B → 1 B；默认路径无需用户设置 |
+| E17 材质包加载器 | 「导入材质包」 | 导入 Java / Bedrock 资源包 ZIP、`.mcpack`、`pack.json` 或同名 PNG；按第一帧缩放后热更新图集 | 支持原版别名、动画纹理首帧、32/64 等分辨率；未知 tile 计入未匹配；ZIP 单文件 / 总量 / 压缩比受限 |
+
+清理决定：
+
+- 移除暖色 / 冷色 / 高对比内置预设及 `texturePack` 设置。它们只是全图集调色，不是实际材质包，且存在累积应用后失效的问题。
+- 移除 `packedLighting` 普通设置项。压缩布局改为默认，`?lighting=float2` 只用于开发和 A/B 对照。
+- 材质导入串行化并带序号校验，较新的导入请求不会被较旧结果覆盖。
+
+复现：
+
+```bash
+npm run test:experiments3d
+```
+
+浏览器实景验证（本机 Chromium + SwiftShader）：
+
+- `?terrain=density` 启动后 `chunks.lightingMode === 'packed8'`、`vertexLightBytes === 1`、生成器配置 `densityTerrain === true`。
+- 设置页只保留「3D 密度场地形（新区块）」和「导入材质包」；旧的「8 位顶点光照 / 材质包」循环行已移除。
+- 导入 `assets/minecraft/textures/block/grass_block_top.png`、`oak_planks.png` 与 Bedrock `textures/blocks/log_oak.png` 后，三张图集 tile 的实际平均色均发生变化，状态显示 3 张纹理。
+- `?lighting=float2` 可回到 2×float32 路径（8 B/顶点），用于对照。
+- 页面无运行时错误。

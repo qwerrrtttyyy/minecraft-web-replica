@@ -66,9 +66,11 @@ const entries = [
   'src/world/meshTypes.ts',
   'src/world/chunkRetention.ts',
   'src/world/mesher.ts',
+  'src/world/lightPacking.ts',
   'src/world/meshSource.ts',
   'src/world/snapshotSource.ts',
   'src/core/types.ts',
+  'src/core/options.ts',
   'src/core/version.ts',
   'src/diagnostics/RuntimeDiagnostics.ts',
   'src/entity/models.ts',
@@ -95,6 +97,8 @@ const entries = [
   'src/entity/projectile.ts',
   // 摄影模式：FOV / 时刻 / 天气 / 元数据格式化（纯逻辑，不触碰 DOM）
   'src/photo/photoFrames.ts',
+  'src/gfx/zipReader.ts',
+  'src/gfx/texturePack.ts',
 ];
 
 const tsc = path.join(root, 'node_modules', '.bin', 'tsgo');

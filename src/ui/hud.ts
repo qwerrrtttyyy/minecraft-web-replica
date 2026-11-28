@@ -79,6 +79,10 @@ export interface HUDOptions {
   onSortTransparent: (v: boolean) => void;
   /** 原版界面风格开关（默认开启，设置页「视频」分组） */
   onVanillaUI: (v: boolean) => void;
+  /** 3D 实验：密度场地形（新建世界生效） */
+  onDensityTerrain: (v: boolean) => void;
+  /** 3D 实验：导入 ZIP / PNG 材质包 */
+  onTexturePackImport: (files: File[]) => void;
   /** 导出当前设置为 JSON 文本（设置页「导出设置」） */
   onExportOptions: () => string;
   onCopyOptions: (json: string) => void;
@@ -253,6 +257,8 @@ export class HUD {
   private threadsRow!: HTMLButtonElement;
   private autosaveRow!: HTMLButtonElement;
   private experimentalRow?: HTMLButtonElement;
+  private densityTerrainRow?: HTMLButtonElement;
+  private texturePackStatus?: HTMLElement;
   private landscapeRow?: HTMLButtonElement;
   private tickSpeedRow?: HTMLButtonElement;
   private daylightRow?: HTMLButtonElement;
@@ -1059,6 +1065,31 @@ export class HUD {
     exp.appendChild(this.landscapeRow);
     exp.appendChild(h('div', 'menu-note', 'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」开关已移至「视频」分组（默认开启，开启后把 HUD 切换为原版 Java 版风格）；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。'));
 
+    // ---- 3D 实验 ----
+    const exp3d = group('3D 实验');
+    this.densityTerrainRow = this.optionRow('3D 密度场地形（新区块）', () => {
+      this.opts.onDensityTerrain(!this.opts.getOptions().densityTerrain);
+      this.syncOptions(this.opts.getOptions());
+    });
+    exp3d.appendChild(this.densityTerrainRow);
+    const importRow = h('div', 'menu-row');
+    const packInput = h('input') as HTMLInputElement;
+    packInput.type = 'file';
+    packInput.accept = '.zip,.mcpack,.png,.jpg,.jpeg,.webp,application/zip,image/png';
+    packInput.multiple = true;
+    packInput.style.display = 'none';
+    packInput.addEventListener('change', () => {
+      const files = Array.from(packInput.files ?? []);
+      if (files.length > 0) this.opts.onTexturePackImport(files);
+      packInput.value = '';
+    });
+    const importBtn = this.mcButton('导入材质包', () => packInput.click());
+    importRow.append(importBtn, packInput);
+    exp3d.appendChild(importRow);
+    this.texturePackStatus = h('div', 'menu-note', '当前材质包：经典（程序化）');
+    exp3d.appendChild(this.texturePackStatus);
+    exp3d.appendChild(h('div', 'menu-note', '密度地形影响之后生成的区块；8 位顶点光照默认开启，可用 ?lighting=float2 对照。材质包支持 Java / Bedrock 资源包 ZIP、pack.json 或同名 PNG。'));
+
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');
     this.tickSpeedRow = this.cycleRow('随机刻速度', TICK_SPEED_CHOICES,
@@ -1188,6 +1219,10 @@ export class HUD {
     return this.ioOverlay.style.display !== 'none';
   }
 
+  setTexturePackStatus(text: string) {
+    if (this.texturePackStatus) this.texturePackStatus.textContent = text;
+  }
+
   /** 用当前设置刷新控件（打开页面、切换开关、重置后调用） */
   syncOptions(o: Options) {
     this.rdSlider.value = String(o.renderDistance);
@@ -1216,6 +1251,7 @@ export class HUD {
     this.setRowVal(this.genThreadsRow, choiceLabel(GEN_THREAD_CHOICES, o.genThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
+    if (this.densityTerrainRow) this.setRowVal(this.densityTerrainRow, o.densityTerrain ? '开（新区块）' : '关', !o.densityTerrain);
     if (this.landscapeRow) this.setRowVal(this.landscapeRow, o.landscapeMode ? '开' : '关', !o.landscapeMode);
     if (this.tickSpeedRow) this.setRowVal(this.tickSpeedRow, choiceLabel(TICK_SPEED_CHOICES, o.randomTickSpeed), o.randomTickSpeed === 0);
     if (this.daylightRow) this.setRowVal(this.daylightRow, o.doDaylightCycle ? '开' : '关', !o.doDaylightCycle);

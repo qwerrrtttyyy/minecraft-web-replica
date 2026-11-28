@@ -126,8 +126,16 @@ try {
   }));
   await page.screenshot({ path: path.join(OUT, 'options-desktop.png') });
   ok('标题屏打开设置页', opened.open, JSON.stringify(opened.groups));
-  ok('设置页含音效/视频/控制/实验性内容/实验性玩法/开发者分组',
-    opened.groups.join(',') === '音效,视频,控制,实验性内容,实验性玩法,开发者', opened.groups.join(','));
+  ok('设置页含音效/视频/控制/实验性内容/3D 实验/实验性玩法/开发者分组',
+    opened.groups.join(',') === '音效,视频,控制,实验性内容,3D 实验,实验性玩法,开发者', opened.groups.join(','));
+  const exp3dRows = await page.evaluate(() =>
+    [...document.querySelectorAll('.options-panel .opt-label')].map((e) => e.textContent));
+  ok('3D 实验分组只保留密度地形与导入动作',
+    exp3dRows.includes('3D 密度场地形（新区块）') &&
+    !exp3dRows.includes('8 位顶点光照') && !exp3dRows.includes('材质包'),
+    exp3dRows.filter((x) => x.includes('密度') || x.includes('材质') || x.includes('顶点光照')).join(','));
+  ok('3D 实验分组含材质包导入按钮', await page.evaluate(() =>
+    [...document.querySelectorAll('.options-panel button')].some((b) => b.textContent.includes('导入材质包'))));
   ok('设置页滑杆齐全', ['音量', '渲染距离', '视野 FOV', '视角灵敏度'].every((s) => opened.sliders.includes(s)),
     opened.sliders.join(','));
   ok('桌面端不显示触控灵敏度', !opened.sliders.includes('触控灵敏度'), opened.sliders.join(','));
@@ -195,6 +203,12 @@ try {
   await clickText(page, '.menu-panel .mc-btn', '设置');
   await page.waitForFunction('window.__mc.hud.optionsOpen', { timeout: 10000 }).catch(() => {});
   ok('菜单打开设置页', await page.evaluate(() => window.__mc.hud.optionsOpen));
+
+  // 3D 实验：光照压缩默认开启，不再占用普通设置
+  ok('8 位顶点光照默认开启', await page.evaluate(() =>
+    window.__mc.chunks.lightingMode === 'packed8' && window.__mc.chunks.vertexLightBytes === 1));
+  ok('材质预设循环已移除', await page.evaluate(() =>
+    ![...document.querySelectorAll('.options-panel .opt-label')].some((e) => e.textContent === '材质包')));
 
   // 音效开关
   const sound0 = await page.evaluate(() => window.__mc.sound.enabled);
@@ -602,9 +616,15 @@ try {
       overflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
       scrollable: panel.scrollHeight > panel.clientHeight,
       touch: [...panel.querySelectorAll('.slider-head span')].map((e) => e.textContent).includes('触控灵敏度'),
+      workerCap: window.__mc.chunks.recommendedPoolSize(),
+      residents: window.__mc.chunks.residentCount,
+      startupRadius: window.__mc.startupRadius,
     };
   });
   ok('移动端含触控灵敏度滑杆', mobUi.touch);
+  ok('移动端 Worker 默认上限 ≤ 2', mobUi.workerCap <= 2, `workers=${mobUi.workerCap}`);
+  ok('移动端首屏只预载 2 圈', mobUi.startupRadius === 2 && mobUi.residents < 49,
+    `radius=${mobUi.startupRadius} resident=${mobUi.residents}`);
   await mob.screenshot({ path: path.join(OUT, 'options-mobile.png') });
   ok('移动端设置页打开且不出屏', mobUi.open && mobUi.withinWidth && mobUi.overflow,
     `panelW=${mobUi.panelW} overflow=${mobUi.overflow}`);
@@ -628,6 +648,19 @@ try {
   await mob.evaluate(() => { [...document.querySelectorAll('.title-buttons .mc-btn')][0]?.click(); });
   await mob.waitForFunction('window.__mc.mode === "playing"', { timeout: 90000 });
   await sleep(2500);
+  const touchUi = await mob.evaluate(() => ({
+    visible: getComputedStyle(document.querySelector('.touch-ui')).display !== 'none',
+    vw: innerWidth,
+    vh: innerHeight,
+    buttons: [...document.querySelectorAll('.touch-ui .tbtn')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    }),
+  }));
+  ok('移动端触控按钮全部留在视口内', touchUi.visible && touchUi.buttons.length === 5 &&
+    touchUi.buttons.every((r) => r.left >= 0 && r.top >= 0 &&
+      r.right <= touchUi.vw + 1 && r.bottom <= touchUi.vh + 1),
+  JSON.stringify(touchUi.buttons));
   await mob.keyboard.press('Escape');
   await sleep(400);
   await clickText(mob, '.menu-panel .mc-btn', '设置');

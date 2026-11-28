@@ -2810,6 +2810,39 @@ export class TextureAtlas {
     return [u0, v0, u0 + TILE_UV_SIZE[0], v0 + TILE_UV_SIZE[1]];
   }
 
+  tileNames(): string[] {
+    return [...this.painters.keys()];
+  }
+
+  tileImageData(name: string): ImageData | null {
+    const idx = this.indices.get(name);
+    if (idx === undefined) return null;
+    const ctx = this.canvas.getContext('2d')!;
+    return ctx.getImageData((idx % GRID) * TILE, ((idx / GRID) | 0) * TILE, TILE, TILE);
+  }
+
+  applyTileImages(images: ReadonlyMap<string, ImageData>): number {
+    const ctx = this.canvas.getContext('2d')!;
+    let applied = 0;
+    for (const [name, image] of images) {
+      const idx = this.indices.get(name);
+      if (idx === undefined || image.width !== TILE || image.height !== TILE) continue;
+      ctx.putImageData(image, (idx % GRID) * TILE, ((idx / GRID) | 0) * TILE);
+      applied++;
+    }
+    if (applied > 0) {
+      this.tileCache.clear();
+      this.avgCache.clear();
+      this.texture.needsUpdate = true;
+    }
+    return applied;
+  }
+
+  resetTiles(): void {
+    this.paintAll();
+    this.texture.needsUpdate = true;
+  }
+
   tileCanvas(name: string): HTMLCanvasElement {
     let c = this.tileCache.get(name);
     if (c) return c;

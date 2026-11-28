@@ -81,6 +81,8 @@ export interface Options {
   genThreads: GenThreads;
   /** 原版界面风格（默认开启；已持久化的老用户配置仍被尊重） */
   vanillaUI: boolean;
+  /** 3D 实验：密度场地形（影响之后生成的区块） */
+  densityTerrain: boolean;
 }
 
 /** 随机刻速度档位：0 暂停 / 1 慢 / 2 标准 / 3 快 */
@@ -120,6 +122,7 @@ export const DEFAULT_OPTIONS: Options = {
   frameTarget: 'auto',
   genThreads: 'auto',
   vanillaUI: true,
+  densityTerrain: false,
 };
 
 const QUALITY_MODES: readonly QualityMode[] = ['auto', 'high', 'balanced', 'power'];
@@ -200,6 +203,7 @@ export function loadOptions(fallback: Partial<Options> = {}): Options {
       frameTarget: pick(o.frameTarget, FRAME_TARGETS, base.frameTarget),
       genThreads: pick(o.genThreads, GEN_THREAD_OPTIONS, base.genThreads),
       vanillaUI: bool(o.vanillaUI, base.vanillaUI),
+      densityTerrain: bool(o.densityTerrain, base.densityTerrain),
     };
   } catch {
     return base;
@@ -249,5 +253,6 @@ export function normalizeOptions(o: Partial<Options>, fallback: Partial<Options>
     frameTarget: pick(base.frameTarget, FRAME_TARGETS, DEFAULT_OPTIONS.frameTarget),
     genThreads: pick(base.genThreads, GEN_THREAD_OPTIONS, DEFAULT_OPTIONS.genThreads),
     vanillaUI: bool(base.vanillaUI, DEFAULT_OPTIONS.vanillaUI),
+    densityTerrain: bool(base.densityTerrain, DEFAULT_OPTIONS.densityTerrain),
   };
 }
