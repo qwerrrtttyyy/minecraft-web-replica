@@ -60,7 +60,9 @@ jobs:
       - name: 阶段 6/7 · 玩法系统（植物 / 合成 / 装备 / 熔炉）
         run: npm run test:feel && npm run test:botany && npm run test:plant-energy && npm run test:crossbreed && npm run test:botany-rules && npm run test:crafting:vitest && npm run test:equipment && npm run test:hooks && npm run test:smelting
       - name: 阶段 7/7 · 浏览器实景（Xvfb + Mesa llvmpipe）
-        run: xvfb-run -a -s "-screen 0 1280x760x24" npm run test:smoke && npm run test:options && npm run test:mobile && npm run test:visual
+        # 整条测试链必须在同一个 xvfb-run 会话内：若只包住第一条命令，
+        # 后续 test:options/mobile/visual 会丢失 $DISPLAY 并以 Missing X server 失败。
+        run: xvfb-run -a -s "-screen 0 1280x760x24" bash -c 'npm run test:smoke && npm run test:options && npm run test:mobile && npm run test:visual'
       - name: 上传实景截图与结果
         if: always()
         uses: actions/upload-artifact@v4
