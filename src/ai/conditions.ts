@@ -78,8 +78,8 @@ export class BlackboardEq extends Node {
   readonly key: string; readonly value: unknown;
   constructor(config: NodeConfig | string = '', value?: unknown) {
     super();
-    if (typeof config === 'object' && config !== null && !Array.isArray(config)) { this.key = cfg(config, 'key', ''); this.value = cfg(config, 'value', undefined); }
-    else { this.key = config; this.value = value; }
+    if (typeof config === 'string') { this.key = config; this.value = value; }
+    else { this.key = cfg(config, 'key', ''); this.value = cfg(config, 'value', undefined); }
   }
   tick(ctx: TickContext): NodeStatus { return ctx.blackboard.get(this.key) === this.value ? NodeStatus.Success : NodeStatus.Failure; }
 }
@@ -89,8 +89,8 @@ export class CanReach extends Node {
   readonly x: number; readonly y: number; readonly z: number;
   constructor(config: NodeConfig | number = 0, y?: number, z?: number) {
     super();
-    if (typeof config === 'object' && config !== null && !Array.isArray(config)) { this.x = cfg(config, 'x', 0); this.y = cfg(config, 'y', 0); this.z = cfg(config, 'z', 0); }
-    else { this.x = config; this.y = y ?? 0; this.z = z ?? 0; }
+    if (typeof config === 'number') { this.x = config; this.y = y ?? 0; this.z = z ?? 0; }
+    else { this.x = cfg(config, 'x', 0); this.y = cfg(config, 'y', 0); this.z = cfg(config, 'z', 0); }
   }
   tick(ctx: TickContext): NodeStatus { return new Perception(ctx.world).canReach(ctx.entity, this.x, this.y, this.z) ? NodeStatus.Success : NodeStatus.Failure; }
 }
