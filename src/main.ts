@@ -104,7 +104,12 @@ async function boot() {
     return;
   }
 
-  const { container, events, plugins, extensions } = createServices();
+  const { container, events, plugins, extensions, perf, scheduler } = createServices();
+  // ---- 高性能服务体系：软帧预算调度（?sched=ms 覆盖，0 = 关闭裁剪，回到逐帧等价）----
+  // 默认 12ms：交互 / 物理 / 区块等 critical 层永远每帧跑，只有视觉环境层（粒子等）
+  // 在 CPU 侧已超出预算时让位，弱机上先保流畅。
+  const schedParam = qs.get('sched');
+  scheduler.setBudget(schedParam === null ? 12 : clamp(Number(schedParam) || 0, 0, 60));
   const registry = new BlockRegistry();
   registerBuiltinBlocks(registry);
   const atlas = new TextureAtlas();
@@ -120,7 +125,10 @@ async function boot() {
     maxScale: 1,
   });
   let rawFrameMs = 16.7;
-  engine.onRawFrame = (dtSeconds) => { rawFrameMs = dtSeconds * 1000; };
+  engine.onRawFrame = (dtSeconds) => {
+    rawFrameMs = dtSeconds * 1000;
+    perf.endFrame(rawFrameMs);
+  };
   const particles = new Particles(engine.scene, isMobile ? 380 : 800);
   const weatherParticles = new WeatherParticles(engine.scene, engine.camera, isMobile);
 
@@ -1683,6 +1691,22 @@ async function boot() {
         fov: engine.camera.fov,
       },
       save: { dirty: dirtySave, lastOkAt: lastSaveOkAt },
+      perf: (() => {
+        const stats = perf.stats();
+        const sched = scheduler.stats();
+        let errors = 0;
+        for (const slot of sched.slots) errors += slot.errors;
+        return {
+          frames: stats.frames,
+          systems: stats.systems,
+          frameAvgMs: stats.frameAvg,
+          frameP95Ms: stats.frameP95,
+          budgetMs: sched.budgetMs,
+          schedulerFrames: sched.frame,
+          skippedBudget: sched.skippedBudget,
+          errors,
+        };
+      })(),
     };
   };
   const diagnostics = new DiagnosticsRunner(collectDiagnostics);
@@ -1926,6 +1950,7 @@ async function boot() {
       `植物能量: ${plants.tracked} 株 / 开花 ${plants.charged} / 均值 ${plants.avgEnergy} / 土壤 ${plants.soilAvg}`,
       `季节: ${seasonAt(sky.dayCount)} / 天气: ${weather.current.kind} / 形态: ${weather.current.form} / 亮度: ${weather.current.darkness.toFixed(2)} / 第 ${sky.dayCount} 天`,
       `运行时诊断: ${diagStr}`,
+      `性能: ${perf.format(3)}${scheduler.budget > 0 ? ` · 软预算 ${scheduler.budget}ms` : ' · 软预算关'}`,
       `时间: ${sky.timeString()}  种子: ${seed}`,
       survival.isSurvival
         ? `模式: 生存  生命 ${Math.ceil(survival.health)}/${MAX_HEALTH}  饥饿 ${Math.ceil(survival.hunger)}/${MAX_HUNGER}  饱和度 ${Math.ceil(survival.saturation)}/${MAX_HUNGER}  温暖 ${Math.round(survival.warmth)}/100  背包 ${survival.inventory.size} 种`
@@ -1936,18 +1961,27 @@ async function boot() {
     ].join('\n');
   }
 
-  // ---- 系统注册 ----
-  engine.addSystem({ name: 'edges', update: () => processEdges() });
-  if (photo) engine.addSystem(photo);
-  engine.addSystem({
+  // ---- 系统注册：全部经高性能调度器分阶段执行（唯一驱动系统在末尾）----
+  // 阶段顺序 input → simulate → render → post；同一阶段内按优先级，保证与原扁平循环
+  // 的相对顺序一致（critical 层永不因预算让位，行为等价）。
+  scheduler.add({ name: 'edges', phase: 'input', priority: 0, update: () => processEdges() });
+  if (photo) {
+    const pm = photo;
+    scheduler.add({ name: 'photo', phase: 'input', priority: 10, update: (dt) => pm.update(dt) });
+  }
+  scheduler.add({
     name: 'sky',
+    phase: 'simulate',
+    priority: 0,
     update: (dt, t) => {
       // 暂停 / 死亡 / 加载时不推进昼夜，避免回到游戏后时间跳变
       if (mode === 'playing' || mode === 'title') sky.update(dt, t);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'weather',
+    phase: 'simulate',
+    priority: 1,
     update: (dt, t) => {
       if (mode !== 'playing') return;
       weather.update(dt, t);
@@ -1959,15 +1993,19 @@ async function boot() {
       fire.rainTick(weather.current.form === 'rain' ? weather.current.intensity : 0);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'chunks',
+    phase: 'simulate',
+    priority: 2,
     update: (dt) => {
       chunks.setCenter(player.pos.x, player.pos.z);
       chunks.update(dt);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'gameplay',
+    phase: 'simulate',
+    priority: 3,
     update: (dt, t) => {
       // 手柄每帧轮询：暂停时也要读 Start 键（processEdges 处理恢复）
       input.pollGamepad(dt);
@@ -2024,8 +2062,13 @@ async function boot() {
       }
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'botany',
+    phase: 'simulate',
+    priority: 4,
+    // 生态随机刻本就按 0.3s 节拍自节流，帧预算超支时让位一帧无感
+    tier: 'background',
+    maxDeferFrames: 3,
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进生态，避免回到游戏时世界突然变化
       if (mode !== 'playing') return;
@@ -2037,34 +2080,57 @@ async function boot() {
       });
     },
   });
-  engine.addSystem(particles);
-  engine.addSystem(weatherParticles);
-  engine.addSystem({
+  // 粒子与天气粒子是纯环境层：CPU 侧超预算时优先让位（最多连续跳过 2 帧，防饿死）
+  scheduler.add({
+    name: 'particles',
+    phase: 'simulate',
+    priority: 5,
+    tier: 'background',
+    maxDeferFrames: 2,
+    update: (dt) => particles.update(dt),
+  });
+  scheduler.add({
+    name: 'weatherParticles',
+    phase: 'simulate',
+    priority: 6,
+    tier: 'background',
+    maxDeferFrames: 2,
+    update: (dt) => weatherParticles.update(dt),
+  });
+  scheduler.add({
     name: 'fire',
+    phase: 'simulate',
+    priority: 7,
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进火焰
       if (mode !== 'playing') return;
       fire.update(dt, player.pos);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'warmth',
+    phase: 'simulate',
+    priority: 8,
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进温暖
       if (mode !== 'playing') return;
       warmth.update(dt, player.pos);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'cold',
+    phase: 'simulate',
+    priority: 9,
     update: (dt) => {
       // 暂停 / 死亡 / 加载时不推进寒冷
       if (mode !== 'playing') return;
       cold.update(dt);
     },
   });
-  engine.addSystem({
+  scheduler.add({
     name: 'ui',
+    phase: 'post',
+    priority: 0,
     update: (dt) => {
       // 昼夜强度写进区块 shader；天气变暗因子与 sky.ts 的实体光共用同一函数
       const daylight = (0.16 + 0.84 * sky.daylight) * weather.darknessFactor();
@@ -2119,8 +2185,10 @@ async function boot() {
   });
 
   // ---- 相机远平面随渲染距离收敛，减少无效深度范围与 z-fighting ----
-  engine.addSystem({
+  scheduler.add({
     name: 'farplane',
+    phase: 'post',
+    priority: 1,
     update: () => {
       // 天穹半径 460 / 星空 430 / 日月 400 必须留在视锥内，下限不能小于 520
       const far = Math.max(520, chunks.renderDistance * 16 * 1.3);
@@ -2132,8 +2200,10 @@ async function boot() {
   });
 
   // ---- 动态分辨率：帧预算 governor（桌面 / 移动端同一套；固定画质档不参与）----
-  engine.addSystem({
+  scheduler.add({
     name: 'quality',
+    phase: 'post',
+    priority: 2,
     update: () => {
       if (mode !== 'playing') return;
       if (settings.quality !== 'auto' || !settings.dynamicResolution) return;
@@ -2141,6 +2211,14 @@ async function boot() {
       if (Math.abs(scale - engine.qualityScale) > 1e-6) engine.setQualityScale(scale);
     },
   });
+
+  // ---- 调度器驱动：唯一的引擎系统，内部按阶段 / 优先级 / 软帧预算跑全部业务系统 ----
+  // Engine（core 层）不认识调度器；依赖方向保持 main → services → 业务模块。
+  engine.addSystem({
+    name: 'frame',
+    update: (dt, t) => scheduler.update(dt, t),
+  });
+
 
   // ---- 启动：预载出生点 → 标题全景 ----
   hud.setLoading(0, '生成地形…');
@@ -2193,8 +2271,11 @@ async function boot() {
     botany, falling, arrows, fire, smelting, weather, cold, weatherParticles, photo,
     /** 测试钩子：强制天气（null 恢复历法推导） */
     weatherSetForced: (kind: WeatherKind | null) => { weather.forced = kind; },
-    services: container, events, plugins, api, wasm,
+    services: container, events, plugins, api, wasm, perf, scheduler,
     diagnostics, diagnosticsReport: () => diagnostics.run(),
+    /** 高性能服务体系：系统级耗时报告 / 调度器槽位统计 */
+    perfReport: () => perf.report(),
+    schedulerStats: () => scheduler.stats(),
     dispose: teardown,
     chunkStats: () => ({
       generated: world.generatedCount,

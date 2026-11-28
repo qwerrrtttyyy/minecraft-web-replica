@@ -2,6 +2,7 @@ import { ServiceContainer, token } from './ServiceContainer';
 import { EventService } from './events';
 import { ExtensionRegistry } from './plugins/extensions';
 import { PluginService, type PluginServiceOptions } from './plugins';
+import { FrameScheduler, PerfService } from './perf';
 import type { CraftAPI } from '../api/CraftAPI';
 import type { BuiltinDeps } from '../plugins/builtin/deps';
 import type { WasmRuntime } from '../wasm/runtime';
@@ -22,6 +23,10 @@ export const TOKENS = {
   PluginSaveBag: token<PluginSaveBag>('plugin-save-bag'),
   /** A2-5：插件 UI 宿主（暂停菜单面板 / HUD 锚点 / 快捷栏装饰） */
   PanelHost: token<PanelHost>('panel-host'),
+  /** v1.6：性能监控服务（逐系统耗时采样） */
+  Perf: token<PerfService>('perf'),
+  /** v1.6：帧预算调度器（分阶段 / 优先级 / 软帧预算） */
+  Scheduler: token<FrameScheduler>('scheduler'),
 };
 
 export interface Services {
@@ -29,6 +34,8 @@ export interface Services {
   events: EventService;
   plugins: PluginService;
   extensions: ExtensionRegistry;
+  perf: PerfService;
+  scheduler: FrameScheduler;
 }
 
 /**
@@ -42,6 +49,9 @@ export function createServices(options?: PluginServiceOptions): Services {
   const container = new ServiceContainer();
   const events = container.provide(TOKENS.Events, new EventService());
   const extensions = container.provide(TOKENS.Extensions, new ExtensionRegistry());
+  // v1.6：性能监控服务先行创建，供调度器逐系统喂入耗时
+  const perf = container.provide(TOKENS.Perf, new PerfService());
+  const scheduler = container.provide(TOKENS.Scheduler, new FrameScheduler({ perf }));
   const wasmHost = {
     registerModule: (id: string, bytes: WasmBytes) =>
       container.require(TOKENS.Wasm).registerModule(id, bytes),
@@ -55,13 +65,18 @@ export function createServices(options?: PluginServiceOptions): Services {
       ...options, extensions, wasmHost,
     }),
   );
-  return { container, events, plugins, extensions };
+  return { container, events, plugins, extensions, perf, scheduler };
 }
 
 export { ServiceContainer, token } from './ServiceContainer';
 export type { ServiceToken, Disposable } from './ServiceContainer';
 export { EventService, EventService as EventBus } from './events';
 export { PluginService, scopeAPI, ExtensionRegistry, EXTENSION_POINTS } from './plugins';
+export { PerfService, FrameScheduler, SYSTEM_PHASES } from './perf';
+export type {
+  SystemPerf, PerfStats, PerfReport, SystemSpec, SystemPhase, SystemTier,
+  SchedulerStats, SchedulerSlotStats,
+} from './perf';
 export type {
   PluginDefinition, PluginManifest, PluginContext, PluginPermission,
   PluginRecord, PluginState, PluginStats, PluginServiceOptions,

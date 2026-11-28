@@ -11,7 +11,7 @@ npm run typecheck       # tsc --noEmit，必须 0 error
 npm run build           # 类型检查 + 单文件构建
 npm run test:snapshot   # 从当前 TS 源码生成 CJS 测试快照（必须先跑）
 npm run test:logic && npm run test:light && npm run test:mesher
-npm run test:services && npm run test:diagnostics && npm run test:terrain-system
+npm run test:services && npm run test:diagnostics && npm run test:perf-services && npm run test:terrain-system
 npm run test:drop       # 可见掉落物纯逻辑（散开 / 拾取 / 合并 / 入水 / 暂停）
 npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要 Chromium）
 ```
@@ -59,6 +59,14 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
   `api:emit` 要同时盖住 `ctx.events.emit` 与 `api.events.scope` 子通道；manifest 存 / 取
   都要防御性拷贝。`ctx.services` / `ctx.api.engine` 仍是受信内部对象；不要把不可信代码当作沙箱。
 - **存档竞态**：保存是异步的；用 `dirtyVersion + saveSeq` 保证旧保存回调不会清掉新编辑。
+- **主循环系统统一走调度器（v1.6）**：新增 / 迁移的每帧系统注册进 `FrameScheduler`
+  （`scheduler.add({ name, phase, priority, ... })`），不要再直接 `engine.addSystem`；
+  Engine（core 层）只保留组装根注入的**一个** `frame` 驱动系统。阶段顺序契约
+  `input → simulate → render → post`，同阶段内 priority 小者先、同键按注册序；默认 `critical`
+  （每帧必跑），纯环境 / 视觉效果才标 `background` + `maxDeferFrames`（超预算让位且防饿死）。
+  软预算默认 0 = 逐帧等价，只有组装根显式 `setBudget`（`?sched=ms`）才启用裁剪；
+  系统抛错由调度器隔离并计入 `stats().slots[].errors`。耗时采样走 `PerfService`，
+  接入 F3 与运行时诊断（`perf.counters` / `perf.systemErrors`）。回归入口 `test:perf-services`。
 - **确定性掉落（硬规则只管掉落判定）**：掉落判定只能走 `rollDrops()`（`src/world/drops.ts`），可见掉落物
   的散开 / 加权抽取走 `dropHash(seed, source, index)`（`src/world/dropLogic.ts`），禁止在掉落路径
   再写 `Math.random`；来源标识用 `b:x,y,z` / `e:id:serial` 保证同 seed 可复现。
@@ -109,3 +117,6 @@ npm run verify          # 以上全部 + 浏览器实景 / 视觉回归（需要
 - **CI 浏览器失败**：优先重跑；仍需本地复现时用 `xvfb-run` + `MC_HEADLESS=0 MC_GL=desktop`。
 - **软件渲染帧率低**：引擎把 `dt` 钳制到 0.05，游戏时间约为真实的一半；测试必须按条件
   轮询（`waitForFunction`），不要固定 sleep。
+- **不确定性能热点在哪**：看 F3 的「性能」行或 `__mc.perfReport()`（按 p95 降序）；某系统
+  持续偏高即优先查它。运行时诊断里若出现 `perf.systemErrors > 0`，说明调度器隔离了系统异常，
+  用 `__mc.schedulerStats()` 定位抛错的槽位名。调 `?sched=0` 可关掉软预算裁剪做对照。

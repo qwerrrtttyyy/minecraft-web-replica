@@ -167,6 +167,38 @@ manifest 在 `register` 时做防御性拷贝，`list() / get()` 返回的也是
 则抛错，要求先停用依赖方；显式传 `force=true`（含 `reload(A)`、`dispose()`）才会递归停用
 依赖 A 的下游插件（依赖方先 teardown），避免出现「B 仍 enabled 但 A 已停用」的悬浮依赖。
 
+### 3.4 高性能服务体系（v1.6）
+
+`src/services/perf/` 下两个纯逻辑服务（只依赖 `performance.now`，不 import three / DOM），
+把主循环从「扁平的 `for (const s of systems) s.update()`」升级为可观测 + 可让位的调度。
+
+**FrameScheduler（执行层）**
+- 分阶段执行：`input → simulate → render → post`；同阶段按 `priority` 升序，同键按注册序号（稳定）。
+- 重要度 `tier`：`critical` 每帧必跑；`background` 仅在 CPU 侧已耗时 `>= budgetMs` 时让位，
+  且连续跳过不超过 `maxDeferFrames`（防饿死），超限强制跑一帧。`intervalFrames` 支持每 N 帧执行。
+- 系统抛错被 `try/catch` 隔离（`onError` 回调），不打断同帧其它系统；异常次数计入 `stats().slots`。
+- `budgetMs <= 0` 时 `enforce=false`，所有系统每帧都跑 —— **与原扁平循环逐帧等价**。
+
+**PerfService（观测层）**
+- `record(name, ms)` 逐系统写入定长环形窗口（`WINDOW=120`，约 2s@60fps），热路径零分配；
+  只有 `report()` / `stats()` 这类低频调用才排序算 p50 / p95 / max。
+- `report()` 按 p95 降序给出热点（同值按名字字典序，跨环境确定性）；`format()` 供 F3 单行摘要。
+- `endFrame(ms)` 记录整帧墙钟耗时；`setBudget` 后可统计超预算帧数。
+
+**组装根接线（main.ts）**
+- `createServices()` 先建 `PerfService` → 用其构造 `FrameScheduler` → 注入容器（`TOKENS.Perf` / `TOKENS.Scheduler`）。
+- 业务系统全部 `scheduler.add({ name, phase, priority, ... })`；Engine 只保留**一个** `frame`
+  驱动系统 `scheduler.update(dt, t)`，因此 Engine（core 层）无需认识调度器，依赖方向保持单向。
+- `engine.onRawFrame` 里 `perf.endFrame(rawFrameMs)`；软预算默认 `?sched=` 未给时 12ms（0 = 关裁剪）。
+- 环境 / 视觉类系统（`botany` / `particles` / `weatherParticles`）标 `background`，弱机超预算时让位。
+
+**可观测闭环**：F3 面板增「性能」行（`perf.format`）；`collectDiagnostics` 增 `perf` 快照；
+`runRuntimeDiagnostics` 增 `perf.counters` / `perf.systemErrors` 两项检查 —— 后者专门把调度器
+**静默隔离的系统异常**翻出来（单看主循环「没崩」不能说明系统健康）。调试钩子 `__mc.perf` /
+`__mc.scheduler` / `__mc.perfReport()` / `__mc.schedulerStats()` 暴露给自动化与控制台。
+
+纯逻辑回归见 `test/perf-services-check.cjs`（31 项），诊断注入回归见 `test/diagnostics-check.cjs`。
+
 ---
 
 ## 4. 插件开发示例

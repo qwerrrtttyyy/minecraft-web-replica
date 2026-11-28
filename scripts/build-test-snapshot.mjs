@@ -41,6 +41,9 @@ const entries = [
   'src/world/noiseMath.ts',
   'src/core/events.ts',
   'src/services/ServiceContainer.ts',
+  // 高性能服务体系：逐系统耗时采样 + 分阶段 / 优先级 / 软帧预算调度（纯逻辑）
+  'src/services/perf/PerfService.ts',
+  'src/services/perf/FrameScheduler.ts',
   'src/services/plugins/PluginService.ts',
   'src/save/save.ts',
   'src/input/keybindings.ts',

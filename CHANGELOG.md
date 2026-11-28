@@ -4,6 +4,15 @@
 版本号遵循「双轨版本」约定：正式版 `vN`（里程碑）/ 迭代版 `X.Y.Z`（日常迭代），
 唯一来源为 `src/core/version.ts`。本文件是版本沿革的唯一记录；README 只描述项目当前状态。
 
+## [1.6.0-beta.4] - 2026-11-28
+
+### 高性能服务体系
+- **帧预算调度器**（`src/services/perf/FrameScheduler.ts`）：主循环系统统一按阶段（`input → simulate → render → post`）+ 优先级调度，同阶段内 priority 小者先、同键按注册序；`critical` 层每帧必跑，`background` 层在 CPU 侧超软预算时让位（`maxDeferFrames` 防饿死）；系统抛错被隔离并计入槽位统计。软预算默认 0 = 逐帧等价，只有组装根显式 `setBudget` 才启用裁剪。
+- **性能监控服务**（`src/services/perf/PerfService.ts`）：逐系统每帧耗时采样（定长环形窗口，热路径零分配），`report()` 按 p95 降序给出热点；接入 F3「性能」行与运行时诊断（`perf.counters` / `perf.systemErrors`）。
+- **组装根接线**：`main.ts` 业务系统全部 `scheduler.add(...)`，Engine 只保留一个 `frame` 驱动系统（依赖方向仍单向）；`engine.onRawFrame` 喂 `perf.endFrame`；URL `?sched=ms` 覆盖软预算（未给时 12ms，0 = 关裁剪）。新增 `__mc.perf` / `__mc.scheduler` / `__mc.perfReport()` / `__mc.schedulerStats()` 调试钩子。
+- **回归**：新增 `test:perf-services`（31 项纯逻辑，可控时钟替换 `performance.now`，含分位数 / 报告排序 / 调度阶段·优先级·软预算·防饿死·异常隔离），挂入 `verify` 与 `verify:node`；`test:diagnostics` 增 4 组注入回归（现 48 组）。
+- **口径**：0 新方块 / 0 地形改动 / 0 新依赖（`src/services/perf/` 只依赖 `performance.now`，不 import three / DOM）；系统相对执行顺序保持不变（粒子仍先于火焰更新），默认预算下逐帧行为等价。`RELEASE` 保持 `v1`，版本单一来源仍为 `src/core/version.ts`。
+
 ## [1.6.0-beta.3] - 2026-11-28
 
 ### 摄影模式

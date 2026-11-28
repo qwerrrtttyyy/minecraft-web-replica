@@ -54,6 +54,10 @@ const base = () => ({
     backend: 'js', benchJsMs: 10, benchWasmMs: 15,
   },
   save: { dirty: false, lastOkAt: 1_700_000_000_000 },
+  perf: {
+    frames: 120, systems: 8, frameAvgMs: 14.2, frameP95Ms: 20.1,
+    budgetMs: 12, schedulerFrames: 120, skippedBudget: 0, errors: 0,
+  },
 });
 
 const clone = (mutate) => {
@@ -87,6 +91,21 @@ console.log('运行时诊断组回归');
       s.plant.tracked = -1;
     }));
     ok('跟踪植物数异常被捕获', has(bad, 'plant.tracked'), ids(bad).join(','));
+  }
+
+  // 高性能服务体系：调度器会静默隔离系统异常，必须由诊断把被吞掉的异常翻出来
+  ok('健康性能快照无异常', !has(r, 'perf.counters') && !has(r, 'perf.systemErrors'));
+  {
+    const bad = runRuntimeDiagnostics(clone((s) => { s.perf.errors = 3; }));
+    ok('调度器隔离的系统异常被捕获', has(bad, 'perf.systemErrors') && bad.errors >= 1, ids(bad).join(','));
+  }
+  {
+    const bad = runRuntimeDiagnostics(clone((s) => { s.perf.frameAvgMs = -1; }));
+    ok('性能统计非法值被捕获', has(bad, 'perf.counters'), ids(bad).join(','));
+  }
+  {
+    const bad = runRuntimeDiagnostics(clone((s) => { s.perf.schedulerFrames = 1.5; }));
+    ok('非整数调度帧数被捕获', has(bad, 'perf.counters'), ids(bad).join(','));
   }
 }
 

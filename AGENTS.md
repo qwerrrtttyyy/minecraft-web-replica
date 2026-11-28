@@ -33,7 +33,8 @@ npm run verify           # 唯一验收入口：版本 + 类型 + 构建 + 全�
 | `test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例、slab / candle 盒几何、N4 未知来源液面 |
 | `test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
 | `test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
-| `test:diagnostics` | 运行时诊断 40 组（健康快照 + 异常注入，含摄影相机归属） |
+| `test:diagnostics` | 运行时诊断 48 组（健康快照 + 异常注入，含摄影相机归属 / 性能服务快照） |
+| `test:perf-services` | 高性能服务体系纯逻辑 31 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 |
 | `test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
 | `test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 18 群系、104 组 |
@@ -68,7 +69,7 @@ CI（`.github/workflows/verify.yml`）要求 `npm run verify` **100% PASS**；
 src/
 ├── main.ts            组装根（composition root）：建服务 → 注入依赖 → 启插件 → 启动循环
 ├── core/              引擎内核：主循环、类型常量、唯一版本源；events.ts 仅兼容再导出
-├── services/          服务层：ServiceContainer（类型化 DI）/ events/ / plugins/
+├── services/          服务层：ServiceContainer（类型化 DI）/ events/ / plugins/ / perf/（调度器 + 采样）
 ├── api/               CraftAPI 门面（薄适配层，兼容旧 22 项 + plugins / events 命名空间）
 ├── world/             体素世界：world / chunkManager / generator / mesher / light / botany / workerPool
 ├── gfx/               渲染：atlas（程序化像素纹理）/ sky / particles / highlight
@@ -96,8 +97,18 @@ src/
 | `src/core/tuning.ts` | `FOOD_VALUES` / `FLAMMABLE` / `FIRE` / `WARMTH` 数值中心 |
 | 设置项 `fireSpread` | 火焰蔓延开关（`src/core/options.ts`，默认开；关闭时只燃尽不引燃） |
 
+**v1.6 高性能服务体系速览**
+
+| 模块 | 作用 |
+|---|---|
+| `src/services/perf/FrameScheduler.ts` | 帧预算调度器：分阶段（`input → simulate → render → post`）+ 优先级 + 软帧预算。`critical` 层每帧必跑，`background` 层在 CPU 侧超预算时让位（`maxDeferFrames` 防饿死）；系统抛错被隔离。预算默认 0 = 逐帧等价 |
+| `src/services/perf/PerfService.ts` | 逐系统每帧耗时采样（定长环形窗口，热路径零分配），`report()` 按 p95 降序给出热点；接入 F3 与运行时诊断 |
+| 组装根接线 | `src/main.ts` 用**一个**引擎系统 `frame` 驱动 `scheduler.update()`，其余系统全部注册进调度器；`engine.onRawFrame` 喂 `perf.endFrame()`。设 URL `?sched=ms` 覆盖软预算（0 = 关裁剪） |
+| 运行时诊断 | `perf` 快照 + `perf.counters` / `perf.systemErrors` 检查（把调度器静默隔离的系统异常翻出来） |
+
 **依赖方向单向**：`main → services → 业务模块`。`api/` 只做适配；
 插件只依赖 `PluginContext`，**不 import 引擎内部实现**。
+调度器与采样服务均为纯逻辑（只依赖 `performance.now`），不 import three / DOM。
 
 关键常量（`src/core/types.ts`）：`CHUNK_SIZE=16`、`WORLD_HEIGHT=80`、`SEA_LEVEL=30`。
 
@@ -143,6 +154,11 @@ src/
     设置与数据见 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)；测量工具不挂 `verify`。
 15. **大二进制不入库**：>1MB 的媒体 / 产物不提交 git；演示动画用 WebP
     （`docs/assets/showcase.webp`），否则放 Release / Artifacts。详见 `docs/PROJECT-EXPERIENCE.md`。
+16. **主循环系统统一走调度器**：新增 / 迁移的每帧系统注册进 `FrameScheduler`
+    （`scheduler.add({ name, phase, priority, ... })`），不要再直接 `engine.addSystem`。
+    Engine（core 层）只保留组装根注入的**一个** `frame` 驱动系统。默认 `critical`；
+    纯环境 / 视觉效果类才标 `background` + `maxDeferFrames`。软预算默认 0（逐帧等价），
+    只有组装根显式 `setBudget` 才启用裁剪。详见 `docs/ARCHITECTURE.md` 的性能服务章节。
 
 ---
 

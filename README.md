@@ -32,9 +32,9 @@
 物理碰撞、实体 AI、触控适配、存档与扩展 API。构建产物是**单个自包含 HTML**，
 离线、无外部资源、`file://` 双击即可运行；所有纹理均为代码逐像素绘制，不含任何原版资源。
 
-> 当前正式版：v1 ｜ 当前非正式版：1.6.0-beta.3（双轨版本号，规则见下方「版本规范」）
+> 当前正式版：v1 ｜ 当前非正式版：1.6.0-beta.4（双轨版本号，规则见下方「版本规范」）
 
-**v1.6.0-beta.3 摄影模式（预发布）**：按 P 进入自由相机取景——世界继续模拟，玩家 / 昼夜时刻 / 天气预览被冻结，退出一律还原；覆盖层提供时段、天气、FOV 与水印开关，截图在渲染后同帧导出 PNG，不写存档、不标脏、不改区块加载中心。引擎新增同帧渲染后钩子与 `cameraOwner` 相机归属标识；组装根为存档固定 `dayTime` / `dayCount`，运行时诊断新增 `photo-camera-owner` 注入回归。摄影模式 0 新方块 / 0 地形改动 / 0 新依赖。详见 [CHANGELOG.md](CHANGELOG.md)。
+**v1.6.0-beta.4 高性能服务体系（预发布）**：主循环系统统一经 `FrameScheduler` 按阶段 / 优先级调度，软帧预算下让位 `background` 系统（带防饿死）并隔离系统级异常；`PerfService` 逐系统采样 p50 / p95，经 F3「性能」行与运行时诊断暴露热点。0 新方块 / 0 地形改动 / 0 新依赖（`src/services/perf/` 只依赖 `performance.now`）。详见 [CHANGELOG.md](CHANGELOG.md)。
 
 > **更新历史**：本 README 只描述项目**当前状态**，不收录版本沿革；完整更新历史见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -306,9 +306,12 @@ src/
 │   │   ├── GameEvents.ts    事件契约表（支持声明合并扩展）
 │   │   ├── EventService.ts  事件服务：错误隔离 / once / waitFor / onAny / stats / 深度保护
 │   │   └── EventChannel.ts  命名空间订阅作用域（插件卸载即自动清理）
-│   └── plugins/
-│       ├── PluginContext.ts manifest / permissions / PluginContext 契约
-│       └── PluginService.ts 注册 / 依赖解析 / 权限裁剪 / 启停 / 生命周期事件
+│   ├── plugins/
+│   │   ├── PluginContext.ts manifest / permissions / PluginContext 契约
+│   │   └── PluginService.ts 注册 / 依赖解析 / 权限裁剪 / 启停 / 生命周期事件
+│   └── perf/
+│       ├── FrameScheduler.ts 帧预算调度器：阶段 / 优先级 / 软预算 / 防饿死 / 异常隔离
+│       └── PerfService.ts    逐系统耗时采样（p50 / p95），接入 F3 与运行时诊断
 ├── api/                     ★ 公开门面（薄适配层，旧 22 项能力签名不变）
 │   ├── CraftAPI.ts          window.CraftAPI 实现 + plugins / events 命名空间
 │   └── index.ts
@@ -339,6 +342,9 @@ src/
 - **流式加载背压 + 自愈**：dirty 积压超 24 暂停生成；视距内「已生成但无网格」的区块
   每帧自动重新入队；卸载按 `world.chunks` 遍历，杜绝幽灵区块与内存泄漏。
 - **性能预算**：像素比封顶、每帧限时生成与网格化、编辑差分按 chunkKey 分桶、粒子单 draw call。
+- **高性能服务体系**：主循环系统统一经 `FrameScheduler` 分阶段 / 优先级调度，支持软帧预算下
+  让位 `background` 系统（带防饿死）与系统级异常隔离；`PerfService` 逐系统采样 p50 / p95，
+  经 F3「性能」行与运行时诊断（`perf.counters` / `perf.systemErrors`）暴露热点。
 - **运行时诊断**：`CraftAPI.diagnostics.run()` / F3 面板 / 每 10 秒自动采样，覆盖 Worker 配置 ACK、
   幽灵网格、插件依赖悬空、生存数值一致性、存档脏标记老化等不变量；高风险不变量配套注入式回归。
 - **存档差分 + 全量校验**：只记录玩家改动；`validateSave()` 一次校验所有字段，坏档当作无存档。
@@ -553,7 +559,8 @@ npm run verify
 | `npm run test:mesher` | 网格快照保真、Greedy 面覆盖与光照逐格等价、quad 下降比例、slab / candle 盒几何、N4 未知来源液面 |
 | `npm run test:perf` | 火焰系统每拍成本守卫（`fireSpread` 开 / 关对照，超 5 ms/拍即失败） |
 | `npm run test:services` | 服务容器 / 事件 / 插件 / 存档 59 项 |
-| `npm run test:diagnostics` | 运行时诊断 40 组（健康快照 + 异常注入，含摄影相机归属） |
+| `npm run test:diagnostics` | 运行时诊断 48 组（健康快照 + 异常注入，含摄影相机归属 / 性能服务快照） |
+| `npm run test:perf-services` | 高性能服务体系纯逻辑 31 项：采样分位数 / 报告排序 + 调度器阶段·优先级·软预算·防饿死·异常隔离 |
 | `npm run test:worker-pool` | Worker 池构造失败整体回退的注入式回归 |
 | `npm run test:edits` | 编辑差分数值分桶：负坐标 / 跨区块边界 / 覆盖 / 存档导出 |
 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）、`TERRAIN_STAGES` 顺序、`BIOME_PROFILES` 18 群系、104 组 |

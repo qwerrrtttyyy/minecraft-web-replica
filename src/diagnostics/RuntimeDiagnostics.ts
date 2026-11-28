@@ -97,6 +97,24 @@ export interface DiagnosticSnapshot {
     benchJsMs?: number;
     benchWasmMs?: number;
   };
+  /** 高性能服务体系快照（调度器 + 采样，可选，旧快照不含时跳过相关检查） */
+  perf?: {
+    /** 已采集帧数 */
+    frames: number;
+    /** 已跟踪的系统数 */
+    systems: number;
+    /** 整帧墙钟耗时均值 / p95（ms） */
+    frameAvgMs: number;
+    frameP95Ms: number;
+    /** 调度器软帧预算 ms（0 = 不裁剪） */
+    budgetMs: number;
+    /** 调度器已调度帧数 */
+    schedulerFrames: number;
+    /** 累计被预算跳过的后台系统执行次数 */
+    skippedBudget: number;
+    /** 累计被调度器隔离的系统异常次数 */
+    errors: number;
+  };
 }
 
 export interface DiagnosticReport {
@@ -291,6 +309,24 @@ export function runRuntimeDiagnostics(s: DiagnosticSnapshot, now = Date.now()): 
         Math.abs(weatherSnap.chunkDarkness - weatherSnap.entityDarkness) < 1e-3,
         `两套光照通道天气因子不一致：chunk=${weatherSnap.chunkDarkness} entity=${weatherSnap.entityDarkness}`);
     }
+  }
+
+  // ---- 高性能服务体系（调度器 + 采样）----
+  // 调度器隔离系统异常，因此单看主循环「没崩」不能说明系统健康；这里把被吞掉的
+  // 异常次数翻出来：只要有一个系统在每帧抛错，就会被调度器静默隔离，必须报出来。
+  const pf = s.perf;
+  if (pf) {
+    check('perf.counters',
+      Number.isInteger(pf.frames) && pf.frames >= 0 &&
+      Number.isInteger(pf.systems) && pf.systems >= 0 &&
+      Number.isInteger(pf.schedulerFrames) && pf.schedulerFrames >= 0 &&
+      Number.isInteger(pf.skippedBudget) && pf.skippedBudget >= 0 &&
+      finite(pf.budgetMs) && pf.budgetMs >= 0 &&
+      finite(pf.frameAvgMs) && pf.frameAvgMs >= 0 &&
+      finite(pf.frameP95Ms) && pf.frameP95Ms >= 0,
+      `性能服务统计非法：frames=${pf.frames} systems=${pf.systems} avg=${pf.frameAvgMs} p95=${pf.frameP95Ms}`);
+    check('perf.systemErrors', pf.errors === 0,
+      `调度器隔离了 ${pf.errors} 次系统异常（有系统在持续抛错）`);
   }
 
   // ---- 实体 / 存档 ----
