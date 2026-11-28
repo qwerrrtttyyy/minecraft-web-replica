@@ -5,6 +5,9 @@
  * 禁止矿石与 glowstone。生成级断言由后续任务补入。
  */
 const assert = require('node:assert');
+const { DefaultGenerator } = require('./terrain-logic/world/generator.js');
+const { BlockRegistry, registerBuiltinBlocks } = require('./terrain-logic/world/blocks.js');
+const { CHUNK_SIZE: CS, WORLD_HEIGHT: H } = require('./terrain-logic/core/types.js');
 const {
   STRUCTURE_KINDS, STRUCTURE_PALETTES, STRUCTURE_CELL, STRUCTURE_CHANCE,
   STRUCTURE_SALT, STRUCTURE_DEPTH, MINE_PALETTE, DUNGEON_PALETTE,
@@ -85,6 +88,76 @@ ok('矿井 / 地牢固定配色分别为木梁圆石与苔石石砖',
 {
   const leaked = [...STRUCTURE_BLOCK_NAMES].filter((n) => BANNED.includes(n));
   ok('模板方块集合不含矿石与 glowstone', leaked.length === 0, leaked.join(','));
+}
+
+// 5) 生成级：确定性 / 结构确实落地 / 跨区块边界连续
+{
+  const idx = (x, y, z) => (y * CS + z) * CS + x;
+  const make = (seed) => {
+    const reg = new BlockRegistry();
+    registerBuiltinBlocks(reg);
+    return { reg, gen: new DefaultGenerator(seed, reg) };
+  };
+  const chunk = (gen, cx, cz) => {
+    const data = new Uint8Array(CS * CS * H);
+    gen.generateChunk(cx, cz, data);
+    return data;
+  };
+  // 只把自然地形绝不会产出的方块当作结构标记
+  const MARKERS = new Set([
+    'oak_planks', 'spruce_planks', 'birch_planks', 'acacia_planks', 'cherry_planks',
+    'glass', 'furnace', 'crafting_table', 'bookshelf', 'lantern', 'glow_torch', 'torch',
+  ]);
+  const planted = [...MARKERS].every((n) => STRUCTURE_BLOCK_NAMES.has(n));
+  ok('结构标记全部来自模板方块集合', planted);
+
+  const a = make(777);
+  const b = make(777);
+  const ca = chunk(a.gen, 0, 0);
+  const cb = chunk(b.gen, 0, 0);
+  ok('同 seed 同区块两次生成逐字节一致', Buffer.compare(Buffer.from(ca), Buffer.from(cb)) === 0);
+  ok('换 seed 后区块不同',
+    Buffer.compare(Buffer.from(ca), Buffer.from(chunk(make(778).gen, 0, 0))) !== 0);
+
+  const byId = new Map(a.reg.all().map((block) => [block.id, block.name]));
+  let markers = 0;
+  for (let cx = -4; cx <= 4; cx++) {
+    for (let cz = -4; cz <= 4; cz++) {
+      const data = chunk(a.gen, cx, cz);
+      for (let i = 0; i < data.length; i++) {
+        if (MARKERS.has(byId.get(data[i]))) markers++;
+      }
+    }
+  }
+  ok('seed 777 的 [-4..4]² 区块确实生成了结构', markers > 0, `count=${markers}`);
+
+  // 区块边界两侧是相邻但不同的世界列，不能要求逐格相等（家具也可能只落在一侧）。
+  // 真正的跨区块连续性判据是：同一座结构在边界两侧都有方块，且重复生成完全一致。
+  const cache = new Map();
+  const markerCounts = (cx, cz) => {
+    const key = `${cx},${cz}`;
+    if (!cache.has(key)) {
+      const data = chunk(a.gen, cx, cz);
+      let n = 0;
+      for (let i = 0; i < data.length; i++) if (MARKERS.has(byId.get(data[i]))) n++;
+      cache.set(key, n);
+    }
+    return cache.get(key);
+  };
+  let spanning = 0;
+  for (let cx = -4; cx < 4; cx++) {
+    for (let cz = -4; cz < 4; cz++) {
+      const here = markerCounts(cx, cz);
+      if (here > 0 && markerCounts(cx + 1, cz) > 0) spanning++;
+      if (here > 0 && markerCounts(cx, cz + 1) > 0) spanning++;
+    }
+  }
+  ok('存在跨区块连续的结构（相邻区块两侧都有结构方块）', spanning > 0, `pairs=${spanning}`);
+
+  const b2 = make(777);
+  const repeat = chunk(b2.gen, -4, 3);
+  ok('跨区块结构的重复生成逐字节一致',
+    Buffer.compare(Buffer.from(repeat), Buffer.from(chunk(a.gen, -4, 3))) === 0);
 }
 
 console.log(`\n${passed} 项通过`);

@@ -4,6 +4,11 @@ import {
 } from '../core/types';
 import { Noise } from './noise';
 import { buildTree, type TreeSpecies } from './trees';
+import {
+  STRUCTURE_BLOCK_NAMES, STRUCTURE_CELL, STRUCTURE_CHANCE, STRUCTURE_DEPTH,
+  STRUCTURE_KINDS, STRUCTURE_SALT, MINE_PALETTE, DUNGEON_PALETTE,
+  buildStructure, paletteFor,
+} from './structures';
 
 /**
  * 生成器构造所需的「按名查 id」能力（BlockRegistry 的结构子集）。
@@ -98,9 +103,10 @@ export const DEFAULT_TERRAIN: TerrainOptions = {
 
 /**
  * 生成阶段：generateChunk 严格按此顺序执行。
- * 顺序本身是契约——矿石只替换石头，树木先于花草，装饰不能覆盖树冠。
+ * 顺序本身是契约——矿石只替换石头，树木先于花草，装饰不能覆盖树冠；
+ * 静态结构最后写入，地板 / 墙壁会盖掉先前的花草与树叶。
  */
-export const TERRAIN_STAGES = ['columns', 'ores', 'trees', 'decorate'] as const;
+export const TERRAIN_STAGES = ['columns', 'ores', 'trees', 'decorate', 'structures'] as const;
 export type TerrainStage = (typeof TERRAIN_STAGES)[number];
 
 /**
@@ -616,6 +622,8 @@ export class DefaultGenerator implements IWorldGenerator {
       acaciaLog: id('acacia_log'), acaciaLeaves: id('acacia_leaves'),
       cherryLog: id('cherry_log'), cherryLeaves: id('cherry_leaves'),
     };
+    // 结构模板按方块名解析；Worker 用同一份全量 id 表复刻，缺方块时该方块静默跳过
+    for (const name of STRUCTURE_BLOCK_NAMES) this.ids[name] = id(name);
 
     const resolved = {} as Record<BiomeId, ResolvedProfile>;
     for (const biome of Object.keys(BIOME_PROFILES) as BiomeId[]) {
@@ -823,6 +831,7 @@ export class DefaultGenerator implements IWorldGenerator {
       case 'ores': this.stageOres(ctx, data); break;
       case 'trees': this.stageTrees(ctx, data); break;
       case 'decorate': this.stageDecorate(ctx, data); break;
+      case 'structures': this.stageStructures(ctx, data); break;
     }
   }
 
@@ -1243,5 +1252,104 @@ export class DefaultGenerator implements IWorldGenerator {
   ): boolean {
     return groundAt(wx + 1, wz) < height || groundAt(wx - 1, wz) < height ||
       groundAt(wx, wz + 1) < height || groundAt(wx, wz - 1) < height;
+  }
+
+  // ---------- 阶段 5：静态结构（世界网格哈希 + 跨区块裁剪） ----------
+
+  private stageStructures(ctx: GenContext, data: Uint8Array): void {
+    const { x0, z0, idx, groundAt } = ctx;
+    for (let ki = 0; ki < STRUCTURE_KINDS.length; ki++) {
+      const kind = STRUCTURE_KINDS[ki];
+      const cell = STRUCTURE_CELL[kind];
+      const salt = STRUCTURE_SALT[kind];
+      const depth = STRUCTURE_DEPTH[kind];
+      // 多扫相邻的候选格：原点在邻格的结构也可能伸进本区块
+      const gx0 = Math.floor((x0 - cell) / cell);
+      const gx1 = Math.floor((x0 + CS + cell) / cell);
+      const gz0 = Math.floor((z0 - cell) / cell);
+      const gz1 = Math.floor((z0 + CS + cell) / cell);
+      for (let gz = gz0; gz <= gz1; gz++) {
+        for (let gx = gx0; gx <= gx1; gx++) {
+          if (this.hash2i(gx, gz, salt) >= STRUCTURE_CHANCE[kind]) continue;
+          const wx = gx * cell + 1 + ((this.hash2i(gx, gz, salt + 1) * (cell - 2)) | 0);
+          const wz = gz * cell + 1 + ((this.hash2i(gx, gz, salt + 2) * (cell - 2)) | 0);
+          const originBiome = this.biomeAt(wx, wz);
+          if (originBiome === 'ocean' || originBiome === 'beach') continue;
+          const originHeight = this.height(wx, wz);
+          if (kind === 'village_house') {
+            if (originHeight <= SEA_LEVEL || this.slopeAt(wx, wz) > 0.35) continue;
+          } else if (originHeight - depth < 5) {
+            continue;
+          }
+          const palette = kind === 'village_house' ? paletteFor(originBiome) :
+            kind === 'mineshaft' ? MINE_PALETTE : DUNGEON_PALETTE;
+          const shape = buildStructure(kind, palette);
+          const baseY = originHeight - depth;
+          // 群系 / 出生点按整座结构判定一次：逐格跳过会让跨区块结构在群系边界
+          // 上只写半座，接缝两侧同一座结构不一致。
+          let unsuitable = false;
+          for (let dz = 0; dz < shape.depth && !unsuitable; dz++) {
+            for (let dx = 0; dx < shape.width; dx++) {
+              const bx = wx + dx;
+              const bz = wz + dz;
+              const b = this.biomeAt(bx, bz);
+              if (b === 'ocean' || b === 'beach' ||
+                  (kind === 'village_house' && Math.hypot(bx, bz) <= 16)) {
+                unsuitable = true;
+                break;
+              }
+            }
+          }
+          if (unsuitable) continue;
+
+          if (kind === 'village_house') {
+            // 按原点高度整平地基：低处补地板下的实心，高处削到基面 -1
+            const floor = this.ids[palette.floor];
+            for (let dz = 0; dz < shape.depth; dz++) {
+              for (let dx = 0; dx < shape.width; dx++) {
+                const bx = wx + dx;
+                const bz = wz + dz;
+                const lx = bx - x0;
+                const lz = bz - z0;
+                if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) continue;
+                const ground = groundAt(bx, bz);
+                if (ground < baseY) {
+                  for (let y = ground + 1; y <= baseY; y++) data[idx(lx, y, lz)] = floor;
+                } else {
+                  for (let y = baseY + 1; y <= ground; y++) data[idx(lx, y, lz)] = 0;
+                }
+              }
+            }
+          } else {
+            // 地下结构先掏空包围盒（基岩 y=0 不动），否则墙会被地形吞掉
+            for (let dz = 0; dz < shape.depth; dz++) {
+              for (let dx = 0; dx < shape.width; dx++) {
+                const bx = wx + dx;
+                const bz = wz + dz;
+                const lx = bx - x0;
+                const lz = bz - z0;
+                if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) continue;
+                for (let y = Math.max(1, baseY); y < Math.min(H, baseY + shape.height); y++) {
+                  data[idx(lx, y, lz)] = 0;
+                }
+              }
+            }
+          }
+
+          // 模板形状固定：所有区块对同一 (gx,gz) 写同一份方块，跨区块接缝自然一致
+          for (const blk of shape.blocks) {
+            const bx = wx + blk.dx;
+            const bz = wz + blk.dz;
+            const lx = bx - x0;
+            const lz = bz - z0;
+            const y = baseY + blk.dy;
+            if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || y < 1 || y >= H) continue;
+            const blockId = this.ids[blk.block];
+            if (!blockId) continue;
+            data[idx(lx, y, lz)] = blockId;
+          }
+        }
+      }
+    }
   }
 }

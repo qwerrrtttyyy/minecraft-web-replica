@@ -193,9 +193,9 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 // 2) 统一阶段管线 + 群系配置表
 {
   const { reg, gen } = make(1);
-  ok('生成阶段固定为 columns → ores → trees → decorate',
+  ok('生成阶段固定为 columns → ores → trees → decorate → structures',
     JSON.stringify(gen.stageNames) === JSON.stringify(TERRAIN_STAGES) &&
-    TERRAIN_STAGES.join('>') === 'columns>ores>trees>decorate',
+    TERRAIN_STAGES.join('>') === 'columns>ores>trees>decorate>structures',
     gen.stageNames.join(' → '));
 
   const biomes = ['ocean', 'beach', 'desert', 'plains', 'forest', 'taiga', 'alpine',
