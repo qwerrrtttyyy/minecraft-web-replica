@@ -11,7 +11,7 @@
  * 能稳定维持 64 个热源。蔓延成本来自「每个热源 × 6 邻」的判定，与热源种类无关。
  *
  * 断言只设宽松上限（默认 5ms/拍，约为实测值的数十倍），避免 CI 机器抖动造成 flaky。
- * 本脚本不挂 npm run verify；如需纳入，建议放在 test:snapshot 之后。
+ * 本脚本已纳入 npm run verify（test:perf），位置在 test:snapshot 之后。
  */
 import { createRequire } from 'node:module';
 
@@ -36,8 +36,12 @@ const CAMPFIRE = 165;
 const FIRE_ID = 168;
 
 const NAMES = {
-  [AIR]: 'air', [STONE]: 'stone', [GRASS]: 'grass', [OAK_LOG]: 'oak_log',
-  [CAMPFIRE]: 'campfire', [FIRE_ID]: 'fire',
+  [AIR]: 'air',
+  [STONE]: 'stone',
+  [GRASS]: 'grass',
+  [OAK_LOG]: 'oak_log',
+  [CAMPFIRE]: 'campfire',
+  [FIRE_ID]: 'fire',
 };
 const IDS = Object.fromEntries(Object.entries(NAMES).map(([id, name]) => [name, Number(id)]));
 const SOLID = { [STONE]: true, [GRASS]: true, [OAK_LOG]: true };
@@ -136,8 +140,12 @@ const pass = on.avgMs < LIMIT_MS;
 
 console.log('[perf] 火焰系统每拍耗时（FireSystem.update(scanTick)）');
 console.log(`[perf] 火源 ${on.placed} 个营火，每拍 ${FIRE.scanTick}s，实测 ${TICKS} 拍（预热 ${WARMUP} 拍）`);
-console.log(`[perf] 蔓延开（fireSpread=true ）: 平均 ${on.avgMs.toFixed(4)} ms/拍（${on.totalMs.toFixed(1)} ms / ${TICKS} 拍）`);
-console.log(`[perf] 蔓延关（fireSpread=false）: 平均 ${off.avgMs.toFixed(4)} ms/拍（${off.totalMs.toFixed(1)} ms / ${TICKS} 拍）`);
+console.log(
+  `[perf] 蔓延开（fireSpread=true ）: 平均 ${on.avgMs.toFixed(4)} ms/拍（${on.totalMs.toFixed(1)} ms / ${TICKS} 拍）`,
+);
+console.log(
+  `[perf] 蔓延关（fireSpread=false）: 平均 ${off.avgMs.toFixed(4)} ms/拍（${off.totalMs.toFixed(1)} ms / ${TICKS} 拍）`,
+);
 console.log(`[perf] 开启 / 关闭 ≈ ${ratio.toFixed(2)}×`);
 console.log(`[perf] 上限 ${LIMIT_MS} ms/拍：${pass ? 'PASS' : 'FAIL'}`);
 console.log(JSON.stringify({ on, off, ratio, limitMs: LIMIT_MS, pass }));

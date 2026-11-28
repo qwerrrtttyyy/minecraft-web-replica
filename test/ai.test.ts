@@ -8,36 +8,61 @@
  * 断言语义与 test/ai-check.cjs 一一对应（迁移试点，未改动断言行为）。
  */
 import { describe, expect, it } from 'vitest';
-
-import { Blackboard } from '../src/ai/Blackboard';
-import { Node, NodeStatus } from '../src/ai/Node';
 import { makeTickContext } from '../src/ai/AIContext';
-import { Parallel, RandomSelector, Selector, Sequence } from '../src/ai/composites';
-import { Inverter, UntilFail, UntilSuccess } from '../src/ai/decorators';
+import { AIService } from '../src/ai/AIService';
 import {
-  BlackboardEq, CanReach, CanSeePlayer, DistanceLt, HasTarget, HealthPctLt,
-  IsDay, IsInWater, IsNight, IsOnGround, TargetInRange,
-} from '../src/ai/conditions';
-import {
-  AttackPlayer, BreakBlock, ChasePlayer, EmitEvent, FleeFrom, PlaceBlock,
-  PlaySound, SetBlackboard, SpawnEntity, Wait, Wander,
+  AttackPlayer,
+  BreakBlock,
+  ChasePlayer,
+  EmitEvent,
+  FleeFrom,
+  PlaceBlock,
+  PlaySound,
+  SetBlackboard,
+  SpawnEntity,
+  Wait,
+  Wander,
 } from '../src/ai/actions';
 import { BehaviorTree } from '../src/ai/BehaviorTree';
+import { Blackboard } from '../src/ai/Blackboard';
+import { Parallel, RandomSelector, Selector, Sequence } from '../src/ai/composites';
+import {
+  BlackboardEq,
+  CanReach,
+  CanSeePlayer,
+  DistanceLt,
+  HasTarget,
+  HealthPctLt,
+  IsDay,
+  IsInWater,
+  IsNight,
+  IsOnGround,
+  TargetInRange,
+} from '../src/ai/conditions';
+import { Inverter, UntilFail, UntilSuccess } from '../src/ai/decorators';
+import { Node, NodeStatus } from '../src/ai/Node';
 import { NodeRegistry } from '../src/ai/registry';
-import { AIService } from '../src/ai/AIService';
 
 // ---- 测试脚手架 ----
 
 class SuccessNode extends Node {
-  tick() { return NodeStatus.Success; }
+  tick() {
+    return NodeStatus.Success;
+  }
 }
 class FailureNode extends Node {
-  tick() { return NodeStatus.Failure; }
+  tick() {
+    return NodeStatus.Failure;
+  }
 }
 class RunningNode extends Node {
-  tick() { return NodeStatus.Running; }
+  tick() {
+    return NodeStatus.Running;
+  }
 }
-function makeCtx() { return makeTickContext({ worldSeed: 1, entityId: 1 }); }
+function makeCtx() {
+  return makeTickContext({ worldSeed: 1, entityId: 1 });
+}
 
 // 假世界：无固体方块，脚底空气（不在水中）
 const airWorld = {
@@ -125,13 +150,17 @@ describe('复合节点', () => {
     expect(new Selector([new FailureNode(), new FailureNode()]).tick(makeCtx())).toBe(NodeStatus.Failure);
   });
   it('Selector 遇到第一个成功即短路 Success', () => {
-    expect(new Selector([new FailureNode(), new SuccessNode(), new FailureNode()]).tick(makeCtx())).toBe(NodeStatus.Success);
+    expect(new Selector([new FailureNode(), new SuccessNode(), new FailureNode()]).tick(makeCtx())).toBe(
+      NodeStatus.Success,
+    );
   });
   it('Sequence 全部成功返回 Success', () => {
     expect(new Sequence([new SuccessNode(), new SuccessNode()]).tick(makeCtx())).toBe(NodeStatus.Success);
   });
   it('Sequence 任一失败返回 Failure', () => {
-    expect(new Sequence([new SuccessNode(), new FailureNode(), new SuccessNode()]).tick(makeCtx())).toBe(NodeStatus.Failure);
+    expect(new Sequence([new SuccessNode(), new FailureNode(), new SuccessNode()]).tick(makeCtx())).toBe(
+      NodeStatus.Failure,
+    );
   });
   it('Parallel 全部成功返回 Success', () => {
     expect(new Parallel([new SuccessNode(), new SuccessNode()]).tick(makeCtx())).toBe(NodeStatus.Success);
@@ -158,7 +187,10 @@ describe('装饰器', () => {
   it('UntilFail 子节点成功时 Running，失败后返回 Success', () => {
     let runCount = 0;
     class CountingRunningNode extends Node {
-      tick() { runCount++; return NodeStatus.Running; }
+      tick() {
+        runCount++;
+        return NodeStatus.Running;
+      }
     }
     const cr = new CountingRunningNode();
     expect(new UntilFail(cr).tick(makeCtx())).toBe(NodeStatus.Running);
@@ -167,7 +199,10 @@ describe('装饰器', () => {
   it('UntilSuccess 子节点失败时 Running，成功后返回 Failure', () => {
     let succCount = 0;
     class OnceSuccessNode extends Node {
-      tick() { succCount++; return succCount >= 2 ? NodeStatus.Success : NodeStatus.Failure; }
+      tick() {
+        succCount++;
+        return succCount >= 2 ? NodeStatus.Success : NodeStatus.Failure;
+      }
     }
     expect(new UntilSuccess(new OnceSuccessNode()).tick(makeCtx())).toBe(NodeStatus.Running);
     expect(new UntilSuccess(new OnceSuccessNode()).tick(makeCtx())).toBe(NodeStatus.Failure);
@@ -186,7 +221,8 @@ describe('条件节点', () => {
   });
   it('HealthPctLt 血量百分比 < pct → Success；≥ pct → Failure', () => {
     const c = ctxWith(airWorld);
-    c.blackboard.set('hp', 4); c.blackboard.set('maxHp', 10); // 40%
+    c.blackboard.set('hp', 4);
+    c.blackboard.set('maxHp', 10); // 40%
     expect(new HealthPctLt(0.5).tick(c)).toBe(NodeStatus.Success);
     expect(new HealthPctLt(0.3).tick(c)).toBe(NodeStatus.Failure);
   });
@@ -234,15 +270,27 @@ describe('动作节点', () => {
   function actionCtx() {
     const events: { emitted: Array<{ type: string; payload: unknown }> } = {
       emitted: [],
-      emit(type, payload) { this.emitted.push({ type, payload }); },
+      emit(type, payload) {
+        this.emitted.push({ type, payload });
+      },
     };
     const api = {
-      spawned: [] as Array<Record<string, unknown>>, broken: [] as Array<Record<string, unknown>>,
-      placed: [] as Array<Record<string, unknown>>, played: [] as Array<Record<string, unknown>>,
-      spawnEntity(t: string, o: unknown, c: unknown) { this.spawned.push({ t, o, c }); },
-      breakBlock(x: number, y: number, z: number) { this.broken.push({ x, y, z }); },
-      placeBlock(x: number, y: number, z: number, b: number) { this.placed.push({ x, y, z, b }); },
-      playSound(s: string, v: number) { this.played.push({ s, v }); },
+      spawned: [] as Array<Record<string, unknown>>,
+      broken: [] as Array<Record<string, unknown>>,
+      placed: [] as Array<Record<string, unknown>>,
+      played: [] as Array<Record<string, unknown>>,
+      spawnEntity(t: string, o: unknown, c: unknown) {
+        this.spawned.push({ t, o, c });
+      },
+      breakBlock(x: number, y: number, z: number) {
+        this.broken.push({ x, y, z });
+      },
+      placeBlock(x: number, y: number, z: number, b: number) {
+        this.placed.push({ x, y, z, b });
+      },
+      playSound(s: string, v: number) {
+        this.played.push({ s, v });
+      },
     };
     const c = ctxWith(airWorld);
     c.events = events as never;
@@ -344,12 +392,16 @@ describe('BehaviorTree / NodeRegistry', () => {
     expect(() => BehaviorTree.fromJSON({ root: { name: 'x' } as never })).toThrow();
   });
   it('BehaviorTree.fromJSON 未知 condition nodeType 抛错', () => {
-    expect(() => BehaviorTree.fromJSON({ root: { type: 'condition', name: 'x', nodeType: 'NoSuchNode' } as never })).toThrow();
+    expect(() =>
+      BehaviorTree.fromJSON({ root: { type: 'condition', name: 'x', nodeType: 'NoSuchNode' } as never }),
+    ).toThrow();
   });
   it('NodeRegistry register/create 自定义节点', () => {
     const reg = new NodeRegistry();
     class DummyNode extends Node {
-      tick() { return NodeStatus.Success; }
+      tick() {
+        return NodeStatus.Success;
+      }
     }
     reg.register('Dummy', DummyNode);
     const inst = reg.create('Dummy', {});
@@ -361,9 +413,21 @@ describe('BehaviorTree / NodeRegistry', () => {
 // ---- 9. AIService ----
 describe('AIService', () => {
   it('registerType/attach/update 驱动行为树 tick', () => {
-    const events = { emitted: [] as Array<{ t: string; p: unknown }>, emit(t: string, p: unknown) { this.emitted.push({ t, p }); } };
-    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, events as never, {}, 12345);
-    ai.registerType('dummy', { root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: { ok: true } } });
+    const events = {
+      emitted: [] as Array<{ t: string; p: unknown }>,
+      emit(t: string, p: unknown) {
+        this.emitted.push({ t, p });
+      },
+    };
+    const ai = new AIService(
+      { getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 },
+      events as never,
+      {},
+      12345,
+    );
+    ai.registerType('dummy', {
+      root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: { ok: true } },
+    });
     const entity = { id: 1, pos: { x: 0, y: 0, z: 0 }, type: { id: 'dummy' } };
     ai.attach(entity as never, 'dummy');
     ai.update(0.05);
@@ -371,9 +435,21 @@ describe('AIService', () => {
     expect(events.emitted[0].t).toBe('ai:tick');
   });
   it('disable 后不再 tick；enable 后恢复', () => {
-    const events = { emitted: [] as Array<{ t: string; p: unknown }>, emit(t: string, p: unknown) { this.emitted.push({ t, p }); } };
-    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, events as never, {}, 12345);
-    ai.registerType('dummy', { root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: {} } });
+    const events = {
+      emitted: [] as Array<{ t: string; p: unknown }>,
+      emit(t: string, p: unknown) {
+        this.emitted.push({ t, p });
+      },
+    };
+    const ai = new AIService(
+      { getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 },
+      events as never,
+      {},
+      12345,
+    );
+    ai.registerType('dummy', {
+      root: { type: 'action', name: 'emit', nodeType: 'EmitEvent', event: 'ai:tick', payload: {} },
+    });
     const entity = { id: 1, pos: { x: 0, y: 0, z: 0 }, type: { id: 'dummy' } };
     ai.attach(entity as never, 'dummy');
     ai.disable();
@@ -385,12 +461,24 @@ describe('AIService', () => {
     expect(events.emitted.length).toBeGreaterThanOrEqual(1);
   });
   it('reloadConfig 重新编译行为树不抛错', () => {
-    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, { emit() {} } as never, {}, 1);
+    const ai = new AIService(
+      { getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 },
+      { emit() {} } as never,
+      {},
+      1,
+    );
     ai.registerType('dummy', { root: { type: 'condition', name: 'd', nodeType: 'IsDay' } });
-    expect(() => ai.reloadConfig('dummy', { root: { type: 'condition', name: 'n', nodeType: 'IsNight' } })).not.toThrow();
+    expect(() =>
+      ai.reloadConfig('dummy', { root: { type: 'condition', name: 'n', nodeType: 'IsNight' } }),
+    ).not.toThrow();
   });
   it('dispose 清空组件不抛错', () => {
-    const ai = new AIService({ getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 }, { emit() {} } as never, {}, 1);
+    const ai = new AIService(
+      { getBlock: () => 0, isSolidAt: () => false, surfaceHeight: () => 0 },
+      { emit() {} } as never,
+      {},
+      1,
+    );
     expect(() => ai.dispose()).not.toThrow();
   });
 });

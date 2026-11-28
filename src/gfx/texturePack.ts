@@ -21,9 +21,16 @@ const TILE_ALIASES: Readonly<Record<string, string>> = {
 
 const IGNORED_TEXTURES = new Set([
   'grass_block_side_overlay',
-  'destroy_stage_0', 'destroy_stage_1', 'destroy_stage_2', 'destroy_stage_3',
-  'destroy_stage_4', 'destroy_stage_5', 'destroy_stage_6', 'destroy_stage_7',
-  'destroy_stage_8', 'destroy_stage_9',
+  'destroy_stage_0',
+  'destroy_stage_1',
+  'destroy_stage_2',
+  'destroy_stage_3',
+  'destroy_stage_4',
+  'destroy_stage_5',
+  'destroy_stage_6',
+  'destroy_stage_7',
+  'destroy_stage_8',
+  'destroy_stage_9',
 ]);
 
 const MAX_IMAGE_DIMENSION = 4096;
@@ -73,7 +80,8 @@ export function tileForPath(pathOrName: string, known: ReadonlySet<string>): str
 }
 
 export function filterKnownTiles(
-  names: readonly string[], known: ReadonlySet<string>,
+  names: readonly string[],
+  known: ReadonlySet<string>,
 ): { known: string[]; missed: string[] } {
   const hit: string[] = [];
   const missed: string[] = [];
@@ -105,9 +113,13 @@ function isPackEntry(name: string): boolean {
 async function imageDataOf(blob: Blob, ctx: CanvasRenderingContext2D): Promise<ImageData> {
   const bitmap = await createImageBitmap(blob);
   try {
-    if (bitmap.width < 1 || bitmap.height < 1 ||
-      bitmap.width > MAX_IMAGE_DIMENSION || bitmap.height > MAX_IMAGE_DIMENSION ||
-      bitmap.width * bitmap.height > MAX_IMAGE_PIXELS) {
+    if (
+      bitmap.width < 1 ||
+      bitmap.height < 1 ||
+      bitmap.width > MAX_IMAGE_DIMENSION ||
+      bitmap.height > MAX_IMAGE_DIMENSION ||
+      bitmap.width * bitmap.height > MAX_IMAGE_PIXELS
+    ) {
       throw new Error(`纹理尺寸异常 ${bitmap.width}×${bitmap.height}`);
     }
     const frame = firstFrameRect(bitmap.width, bitmap.height);
@@ -120,7 +132,8 @@ async function imageDataOf(blob: Blob, ctx: CanvasRenderingContext2D): Promise<I
 }
 
 async function decodeAll(
-  blobs: ReadonlyMap<string, Blob>, concurrency: number,
+  blobs: ReadonlyMap<string, Blob>,
+  concurrency: number,
 ): Promise<{ images: Map<string, ImageData>; errors: string[] }> {
   const images = new Map<string, ImageData>();
   const errors: string[] = [];
@@ -179,8 +192,10 @@ function blobOf(data: Uint8Array, type: string): Blob {
 }
 
 function addZipImages(
-  entries: Map<string, Uint8Array>, known: ReadonlySet<string>,
-  blobs: Map<string, Blob>, result: TexturePackLoadResult,
+  entries: Map<string, Uint8Array>,
+  known: ReadonlySet<string>,
+  blobs: Map<string, Blob>,
+  result: TexturePackLoadResult,
 ): void {
   const manifest = zipManifest(entries);
   if (manifest) {

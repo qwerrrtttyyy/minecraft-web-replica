@@ -83,10 +83,22 @@ export function codeLabel(code: string): string {
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Numpad')) return `小键盘${code.slice(6)}`;
   const named: Record<string, string> = {
-    Space: '空格', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-    ShiftLeft: '左Shift', ShiftRight: '右Shift', ControlLeft: '左Ctrl', ControlRight: '右Ctrl',
-    AltLeft: '左Alt', AltRight: '右Alt', Escape: 'Esc', Enter: '回车',
-    Backspace: '退格', Tab: 'Tab', CapsLock: '大写锁定',
+    Space: '空格',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ShiftLeft: '左Shift',
+    ShiftRight: '右Shift',
+    ControlLeft: '左Ctrl',
+    ControlRight: '右Ctrl',
+    AltLeft: '左Alt',
+    AltRight: '右Alt',
+    Escape: 'Esc',
+    Enter: '回车',
+    Backspace: '退格',
+    Tab: 'Tab',
+    CapsLock: '大写锁定',
   };
   if (named[code]) return named[code];
   if (/^F\d+$/.test(code)) return code;

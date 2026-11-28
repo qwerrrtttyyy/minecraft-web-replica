@@ -1,12 +1,13 @@
-import type { PluginDefinition } from '../../services/plugins';
 import { CHUNK_SIZE } from '../../core/types';
+import type { PluginDefinition } from '../../services/plugins';
 import {
   EXPANSION_PLANT_COUNT,
-  EXPANSION_PLUGIN_ID,
   EXPANSION_PLANTS,
-  EXPANSION_RULES, SPAWN_ROLL_CEILING,
+  EXPANSION_PLUGIN_ID,
+  EXPANSION_RULES,
   expansionBlockInput,
   planSpawn,
+  SPAWN_ROLL_CEILING,
   spawnHash,
 } from './botanyContent';
 
@@ -77,12 +78,12 @@ export const botanyExpansionPlugin: PluginDefinition = {
           // 水生植物可以占据水格（与内置海草 / 海带一致），其余只落空气格
           if (current !== 0 && !api.blocks.get(current).liquid) continue;
 
-          const nearWater = waterId !== 0 && (
-            api.world.getBlock(x - 1, y, z) === waterId ||
-            api.world.getBlock(x + 1, y, z) === waterId ||
-            api.world.getBlock(x, y, z - 1) === waterId ||
-            api.world.getBlock(x, y, z + 1) === waterId
-          );
+          const nearWater =
+            waterId !== 0 &&
+            (api.world.getBlock(x - 1, y, z) === waterId ||
+              api.world.getBlock(x + 1, y, z) === waterId ||
+              api.world.getBlock(x, y, z - 1) === waterId ||
+              api.world.getBlock(x, y, z + 1) === waterId);
           const name = planSpawn(biome, roll, nearWater);
           if (!name) continue;
 

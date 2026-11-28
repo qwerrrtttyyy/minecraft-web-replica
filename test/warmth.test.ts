@@ -5,12 +5,11 @@
  *       回血门槛（warmth>=50 → regenHunger，否则 coldHunger）、serialize / restore 兼容。
  */
 import { describe, expect, it } from 'vitest';
-
-import { WarmthSystem, approach, warmthTarget } from '../src/world/warmth';
-import { WARMTH } from '../src/core/tuning';
-import { SurvivalState, MAX_HUNGER } from '../src/player/survival';
 import { EventBus } from '../src/core/events';
+import { WARMTH } from '../src/core/tuning';
+import { MAX_HUNGER, SurvivalState } from '../src/player/survival';
 import type { BlockRegistry } from '../src/world/blocks';
+import { approach, WarmthSystem, warmthTarget } from '../src/world/warmth';
 
 const registry = {
   get: (id: number) => ({ id, name: id === 5 ? 'dirt' : 'air' }),
@@ -60,7 +59,8 @@ describe('WarmthSystem', () => {
   it('附近有热源时 warmth 上升，远离后下降', () => {
     const s = mk();
     const sys = new WarmthSystem({
-      survival: s, isHeatAt: heatAt,
+      survival: s,
+      isHeatAt: heatAt,
     });
     // 节拍内不更新
     sys.update(0.1, { x: 0.5, y: 0.5, z: 0.5 });
@@ -82,7 +82,8 @@ describe('WarmthSystem', () => {
     const s = mk();
     s.mode = 'creative';
     const sys = new WarmthSystem({
-      survival: s, isHeatAt: heatAt,
+      survival: s,
+      isHeatAt: heatAt,
     });
     for (let i = 0; i < 10; i++) sys.update(0.2, { x: 0.5, y: 0.5, z: 0.5 });
     expect(s.warmth).toBe(0);
@@ -109,7 +110,10 @@ describe('温暖回血门槛', () => {
   const run = (s: SurvivalState, ticks: number) => {
     const heals: number[] = [];
     const orig = s.heal.bind(s);
-    s.heal = (a: number) => { heals.push(a); orig(a); };
+    s.heal = (a: number) => {
+      heals.push(a);
+      orig(a);
+    };
     for (let i = 0; i < ticks; i++) s.tick(0.1, idle);
     return heals;
   };
@@ -153,8 +157,8 @@ describe('温暖消耗增益', () => {
   };
 
   it('warmth 达标时同样动作的 exhaustion 积累更少（掉饥饿更晚）', () => {
-    const warm = firstHungerDropTick(WARMTH.regenThreshold);      // 50 → scale 0.8
-    const cold = firstHungerDropTick(WARMTH.regenThreshold - 1);  // 49 → scale 1
+    const warm = firstHungerDropTick(WARMTH.regenThreshold); // 50 → scale 0.8
+    const cold = firstHungerDropTick(WARMTH.regenThreshold - 1); // 49 → scale 1
     expect(warm).toBeGreaterThan(0);
     expect(cold).toBeGreaterThan(0);
     expect(warm).toBeGreaterThan(cold);
@@ -180,11 +184,27 @@ describe('温暖存档', () => {
     expect(legacy.warmth).toBe(0);
 
     const over = mk();
-    over.restore({ health: 10, hunger: 10, saturation: 5, warmth: 150, breath: 15, inventory: [], spawn: { x: 0, y: 40, z: 0 } });
+    over.restore({
+      health: 10,
+      hunger: 10,
+      saturation: 5,
+      warmth: 150,
+      breath: 15,
+      inventory: [],
+      spawn: { x: 0, y: 40, z: 0 },
+    });
     expect(over.warmth).toBe(100);
 
     const under = mk();
-    under.restore({ health: 10, hunger: 10, saturation: 5, warmth: -5, breath: 15, inventory: [], spawn: { x: 0, y: 40, z: 0 } });
+    under.restore({
+      health: 10,
+      hunger: 10,
+      saturation: 5,
+      warmth: -5,
+      breath: 15,
+      inventory: [],
+      spawn: { x: 0, y: 40, z: 0 },
+    });
     expect(under.warmth).toBe(0);
   });
 

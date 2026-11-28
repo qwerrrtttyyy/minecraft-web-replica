@@ -120,11 +120,19 @@ ok('等价性自检：多 seed × 5 类函数 + 批量路径全部逐位相等',
 
 ok('等价性自检能检出伪造内核', () => {
   const zero = {
-    mc_noise2: () => 0, mc_noise3: () => 0, mc_fbm2: () => 0, mc_fbm3: () => 0,
-    mc_ridged2: () => 0, mc_fbm2_batch: () => 0,
+    mc_noise2: () => 0,
+    mc_noise3: () => 0,
+    mc_fbm2: () => 0,
+    mc_fbm3: () => 0,
+    mc_ridged2: () => 0,
+    mc_fbm2_batch: () => 0,
   };
   const fake = {
-    abi: 2, bytes: 1, sha256: '', checksum: '', exports: [],
+    abi: 2,
+    bytes: 1,
+    sha256: '',
+    checksum: '',
+    exports: [],
     instantiate: () => ({ exports: zero, memory: null, setPerm() {}, crc32: () => 0, call: () => 0 }),
   };
   const r = kernel.verifyKernelEquivalence(fake, [2026]);
@@ -155,14 +163,28 @@ ok('WASM 调用抛错时后端自动回退 JS 且只上报一次', () => {
   let failures = 0;
   let wasmCalls = 0;
   const ex = {
-    mc_noise2: () => { wasmCalls++; throw new Error('simulated trap'); },
-    mc_noise3: () => 0, mc_fbm2: () => 0, mc_fbm3: () => 0, mc_ridged2: () => 0,
+    mc_noise2: () => {
+      wasmCalls++;
+      throw new Error('simulated trap');
+    },
+    mc_noise3: () => 0,
+    mc_fbm2: () => 0,
+    mc_fbm3: () => 0,
+    mc_ridged2: () => 0,
   };
   const fake = {
-    abi: 2, bytes: 1, sha256: '', checksum: '', exports: [],
+    abi: 2,
+    bytes: 1,
+    sha256: '',
+    checksum: '',
+    exports: [],
     instantiate: () => ({ exports: ex, memory: null, setPerm() {}, crc32: () => 0, call: () => 0 }),
   };
-  const backend = kernel.createNoiseBackend(fake, perm, { onFailure: () => { failures++; } });
+  const backend = kernel.createNoiseBackend(fake, perm, {
+    onFailure: () => {
+      failures++;
+    },
+  });
   assert.ok(Object.is(backend.noise2(1.25, -3.5), js.noise2(1.25, -3.5)));
   assert.ok(Object.is(backend.noise2(2.5, 4.5), js.noise2(2.5, 4.5)));
   assert.strictEqual(failures, 1);
@@ -315,20 +337,46 @@ const fakeApi = () => ({
   entities: { spawn() {}, list: () => [] },
   survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
   botany: {
-    registerPlant() {}, unregisterPlant() {}, registerRule() {}, unregisterRules() {},
-    listRules: () => [], stats: () => ({}),
+    registerPlant() {},
+    unregisterPlant() {},
+    registerRule() {},
+    unregisterRules() {},
+    listRules: () => [],
+    stats: () => ({}),
   },
   plugins: {
-    register() {}, enable() {}, disable() {}, unload() {}, list: () => [],
-    get() {}, reload() {}, enableAll() {}, stats() {}, install() {}, findByCapability() {},
+    register() {},
+    enable() {},
+    disable() {},
+    unload() {},
+    list: () => [],
+    get() {},
+    reload() {},
+    enableAll() {},
+    stats() {},
+    install() {},
+    findByCapability() {},
   },
   wasm: {
-    status: () => 'ready', stats: () => ({}), benchmark: () => null,
-    setEnabled: () => 'ready', listModules: () => [], call: () => 1,
-    callModule: () => 1, registerModule: () => ({}), unregisterModule: () => true,
+    status: () => 'ready',
+    stats: () => ({}),
+    benchmark: () => null,
+    setEnabled: () => 'ready',
+    listModules: () => [],
+    call: () => 1,
+    callModule: () => 1,
+    registerModule: () => ({}),
+    unregisterModule: () => true,
   },
-  registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
-  on() { return () => {}; }, off() {}, emit() {},
+  registerBlock() {},
+  registerTile() {},
+  registerEntity() {},
+  setGenerator() {},
+  on() {
+    return () => {};
+  },
+  off() {},
+  emit() {},
 });
 
 ok('scopeAPI 裁剪 wasm:use / plugins:manage，只读能力保留', () => {

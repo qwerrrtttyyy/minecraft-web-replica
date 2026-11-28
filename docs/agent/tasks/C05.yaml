@@ -1,6 +1,23 @@
 id: C05
 title: 收尾与版本收敛
 description: 补运行时诊断计数（可选）、文档同步（ARCHITECTURE/EXPERIENCE/RUNBOOK/README/CHANGELOG）、VERSION bump 一次、python3 docs/agent/validate.py --strict 0 FAIL/WARN、npm run verify 100% PASS。
-touch: { allow: [src/diagnostics/RuntimeDiagnostics.ts, src/core/version.ts, package.json, README.md, CHANGELOG.md, docs/ARCHITECTURE.md, docs/PROJECT-EXPERIENCE.md, docs/agent/RUNBOOK.md, docs/TESTING.md, docs/agent/validate.py, test/terrain-system-check.cjs], deny: [src/world/mesher.ts, src/gfx/**] }
+touch:
+  {
+    allow:
+      [
+        src/diagnostics/RuntimeDiagnostics.ts,
+        src/core/version.ts,
+        package.json,
+        README.md,
+        CHANGELOG.md,
+        docs/ARCHITECTURE.md,
+        docs/PROJECT-EXPERIENCE.md,
+        docs/agent/RUNBOOK.md,
+        docs/TESTING.md,
+        docs/agent/validate.py,
+        test/terrain-system-check.cjs,
+      ],
+    deny: [src/world/mesher.ts, src/gfx/**],
+  }
 outputs:
   - verify: npm run verify 100% PASS 且 validate.py --strict 0 FAIL/WARN

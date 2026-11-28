@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Noise } from '../world/noise';
-import { clamp, lerp, smoothstep, mulberry32, type System } from '../core/types';
+import { clamp, lerp, mulberry32, type System, smoothstep } from '../core/types';
 import type { EventService } from '../services/events';
-import { weatherFactor, type WeatherSnapshot } from '../world/weather';
+import { Noise } from '../world/noise';
+import { type WeatherSnapshot, weatherFactor } from '../world/weather';
 
 /** 水下环境色：天穹整体压向这一色相，与 HUD 的水下叠层共同构成水下氛围 */
 const UNDERWATER_SKY = 0x0e2f5e;
@@ -180,15 +180,22 @@ export class Sky implements System {
       const el = Math.asin(rng() * 0.98);
       const r = 430;
       (i % 2 === 0 ? starPosA : starPosB).push(
-        Math.cos(az) * Math.cos(el) * r, Math.sin(el) * r, Math.sin(az) * Math.cos(el) * r,
+        Math.cos(az) * Math.cos(el) * r,
+        Math.sin(el) * r,
+        Math.sin(az) * Math.cos(el) * r,
       );
     }
     const makeStarLayer = (pos: number[], size: number) => {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       const mat = new THREE.PointsMaterial({
-        color: 0xdde6ff, size, sizeAttenuation: false, transparent: true,
-        opacity: 0, fog: false, depthWrite: false,
+        color: 0xdde6ff,
+        size,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity: 0,
+        fog: false,
+        depthWrite: false,
       });
       const pts = new THREE.Points(geo, mat);
       pts.renderOrder = -9;
@@ -196,17 +203,27 @@ export class Sky implements System {
     };
     const layerA = makeStarLayer(starPosA, 2.2);
     const layerB = makeStarLayer(starPosB, 1.6);
-    this.stars = layerA.pts; this.starMat = layerA.mat;
-    this.starsB = layerB.pts; this.starMatB = layerB.mat;
+    this.stars = layerA.pts;
+    this.starMat = layerA.mat;
+    this.starsB = layerB.pts;
+    this.starMatB = layerB.mat;
     this.group.add(this.stars, this.starsB);
 
     // 体素云
     this.cloudSize = isMobile ? 36 : 48;
-    this.clouds = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
-      // depthWrite: 云块自身的前脸遮住后方的侧面/顶面，消除“华夫格”状多层叠加，
-      // 云因此读成有厚度的体素板；云位于世界最高层之上，不影响任何地形通道的深度关系
-      color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.82, fog: false, depthWrite: true,
-    }));
+    this.clouds = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({
+        // depthWrite: 云块自身的前脸遮住后方的侧面/顶面，消除“华夫格”状多层叠加，
+        // 云因此读成有厚度的体素板；云位于世界最高层之上，不影响任何地形通道的深度关系
+        color: 0xffffff,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.82,
+        fog: false,
+        depthWrite: true,
+      }),
+    );
     this.clouds.renderOrder = -5;
     this.group.add(this.clouds);
     this.rebuildClouds(0, 0);
@@ -242,16 +259,49 @@ export class Sky implements System {
     const y = 80;
     const thick = 2.6;
     // 逐面烘焙明暗（顶亮 / 底暗 / 侧面区分 x、z 轴），让方块云读成有厚度的体素而非白色纸片
-    const shade = [1, 0.62, 0.74, 0.86, 0.70, 0.80];
+    const shade = [1, 0.62, 0.74, 0.86, 0.7, 0.8];
     const addBox = (x0: number, z0: number) => {
-      const x1 = x0 + cell, z1 = z0 + cell, y0 = y, y1 = y + thick;
+      const x1 = x0 + cell,
+        z1 = z0 + cell,
+        y0 = y,
+        y1 = y + thick;
       const faces = [
-        [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]],
-        [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
-        [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]],
-        [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
-        [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]],
-        [[x0, y0, z1], [x0, y1, z1], [x1, y1, z1], [x1, y0, z1]],
+        [
+          [x0, y1, z0],
+          [x0, y1, z1],
+          [x1, y1, z1],
+          [x1, y1, z0],
+        ],
+        [
+          [x0, y0, z0],
+          [x1, y0, z0],
+          [x1, y0, z1],
+          [x0, y0, z1],
+        ],
+        [
+          [x0, y0, z0],
+          [x0, y0, z1],
+          [x0, y1, z1],
+          [x0, y1, z0],
+        ],
+        [
+          [x1, y0, z0],
+          [x1, y1, z0],
+          [x1, y1, z1],
+          [x1, y0, z1],
+        ],
+        [
+          [x0, y0, z0],
+          [x1, y0, z0],
+          [x1, y1, z0],
+          [x0, y1, z0],
+        ],
+        [
+          [x0, y0, z1],
+          [x0, y1, z1],
+          [x1, y1, z1],
+          [x1, y0, z1],
+        ],
       ];
       for (let f = 0; f < faces.length; f++) {
         const base = pos.length / 3;
@@ -382,9 +432,11 @@ export class Sky implements System {
     const cam = this.camera.position;
     this.cloudDrift = elapsed * 0.55;
     const patchRadius = (this.cloudSize * this.cloudCell) / 4;
-    if (this.showClouds &&
-        (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
-         Math.abs(cam.z - this.cloudOriginZ) > patchRadius)) {
+    if (
+      this.showClouds &&
+      (Math.abs(cam.x - (this.cloudOriginX + this.cloudDrift)) > patchRadius ||
+        Math.abs(cam.z - this.cloudOriginZ) > patchRadius)
+    ) {
       this.rebuildClouds(cam.x - this.cloudDrift, cam.z);
     }
     this.clouds.position.set(
@@ -429,14 +481,21 @@ export class Sky implements System {
 
 function makeSunTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
-  c.width = 16; c.height = 16;
+  c.width = 16;
+  c.height = 16;
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#fdf6c3';
   ctx.fillRect(0, 0, 16, 16);
   ctx.fillStyle = '#fffbe0';
   ctx.fillRect(2, 2, 12, 12);
   ctx.fillStyle = '#f5e9a8';
-  for (const [x, y] of [[0, 0], [15, 0], [0, 15], [15, 15]]) ctx.clearRect(x, y, 1, 1);
+  for (const [x, y] of [
+    [0, 0],
+    [15, 0],
+    [0, 15],
+    [15, 15],
+  ])
+    ctx.clearRect(x, y, 1, 1);
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
@@ -446,7 +505,8 @@ function makeSunTexture(): THREE.CanvasTexture {
 
 function makeMoonTexture(phase = 0): THREE.CanvasTexture {
   const c = document.createElement('canvas');
-  c.width = 16; c.height = 16;
+  c.width = 16;
+  c.height = 16;
   const ctx = c.getContext('2d')!;
   const p = ((phase % 8) + 8) % 8;
   // 像素化月盘（半径约 7），逐格判定是否在圆内
@@ -454,14 +514,15 @@ function makeMoonTexture(phase = 0): THREE.CanvasTexture {
   for (let y = 0; y < 16; y++) {
     disc[y] = [];
     for (let x = 0; x < 16; x++) {
-      const dx = x - 7.5, dy = y - 7.5;
+      const dx = x - 7.5,
+        dy = y - 7.5;
       disc[y][x] = dx * dx + dy * dy <= 50;
     }
   }
   // 8 相：0 满月 → 4 新月 → 7 复圆；前四相阴影自右向左推进，后三相自左向右退去
   const shadowCols = [0, 3, 6, 10, 16, 10, 6, 3][p];
   const fromRight = p <= 4;
-  const isShaded = (x: number) => fromRight ? x >= 16 - shadowCols : x < shadowCols;
+  const isShaded = (x: number) => (fromRight ? x >= 16 - shadowCols : x < shadowCols);
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
       if (!disc[y][x]) continue;
@@ -471,7 +532,13 @@ function makeMoonTexture(phase = 0): THREE.CanvasTexture {
   }
   // 亮面陨石坑与左上高光（只画在月盘内的亮面）
   ctx.fillStyle = '#c3cbd6';
-  for (const [cx, cy, size] of [[3, 4, 3], [9, 2, 2], [10, 9, 3], [5, 11, 2], [12, 5, 2]]) {
+  for (const [cx, cy, size] of [
+    [3, 4, 3],
+    [9, 2, 2],
+    [10, 9, 3],
+    [5, 11, 2],
+    [12, 5, 2],
+  ]) {
     for (let y = cy; y < cy + size; y++) {
       for (let x = cx; x < cx + size; x++) {
         if (disc[y]?.[x] && !isShaded(x)) ctx.fillRect(x, y, 1, 1);

@@ -1,15 +1,15 @@
 import type { TextureAtlas } from '../gfx/atlas';
-import type { BlockRegistry } from '../world/blocks';
-import { ITEMS } from '../player/survival';
 import {
   CRAFTING_GROUPS,
   CRAFTING_RECIPES,
-  matchRecipe,
-  recipeFits,
   type MaterialId,
+  matchRecipe,
   type Recipe,
   type RecipeResult,
+  recipeFits,
 } from '../player/crafting';
+import { ITEMS } from '../player/survival';
+import type { BlockRegistry } from '../world/blocks';
 
 /**
  * 合成界面（工作台 3×3 与个人合成格 2×2 共用同一套代码）。

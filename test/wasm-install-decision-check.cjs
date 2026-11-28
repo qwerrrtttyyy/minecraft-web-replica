@@ -40,13 +40,12 @@ ok('adaptive(null,true)：ready，两侧 bench>0，backend 与工厂一致，输
   const rt = new WasmRuntime({ wasmParam: null, enabled: true });
   assert.strictEqual(rt.init(), 'ready');
   const st = rt.stats();
-  assert.ok(st.benchJsMs > 0 && st.benchWasmMs > 0,
-    `两侧基准耗时必须 >0：js=${st.benchJsMs} wasm=${st.benchWasmMs}`);
+  assert.ok(st.benchJsMs > 0 && st.benchWasmMs > 0, `两侧基准耗时必须 >0：js=${st.benchJsMs} wasm=${st.benchWasmMs}`);
   assert.ok(st.backend === 'js' || st.backend === 'wasm', `非法 backend=${st.backend}`);
   assert.strictEqual(noise.getNoiseBackendFactory() !== null, st.backend === 'wasm');
   const js = noiseMath.makeNoiseFunctions(noiseMath.makePermutation(2026));
   const n = new noise.Noise(2026);
-  for (const [x, y, z] of noiseMath.EQUIVALENCE_SAMPLES) {
+  for (const [x, y, _z] of noiseMath.EQUIVALENCE_SAMPLES) {
     assert.ok(Object.is(js.fbm2(x, y, 3, 2, 0.5), n.fbm2(x, y, 3, 2, 0.5)));
     assert.ok(Object.is(js.noise2(x, y), n.noise2(x, y)));
   }

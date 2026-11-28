@@ -5,16 +5,16 @@
  *
  * 用 fake world + 注入 rng，不依赖 three 场景与 DOM。
  */
-import { describe, expect, it, vi } from 'vitest';
-import * as THREE from 'three';
 
-import { FireSystem, isFireNear, scanHeatSources } from '../src/world/fire';
+import * as THREE from 'three';
+import { describe, expect, it, vi } from 'vitest';
 // 与本地方块 id 常量 FIRE(168) 区分，别名导入火焰数值中心
 import { FIRE as FIRE_CFG } from '../src/core/tuning';
-import type { World } from '../src/world/world';
-import type { BlockRegistry } from '../src/world/blocks';
-import type { EventService } from '../src/services/events';
 import type { Particles } from '../src/gfx/particles';
+import type { EventService } from '../src/services/events';
+import type { BlockRegistry } from '../src/world/blocks';
+import { FireSystem, isFireNear, scanHeatSources } from '../src/world/fire';
+import type { World } from '../src/world/world';
 
 const AIR = 0;
 const STONE = 1;
@@ -26,15 +26,20 @@ const CAMPFIRE = 165;
 const FIRE = 168;
 
 const NAMES: Record<number, string> = {
-  [AIR]: 'air', [STONE]: 'stone', [GRASS]: 'grass', [OAK_LOG]: 'oak_log',
-  [TALL_GRASS]: 'tall_grass', [WATER]: 'water',
-  [CAMPFIRE]: 'campfire', [FIRE]: 'fire',
+  [AIR]: 'air',
+  [STONE]: 'stone',
+  [GRASS]: 'grass',
+  [OAK_LOG]: 'oak_log',
+  [TALL_GRASS]: 'tall_grass',
+  [WATER]: 'water',
+  [CAMPFIRE]: 'campfire',
+  [FIRE]: 'fire',
 };
-const IDS: Record<string, number> = Object.fromEntries(
-  Object.entries(NAMES).map(([id, name]) => [name, Number(id)]),
-);
+const IDS: Record<string, number> = Object.fromEntries(Object.entries(NAMES).map(([id, name]) => [name, Number(id)]));
 const SOLID: Record<number, boolean> = {
-  [STONE]: true, [GRASS]: true, [OAK_LOG]: true,
+  [STONE]: true,
+  [GRASS]: true,
+  [OAK_LOG]: true,
   // 十字面植物：非实心，但可被火直接引燃
   [TALL_GRASS]: false,
 };
@@ -67,7 +72,9 @@ class FakeWorld {
 function makeEvents() {
   const calls: { type: string; payload: unknown }[] = [];
   const events = {
-    emit: (type: string, payload: unknown) => { calls.push({ type, payload }); },
+    emit: (type: string, payload: unknown) => {
+      calls.push({ type, payload });
+    },
   };
   return { calls, events: events as unknown as EventService };
 }
@@ -307,7 +314,12 @@ describe('火焰系统', () => {
     w.setBlock(0, 0, 0, GRASS);
     w.setBlock(0, 1, 0, FIRE);
     const entity = { id: 7, pos: new THREE.Vector3(0.5, 1.0, 0.5), hurt: vi.fn() };
-    const { sys, hurtPlayer } = makeSystem(w, () => 0, () => [entity], () => true);
+    const { sys, hurtPlayer } = makeSystem(
+      w,
+      () => 0,
+      () => [entity],
+      () => true,
+    );
     const pos = new THREE.Vector3(0.5, 1.0, 0.5);
 
     sys.update(0.25, pos);
@@ -323,7 +335,11 @@ describe('火焰系统', () => {
     w.setBlock(0, 0, 0, GRASS);
     w.setBlock(0, 1, 0, FIRE);
     const entity = { id: 7, pos: new THREE.Vector3(0.5, 1.0, 0.5), hurt: vi.fn() };
-    const { sys } = makeSystem(w, () => 0, () => [entity]);
+    const { sys } = makeSystem(
+      w,
+      () => 0,
+      () => [entity],
+    );
     const pos = new THREE.Vector3(0.5, 1.0, 0.5);
 
     sys.update(0.25, pos);
@@ -361,7 +377,11 @@ describe('火焰系统', () => {
       hurt: vi.fn(),
     }));
     let alive = true;
-    const { sys } = makeSystem(w, () => 0, () => (alive ? entities : []));
+    const { sys } = makeSystem(
+      w,
+      () => 0,
+      () => (alive ? entities : []),
+    );
 
     sys.update(0.5, new THREE.Vector3(0.5, 1.0, 0.5));
     const map = (sys as unknown as { entityDamageAt: Map<number, number> }).entityDamageAt;

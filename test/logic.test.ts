@@ -4,9 +4,8 @@
  * 断言语义与 test/logic-check.cjs 一一对应（迁移，未改动断言行为）。
  */
 import { describe, expect, it } from 'vitest';
-
-import { SurvivalState, MAX_HUNGER } from '../src/player/survival';
 import { EventBus } from '../src/core/events';
+import { MAX_HUNGER, SurvivalState } from '../src/player/survival';
 import { rollDrops } from '../src/world/drops';
 
 const registry = {
@@ -54,7 +53,8 @@ describe('生存状态机', () => {
     expect(s.damage(4, 'test')).toBe(true);
     expect(s.health).toBe(16);
     expect(s.damage(4, 'test')).toBe(false); // iframes should block
-    s.health = 1; s.iframes = 0;
+    s.health = 1;
+    s.iframes = 0;
     expect(s.damage(5, 'fatal')).toBe(true);
     expect(s.dead).toBe(true);
   });
@@ -66,7 +66,8 @@ describe('生存状态机', () => {
     s.addDrop('dirt', 4);
     s.consume({ kind: 'item', id: 'apple' }, 1); // 与原脚本一致：序列化时苹果为 2
     s.damage(4, 'test');
-    s.health = 12; s.dead = false;
+    s.health = 12;
+    s.dead = false;
     const snap = s.serialize();
     const s2 = new SurvivalState(new EventBus(), registry);
     s2.restore(snap);
@@ -126,7 +127,10 @@ describe('生存状态机', () => {
     s.saturation = 0;
     const heals: number[] = [];
     const origHeal = s.heal.bind(s);
-    s.heal = (a: number) => { heals.push(a); origHeal(a); };
+    s.heal = (a: number) => {
+      heals.push(a);
+      origHeal(a);
+    };
     for (let i = 0; i < 200; i++) s.tick(0.1, { moving: false, sprinting: false, mining: false, underwater: false });
     expect(heals.length).toBe(0);
     expect(s.health).toBe(10);

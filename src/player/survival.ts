@@ -1,7 +1,7 @@
-import { FOOD_VALUES, WARMTH, NEW_ITEMS } from '../core/tuning';
+import { FOOD_VALUES, NEW_ITEMS, WARMTH } from '../core/tuning';
+import { type BlockId, clamp, type GameMode, type Vec3Like } from '../core/types';
 import type { EventService } from '../services/events';
-import { EXTENSION_POINTS, type DamageKind } from '../services/plugins/extensions';
-import { clamp, type GameMode, type Vec3Like, type BlockId } from '../core/types';
+import { type DamageKind, EXTENSION_POINTS } from '../services/plugins/extensions';
 import type { BlockRegistry } from '../world/blocks';
 import { EQUIPMENT } from './equipment';
 
@@ -43,8 +43,12 @@ for (const def of Object.values(EQUIPMENT)) {
 
 /** 由 FOOD_VALUES 派生可食物品的 food / saturation，避免数值两处维护 */
 const foodDef = (name: string, extra: Partial<ItemDefinition> = {}): ItemDefinition => ({
-  name, label: extra.label ?? name, tile: extra.tile ?? name,
-  food: FOOD_VALUES[name].food, saturation: FOOD_VALUES[name].saturation, ...extra,
+  name,
+  label: extra.label ?? name,
+  tile: extra.tile ?? name,
+  food: FOOD_VALUES[name].food,
+  saturation: FOOD_VALUES[name].saturation,
+  ...extra,
 });
 
 export const ITEMS: Record<string, ItemDefinition> = {
@@ -54,7 +58,9 @@ export const ITEMS: Record<string, ItemDefinition> = {
   porkchop: foodDef('porkchop', { label: '生猪排', tile: 'porkchop' }),
   wheat_seeds: { name: 'wheat_seeds', label: '小麦种子', tile: 'wheat_seeds', plant: 'wheat_seedling' },
   sweet_berries: foodDef('sweet_berries', {
-    label: '甜浆果', tile: 'sweet_berries', plant: 'sweet_berry_bush',
+    label: '甜浆果',
+    tile: 'sweet_berries',
+    plant: 'sweet_berry_bush',
   }),
   nectar: foodDef('nectar', { label: '花蜜', tile: 'nectar' }),
   stick: { name: 'stick', label: '木棍', tile: 'stick' },
@@ -111,9 +117,7 @@ export const blockKeyOf = (id: BlockId) => `b:${id}`;
 export const stackKey = (s: Stack) => (s.kind === 'block' ? blockKeyOf(s.id as BlockId) : itemKey(s.id as string));
 
 export function parseKey(key: string): Stack {
-  return key.startsWith('i:')
-    ? { kind: 'item', id: key.slice(2) }
-    : { kind: 'block', id: Number(key.slice(2)) };
+  return key.startsWith('i:') ? { kind: 'item', id: key.slice(2) } : { kind: 'block', id: Number(key.slice(2)) };
 }
 
 export interface SurvivalSave {
@@ -408,9 +412,7 @@ export class SurvivalState {
     if (typeof data.health === 'number') this.health = clamp(data.health, 0, MAX_HEALTH);
     if (typeof data.hunger === 'number') this.hunger = clamp(data.hunger, 0, MAX_HUNGER);
     // 旧档无 saturation 字段时按满值恢复
-    this.saturation = typeof data.saturation === 'number'
-      ? clamp(data.saturation, 0, MAX_HUNGER)
-      : MAX_HUNGER;
+    this.saturation = typeof data.saturation === 'number' ? clamp(data.saturation, 0, MAX_HUNGER) : MAX_HUNGER;
     // 旧档无 warmth 字段时按 0 恢复；越界 clamp 到 0~100
     this.warmth = typeof data.warmth === 'number' ? clamp(data.warmth, 0, 100) : 0;
     if (typeof data.breath === 'number') this.breath = clamp(data.breath, 0, MAX_BREATH);

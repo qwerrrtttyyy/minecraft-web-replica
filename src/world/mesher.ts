@@ -1,9 +1,15 @@
 import { CHUNK_SIZE, WORLD_HEIGHT } from '../core/types';
-import { FACES, AO_LEVELS, type FaceDef } from './faces';
+import { AO_LEVELS, FACES, type FaceDef } from './faces';
 import {
-  AIR_MESH_DEF, ZERO_UV,
-  type MutableGeoArrays, type MutableChunkMeshData, type ChunkMeshData, type MeshBlockDef,
-  type MeshSource, type MeshStats, type UVRect,
+  AIR_MESH_DEF,
+  type ChunkMeshData,
+  type MeshBlockDef,
+  type MeshSource,
+  type MeshStats,
+  type MutableChunkMeshData,
+  type MutableGeoArrays,
+  type UVRect,
+  ZERO_UV,
 } from './meshTypes';
 
 /**
@@ -29,7 +35,16 @@ const H = WORLD_HEIGHT;
 const UV_EPS = 1e-4;
 const cu = (v: number) => (v > 0 ? v - UV_EPS : 0);
 
-const newGeo = (): MutableGeoArrays => ({ positions: [], uvs: [], shade: [], lights: [], tile: [], tints: [], sways: [], indices: [] });
+const newGeo = (): MutableGeoArrays => ({
+  positions: [],
+  uvs: [],
+  shade: [],
+  lights: [],
+  tile: [],
+  tints: [],
+  sways: [],
+  indices: [],
+});
 
 export type { MeshStats };
 export type MeshOutput = ChunkMeshData & { stats: MeshStats };
@@ -69,7 +84,13 @@ const FACE_GEOMS: FaceGeom[] = FACES.map((face) => {
   const dAxis = face.axis;
   const [nx, ny, nz] = face.normal;
   return {
-    face, uAxis, vAxis, dAxis, nx, ny, nz,
+    face,
+    uAxis,
+    vAxis,
+    dAxis,
+    nx,
+    ny,
+    nz,
     uDir: c1[uAxis] - c0[uAxis],
     vDir: c3[vAxis] - c0[vAxis],
     dimU: axisDim(uAxis),
@@ -145,7 +166,10 @@ const quadBlock = new Float32Array(4);
 
 /** 把同一个光照值填满 4 个顶点（合并面 / 交叉面片用） */
 const fillUniform = (arr: Float32Array, v: number) => {
-  arr[0] = v; arr[1] = v; arr[2] = v; arr[3] = v;
+  arr[0] = v;
+  arr[1] = v;
+  arr[2] = v;
+  arr[3] = v;
 };
 
 /**
@@ -154,8 +178,11 @@ const fillUniform = (arr: Float32Array, v: number) => {
  */
 function computeAOInto(
   src: MeshSource,
-  bx: number, by: number, bz: number,
-  face: FaceDef, def: MeshBlockDef,
+  bx: number,
+  by: number,
+  bz: number,
+  face: FaceDef,
+  def: MeshBlockDef,
   out: Int32Array,
 ): Int32Array {
   const useAO = !def.transparentPass && !def.liquid;
@@ -167,17 +194,30 @@ function computeAOInto(
   const cz = bz + nz;
   for (let i = 0; i < 4; i++) {
     const c = face.corners[i];
-    if (!useAO) { out[i] = 3; continue; }
+    if (!useAO) {
+      out[i] = 3;
+      continue;
+    }
     const o1 = c[t1] === 0 ? -1 : 1;
     const o2 = c[t2] === 0 ? -1 : 1;
     // p1：切向 t1；p2：切向 t2；pc：两个切向都偏移
-    let x1 = cx, y1 = cy, z1 = cz;
-    if (t1 === 0) x1 += o1; else y1 += o1;
-    let x2 = cx, y2 = cy, z2 = cz;
-    if (t2 === 1) y2 += o2; else z2 += o2;
-    let xc = cx, yc = cy, zc = cz;
-    if (t1 === 0) xc += o1; else yc += o1;
-    if (t2 === 1) yc += o2; else zc += o2;
+    let x1 = cx,
+      y1 = cy,
+      z1 = cz;
+    if (t1 === 0) x1 += o1;
+    else y1 += o1;
+    let x2 = cx,
+      y2 = cy,
+      z2 = cz;
+    if (t2 === 1) y2 += o2;
+    else z2 += o2;
+    let xc = cx,
+      yc = cy,
+      zc = cz;
+    if (t1 === 0) xc += o1;
+    else yc += o1;
+    if (t2 === 1) yc += o2;
+    else zc += o2;
     const s1 = src.isOpaque(src.getId(x1, y1, z1)) ? 1 : 0;
     const s2 = src.isOpaque(src.getId(x2, y2, z2)) ? 1 : 0;
     const cc = src.isOpaque(src.getId(xc, yc, zc)) ? 1 : 0;
@@ -203,9 +243,12 @@ function computeAOInto(
  */
 function computeCornerLightInto(
   src: MeshSource,
-  bx: number, by: number, bz: number,
+  bx: number,
+  by: number,
+  bz: number,
   face: FaceDef,
-  outSky: Int32Array, outBlock: Int32Array,
+  outSky: Int32Array,
+  outBlock: Int32Array,
 ): void {
   const ax = face.axis;
   const t1 = ax === 0 ? 1 : 0;
@@ -219,9 +262,19 @@ function computeCornerLightInto(
   for (let p1 = -1; p1 <= 1; p1++) {
     for (let p2 = -1; p2 <= 1; p2++) {
       let x: number, y: number, z: number;
-      if (ax === 0) { x = gx; y = gy + p1; z = gz + p2; }
-      else if (ax === 1) { x = gx + p1; y = gy; z = gz + p2; }
-      else { x = gx + p1; y = gy + p2; z = gz; }
+      if (ax === 0) {
+        x = gx;
+        y = gy + p1;
+        z = gz + p2;
+      } else if (ax === 1) {
+        x = gx + p1;
+        y = gy;
+        z = gz + p2;
+      } else {
+        x = gx + p1;
+        y = gy + p2;
+        z = gz;
+      }
       const i = (p1 + 1) * 3 + (p2 + 1);
       patchSky[i] = src.getSkyLight(x, y, z);
       patchBlock[i] = src.getBlockLight(x, y, z);
@@ -244,14 +297,23 @@ function computeCornerLightInto(
 const tileFor = (def: MeshBlockDef, face: FaceDef) =>
   face.axis === 1 ? (face.sign > 0 ? def.tiles.top : def.tiles.bottom) : def.tiles.side;
 
-export function meshChunk(src: MeshSource): MeshOutput {
+export function meshChunk(src: MeshSource, yBase = 0, yCount = H): MeshOutput {
+  // 竖向分段：section 只遍历自己那 16 层，几何顶点 y 归一到 0..yCount，
+  // 由 mesh.position.y 抬到世界高度。这样改一格只需重算一个 section。
+  const yEnd = yBase + yCount;
   const started = typeof performance !== 'undefined' ? performance.now() : 0;
   // 收集期用窄类型（分量可 .push）；返回时按 MeshOutput 暴露，契约不变。
   const mutable: MutableChunkMeshData = {
-    opaque: null, emissive: null, transparent: null, water: null,
+    opaque: null,
+    emissive: null,
+    transparent: null,
+    water: null,
   };
   const out: MeshOutput = {
-    opaque: null, emissive: null, transparent: null, water: null,
+    opaque: null,
+    emissive: null,
+    transparent: null,
+    water: null,
     stats: { quads: 0, vertices: 0, merged: 0, ms: 0 },
   };
 
@@ -287,6 +349,15 @@ export function meshChunk(src: MeshSource): MeshOutput {
 
   /** 收集完成后把通道引用挂到对外契约上（类型放宽但运行时同一对象） */
   const publish = (): MeshOutput => {
+    // 顶点统一在出口处归一到 section 局部坐标：各条路径（逐面 / 贪心 / 盒子）
+    // 都按绝对 y 写顶点，这里一次性减去 yBase，避免每条路径各改一遍。
+    if (yBase !== 0) {
+      for (const g of [mutable.opaque, mutable.emissive, mutable.transparent, mutable.water]) {
+        if (!g) continue;
+        const pos = g.positions;
+        for (let i = 1; i < pos.length; i += 3) pos[i] -= yBase;
+      }
+    }
     out.opaque = mutable.opaque;
     out.emissive = mutable.emissive;
     out.transparent = mutable.transparent;
@@ -295,7 +366,14 @@ export function meshChunk(src: MeshSource): MeshOutput {
   };
 
   /** 把 scratch 里的四个顶点写入通道，flip 控制对角线方向；flags 为顶点开关（0/1/2） */
-  const pushQuad = (g: MutableGeoArrays, tile: UVRect, flip: boolean, lightSky: Float32Array, lightBlock: Float32Array, flags: number) => {
+  const pushQuad = (
+    g: MutableGeoArrays,
+    tile: UVRect,
+    flip: boolean,
+    lightSky: Float32Array,
+    lightBlock: Float32Array,
+    flags: number,
+  ) => {
     const base = g.positions.length / 3;
     // tile 尺寸全图集一致，走 shader uniform；顶点只带 tile 起点
     const u0 = tile[0];
@@ -330,8 +408,11 @@ export function meshChunk(src: MeshSource): MeshOutput {
    * （Greedy 路径已经算过，避免同一面算两遍）。
    */
   const emitFace = (
-    bx: number, by: number, bz: number,
-    def: MeshBlockDef, face: FaceDef,
+    bx: number,
+    by: number,
+    bz: number,
+    def: MeshBlockDef,
+    face: FaceDef,
     precomputedAO?: Int32Array,
     precomputedSky?: Int32Array,
     precomputedBlock?: Int32Array,
@@ -373,10 +454,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
    * 用面法向的相邻块做剔除，再带 bounds 输出。
    * AO / 角点光照仍按面法向的相邻块采样，对子盒是合理近似。
    */
-  const emitBox = (
-    bx: number, by: number, bz: number,
-    def: MeshBlockDef, bounds: BoxBounds,
-  ) => {
+  const emitBox = (bx: number, by: number, bz: number, def: MeshBlockDef, bounds: BoxBounds) => {
     for (let fi = 0; fi < FACES.length; fi++) {
       const face = FACES[fi];
       const [nx, ny, nz] = face.normal;
@@ -396,44 +474,107 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const flags = flagsFor(def);
     // 植物高度：贴图仍是 16px，几何按群系高度压缩/拉伸，矮花不再顶满整格
     const height = Math.max(0.1, Math.min(1, def.crossHeight ?? 1));
-    const x0 = bx + 0.15, x1 = bx + 0.85;
-    const z0 = bz + 0.15, z1 = bz + 0.85;
-    const y0 = by, y1 = by + height;
+    const x0 = bx + 0.15,
+      x1 = bx + 0.85;
+    const z0 = bz + 0.15,
+      z1 = bz + 0.85;
+    const y0 = by,
+      y1 = by + height;
 
     // 面 A（正面）
-    qx[0] = x0; qy[0] = y0; qz[0] = z0;
-    qx[1] = x1; qy[1] = y0; qz[1] = z1;
-    qx[2] = x1; qy[2] = y1; qz[2] = z1;
-    qx[3] = x0; qy[3] = y1; qz[3] = z0;
-    qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
+    qx[0] = x0;
+    qy[0] = y0;
+    qz[0] = z0;
+    qx[1] = x1;
+    qy[1] = y0;
+    qz[1] = z1;
+    qx[2] = x1;
+    qy[2] = y1;
+    qz[2] = z1;
+    qx[3] = x0;
+    qy[3] = y1;
+    qz[3] = z0;
+    qu.set(CROSS_U);
+    qv.set(CROSS_V);
+    qb.set(CROSS_B);
+    qs[0] = 0;
+    qs[1] = 0;
+    qs[2] = height;
+    qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 A（反面：顶点反序 + UV 反序，亮度保持原顺序）
-    qx[0] = x0; qy[0] = y1; qz[0] = z0;
-    qx[1] = x1; qy[1] = y1; qz[1] = z1;
-    qx[2] = x1; qy[2] = y0; qz[2] = z1;
-    qx[3] = x0; qy[3] = y0; qz[3] = z0;
-    qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
-    qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
+    qx[0] = x0;
+    qy[0] = y1;
+    qz[0] = z0;
+    qx[1] = x1;
+    qy[1] = y1;
+    qz[1] = z1;
+    qx[2] = x1;
+    qy[2] = y0;
+    qz[2] = z1;
+    qx[3] = x0;
+    qy[3] = y0;
+    qz[3] = z0;
+    qu[0] = 0;
+    qu[1] = cu(1);
+    qu[2] = cu(1);
+    qu[3] = 0;
+    qv[0] = cu(1);
+    qv[1] = cu(1);
+    qv[2] = 0;
+    qv[3] = 0;
+    qs[0] = height;
+    qs[1] = height;
+    qs[2] = 0;
+    qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
 
     // 面 B（正面）
-    qx[0] = x1; qy[0] = y0; qz[0] = z0;
-    qx[1] = x0; qy[1] = y0; qz[1] = z1;
-    qx[2] = x0; qy[2] = y1; qz[2] = z1;
-    qx[3] = x1; qy[3] = y1; qz[3] = z0;
-    qu.set(CROSS_U); qv.set(CROSS_V); qb.set(CROSS_B);
-    qs[0] = 0; qs[1] = 0; qs[2] = height; qs[3] = height;
+    qx[0] = x1;
+    qy[0] = y0;
+    qz[0] = z0;
+    qx[1] = x0;
+    qy[1] = y0;
+    qz[1] = z1;
+    qx[2] = x0;
+    qy[2] = y1;
+    qz[2] = z1;
+    qx[3] = x1;
+    qy[3] = y1;
+    qz[3] = z0;
+    qu.set(CROSS_U);
+    qv.set(CROSS_V);
+    qb.set(CROSS_B);
+    qs[0] = 0;
+    qs[1] = 0;
+    qs[2] = height;
+    qs[3] = height;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
     // 面 B（反面）
-    qx[0] = x1; qy[0] = y1; qz[0] = z0;
-    qx[1] = x0; qy[1] = y1; qz[1] = z1;
-    qx[2] = x0; qy[2] = y0; qz[2] = z1;
-    qx[3] = x1; qy[3] = y0; qz[3] = z0;
-    qu[0] = 0; qu[1] = cu(1); qu[2] = cu(1); qu[3] = 0;
-    qv[0] = cu(1); qv[1] = cu(1); qv[2] = 0; qv[3] = 0;
-    qs[0] = height; qs[1] = height; qs[2] = 0; qs[3] = 0;
+    qx[0] = x1;
+    qy[0] = y1;
+    qz[0] = z0;
+    qx[1] = x0;
+    qy[1] = y1;
+    qz[1] = z1;
+    qx[2] = x0;
+    qy[2] = y0;
+    qz[2] = z1;
+    qx[3] = x1;
+    qy[3] = y0;
+    qz[3] = z0;
+    qu[0] = 0;
+    qu[1] = cu(1);
+    qu[2] = cu(1);
+    qu[3] = 0;
+    qv[0] = cu(1);
+    qv[1] = cu(1);
+    qv[2] = 0;
+    qv[3] = 0;
+    qs[0] = height;
+    qs[1] = height;
+    qs[2] = 0;
+    qs[3] = 0;
     pushQuad(g, tile, false, quadSky, quadBlock, flags);
   };
 
@@ -442,27 +583,27 @@ export function meshChunk(src: MeshSource): MeshOutput {
     const id = src.getId(bx, by, bz);
     if (id === 0) return;
     const def = src.def(id);
-    if (def.shape === 'cross') { emitCross(bx, by, bz, def); return; }
-    if (def.shape === 'slab' || def.shape === 'candle') {
-      const bounds = def.shape === 'slab' ? SLAB_BOUNDS
-      : def.shape === 'candle' ? CANDLE_BOUNDS
-        : FULL_BOUNDS;
-    emitBox(bx, by, bz, def, bounds);
-    } else {
-    for (let fi = 0; fi < FACE_GEOMS.length; fi++) {
-      const fg = FACE_GEOMS[fi];
-      const face = fg.face;
-      const nid = src.getId(bx + fg.nx, by + fg.ny, bz + fg.nz);
-      if (!faceVisible(def, src.def(nid), isKnown(bx + fg.nx, by + fg.ny, bz + fg.nz))) continue;
-      emitFace(bx, by, bz, def, face);
+    if (def.shape === 'cross') {
+      emitCross(bx, by, bz, def);
+      return;
     }
+    if (def.shape === 'slab' || def.shape === 'candle') {
+      const bounds = def.shape === 'slab' ? SLAB_BOUNDS : def.shape === 'candle' ? CANDLE_BOUNDS : FULL_BOUNDS;
+      emitBox(bx, by, bz, def, bounds);
+    } else {
+      for (let fi = 0; fi < FACE_GEOMS.length; fi++) {
+        const fg = FACE_GEOMS[fi];
+        const face = fg.face;
+        const nid = src.getId(bx + fg.nx, by + fg.ny, bz + fg.nz);
+        if (!faceVisible(def, src.def(nid), isKnown(bx + fg.nx, by + fg.ny, bz + fg.nz))) continue;
+        emitFace(bx, by, bz, def, face);
+      }
     }
   };
 
   if (!src.greedy) {
-    for (let y = 0; y < H; y++)
-      for (let lz = 0; lz < CS; lz++)
-        for (let lx = 0; lx < CS; lx++) emitBlock(lx, y, lz);
+    for (let y = yBase; y < yEnd; y++)
+      for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) emitBlock(lx, y, lz);
     out.stats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - started;
     return publish();
   }
@@ -470,7 +611,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
   // ---- Greedy 路径 ----
 
   // A) 特殊方块：完全走原逐面路径，避免水面降顶 / 交叉面片 / 透明排序被合并打乱
-  for (let y = 0; y < H; y++)
+  for (let y = yBase; y < yEnd; y++)
     for (let lz = 0; lz < CS; lz++)
       for (let lx = 0; lx < CS; lx++) {
         const id = src.getId(lx, y, lz);
@@ -484,15 +625,23 @@ export function meshChunk(src: MeshSource): MeshOutput {
   //    同一 face 下 tile 与 shade 完全由 (blockId, face) 决定，无需进 key。
   let mask = new Int32Array(1);
   for (const fg of FACE_GEOMS) {
-    const { face, uAxis, vAxis, uDir, vDir, dimU, dimV, dimD, origin, nx, ny, nz } = fg;
+    const { face, uAxis, vAxis, uDir, vDir, origin, nx, ny, nz } = fg;
+    // 竖向轴的尺寸取当前 section 的高度，其余两轴仍是 16
+    const dimU = uAxis === 1 ? yCount : CS;
+    const dimV = vAxis === 1 ? yCount : CS;
+    const dimD = fg.dAxis === 1 ? yCount : CS;
     const stride = dimU * dimV;
     const lastU = dimU - 1;
     const lastV = dimV - 1;
     const [ox, oy, oz] = origin;
     // 面内切线向量只与面有关：原实现在每个合并 quad 上清零并写 duV/dvV 数组，
     // 这里提到 face 级常量标量，顶点循环直接读标量。
-    const duX = uAxis === 0 ? uDir : 0, duY = uAxis === 1 ? uDir : 0, duZ = uAxis === 2 ? uDir : 0;
-    const dvX = vAxis === 0 ? vDir : 0, dvY = vAxis === 1 ? vDir : 0, dvZ = vAxis === 2 ? vDir : 0;
+    const duX = uAxis === 0 ? uDir : 0,
+      duY = uAxis === 1 ? uDir : 0,
+      duZ = uAxis === 2 ? uDir : 0;
+    const dvX = vAxis === 0 ? vDir : 0,
+      dvY = vAxis === 1 ? vDir : 0,
+      dvZ = vAxis === 2 ? vDir : 0;
     if (mask.length < stride) mask = new Int32Array(stride);
 
     for (let L = 0; L < dimD; L++) {
@@ -504,7 +653,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
           // 原 blockAt() 每次写入并返回可变 bb 数组；这里按轴的分支在 face 级不变量上，
           // 坐标收敛为局部标量，后续 getId / AO / 光照全部只读 bx/by/bz。
           const bx = uAxis === 0 ? bu : vAxis === 0 ? bv : L;
-          const by = uAxis === 1 ? bu : vAxis === 1 ? bv : L;
+          const by = (uAxis === 1 ? bu : vAxis === 1 ? bv : L) + yBase;
           const bz = uAxis === 2 ? bu : vAxis === 2 ? bv : L;
           const id = src.getId(bx, by, bz);
           if (id === 0) continue;
@@ -517,9 +666,17 @@ export function meshChunk(src: MeshSource): MeshOutput {
           computeCornerLightInto(src, bx, by, bz, face, cornerSky, cornerBlock);
           // AO 四角不全等 → 保持逐面输出，避免合并后亮度渐变被拉伸
           // 角点光照四角不全等同理：合并面只能带一份光，拉伸会把渐变抹平
-          if (ao[0] !== ao[1] || ao[0] !== ao[2] || ao[0] !== ao[3] ||
-            cornerSky[0] !== cornerSky[1] || cornerSky[0] !== cornerSky[2] || cornerSky[0] !== cornerSky[3] ||
-            cornerBlock[0] !== cornerBlock[1] || cornerBlock[0] !== cornerBlock[2] || cornerBlock[0] !== cornerBlock[3]) {
+          if (
+            ao[0] !== ao[1] ||
+            ao[0] !== ao[2] ||
+            ao[0] !== ao[3] ||
+            cornerSky[0] !== cornerSky[1] ||
+            cornerSky[0] !== cornerSky[2] ||
+            cornerSky[0] !== cornerSky[3] ||
+            cornerBlock[0] !== cornerBlock[1] ||
+            cornerBlock[0] !== cornerBlock[2] ||
+            cornerBlock[0] !== cornerBlock[3]
+          ) {
             emitFace(bx, by, bz, def, face, ao, cornerSky, cornerBlock);
             continue;
           }
@@ -538,9 +695,12 @@ export function meshChunk(src: MeshSource): MeshOutput {
 
       // 贪心：先横向扩 w，再纵向扩 h（要求整行 key 一致）
       for (let V = 0; V < dimV; V++) {
-        for (let U = 0; U < dimU;) {
+        for (let U = 0; U < dimU; ) {
           const key = mask[V * dimU + U];
-          if (key === 0) { U++; continue; }
+          if (key === 0) {
+            U++;
+            continue;
+          }
           let w = 1;
           while (U + w < dimU && mask[V * dimU + U + w] === key) w++;
           let h = 1;
@@ -548,8 +708,7 @@ export function meshChunk(src: MeshSource): MeshOutput {
             for (let i = 0; i < w; i++) if (mask[(V + h) * dimU + U + i] !== key) break grow;
             h++;
           }
-          for (let j = 0; j < h; j++)
-            for (let i = 0; i < w; i++) mask[(V + j) * dimU + U + i] = 0;
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) mask[(V + j) * dimU + U + i] = 0;
 
           const k = key - 1;
           const id = k & 255;
@@ -564,9 +723,12 @@ export function meshChunk(src: MeshSource): MeshOutput {
           const bu = uDir > 0 ? U : lastU - U;
           const bv = vDir > 0 ? V : lastV - V;
           const bx = uAxis === 0 ? bu : vAxis === 0 ? bv : L;
-          const by = uAxis === 1 ? bu : vAxis === 1 ? bv : L;
+          // 合并 quad 的顶点仍按绝对 y 写出，由 publish() 统一减去 yBase
+          const by = (uAxis === 1 ? bu : vAxis === 1 ? bv : L) + yBase;
           const bz = uAxis === 2 ? bu : vAxis === 2 ? bv : L;
-          const baseX = bx + ox, baseY = by + oy, baseZ = bz + oz;
+          const baseX = bx + ox,
+            baseY = by + oy,
+            baseZ = bz + oz;
           const bright = face.shade * AO_LEVELS[ao];
           const flags = flagsFor(def);
           for (let i = 0; i < 4; i++) {

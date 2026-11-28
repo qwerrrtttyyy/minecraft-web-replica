@@ -91,13 +91,14 @@ function equipmentRecipes(): Recipe[] {
   const out: Recipe[] = [];
   for (const tier of TOOL_TIERS) {
     const m = EQUIP_MATERIAL[tier.material];
-    const add = (kind: string, label: string, pattern: string[]) => out.push({
-      id: `${tier.prefix}_${kind}`,
-      label: `${tier.label}${label}`,
-      pattern,
-      key: { M: m, S: 'item:stick' },
-      result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
-    });
+    const add = (kind: string, label: string, pattern: string[]) =>
+      out.push({
+        id: `${tier.prefix}_${kind}`,
+        label: `${tier.label}${label}`,
+        pattern,
+        key: { M: m, S: 'item:stick' },
+        result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
+      });
     add('sword', '剑', ['M', 'M', 'S']);
     add('pickaxe', '镐', ['MMM', ' S ', ' S ']);
     add('axe', '斧', ['MM ', 'MS ', ' S ']);
@@ -105,13 +106,14 @@ function equipmentRecipes(): Recipe[] {
   }
   for (const tier of ARMOR_TIERS) {
     const m = EQUIP_MATERIAL[tier.material];
-    const add = (kind: string, label: string, pattern: string[]) => out.push({
-      id: `${tier.prefix}_${kind}`,
-      label: `${tier.label}${label}`,
-      pattern,
-      key: { M: m },
-      result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
-    });
+    const add = (kind: string, label: string, pattern: string[]) =>
+      out.push({
+        id: `${tier.prefix}_${kind}`,
+        label: `${tier.label}${label}`,
+        pattern,
+        key: { M: m },
+        result: { material: `item:${tier.prefix}_${kind}`, count: 1 },
+      });
     add('helmet', '头盔', ['MMM', 'M M']);
     add('chestplate', '胸甲', ['M M', 'MMM', 'MMM']);
     add('leggings', '护腿', ['MMM', 'M M', 'M M']);
@@ -370,11 +372,7 @@ function matchShapeless(recipe: Recipe, grid: (GridMaterial | null)[]): number[]
  * pattern 按自身包围盒逐格比对，网格里 pattern 覆盖范围之外的格子必须为空，
  * 因此 2×2 的配方可以放在 3×3 的任意角落。
  */
-function matchShaped(
-  recipe: Recipe,
-  grid: (GridMaterial | null)[],
-  size: number,
-): number[] | null {
+function matchShaped(recipe: Recipe, grid: (GridMaterial | null)[], size: number): number[] | null {
   const pattern = recipe.pattern!;
   const key = recipe.key ?? {};
   const rows = pattern.length;
@@ -412,7 +410,10 @@ function matchShaped(
         const c = i % size;
         const inside = r >= oy && r < oy + rows && c >= ox && c < ox + cols;
         if (inside) continue;
-        if (grid[i] !== null) { outsideClean = false; break; }
+        if (grid[i] !== null) {
+          outsideClean = false;
+          break;
+        }
       }
       if (!outsideClean) continue;
 

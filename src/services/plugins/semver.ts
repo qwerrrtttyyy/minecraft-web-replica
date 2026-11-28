@@ -47,11 +47,14 @@ export function compareVersions(a: Version, b: Version): number {
   return a.prerelease < b.prerelease ? -1 : 1;
 }
 
-const v = (major: number, minor: number, patch: number, prerelease = ''): Version =>
-  ({ major, minor, patch, prerelease });
+const v = (major: number, minor: number, patch: number, prerelease = ''): Version => ({
+  major,
+  minor,
+  patch,
+  prerelease,
+});
 
-const numeric = (s: string | undefined): number | null =>
-  s !== undefined && /^\d+$/.test(s) ? Number(s) : null;
+const numeric = (s: string | undefined): number | null => (s !== undefined && /^\d+$/.test(s) ? Number(s) : null);
 
 function expandToken(token: string): Comparator[] | null {
   const t = token.trim();
@@ -70,18 +73,31 @@ function expandToken(token: string): Comparator[] | null {
   const pa = patch ?? 0;
 
   if (op === '^') {
-    if (!hasMinor) return [{ op: '>=', version: v(major, 0, 0) }, { op: '<', version: v(major + 1, 0, 0) }];
+    if (!hasMinor)
+      return [
+        { op: '>=', version: v(major, 0, 0) },
+        { op: '<', version: v(major + 1, 0, 0) },
+      ];
     const upper = major > 0 ? v(major + 1, 0, 0) : mi > 0 ? v(0, mi + 1, 0) : v(0, 0, pa + 1);
-    return [{ op: '>=', version: v(major, mi, pa, pre) }, { op: '<', version: upper }];
+    return [
+      { op: '>=', version: v(major, mi, pa, pre) },
+      { op: '<', version: upper },
+    ];
   }
   if (op === '~') {
     const upper = hasMinor ? v(major, mi + 1, 0) : v(major + 1, 0, 0);
-    return [{ op: '>=', version: v(major, mi, pa, pre) }, { op: '<', version: upper }];
+    return [
+      { op: '>=', version: v(major, mi, pa, pre) },
+      { op: '<', version: upper },
+    ];
   }
   if (op === '' && (!hasMinor || !hasPatch)) {
     // 1 / 1.x → >=1.0.0 <2.0.0；1.2 / 1.2.x → >=1.2.0 <1.3.0
     const upper = hasMinor ? v(major, mi + 1, 0) : v(major + 1, 0, 0);
-    return [{ op: '>=', version: v(major, mi, 0) }, { op: '<', version: upper }];
+    return [
+      { op: '>=', version: v(major, mi, 0) },
+      { op: '<', version: upper },
+    ];
   }
   const cmpOp: ComparatorOp = (op === '' ? '=' : op) as ComparatorOp;
   return [{ op: cmpOp, version: v(major, mi, pa, pre) }];
@@ -114,17 +130,25 @@ export function satisfies(version: string, range: string): boolean {
     // 非 semver 版本（如 'beta'）只允许被 * 匹配，避免静默放行
     return clauses.some((clause) => clause.length === 0);
   }
-  return clauses.some((clause) => clause.every((c) => {
-    const cmp = compareVersions(parsed, c.version);
-    switch (c.op) {
-      case '=': return cmp === 0;
-      case '>': return cmp > 0;
-      case '>=': return cmp >= 0;
-      case '<': return cmp < 0;
-      case '<=': return cmp <= 0;
-      default: return false;
-    }
-  }));
+  return clauses.some((clause) =>
+    clause.every((c) => {
+      const cmp = compareVersions(parsed, c.version);
+      switch (c.op) {
+        case '=':
+          return cmp === 0;
+        case '>':
+          return cmp > 0;
+        case '>=':
+          return cmp >= 0;
+        case '<':
+          return cmp < 0;
+        case '<=':
+          return cmp <= 0;
+        default:
+          return false;
+      }
+    }),
+  );
 }
 
 export interface DependencySpec {

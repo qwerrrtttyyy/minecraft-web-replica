@@ -1,9 +1,9 @@
 import type { TextureAtlas } from '../gfx/atlas';
-import type { BlockRegistry } from '../world/blocks';
-import { ITEMS } from '../player/survival';
-import { smeltOutputOf } from '../player/smelting';
-import type { CraftingHost } from './crafting';
 import type { MaterialId } from '../player/crafting';
+import { smeltOutputOf } from '../player/smelting';
+import { ITEMS } from '../player/survival';
+import type { BlockRegistry } from '../world/blocks';
+import type { CraftingHost } from './crafting';
 
 /**
  * 营火「直接烤」界面（PR4 营火部分）。

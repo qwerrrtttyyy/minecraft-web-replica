@@ -25,16 +25,20 @@
  *   10–12.5s 入夜，火把照亮弹坑，星空浮现
  *   12.5–15s 视角抬向星空与月亮
  */
-import puppeteer from 'puppeteer-core';
-import path from 'node:path';
+
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const URL_UNDER_TEST = process.env.MC_URL ?? `file://${path.join(ROOT, 'dist', 'index.html')}`;
-const CHROME = process.env.CHROME_PATH ??
-  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome']
-    .find((p) => fs.existsSync(p)) ?? '/usr/local/bin/chromium';
+const CHROME =
+  process.env.CHROME_PATH ??
+  ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/local/bin/chromium', '/usr/bin/google-chrome'].find((p) =>
+    fs.existsSync(p),
+  ) ??
+  '/usr/local/bin/chromium';
 const OUT = path.join(ROOT, 'test', 'artifacts', 'showcase');
 const WIDTH = Number(process.env.MC_SHOWCASE_WIDTH ?? 1280);
 const HEIGHT = Number(process.env.MC_SHOWCASE_HEIGHT ?? 720);
@@ -47,17 +51,20 @@ fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const HEADLESS = process.env.MC_HEADLESS !== '0';
 const GL_BASE = ['--enable-unsafe-swiftshader', '--disable-gpu-sandbox'];
-const GL_ARGS = (process.env.MC_GL ?? 'swiftshader') === 'desktop'
-  ? [...GL_BASE, '--use-gl=desktop']
-  : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
+const GL_ARGS =
+  (process.env.MC_GL ?? 'swiftshader') === 'desktop'
+    ? [...GL_BASE, '--use-gl=desktop']
+    : [...GL_BASE, '--use-gl=angle', '--use-angle=swiftshader'];
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: HEADLESS,
   args: [
-    '--no-sandbox', '--disable-dev-shm-usage',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
     ...GL_ARGS,
-    '--allow-file-access-from-files', '--mute-audio',
+    '--allow-file-access-from-files',
+    '--mute-audio',
     `--window-size=${WIDTH},${HEIGHT}`,
   ],
 });
@@ -91,7 +98,11 @@ const waitSettled = async (timeout = 60000) => {
 
 try {
   await page.evaluateOnNewDocument(() => {
-    try { localStorage.clear(); } catch { /* file:// 隐私模式可能禁用存储 */ }
+    try {
+      localStorage.clear();
+    } catch {
+      /* file:// 隐私模式可能禁用存储 */
+    }
     sessionStorage.setItem('mc-ts-new-seed', '2026');
     sessionStorage.setItem('mc-ts-new-mode', 'creative');
   });
@@ -128,7 +139,13 @@ try {
 
     // 挖坑：脚前 2.6~4.2 格的 2×2 地面，每格清掉上面的花草
     const dig = [];
-    for (const [f, s] of [[2.9, -0.9], [2.9, 0.9], [4.0, -0.9], [4.0, 0.9], [3.45, 0]]) {
+    for (const [f, s] of [
+      [2.9, -0.9],
+      [2.9, 0.9],
+      [4.0, -0.9],
+      [4.0, 0.9],
+      [3.45, 0],
+    ]) {
       const x = Math.floor(p.pos.x + fx * f + rx * s);
       const z = Math.floor(p.pos.z + fz * f + rz * s);
       const y = mc.world.surfaceHeight(x, z);
@@ -151,34 +168,39 @@ try {
   // 场景方块变更后等网格重排，避免录到旧网格
   await sleep(1500);
 
-  const state = await page.evaluate(({ stage }) => {
-    const mc = window.__mc;
-    const p = mc.player;
-    const eye = { x: p.pos.x, y: p.pos.y + 1.62, z: p.pos.z };
-    const pile = { x: stage.pile.x + 1, y: stage.pile.y + 0.6, z: stage.pile.z + 1 };
-    const dx = pile.x - eye.x;
-    const dz = pile.z - eye.z;
-    const dist = Math.hypot(dx, dz);
-    // 弹坑外 5.5 格各放一支火把（爆炸半径 3.4，不会被波及），入夜后照亮弹坑
-    const rx = Math.cos(0.55);
-    const rz = -Math.sin(0.55);
-    const torches = [-5.5, 5.5].map((s) => {
-      const tx = Math.floor(pile.x + rx * s);
-      const tz = Math.floor(pile.z + rz * s);
-      return [tx, mc.world.surfaceHeight(tx, tz) + 1, tz];
-    });
-    return {
-      dig: stage.dig,
-      pile: stage.pile,
-      torches,
-      eye,
-      pileYaw: Math.atan2(-dx, -dz),
-      pilePitch: Math.atan2(pile.y - eye.y, dist),
-      digYaw: Math.atan2(-(stage.dig[4][0] + 0.5 - eye.x), -(stage.dig[4][2] + 0.5 - eye.z)),
-      digPitch: Math.atan2(stage.dig[4][1] + 0.5 - eye.y,
-        Math.hypot(stage.dig[4][0] + 0.5 - eye.x, stage.dig[4][2] + 0.5 - eye.z)),
-    };
-  }, { stage });
+  const state = await page.evaluate(
+    ({ stage }) => {
+      const mc = window.__mc;
+      const p = mc.player;
+      const eye = { x: p.pos.x, y: p.pos.y + 1.62, z: p.pos.z };
+      const pile = { x: stage.pile.x + 1, y: stage.pile.y + 0.6, z: stage.pile.z + 1 };
+      const dx = pile.x - eye.x;
+      const dz = pile.z - eye.z;
+      const dist = Math.hypot(dx, dz);
+      // 弹坑外 5.5 格各放一支火把（爆炸半径 3.4，不会被波及），入夜后照亮弹坑
+      const rx = Math.cos(0.55);
+      const rz = -Math.sin(0.55);
+      const torches = [-5.5, 5.5].map((s) => {
+        const tx = Math.floor(pile.x + rx * s);
+        const tz = Math.floor(pile.z + rz * s);
+        return [tx, mc.world.surfaceHeight(tx, tz) + 1, tz];
+      });
+      return {
+        dig: stage.dig,
+        pile: stage.pile,
+        torches,
+        eye,
+        pileYaw: Math.atan2(-dx, -dz),
+        pilePitch: Math.atan2(pile.y - eye.y, dist),
+        digYaw: Math.atan2(-(stage.dig[4][0] + 0.5 - eye.x), -(stage.dig[4][2] + 0.5 - eye.z)),
+        digPitch: Math.atan2(
+          stage.dig[4][1] + 0.5 - eye.y,
+          Math.hypot(stage.dig[4][0] + 0.5 - eye.x, stage.dig[4][2] + 0.5 - eye.z),
+        ),
+      };
+    },
+    { stage },
+  );
   console.log('[showcase] 坐标', JSON.stringify(state));
 
   const lerp = (a, b, k) => a + (b - a) * k;
@@ -194,12 +216,12 @@ try {
     if (i < 30) {
       // 清晨横移：从右向左扫过海平线与树冠
       const k = smooth(clamp01(i / 29));
-      yaw = lerp(0.80, 0.50, k);
-      day = lerp(0.30, 0.33, k);
+      yaw = lerp(0.8, 0.5, k);
+      day = lerp(0.3, 0.33, k);
     } else if (i < 40) {
       // 下压到脚前地面
       const k = smooth(clamp01((i - 30) / 9));
-      yaw = lerp(0.50, state.digYaw, k);
+      yaw = lerp(0.5, state.digYaw, k);
       pitch = lerp(-0.06, state.digPitch, k);
       day = 0.33;
     } else if (i < 70) {
@@ -222,14 +244,14 @@ try {
     } else if (i < 150) {
       // 入夜：火把点亮弹坑，镜头缓慢横移
       const k = smooth(clamp01((i - 120) / 29));
-      yaw = state.pileYaw + lerp(0, 0.10, k);
-      pitch = lerp(state.pilePitch, -0.30, k);
+      yaw = state.pileYaw + lerp(0, 0.1, k);
+      pitch = lerp(state.pilePitch, -0.3, k);
       day = lerp(0.755, 0.86, k);
     } else {
       // 抬向星空与月亮
       const k = smooth(clamp01((i - 150) / (FRAMES - 151)));
-      yaw = state.pileYaw + lerp(0.10, 0.02, k);
-      pitch = lerp(-0.30, 0.42, k);
+      yaw = state.pileYaw + lerp(0.1, 0.02, k);
+      pitch = lerp(-0.3, 0.42, k);
       day = lerp(0.86, 0.93, k);
     }
     return { yaw, pitch, day: day % 1 };
@@ -238,34 +260,42 @@ try {
   const pile = state.pile;
   for (let i = 0; i < FRAMES; i++) {
     const cam = frameState(i);
-    await page.evaluate(({ cam, i, dig, pile, torches }) => {
-      const mc = window.__mc;
-      mc.sky.dayTime = cam.day;
-      mc.player.yaw = cam.yaw;
-      mc.player.pitch = cam.pitch;
+    await page.evaluate(
+      ({ cam, i, dig, pile, torches }) => {
+        const mc = window.__mc;
+        mc.sky.dayTime = cam.day;
+        mc.player.yaw = cam.yaw;
+        mc.player.pitch = cam.pitch;
 
-      // 挖坑：5 格依次破坏（每 6 帧一块），带挥臂与碎屑
-      if (i >= 42 && i < 70 && (i - 42) % 6 === 0) {
-        const [wx, wy, wz] = dig[Math.min(dig.length - 1, (i - 42) / 6)];
-        if (mc.world.getBlock(wx, wy, wz) !== 0) {
-          mc.player.target = { x: wx, y: wy, z: wz, block: mc.world.getBlock(wx, wy, wz), dist: 3 };
-          mc.player.breakBlock();
-          mc.player.swing();
+        // 挖坑：5 格依次破坏（每 6 帧一块），带挥臂与碎屑
+        if (i >= 42 && i < 70 && (i - 42) % 6 === 0) {
+          const [wx, wy, wz] = dig[Math.min(dig.length - 1, (i - 42) / 6)];
+          if (mc.world.getBlock(wx, wy, wz) !== 0) {
+            mc.player.target = { x: wx, y: wy, z: wz, block: mc.world.getBlock(wx, wy, wz), dist: 3 };
+            mc.player.breakBlock();
+            mc.player.swing();
+          }
         }
-      }
 
-      // 第 84 帧：摆 2×2 TNT 与两支火把
-      if (i === 84) {
-        const tnt = mc.registry.byNameGet('tnt').id;
-        for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-          mc.world.setBlock(pile.x + dx, pile.y, pile.z + dz, tnt);
+        // 第 84 帧：摆 2×2 TNT 与两支火把
+        if (i === 84) {
+          const tnt = mc.registry.byNameGet('tnt').id;
+          for (const [dx, dz] of [
+            [0, 0],
+            [1, 0],
+            [0, 1],
+            [1, 1],
+          ]) {
+            mc.world.setBlock(pile.x + dx, pile.y, pile.z + dz, tnt);
+          }
+          const torch = mc.registry.byNameGet('torch').id;
+          for (const [tx, ty, tz] of torches) mc.world.setBlock(tx, ty, tz, torch);
         }
-        const torch = mc.registry.byNameGet('torch').id;
-        for (const [tx, ty, tz] of torches) mc.world.setBlock(tx, ty, tz, torch);
-      }
-      // 第 94 帧点燃左下角那块，连锁引爆其余三块
-      if (i === 94) mc.igniteTnt(pile.x, pile.y, pile.z);
-    }, { cam, i, dig: state.dig, pile, torches: state.torches });
+        // 第 94 帧点燃左下角那块，连锁引爆其余三块
+        if (i === 94) mc.igniteTnt(pile.x, pile.y, pile.z);
+      },
+      { cam, i, dig: state.dig, pile, torches: state.torches },
+    );
 
     const file = path.join(OUT, `frame-${String(i).padStart(3, '0')}.png`);
     await page.screenshot({ path: file, type: 'png' });

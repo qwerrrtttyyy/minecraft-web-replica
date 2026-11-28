@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RANGED } from '../core/tuning';
-import type { EventService } from '../services/events';
-import type { Particles } from '../gfx/particles';
 import type { TextureAtlas } from '../gfx/atlas';
+import type { Particles } from '../gfx/particles';
+import type { EventService } from '../services/events';
 import type { World } from '../world/world';
 import type { EntityManager } from './entity';
 
@@ -31,11 +31,15 @@ export class ArrowManager {
   ) {
     this.geo = atlas.makeItemGeometry('arrow');
     this.mat = new THREE.MeshBasicMaterial({
-      map: atlas.texture, vertexColors: true, alphaTest: 0.5,
+      map: atlas.texture,
+      vertexColors: true,
+      alphaTest: 0.5,
     });
   }
 
-  get count(): number { return this.arrows.length; }
+  get count(): number {
+    return this.arrows.length;
+  }
 
   /** 从眼睛位置沿视线射出一支箭；damage 为命中生物造成的伤害 */
   shoot(origin: THREE.Vector3, direction: THREE.Vector3, damage = RANGED.arrowDamage): void {
@@ -101,13 +105,7 @@ class Arrow {
     this.mesh.quaternion.setFromUnitVectors(UP, dir);
   }
 
-  update(
-    dt: number,
-    world: World,
-    entities: EntityManager,
-    particles: Particles,
-    events: EventService,
-  ): void {
+  update(dt: number, world: World, entities: EntityManager, particles: Particles, events: EventService): void {
     this.vel.y -= RANGED.arrowGravity * dt;
     this.step.copy(this.vel).multiplyScalar(dt);
     const dist = this.step.length();
@@ -118,8 +116,15 @@ class Arrow {
       const useEntity = entityHit && (!blockHit || entityHit.dist < blockHit.dist);
       if (useEntity) {
         entityHit!.entity.hurt(this.damage, this.pos.x, this.pos.z);
-        particles.burst(entityHit!.entity.pos.x, entityHit!.entity.pos.y + entityHit!.entity.height * 0.6,
-          entityHit!.entity.pos.z, [0.9, 0.25, 0.2], 8, 0.14, 2.2);
+        particles.burst(
+          entityHit!.entity.pos.x,
+          entityHit!.entity.pos.y + entityHit!.entity.height * 0.6,
+          entityHit!.entity.pos.z,
+          [0.9, 0.25, 0.2],
+          8,
+          0.14,
+          2.2,
+        );
         events.emit('arrow:hit', { kind: 'entity', type: entityHit!.entity.type.id });
         this.done = true;
         return;

@@ -6,11 +6,7 @@
  */
 const assert = require('node:assert');
 
-const {
-  NOISE_BENCH_SAMPLE,
-  chooseNoiseBackend,
-  resolveWasmMode,
-} = require('./logic/wasm/runtime.js');
+const { NOISE_BENCH_SAMPLE, chooseNoiseBackend, resolveWasmMode } = require('./logic/wasm/runtime.js');
 
 let passed = 0;
 let failures = 0;
@@ -73,10 +69,7 @@ ok('未知参数回落到 experimental 默认', () => {
 
 // ---------- NOISE_BENCH_SAMPLE ----------
 ok('NOISE_BENCH_SAMPLE 逐值等于约定采样数', () => {
-  assert.deepStrictEqual(
-    { ...NOISE_BENCH_SAMPLE },
-    { noise2: 5, fbm2: 4, ridged2: 1, noise3: 2, fbm3: 0 },
-  );
+  assert.deepStrictEqual({ ...NOISE_BENCH_SAMPLE }, { noise2: 5, fbm2: 4, ridged2: 1, noise3: 2, fbm3: 0 });
 });
 
 console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'} 后端选择纯函数：${passed} 项，失败 ${failures} 项`);

@@ -16,6 +16,7 @@
 ## 2. 目标 / 非目标 / 反目标
 
 ### 目标
+
 - 从游玩态进入/退出摄影模式，不污染世界状态与存档。
 - 自由相机：脱离玩家，WASD 平移、鼠标拖动转向、滚轮调 FOV，无重力；活动范围限制在已加载
   区块内（不改动区块加载中心）。
@@ -26,31 +27,33 @@
 - 单文件离线产物（`file://`）可用；0 新依赖、0 新方块 id、0 地形改动。
 
 ### 非目标
+
 - 不做自然地标 / 地貌改造（方案 B，用户已否）。
 - 不做游戏内相册 / 游记（方案 C，留待后续）。
 - 不做滤镜、后期调色、照片编辑。
 - 不做任务、经验、交易、战斗改动。
 
 ### 反目标（做了就算失败）
+
 - 改变了地形生成结果、群系判定、方块 id 分配或 Worker 逐位一致性。
 - 摄影模式退出后世界的时间 / 天气 / HUD / 指针锁定状态与进入前不一致。
 - 为了截图永久打开 `preserveDrawingBuffer`，造成常态性能与显存损失。
 
 ## 3. 约束（来自当前代码勘察）
 
-| 约束 | 证据 | 影响 |
-|---|---|---|
-| `WebGLRenderer` 未设 `preserveDrawingBuffer` | `src/core/engine.ts:72-75` | 帧外 `canvas.toDataURL()` 会得到空白。必须在 `renderer.render()` 之后**同一帧**取像素。 |
-| 主循环渲染点唯一 | `src/core/engine.ts:159` | 在此后加 `onAfterRender` 钩子即可截图；不要改渲染顺序。 |
-| `engine.camera` 与玩家共用 | `player.ts` 每帧写相机 | 摄影模式期间必须有明确的相机归属，玩家侧跳过写入，否则相机会被每帧覆盖。 |
-| HUD 已有隐藏开关 | `src/ui/hud.ts:743` `toggleHudHidden()` | 可复用隐藏游戏 HUD，但摄影覆盖层是独立 DOM，不塞进游戏 HUD。 |
-| 天气已有 `forced` 覆盖 | `src/world/weatherSystem.ts:34`，`CraftAPI.weatherSetForced` 见 `main.ts:2069` | 直接复用，不新增天气通路。 |
-| 昼夜时间已有 setter | `src/gfx/sky.ts:35` `setTime(dayTime, dayCount)` | 复用；摄影模式内冻结循环推进，退出恢复。 |
-| 按键表是可扩展契约 | `src/input/keybindings.ts`：`ACTION_LABELS` / `KeyBindings` / `DEFAULT_BINDINGS` / `ACTION_KEYS` | 新增 `photo` 动作必须四处同步，并核对 HUD 设置面板枚举。 |
-| 输入状态机硬规则 | 项目经验 #9 | 进入/退出摄影模式要正确处理指针锁定与 `input.reset()`；`keyup` 仍无条件处理。 |
-| 版本双轨单一来源 | 项目经验 #1 | bump `VERSION` 必须与 package.json / README / CHANGELOG / 测试断言同 commit。 |
-| 纯逻辑测试需快照先行 | AGENTS.md §1 / §4 | 新增纯逻辑入口要加进 `scripts/build-test-snapshot.mjs` 的 `entries`。 |
-| 高风险不变量进诊断 | 项目经验 #13 | 相机归属冲突属于高风险，加入 `RuntimeDiagnostics` 与注入式回归。 |
+| 约束                                         | 证据                                                                                             | 影响                                                                                    |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `WebGLRenderer` 未设 `preserveDrawingBuffer` | `src/core/engine.ts:72-75`                                                                       | 帧外 `canvas.toDataURL()` 会得到空白。必须在 `renderer.render()` 之后**同一帧**取像素。 |
+| 主循环渲染点唯一                             | `src/core/engine.ts:159`                                                                         | 在此后加 `onAfterRender` 钩子即可截图；不要改渲染顺序。                                 |
+| `engine.camera` 与玩家共用                   | `player.ts` 每帧写相机                                                                           | 摄影模式期间必须有明确的相机归属，玩家侧跳过写入，否则相机会被每帧覆盖。                |
+| HUD 已有隐藏开关                             | `src/ui/hud.ts:743` `toggleHudHidden()`                                                          | 可复用隐藏游戏 HUD，但摄影覆盖层是独立 DOM，不塞进游戏 HUD。                            |
+| 天气已有 `forced` 覆盖                       | `src/world/weatherSystem.ts:34`，`CraftAPI.weatherSetForced` 见 `main.ts:2069`                   | 直接复用，不新增天气通路。                                                              |
+| 昼夜时间已有 setter                          | `src/gfx/sky.ts:35` `setTime(dayTime, dayCount)`                                                 | 复用；摄影模式内冻结循环推进，退出恢复。                                                |
+| 按键表是可扩展契约                           | `src/input/keybindings.ts`：`ACTION_LABELS` / `KeyBindings` / `DEFAULT_BINDINGS` / `ACTION_KEYS` | 新增 `photo` 动作必须四处同步，并核对 HUD 设置面板枚举。                                |
+| 输入状态机硬规则                             | 项目经验 #9                                                                                      | 进入/退出摄影模式要正确处理指针锁定与 `input.reset()`；`keyup` 仍无条件处理。           |
+| 版本双轨单一来源                             | 项目经验 #1                                                                                      | bump `VERSION` 必须与 package.json / README / CHANGELOG / 测试断言同 commit。           |
+| 纯逻辑测试需快照先行                         | AGENTS.md §1 / §4                                                                                | 新增纯逻辑入口要加进 `scripts/build-test-snapshot.mjs` 的 `entries`。                   |
+| 高风险不变量进诊断                           | 项目经验 #13                                                                                     | 相机归属冲突属于高风险，加入 `RuntimeDiagnostics` 与注入式回归。                        |
 
 ## 4. 方案取舍（已定）
 
@@ -62,11 +65,11 @@
 
 ### 5.1 模块划分
 
-| 文件 | 职责 | 依赖 |
-|---|---|---|
-| `src/photo/photoFrames.ts` | **纯逻辑**：FOV 钳制、时刻档位表、天气循环顺序、元数据文本与文件名生成（非法字符清洗） | 无 three / DOM，进测试快照 |
-| `src/photo/PhotoMode.ts` | **运行时 System**：相机接管、覆盖层 DOM、取景状态机、触发导出 | three / DOM / engine / sky / weather |
-| `src/photo/photo.css`（或并入现有 UI 样式） | 摄影覆盖层样式，沿用 Java 1.20 面板风格 | 无 |
+| 文件                                        | 职责                                                                                   | 依赖                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------ |
+| `src/photo/photoFrames.ts`                  | **纯逻辑**：FOV 钳制、时刻档位表、天气循环顺序、元数据文本与文件名生成（非法字符清洗） | 无 three / DOM，进测试快照           |
+| `src/photo/PhotoMode.ts`                    | **运行时 System**：相机接管、覆盖层 DOM、取景状态机、触发导出                          | three / DOM / engine / sky / weather |
+| `src/photo/photo.css`（或并入现有 UI 样式） | 摄影覆盖层样式，沿用 Java 1.20 面板风格                                                | 无                                   |
 
 `photoFrames.ts` 加入 `scripts/build-test-snapshot.mjs` 的 `entries`。
 
@@ -101,17 +104,17 @@
 
 ### 5.4 操作映射
 
-| 操作 | 桌面 | 移动端 |
-|---|---|---|
-| 进入 / 退出 | `P`（退出也可 `Esc`，此时吞掉暂停菜单） | 覆盖层按钮 |
-| 平移相机 | WASD / 方向键 | 虚拟摇杆推满 = 加速 |
-| 升降 | 空格 / Shift | 跳跃 / 下降按钮复用 |
-| 转向 | 按住鼠标拖动（进入时释放指针锁） | 右侧空白拖动 |
-| FOV | 滚轮（20–100） | 覆盖层 `+ / −` 按钮 |
-| 时刻 | `T` 轮换 黎明 / 白昼 / 黄昏 / 夜晚 | 覆盖层按钮 |
-| 天气 | `Y` 轮换 晴 / 雨 / 雪 / 雷暴（走 `weather.forced`） | 覆盖层按钮 |
-| 水印开关 | `S` | 覆盖层按钮 |
-| 拍摄 | 回车 / 覆盖层按钮 | 覆盖层按钮 |
+| 操作        | 桌面                                                | 移动端              |
+| ----------- | --------------------------------------------------- | ------------------- |
+| 进入 / 退出 | `P`（退出也可 `Esc`，此时吞掉暂停菜单）             | 覆盖层按钮          |
+| 平移相机    | WASD / 方向键                                       | 虚拟摇杆推满 = 加速 |
+| 升降        | 空格 / Shift                                        | 跳跃 / 下降按钮复用 |
+| 转向        | 按住鼠标拖动（进入时释放指针锁）                    | 右侧空白拖动        |
+| FOV         | 滚轮（20–100）                                      | 覆盖层 `+ / −` 按钮 |
+| 时刻        | `T` 轮换 黎明 / 白昼 / 黄昏 / 夜晚                  | 覆盖层按钮          |
+| 天气        | `Y` 轮换 晴 / 雨 / 雪 / 雷暴（走 `weather.forced`） | 覆盖层按钮          |
+| 水印开关    | `S`                                                 | 覆盖层按钮          |
+| 拍摄        | 回车 / 覆盖层按钮                                   | 覆盖层按钮          |
 
 新按键 `photo` 加入 `keybindings.ts` 四处结构；默认 `KeyP`。设置面板若枚举 `ACTION_KEYS` 会自动出现。
 

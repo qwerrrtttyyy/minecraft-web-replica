@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
       - name: 安装 Chromium / Xvfb / Mesa / 中文字体 / ffmpeg
         run: |
@@ -28,7 +28,7 @@ jobs:
         run: xvfb-run -a -s "-screen 0 1280x760x24" node scripts/capture-showcase.mjs
         env:
           CHROME_PATH: /usr/bin/chromium
-          MC_HEADLESS: '0'
+          MC_HEADLESS: "0"
           MC_GL: desktop
       - name: 合成首屏 WebP（720px / 10fps / libwebp_anim 有损压缩）
         run: |

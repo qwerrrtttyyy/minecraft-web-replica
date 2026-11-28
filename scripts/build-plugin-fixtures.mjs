@@ -11,14 +11,21 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const clang = process.env.CLANG || 'clang';
 const common = [
-  '--target=wasm32', '-O2', '-ffreestanding', '-nostdlib', '-fno-exceptions',
-  '-Wl,--no-entry', '-Wl,--export-memory', '-Wl,--initial-memory=131072', '-Wl,--strip-all',
+  '--target=wasm32',
+  '-O2',
+  '-ffreestanding',
+  '-nostdlib',
+  '-fno-exceptions',
+  '-Wl,--no-entry',
+  '-Wl,--export-memory',
+  '-Wl,--initial-memory=131072',
+  '-Wl,--strip-all',
 ];
 
 for (const name of ['host_plugin_fixture', 'bad_host_fixture']) {

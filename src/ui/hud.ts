@@ -1,14 +1,14 @@
-import { clamp, type BlockId, type GameMode } from '../core/types';
-import { WARMTH, COLD } from '../core/tuning';
 import type { FrameTarget, GenThreads, MesherThreads, Options, QualityMode, RandomTickSpeed } from '../core/options';
-import type { BlockRegistry } from '../world/blocks';
+import { COLD, WARMTH } from '../core/tuning';
+import { type BlockId, clamp, type GameMode } from '../core/types';
+import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
 import type { TextureAtlas } from '../gfx/atlas';
 import type { HotbarState, MiningState } from '../player/player';
-import { ITEMS, MAX_BREATH, MAX_HUNGER, MAX_HEALTH, type Stack } from '../player/survival';
-import { CraftingPanel, type CraftingHost } from './crafting';
-import { CampfirePanel } from './campfire';
-import { ENGINE_NAME, PLUGIN_API_VERSION, RELEASE, VERSION } from '../core/version';
+import { ITEMS, MAX_BREATH, MAX_HEALTH, MAX_HUNGER, type Stack } from '../player/survival';
 import type { HudAnchor, SlotDecorator } from '../services/ui/PanelHost';
+import type { BlockRegistry } from '../world/blocks';
+import { CampfirePanel } from './campfire';
+import { type CraftingHost, CraftingPanel } from './crafting';
 
 /**
  * HUD 与全部界面：标题屏 / 加载 / 快捷栏 / 生命饥饿 / 方块库 / 暂停菜单 / 设置页 / 死亡界面。
@@ -117,8 +117,10 @@ const h = (tag: string, cls?: string, text?: string): HTMLElement => {
 };
 
 const STAT_PATHS: Record<'heart' | 'hunger' | 'bubble', string> = {
-  heart: '<path d="M12 21s-8.3-5.2-10.3-9.7C.5 7.2 2.6 3.5 6.3 3.5c2.2 0 3.8 1.2 5.7 3 1.9-1.8 3.5-3 5.7-3 3.7 0 5.8 3.7 4.6 7.8C20.3 15.8 12 21 12 21z"/>',
-  hunger: '<path d="M14.6 3.2a6.2 6.2 0 0 1 6.2 6.2c0 3.1-2.2 5.2-5.6 5.4l-4.4 4.4a2.7 2.7 0 1 1-3.8-3.8l4.4-4.4C13.6 7.6 14.4 5.3 14.6 3.2z"/>',
+  heart:
+    '<path d="M12 21s-8.3-5.2-10.3-9.7C.5 7.2 2.6 3.5 6.3 3.5c2.2 0 3.8 1.2 5.7 3 1.9-1.8 3.5-3 5.7-3 3.7 0 5.8 3.7 4.6 7.8C20.3 15.8 12 21 12 21z"/>',
+  hunger:
+    '<path d="M14.6 3.2a6.2 6.2 0 0 1 6.2 6.2c0 3.1-2.2 5.2-5.6 5.4l-4.4 4.4a2.7 2.7 0 1 1-3.8-3.8l4.4-4.4C13.6 7.6 14.4 5.3 14.6 3.2z"/>',
   bubble: '<circle cx="12" cy="12" r="7.4" fill="none" stroke-width="3.2"/>',
 };
 
@@ -170,9 +172,8 @@ const TICK_SPEED_CHOICES: { value: RandomTickSpeed; label: string }[] = [
 ];
 
 /** 循环行当前值对应的展示文案（找不到候选时退回原始值） */
-const choiceLabel = <T extends string | number>(
-  choices: readonly { value: T; label: string }[], v: T,
-): string => choices.find((c) => c.value === v)?.label ?? String(v);
+const choiceLabel = <T extends string | number>(choices: readonly { value: T; label: string }[], v: T): string =>
+  choices.find((c) => c.value === v)?.label ?? String(v);
 
 export class HUD {
   readonly root: HTMLElement;
@@ -291,7 +292,15 @@ export class HUD {
   /** N5：自动保存提示单一定时器，连续触发不堆叠 */
   private savedNoteTimer = 0;
   private pips: HTMLElement[] = [];
-  private lastStats = { health: -1, hunger: -1, saturation: -1, breath: -1, warmth: -1, mode: '' as string, weather: '' as string };
+  private lastStats = {
+    health: -1,
+    hunger: -1,
+    saturation: -1,
+    breath: -1,
+    warmth: -1,
+    mode: '' as string,
+    weather: '' as string,
+  };
   private selectedMode: GameMode = 'survival';
 
   constructor(opts: HUDOptions) {
@@ -315,9 +324,7 @@ export class HUD {
     this.root.appendChild(this.crafting.root);
     this.buildPluginPanel();
     // 营火面板与合成面板同级挂载，复用遮罩与层级
-    this.campfire = new CampfirePanel(
-      opts.craftingHost, opts.atlas, opts.registry, opts.onCampfireClose,
-    );
+    this.campfire = new CampfirePanel(opts.craftingHost, opts.atlas, opts.registry, opts.onCampfireClose);
     this.root.appendChild(this.campfire.root);
   }
 
@@ -380,11 +387,15 @@ export class HUD {
     seedInput.placeholder = '世界种子（留空随机）';
     seedInput.maxLength = 20;
     seedInput.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const seedBtn = this.mcButton('生成新世界', () => {
-      const v = seedInput.value.trim();
-      const seed = v === '' ? undefined : (/^\d+$/.test(v) ? Number(v) : hashSeed(v));
-      this.opts.onNewWorld(seed, this.selectedMode);
-    }, 'mc-btn-small');
+    const seedBtn = this.mcButton(
+      '生成新世界',
+      () => {
+        const v = seedInput.value.trim();
+        const seed = v === '' ? undefined : /^\d+$/.test(v) ? Number(v) : hashSeed(v);
+        this.opts.onNewWorld(seed, this.selectedMode);
+      },
+      'mc-btn-small',
+    );
     seedRow.append(seedInput, seedBtn);
     inner.appendChild(seedRow);
 
@@ -398,8 +409,9 @@ export class HUD {
     linkRow.append(helpLink, optionsLink, aboutLink);
     inner.appendChild(linkRow);
 
-    inner.appendChild(h('div', 'title-footer',
-      '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'));
+    inner.appendChild(
+      h('div', 'title-footer', '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'),
+    );
     this.title.appendChild(inner);
     this.root.appendChild(this.title);
   }
@@ -423,10 +435,16 @@ export class HUD {
     if (hasSave) {
       const label = this.continueMode === 'creative' ? '继续游戏（创造）' : '继续游戏（生存）';
       // 继续游戏传存档模式；「新的世界」用当前选择（用户可另行切换）
-      this.titleButtons.appendChild(this.mcButton(label, () => this.opts.onStart(true, this.continueMode ?? this.selectedMode), 'mc-btn-big'));
-      this.titleButtons.appendChild(this.mcButton('新的世界', () => this.opts.onNewWorld(undefined, this.selectedMode)));
+      this.titleButtons.appendChild(
+        this.mcButton(label, () => this.opts.onStart(true, this.continueMode ?? this.selectedMode), 'mc-btn-big'),
+      );
+      this.titleButtons.appendChild(
+        this.mcButton('新的世界', () => this.opts.onNewWorld(undefined, this.selectedMode)),
+      );
     } else {
-      this.titleButtons.appendChild(this.mcButton('进入世界', () => this.opts.onStart(false, this.selectedMode), 'mc-btn-big'));
+      this.titleButtons.appendChild(
+        this.mcButton('进入世界', () => this.opts.onStart(false, this.selectedMode), 'mc-btn-big'),
+      );
     }
   }
 
@@ -508,7 +526,8 @@ export class HUD {
       for (let i = 0; i < 10; i++) {
         const pip = h('span', 'stat-pip');
         pip.dataset.kind = kind;
-        pip.innerHTML = `<svg class="pip-empty" viewBox="0 0 24 24">${STAT_PATHS[kind]}</svg>` +
+        pip.innerHTML =
+          `<svg class="pip-empty" viewBox="0 0 24 24">${STAT_PATHS[kind]}</svg>` +
           `<span class="pip-fill"><svg viewBox="0 0 24 24">${STAT_PATHS[kind]}</svg></span>`;
         this.pips.push(pip);
         row.appendChild(pip);
@@ -571,8 +590,13 @@ export class HUD {
     hotbarWrap.appendChild(this.hotbarEl);
     this.gameHud.appendChild(hotbarWrap);
 
-    this.hintEl = h('div', 'hint-bar',
-      this.opts.isMobile ? '' : '左键按住破坏/拍球 · 右键放置/进食/投掷 · 滚轮/1-9切换 · 中键取样 · E方块库 · F5视角 · F3调试');
+    this.hintEl = h(
+      'div',
+      'hint-bar',
+      this.opts.isMobile
+        ? ''
+        : '左键按住破坏/拍球 · 右键放置/进食/投掷 · 滚轮/1-9切换 · 中键取样 · E方块库 · F5视角 · F3调试',
+    );
     this.gameHud.appendChild(this.hintEl);
 
     this.toastEl = h('div', 'toast');
@@ -590,9 +614,11 @@ export class HUD {
     b.setAttribute('aria-label', label);
     b.title = label;
     const svgs: Record<string, string> = {
-      sound: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path class="snd-wave" d="M16 8c1.5 1 1.5 7 0 8M18.5 6c3 2.5 3 9.5 0 12" stroke="currentColor" stroke-width="1.8" fill="none"/><path class="snd-mute" d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" style="display:none"/></svg>',
+      sound:
+        '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path class="snd-wave" d="M16 8c1.5 1 1.5 7 0 8M18.5 6c3 2.5 3 9.5 0 12" stroke="currentColor" stroke-width="1.8" fill="none"/><path class="snd-mute" d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" style="display:none"/></svg>',
       fly: '<svg viewBox="0 0 24 24"><path d="M3 14l7-2 4-7 2 1-2 6 5 2-1 2-6-1-3 4-2-1 1-4-4 1z" fill="currentColor"/></svg>',
-      camera: '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 11l5-3v9l-5-3" fill="currentColor"/><circle cx="7.5" cy="12.5" r="2.2" fill="currentColor"/></svg>',
+      camera:
+        '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 11l5-3v9l-5-3" fill="currentColor"/><circle cx="7.5" cy="12.5" r="2.2" fill="currentColor"/></svg>',
       menu: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
     };
     b.innerHTML = svgs[kind] ?? '';
@@ -620,7 +646,10 @@ export class HUD {
       const stack = slots[i];
       if (stack) {
         img.src = this.icon(stack);
-        img.alt = stack.kind === 'block' ? this.opts.registry.get(stack.id as BlockId).label : (ITEMS[stack.id as string]?.label ?? '');
+        img.alt =
+          stack.kind === 'block'
+            ? this.opts.registry.get(stack.id as BlockId).label
+            : (ITEMS[stack.id as string]?.label ?? '');
         img.style.visibility = '';
       } else {
         img.removeAttribute('src');
@@ -668,7 +697,10 @@ export class HUD {
     const panel = h('div', 'mc-panel plugin-panel');
     const head = h('div', 'crafting-head');
     this.pluginTitle = h('div', 'panel-title');
-    head.append(this.pluginTitle, this.mcButton('关闭', () => this.pluginOnClose?.(), 'mc-btn-small'));
+    head.append(
+      this.pluginTitle,
+      this.mcButton('关闭', () => this.pluginOnClose?.(), 'mc-btn-small'),
+    );
     this.pluginBody = h('div', 'plugin-panel-body');
     panel.append(head, this.pluginBody);
     this.pluginOverlay.appendChild(panel);
@@ -757,12 +789,19 @@ export class HUD {
   // ---------- 生存状态 ----------
 
   /** 每帧调用；内部做变化检测，避免频繁重排 DOM */
-  setSurvival(s: {
-    health: number; hunger: number; saturation: number; breath: number; warmth: number;
-    mode: GameMode; dead: boolean;
-    /** 当前天气形态，用于低温暖时叠加冷色调（可选，旧调用方零改动） */
-    weather?: 'clear' | 'rain' | 'snow' | 'thunder';
-  } | null) {
+  setSurvival(
+    s: {
+      health: number;
+      hunger: number;
+      saturation: number;
+      breath: number;
+      warmth: number;
+      mode: GameMode;
+      dead: boolean;
+      /** 当前天气形态，用于低温暖时叠加冷色调（可选，旧调用方零改动） */
+      weather?: 'clear' | 'rain' | 'snow' | 'thunder';
+    } | null,
+  ) {
     const survival = !!s && s.mode === 'survival';
     this.statsWrap.style.display = survival && !this.hudHidden ? '' : 'none';
     if (!s || !survival) {
@@ -771,13 +810,24 @@ export class HUD {
       this.warmthMeter.classList.remove('show');
       return;
     }
-    if (s.health === this.lastStats.health && s.hunger === this.lastStats.hunger &&
+    if (
+      s.health === this.lastStats.health &&
+      s.hunger === this.lastStats.hunger &&
       s.saturation === this.lastStats.saturation &&
-      s.breath === this.lastStats.breath && s.warmth === this.lastStats.warmth &&
-      s.mode === this.lastStats.mode && (s.weather ?? '') === this.lastStats.weather) return;
+      s.breath === this.lastStats.breath &&
+      s.warmth === this.lastStats.warmth &&
+      s.mode === this.lastStats.mode &&
+      (s.weather ?? '') === this.lastStats.weather
+    )
+      return;
     this.lastStats = {
-      health: s.health, hunger: s.hunger, saturation: s.saturation,
-      breath: s.breath, warmth: s.warmth, mode: s.mode, weather: s.weather ?? '',
+      health: s.health,
+      hunger: s.hunger,
+      saturation: s.saturation,
+      breath: s.breath,
+      warmth: s.warmth,
+      mode: s.mode,
+      weather: s.weather ?? '',
     };
 
     // 温暖表现：屏幕暖光强度 + 火焰细条 + 达标高亮（阈值来自 tuning）
@@ -785,7 +835,7 @@ export class HUD {
     // 恶劣天气 + 低温暖：屏幕叠一层冷色，提示该靠近热源了
     const cold = warmth < COLD.warmthThreshold && !!s.weather && s.weather !== 'clear';
     // 冷色提示必须可见： warmth 越低原暖光透明度越接近 0，直接复用会恰好在最该提示时看不见
-    const glowOpacity = warmth / 100 * 0.35;
+    const glowOpacity = (warmth / 100) * 0.35;
     this.warmthGlow.style.opacity = (cold ? Math.max(glowOpacity, 0.3) : glowOpacity).toFixed(3);
     this.warmthMeter.classList.toggle('show', warmth > 0.5);
     this.warmthFill.style.width = `${warmth}%`;
@@ -867,11 +917,15 @@ export class HUD {
     const seedInput = h('input', 'mc-input') as HTMLInputElement;
     seedInput.placeholder = '新世界种子（留空随机）';
     seedInput.maxLength = 20;
-    const genBtn = this.mcButton('新世界', () => {
-      const v = seedInput.value.trim();
-      const seed = v === '' ? undefined : (/^\d+$/.test(v) ? Number(v) : hashSeed(v));
-      this.opts.onNewWorld(seed, this.opts.isSurvival() ? 'survival' : 'creative');
-    }, 'mc-btn-small');
+    const genBtn = this.mcButton(
+      '新世界',
+      () => {
+        const v = seedInput.value.trim();
+        const seed = v === '' ? undefined : /^\d+$/.test(v) ? Number(v) : hashSeed(v);
+        this.opts.onNewWorld(seed, this.opts.isSurvival() ? 'survival' : 'creative');
+      },
+      'mc-btn-small',
+    );
     newWorldRow.append(seedInput, genBtn);
     panel.appendChild(newWorldRow);
 
@@ -885,9 +939,10 @@ export class HUD {
 
   setMenuMode(mode: GameMode, health: number, hunger: number) {
     this.menuModeBtn.textContent = mode === 'survival' ? '切换为创造模式' : '切换为生存模式';
-    this.menuModeBtn.title = mode === 'survival'
-      ? `当前：生存模式（生命 ${Math.ceil(health)}/20，饥饿 ${Math.ceil(hunger)}/20）`
-      : '当前：创造模式';
+    this.menuModeBtn.title =
+      mode === 'survival'
+        ? `当前：生存模式（生命 ${Math.ceil(health)}/20，饥饿 ${Math.ceil(hunger)}/20）`
+        : '当前：创造模式';
   }
 
   showMenu(v: boolean) {
@@ -897,8 +952,13 @@ export class HUD {
   // ---------- 设置页 ----------
   /** 原版风滑杆行：菜单与设置页共用，避免两处各写一份 */
   private sliderRow(
-    label: string, min: number, max: number, step: number, val: number,
-    fmt: (v: number) => string, cb: (v: number) => void,
+    label: string,
+    min: number,
+    max: number,
+    step: number,
+    val: number,
+    fmt: (v: number) => string,
+    cb: (v: number) => void,
   ): { row: HTMLElement; input: HTMLInputElement; val: HTMLElement } {
     const row = h('div', 'slider-row');
     const head = h('div', 'slider-head');
@@ -933,7 +993,9 @@ export class HUD {
 
   /** 循环选项行：整行可点，点击在候选值间轮转（画质 / 线程数 / 保存间隔） */
   private cycleRow<T extends string | number>(
-    label: string, choices: readonly { value: T; label: string }[], get: () => T,
+    label: string,
+    choices: readonly { value: T; label: string }[],
+    get: () => T,
     cb: (v: T) => void,
   ): HTMLButtonElement {
     const b = h('button', 'mc-btn opt-row') as HTMLButtonElement;
@@ -984,23 +1046,51 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     audio.appendChild(this.soundRow);
-    const vol = this.sliderRow('音量', 0, 100, 5, o.volume, (v) => `${v}%`, (v) => this.opts.onVolume(v));
+    const vol = this.sliderRow(
+      '音量',
+      0,
+      100,
+      5,
+      o.volume,
+      (v) => `${v}%`,
+      (v) => this.opts.onVolume(v),
+    );
     audio.appendChild(vol.row);
     this.volumeSlider = vol.input;
     this.volumeVal = vol.val;
 
     // ---- 视频 ----
     const video = group('视频');
-    const rd = this.sliderRow('渲染距离', 2, 8, 1, o.renderDistance, (v) => `${v} 区块`, (v) => this.opts.onRenderDistance(v));
+    const rd = this.sliderRow(
+      '渲染距离',
+      2,
+      8,
+      1,
+      o.renderDistance,
+      (v) => `${v} 区块`,
+      (v) => this.opts.onRenderDistance(v),
+    );
     video.appendChild(rd.row);
     this.rdSlider = rd.input;
     this.rdVal = rd.val;
-    const fov = this.sliderRow('视野 FOV', 60, 95, 1, o.fov, (v) => `${v}°`, (v) => this.opts.onFov(v));
+    const fov = this.sliderRow(
+      '视野 FOV',
+      60,
+      95,
+      1,
+      o.fov,
+      (v) => `${v}°`,
+      (v) => this.opts.onFov(v),
+    );
     video.appendChild(fov.row);
     this.fovSlider = fov.input;
     this.fovVal = fov.val;
-    this.qualityRow = this.cycleRow('画质', QUALITY_CHOICES,
-      () => this.opts.getOptions().quality, (v) => this.opts.onQuality(v));
+    this.qualityRow = this.cycleRow(
+      '画质',
+      QUALITY_CHOICES,
+      () => this.opts.getOptions().quality,
+      (v) => this.opts.onQuality(v),
+    );
     video.appendChild(this.qualityRow);
     this.dynamicResRow = this.optionRow('动态分辨率', () => {
       this.opts.onDynamicResolution(!this.opts.getOptions().dynamicResolution);
@@ -1008,8 +1098,12 @@ export class HUD {
     });
     video.appendChild(this.dynamicResRow);
     video.appendChild(h('div', 'menu-note', '自动档按帧耗时实时升降渲染分辨率，桌面与移动端均可。'));
-    this.frameTargetRow = this.cycleRow('目标帧率', FRAME_TARGET_CHOICES,
-      () => this.opts.getOptions().frameTarget, (v) => this.opts.onFrameTarget(v));
+    this.frameTargetRow = this.cycleRow(
+      '目标帧率',
+      FRAME_TARGET_CHOICES,
+      () => this.opts.getOptions().frameTarget,
+      (v) => this.opts.onFrameTarget(v),
+    );
     video.appendChild(this.frameTargetRow);
     this.particlesRow = this.optionRow('粒子效果', () => {
       this.opts.onParticles(!this.opts.getOptions().particles);
@@ -1030,8 +1124,15 @@ export class HUD {
 
     // ---- 控制 ----
     const ctrl = group('控制');
-    const sens = this.sliderRow('视角灵敏度', 40, 200, 5, Math.round(o.sensitivity * 100),
-      (v) => `${v}%`, (v) => this.opts.onSensitivity(v / 100));
+    const sens = this.sliderRow(
+      '视角灵敏度',
+      40,
+      200,
+      5,
+      Math.round(o.sensitivity * 100),
+      (v) => `${v}%`,
+      (v) => this.opts.onSensitivity(v / 100),
+    );
     ctrl.appendChild(sens.row);
     this.sensSlider = sens.input;
     this.sensVal = sens.val;
@@ -1046,8 +1147,15 @@ export class HUD {
     });
     ctrl.appendChild(this.autoJumpRow);
     if (this.opts.isMobile) {
-      const ts = this.sliderRow('触控灵敏度', 50, 200, 10, Math.round(o.touchSensitivity * 100),
-        (v) => `${v}%`, (v) => this.opts.onTouchSensitivity(v / 100));
+      const ts = this.sliderRow(
+        '触控灵敏度',
+        50,
+        200,
+        10,
+        Math.round(o.touchSensitivity * 100),
+        (v) => `${v}%`,
+        (v) => this.opts.onTouchSensitivity(v / 100),
+      );
       ctrl.appendChild(ts.row);
       this.touchSensSlider = ts.input;
       this.touchSensVal = ts.val;
@@ -1066,7 +1174,13 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     exp.appendChild(this.landscapeRow);
-    exp.appendChild(h('div', 'menu-note', 'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」开关已移至「视频」分组（默认开启，开启后把 HUD 切换为原版 Java 版风格）；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。'));
+    exp.appendChild(
+      h(
+        'div',
+        'menu-note',
+        'WASM 内核与插件载体默认关闭；「我的世界 UI 还原」开关已移至「视频」分组（默认开启，开启后把 HUD 切换为原版 Java 版风格）；「横屏模式」在移动端默认开启、桌面端默认关闭，锁定设备横向并启用宽屏 HUD，竖屏时会提示手动旋转。均即时生效。',
+      ),
+    );
 
     // ---- 3D 实验 ----
     const exp3d = group('3D 实验');
@@ -1091,12 +1205,22 @@ export class HUD {
     exp3d.appendChild(importRow);
     this.texturePackStatus = h('div', 'menu-note', '当前材质包：经典（程序化）');
     exp3d.appendChild(this.texturePackStatus);
-    exp3d.appendChild(h('div', 'menu-note', '密度地形影响之后生成的区块；8 位顶点光照默认开启，可用 ?lighting=float2 对照。材质包支持 Java / Bedrock 资源包 ZIP、pack.json 或同名 PNG。'));
+    exp3d.appendChild(
+      h(
+        'div',
+        'menu-note',
+        '密度地形影响之后生成的区块；8 位顶点光照默认开启，可用 ?lighting=float2 对照。材质包支持 Java / Bedrock 资源包 ZIP、pack.json 或同名 PNG。',
+      ),
+    );
 
     // ---- 实验性玩法（对齐原版 gamerule，可随时开关，即时生效）----
     const gamerules = group('实验性玩法');
-    this.tickSpeedRow = this.cycleRow('随机刻速度', TICK_SPEED_CHOICES,
-      () => this.opts.getOptions().randomTickSpeed, (v) => this.opts.onRandomTickSpeed(v));
+    this.tickSpeedRow = this.cycleRow(
+      '随机刻速度',
+      TICK_SPEED_CHOICES,
+      () => this.opts.getOptions().randomTickSpeed,
+      (v) => this.opts.onRandomTickSpeed(v),
+    );
     gamerules.appendChild(this.tickSpeedRow);
     this.daylightRow = this.optionRow('昼夜循环', () => {
       this.opts.onDaylightCycle(!this.opts.getOptions().doDaylightCycle);
@@ -1143,7 +1267,9 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     gamerules.appendChild(this.jeiRow);
-    gamerules.appendChild(h('div', 'menu-note', '前四项对应原版 /gamerule；其余为渲染/玩法特性对照，全部立即生效并自动保存。'));
+    gamerules.appendChild(
+      h('div', 'menu-note', '前四项对应原版 /gamerule；其余为渲染/玩法特性对照，全部立即生效并自动保存。'),
+    );
 
     // ---- 开发者 ----
     const dev = group('开发者');
@@ -1157,14 +1283,26 @@ export class HUD {
       this.syncOptions(this.opts.getOptions());
     });
     dev.appendChild(this.greedyRow);
-    this.threadsRow = this.cycleRow('网格化线程', THREAD_CHOICES,
-      () => this.opts.getOptions().mesherThreads, (v) => this.opts.onMesherThreads(v));
+    this.threadsRow = this.cycleRow(
+      '网格化线程',
+      THREAD_CHOICES,
+      () => this.opts.getOptions().mesherThreads,
+      (v) => this.opts.onMesherThreads(v),
+    );
     dev.appendChild(this.threadsRow);
-    this.genThreadsRow = this.cycleRow('生成线程', GEN_THREAD_CHOICES,
-      () => this.opts.getOptions().genThreads, (v) => this.opts.onGenThreads(v));
+    this.genThreadsRow = this.cycleRow(
+      '生成线程',
+      GEN_THREAD_CHOICES,
+      () => this.opts.getOptions().genThreads,
+      (v) => this.opts.onGenThreads(v),
+    );
     dev.appendChild(this.genThreadsRow);
-    this.autosaveRow = this.cycleRow('自动保存间隔', AUTOSAVE_CHOICES,
-      () => this.opts.getOptions().autosaveInterval, (v) => this.opts.onAutosaveInterval(v));
+    this.autosaveRow = this.cycleRow(
+      '自动保存间隔',
+      AUTOSAVE_CHOICES,
+      () => this.opts.getOptions().autosaveInterval,
+      (v) => this.opts.onAutosaveInterval(v),
+    );
     dev.appendChild(this.autosaveRow);
     const ioRow = h('div', 'menu-row');
     ioRow.appendChild(this.mcButton('导出设置', () => this.showOptionsIO('export')));
@@ -1174,10 +1312,12 @@ export class HUD {
 
     const footer = h('div', 'menu-row options-footer');
     footer.appendChild(this.mcButton('关于本项目', () => this.showAbout(true)));
-    footer.appendChild(this.mcButton('重置全部设置', () => {
-      this.opts.onResetOptions();
-      this.syncOptions(this.opts.getOptions());
-    }));
+    footer.appendChild(
+      this.mcButton('重置全部设置', () => {
+        this.opts.onResetOptions();
+        this.syncOptions(this.opts.getOptions());
+      }),
+    );
     panel.appendChild(footer);
     panel.appendChild(this.mcButton('完成', () => this.opts.onOptionsClose(), 'mc-btn-big'));
     panel.appendChild(h('div', 'menu-note', '设置自动保存，换世界也保留'));
@@ -1198,7 +1338,11 @@ export class HUD {
     const ioBtns = h('div', 'menu-row');
     this.ioCopyBtn = this.mcButton('复制', () => this.opts.onCopyOptions(ta.value));
     this.ioApplyBtn = this.mcButton('应用', () => this.opts.onImportOptions(ta.value));
-    ioBtns.append(this.ioCopyBtn, this.ioApplyBtn, this.mcButton('关闭', () => this.showOptionsIO(false)));
+    ioBtns.append(
+      this.ioCopyBtn,
+      this.ioApplyBtn,
+      this.mcButton('关闭', () => this.showOptionsIO(false)),
+    );
     ioPanel.appendChild(ioBtns);
     this.ioOverlay.appendChild(ioPanel);
     this.ioOverlay.style.display = 'none';
@@ -1259,9 +1403,11 @@ export class HUD {
     this.setRowVal(this.genThreadsRow, choiceLabel(GEN_THREAD_CHOICES, o.genThreads));
     this.setRowVal(this.autosaveRow, choiceLabel(AUTOSAVE_CHOICES, o.autosaveInterval));
     if (this.experimentalRow) this.setRowVal(this.experimentalRow, o.experimental ? '开' : '关', !o.experimental);
-    if (this.densityTerrainRow) this.setRowVal(this.densityTerrainRow, o.densityTerrain ? '开（新区块）' : '关', !o.densityTerrain);
+    if (this.densityTerrainRow)
+      this.setRowVal(this.densityTerrainRow, o.densityTerrain ? '开（新区块）' : '关', !o.densityTerrain);
     if (this.landscapeRow) this.setRowVal(this.landscapeRow, o.landscapeMode ? '开' : '关', !o.landscapeMode);
-    if (this.tickSpeedRow) this.setRowVal(this.tickSpeedRow, choiceLabel(TICK_SPEED_CHOICES, o.randomTickSpeed), o.randomTickSpeed === 0);
+    if (this.tickSpeedRow)
+      this.setRowVal(this.tickSpeedRow, choiceLabel(TICK_SPEED_CHOICES, o.randomTickSpeed), o.randomTickSpeed === 0);
     if (this.daylightRow) this.setRowVal(this.daylightRow, o.doDaylightCycle ? '开' : '关', !o.doDaylightCycle);
     if (this.keepInvRow) this.setRowVal(this.keepInvRow, o.keepInventory ? '开' : '关', !o.keepInventory);
     if (this.mobSpawnRow) this.setRowVal(this.mobSpawnRow, o.doMobSpawning ? '开' : '关', !o.doMobSpawning);
@@ -1309,18 +1455,25 @@ export class HUD {
 
     const body = h('div', 'about-text');
     const para = (text: string) => body.appendChild(h('p', '', text));
-    para('一个架构清晰、依赖极轻的体素 Minecraft 复刻：运行时唯一依赖 three.js，'
-      + '体素世界、网格生成、程序化纹理、昼夜天空、物理与 AI 全部手写。');
-    para('构建产物是单个自包含 HTML：离线、无外部资源，file:// 双击即可游玩；'
-      + '所有纹理均为代码逐像素绘制，不含任何原版资源。');
-    para('本项目完全由 AI 生成——全部源码、测试与文档均出自 AI 编程代理，人类仅提出方向。'
-      + '生成方式与质量边界见仓库 README 的「关于本项目（诚实说明）」。');
-    para('双轨版本号：vN 是正式里程碑（只在发布时推进），X.Y.Z 是日常迭代版；'
-      + '实验性内容（WASM 内核 / 插件载体）默认关闭，可在设置页开启。');
+    para(
+      '一个架构清晰、依赖极轻的体素 Minecraft 复刻：运行时唯一依赖 three.js，' +
+        '体素世界、网格生成、程序化纹理、昼夜天空、物理与 AI 全部手写。',
+    );
+    para(
+      '构建产物是单个自包含 HTML：离线、无外部资源，file:// 双击即可游玩；' +
+        '所有纹理均为代码逐像素绘制，不含任何原版资源。',
+    );
+    para(
+      '本项目完全由 AI 生成——全部源码、测试与文档均出自 AI 编程代理，人类仅提出方向。' +
+        '生成方式与质量边界见仓库 README 的「关于本项目（诚实说明）」。',
+    );
+    para(
+      '双轨版本号：vN 是正式里程碑（只在发布时推进），X.Y.Z 是日常迭代版；' +
+        '实验性内容（WASM 内核 / 插件载体）默认关闭，可在设置页开启。',
+    );
     panel.appendChild(body);
 
-    panel.appendChild(h('div', 'menu-note',
-      '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'));
+    panel.appendChild(h('div', 'menu-note', '非官方学习项目，与 Mojang / Microsoft 无关 · 进度自动保存在本机浏览器'));
     panel.appendChild(this.mcButton('返回', () => this.showAbout(false), 'mc-btn-big'));
     this.aboutOverlay.appendChild(panel);
     this.aboutOverlay.style.display = 'none';
@@ -1406,8 +1559,9 @@ export class HUD {
       addCell(stack, item.label, count, this.icon(stack));
     }
     if (this.paletteGrid.children.length === 0) {
-      this.paletteGrid.appendChild(h('div', 'palette-empty',
-        survival ? '背包里还没有方块，先去挖一些吧' : '没有匹配的方块'));
+      this.paletteGrid.appendChild(
+        h('div', 'palette-empty', survival ? '背包里还没有方块，先去挖一些吧' : '没有匹配的方块'),
+      );
     }
   }
 
@@ -1504,7 +1658,8 @@ export class HUD {
     this.rotateHint = h('div', 'rotate-hint');
     const card = h('div', 'rotate-hint-card');
     const icon = h('div', 'rotate-icon');
-    icon.innerHTML = '<svg viewBox="0 0 64 64"><rect x="21" y="6" width="22" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 47l7 5-7 5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M43 17a15 15 0 1 1-13-8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M30 4l3 6-7 1" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+    icon.innerHTML =
+      '<svg viewBox="0 0 64 64"><rect x="21" y="6" width="22" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 47l7 5-7 5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M43 17a15 15 0 1 1-13-8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M30 4l3 6-7 1" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
     card.appendChild(icon);
     card.appendChild(h('div', 'rotate-title', '请旋转设备'));
     card.appendChild(h('div', 'rotate-sub', '横屏模式下请将手机/平板横向放置，以获得完整的宽屏游戏体验'));
@@ -1578,7 +1733,9 @@ export class HUD {
       row.appendChild(h('span', '', v));
       mob.appendChild(row);
     }
-    mob.appendChild(h('div', 'help-tip', '生存提示：树叶可能掉苹果，猪掉猪排，夜晚僵尸会出现。摔落、溺水、饥饿都会掉血。'));
+    mob.appendChild(
+      h('div', 'help-tip', '生存提示：树叶可能掉苹果，猪掉猪排，夜晚僵尸会出现。摔落、溺水、饥饿都会掉血。'),
+    );
     cols.appendChild(mob);
 
     const pad = h('div', 'help-col');
@@ -1629,11 +1786,17 @@ export class HUD {
     this.keybindList = h('div', 'keybind-list');
     panel.appendChild(this.keybindList);
     const row = h('div', 'menu-row');
-    row.appendChild(this.mcButton('恢复默认', () => {
-      this.opts.onResetBindings();
-      this.refreshKeybinds();
-      this.toast('已恢复默认按键');
-    }, 'mc-btn-small'));
+    row.appendChild(
+      this.mcButton(
+        '恢复默认',
+        () => {
+          this.opts.onResetBindings();
+          this.refreshKeybinds();
+          this.toast('已恢复默认按键');
+        },
+        'mc-btn-small',
+      ),
+    );
     row.appendChild(this.mcButton('完成', () => this.showKeybinds(false), 'mc-btn-big'));
     panel.appendChild(row);
     this.keybindOverlay.appendChild(panel);

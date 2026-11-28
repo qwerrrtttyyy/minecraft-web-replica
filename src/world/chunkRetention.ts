@@ -32,10 +32,7 @@ export interface RetentionOptions {
 const compareKey = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** 返回需要卸载的区块 key（已按淘汰顺序排列：强制卸载在前，LRU 次之） */
-export function selectEvictions(
-  chunks: Iterable<readonly [string, RetentionChunk]>,
-  opts: RetentionOptions,
-): string[] {
+export function selectEvictions(chunks: Iterable<readonly [string, RetentionChunk]>, opts: RetentionOptions): string[] {
   const forced: string[] = [];
   const buffer: { key: string; touch: number; createdAt: number }[] = [];
   let kept = 0;
@@ -57,7 +54,7 @@ export function selectEvictions(
   const budget = Math.max(0, opts.maxResident - kept);
   if (buffer.length <= budget) return forced;
 
-  buffer.sort((a, b) => (a.touch - b.touch) || compareKey(a.key, b.key));
+  buffer.sort((a, b) => a.touch - b.touch || compareKey(a.key, b.key));
   let need = buffer.length - budget;
   for (const c of buffer) {
     if (need === 0) break;

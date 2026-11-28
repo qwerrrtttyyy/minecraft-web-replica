@@ -124,7 +124,10 @@ export class PlantRuleRegistry {
 
   list(): PlantRuleInfo[] {
     return [...this.byId.values()].map((r) => ({
-      id: r.id, owner: r.owner, plants: [...r.plants], priority: r.priority ?? 0,
+      id: r.id,
+      owner: r.owner,
+      plants: [...r.plants],
+      priority: r.priority ?? 0,
     }));
   }
 

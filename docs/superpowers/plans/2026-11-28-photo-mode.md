@@ -33,12 +33,14 @@
 ### Task 1: 纯逻辑模块 `photoFrames.ts` 与快照回归
 
 **Files:**
+
 - Create: `src/photo/photoFrames.ts`
 - Modify: `scripts/build-test-snapshot.mjs` (entries 数组)
 - Modify: `package.json` (新增 `test:photo` 脚本，置于 `test:structure` 之后)
 - Test: `test/photo-check.cjs`
 
 **Interfaces:**
+
 - Consumes: 无（零依赖纯逻辑）
 - Produces:
   - `PHOTO_FOV_MIN = 20`, `PHOTO_FOV_MAX = 100`
@@ -66,9 +68,17 @@
 `photoCaption` 含全部 5 类信息；`canWritePlayerCamera(null)===true`、`canWritePlayerCamera('photo')===false`。
 
 ```cjs
-const { clampFov, TIME_PRESET_VALUES, nextTimePreset, WEATHER_CYCLE, nextWeather,
-  clampPhotoPosition, photoFileName, photoCaption, canWritePlayerCamera } =
-  require('./logic/photo/photoFrames.js');
+const {
+  clampFov,
+  TIME_PRESET_VALUES,
+  nextTimePreset,
+  WEATHER_CYCLE,
+  nextWeather,
+  clampPhotoPosition,
+  photoFileName,
+  photoCaption,
+  canWritePlayerCamera,
+} = require('./logic/photo/photoFrames.js');
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -101,10 +111,12 @@ git commit -m "feat(photo): 摄影模式纯逻辑模块与快照回归"
 ### Task 2: 引擎同帧截图钩子与相机归属
 
 **Files:**
+
 - Modify: `src/core/engine.ts:32-75`（类字段与构造）、`src/core/engine.ts:139-162`（`start()` 循环）
 - Test: `test/photo-check.cjs`（追加 `canWritePlayerCamera` 的引擎契约断言，复用 Task 1 已实现函数）
 
 **Interfaces:**
+
 - Consumes: `canWritePlayerCamera`（Task 1）
 - Produces:
   - `Engine.onAfterRender: (() => void) | null = null` —— 在 `this.renderer.render(this.scene, this.camera)` 之后**立即**调用（同一帧、同一次 rAF）
@@ -141,11 +153,13 @@ git commit -m "feat(photo): 引擎增加同帧渲染后钩子与相机归属"
 ### Task 3: `photo` 按键与输入边缘事件
 
 **Files:**
+
 - Modify: `src/input/keybindings.ts:12-61`（`ACTION_LABELS` / `KeyBindings` / `DEFAULT_BINDINGS`）
 - Modify: `src/input/input.ts:14-18`（`InputEdge`）、`src/input/input.ts:219-225`（switch）
 - Test: `test/photo-check.cjs`（追加快照断言）
 
 **Interfaces:**
+
 - Consumes: 无
 - Produces:
   - `GameAction` 新增 `'photo'`；`ACTION_LABELS.photo = '摄影模式'`；`DEFAULT_BINDINGS.photo = 'KeyP'`。`ACTION_KEYS` 由 `Object.keys(ACTION_LABELS)` 自动包含它。
@@ -182,12 +196,14 @@ git commit -m "feat(photo): 新增可重绑定的摄影模式按键与边缘事�
 ### Task 4: `PhotoMode` 运行时、覆盖层与组装根接线
 
 **Files:**
+
 - Create: `src/photo/PhotoMode.ts`
 - Create: `src/photo/photo.css`（或并入 `src/ui/style.css`，二选一，按当前构建方式）
 - Modify: `src/main.ts:80`（Mode 类型附近）、`src/main.ts:510-527`（`collectSave`）、`src/main.ts:1707-1771`（`processEdges`）、`src/main.ts:1819-1901`（系统注册）
 - Test: `test/survival-smoke.mjs`（追加摄影模式断言）
 
 **Interfaces:**
+
 - Consumes: `canWritePlayerCamera`、`clampPhotoPosition`、`clampFov`、`TIME_PRESET_VALUES`、`nextTimePreset`、`nextWeather`、`WEATHER_CYCLE`、`photoFileName`、`photoCaption`、`PhotoMetadata`（Task 1）；`Engine.onAfterRender` / `cameraOwner`（Task 2）；`InputEdge 'photo'`（Task 3）。
 - Produces（`PhotoMode` 公开面，main.ts 依赖）:
   - `active: boolean`
@@ -242,6 +258,7 @@ git commit -m "feat(photo): 摄影模式运行时、覆盖层与同帧导出"
 ### Task 5: 运行时诊断、版本 bump 与文档
 
 **Files:**
+
 - Modify: `src/diagnostics/RuntimeDiagnostics.ts`（`DiagnosticSnapshot` 增可选 `photo` 字段 + 一条检查）
 - Modify: `test/diagnostics-check.cjs`（注入式回归）
 - Modify: `src/main.ts:1520-1589`（`collectDiagnostics` 填 `photo` 字段）
@@ -249,6 +266,7 @@ git commit -m "feat(photo): 摄影模式运行时、覆盖层与同帧导出"
 - Test: `test/diagnostics-check.cjs`、`npm run check:version`
 
 **Interfaces:**
+
 - Consumes: `photo.active`、`engine.cameraOwner`（Task 4）
 - Produces: `DiagnosticSnapshot.photo?: { active: boolean; cameraOwner: string | null; fov: number }`；检查 id `photo-camera-owner`：`active === true` 时 `cameraOwner` 必须为 `'photo'`；`active === false` 时不得为 `'photo'`。旧快照缺 `photo` 字段时跳过。
 

@@ -31,9 +31,17 @@ export interface MeshBlockDef {
 }
 
 export const AIR_MESH_DEF: MeshBlockDef = {
-  id: 0, name: 'air', shape: 'cube', opaque: false, cullSame: false,
-  liquid: false, transparentPass: false, lightEmission: 0,
-  tiles: { top: '', bottom: '', side: '' }, tint: false, crossHeight: 1,
+  id: 0,
+  name: 'air',
+  shape: 'cube',
+  opaque: false,
+  cullSame: false,
+  liquid: false,
+  transparentPass: false,
+  lightEmission: 0,
+  tiles: { top: '', bottom: '', side: '' },
+  tint: false,
+  crossHeight: 1,
 };
 
 export const ZERO_UV: UVRect = [0, 0, 0, 0];
@@ -80,9 +88,18 @@ export interface MeshSource {
 }
 
 /** 单区块方块数据快照：1 格 halo，索引 ((y*W + lz+1)*W + lx+1)，W = CS+2 */
+/** 可复用的快照缓冲（三块同尺寸 Uint8Array，主线程池化用） */
+export interface SnapshotBuffers {
+  data: Uint8Array;
+  sky: Uint8Array;
+  block: Uint8Array;
+}
+
 export interface MeshSnapshot {
   cx: number;
   cz: number;
+  /** 快照覆盖的第一个世界 y（= sy*16 - 1，上下各 1 格 halo） */
+  y0: number;
   data: Uint8Array;
   sky: Uint8Array;
   block: Uint8Array;
@@ -212,9 +229,7 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
     if (!g) return null;
     // 只有 typed array 才看 used.indices；普通 number[] 的 length 即已写入数，
     // 即便调用方误填了 used.indices=0 也不能据此把真实几何当空通道丢掉。
-    const empty = isTypedArray(g.indices)
-      ? (g.used?.indices ?? g.indices.length) === 0
-      : g.indices.length === 0;
+    const empty = isTypedArray(g.indices) ? (g.used?.indices ?? g.indices.length) === 0 : g.indices.length === 0;
     if (empty) return null;
     const p = new Float32Array(geoView(g.positions, g.used?.positions));
     const u = new Float32Array(geoView(g.uvs, g.used?.uvs));
@@ -229,8 +244,10 @@ export function packMesh(d: ChunkMeshData): { mesh: PackedMesh; transfer: ArrayB
   };
   return {
     mesh: {
-      opaque: pack(d.opaque), emissive: pack(d.emissive),
-      transparent: pack(d.transparent), water: pack(d.water),
+      opaque: pack(d.opaque),
+      emissive: pack(d.emissive),
+      transparent: pack(d.transparent),
+      water: pack(d.water),
     },
     transfer,
   };
@@ -252,6 +269,8 @@ export interface MeshRequest {
   type: 'mesh';
   cx: number;
   cz: number;
+  /** 竖向 section 下标（0..SECTIONS-1） */
+  sy: number;
   /** 代次：同一区块被反复改脏时用于丢弃过期结果 */
   generation: number;
   /** M06：派发时的配置版本；Worker 原样回显，失效后的结果不得落地 */
@@ -284,12 +303,18 @@ export interface MeshResult {
   wid: number;
   cx: number;
   cz: number;
+  sy: number;
   generation: number;
   /** M06：派发时的配置版本（原样回显） */
   configRevision: number;
   mesh: PackedMesh;
   /** 诊断：合并掉的 quad 数 / 总顶点数 */
   stats: MeshStats;
+  /**
+   * 快照 buffer 原路回传（data/sky/block，known 若有则第 4 个）。
+   * 主线程据此复用同一批内存，稳态下网格化派发不再产生新分配。
+   */
+  snapshotBuffers: ArrayBuffer[];
 }
 
 /** 生成结果：只回传地形数据（60KB 级），天空光 / 方块光由主线程 initChunk 计算 */
@@ -308,17 +333,24 @@ export type WorkerResponse =
   | GenResult
   | { type: 'config-ack'; wid: number; revision: number }
   | {
-    type: 'error'; channel: 'mesh' | 'gen'; wid: number; cx: number; cz: number;
-    generation: number; configRevision: number; message: string;
-  };
+      type: 'error';
+      channel: 'mesh' | 'gen';
+      wid: number;
+      cx: number;
+      cz: number;
+      /** 网格通道的 section 下标；生成通道无此字段 */
+      sy?: number;
+      generation: number;
+      configRevision: number;
+      message: string;
+      /** 网格通道失败时回传快照 buffer，主线程池化回收 */
+      snapshotBuffers?: ArrayBuffer[];
+    };
 
 /**
  * M06：判断 Worker 结果是否因配置失效而过期。
  * 缺字段（旧 Worker / 注入消息）一律视为过期，避免旧方块元数据污染新网格。
  */
-export function isStaleConfigRevision(
-  msgRevision: number | undefined,
-  currentRevision: number,
-): boolean {
+export function isStaleConfigRevision(msgRevision: number | undefined, currentRevision: number): boolean {
   return msgRevision === undefined || msgRevision !== currentRevision;
 }

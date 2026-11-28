@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { type System } from '../core/types';
 import { WEATHER } from '../core/tuning';
+import type { System } from '../core/types';
 import type { WeatherSnapshot } from '../world/weather';
 
 /**
@@ -43,8 +43,12 @@ class PrecipLayer {
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     this.geo.setDrawRange(0, 0);
     const mat = new THREE.PointsMaterial({
-      size: opts.size, color: opts.color, sizeAttenuation: true,
-      transparent: true, opacity: opts.opacity, depthWrite: false,
+      size: opts.size,
+      color: opts.color,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: opts.opacity,
+      depthWrite: false,
     });
     this.points = new THREE.Points(this.geo, mat);
     this.points.frustumCulled = false;
@@ -77,9 +81,11 @@ class PrecipLayer {
       const i3 = i * 3;
       this.positions[i3 + 1] -= this.speeds[i] * dt;
       this.positions[i3] += this.drift * dt;
-      if (this.positions[i3 + 1] < cam.y - BOX ||
-          Math.abs(this.positions[i3] - cam.x) > BOX ||
-          Math.abs(this.positions[i3 + 2] - cam.z) > BOX) {
+      if (
+        this.positions[i3 + 1] < cam.y - BOX ||
+        Math.abs(this.positions[i3] - cam.x) > BOX ||
+        Math.abs(this.positions[i3 + 2] - cam.z) > BOX
+      ) {
         this.reset(i, cam.x, cam.y, cam.z, true);
       }
     }
@@ -99,13 +105,21 @@ export class WeatherParticles implements System {
     this.camera = camera;
     this.rain = new PrecipLayer(scene, {
       capacity: isMobile ? 90 : WEATHER.rainBudget,
-      size: 0.045, color: 0xbcd8ff, opacity: 0.75,
-      fallMin: 14, fallMax: 22, drift: 0.6,
+      size: 0.045,
+      color: 0xbcd8ff,
+      opacity: 0.75,
+      fallMin: 14,
+      fallMax: 22,
+      drift: 0.6,
     });
     this.snow = new PrecipLayer(scene, {
       capacity: isMobile ? 60 : WEATHER.snowBudget,
-      size: 0.09, color: 0xffffff, opacity: 0.9,
-      fallMin: 1.2, fallMax: 2.6, drift: 0.9,
+      size: 0.09,
+      color: 0xffffff,
+      opacity: 0.9,
+      fallMin: 1.2,
+      fallMax: 2.6,
+      drift: 0.9,
     });
   }
 

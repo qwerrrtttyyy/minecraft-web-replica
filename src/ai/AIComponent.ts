@@ -1,6 +1,6 @@
+import type { BehaviorTree } from './BehaviorTree';
 import { Blackboard } from './Blackboard';
-import { BehaviorTree } from './BehaviorTree';
-import { NodeStatus, TickContext } from './Node';
+import type { NodeStatus, TickContext } from './Node';
 
 /** 运行时实体标识（仅 AI 系统使用，不依赖 three / Entity 类）。 */
 export interface EntityLike {

@@ -19,10 +19,7 @@ const SIZE = TILE * GRID;
  */
 export const TILE_INSET = 0.02 / TILE;
 /** 单个 tile 的 UV 尺寸 [du, dv]，全图集一致 —— 顶点只需存 tile 起点 */
-export const TILE_UV_SIZE: readonly [number, number] = [
-  1 / GRID - TILE_INSET * 2,
-  1 / GRID - TILE_INSET * 2,
-];
+export const TILE_UV_SIZE: readonly [number, number] = [1 / GRID - TILE_INSET * 2, 1 / GRID - TILE_INSET * 2];
 
 /** 像素画布 */
 class Px {
@@ -129,7 +126,7 @@ function leavesPainter(tones: number[]): Painter {
         for (let y = 0; y < 4; y++) {
           for (let x = 0; x < 4; x++) {
             const edge = x === 0 || y === 0 || x === 3 || y === 3;
-            if (edge && rng() < 0.10) continue;
+            if (edge && rng() < 0.1) continue;
             p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
           }
         }
@@ -166,7 +163,7 @@ function logTopPainter(base: number, ring: number, bark: number): Painter {
       for (let x = 0; x < TILE; x++) {
         const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
         if (d >= 6.5) p.set(x, y, jitter(bark, rng, 6));
-        else if (((d | 0) % 3) === 1) p.set(x, y, jitter(ring, rng, 5));
+        else if ((d | 0) % 3 === 1) p.set(x, y, jitter(ring, rng, 5));
       }
     }
   };
@@ -174,18 +171,22 @@ function logTopPainter(base: number, ring: number, bark: number): Painter {
 
 /** 花：茎 + 两片叶 + 顶部花冠（kind 决定花冠造型） */
 function flowerPainter(
-  petal: number, light: number, center: number,
+  petal: number,
+  light: number,
+  center: number,
   kind: 'round' | 'cup' | 'bell' | 'daisy' | 'cluster' | 'sphere' | 'bluet' | 'spike',
-  stemHex = 0x3e7a22, top = 3,
+  stemHex = 0x3e7a22,
+  top = 3,
 ): Painter {
   return (p, rng) => {
     p.clear();
     stem(p, 7, top + 5, 15, stemHex);
     leaves(p, 7, 11 + ((rng() * 2) | 0), 0x4c8f2b);
     if (kind === 'round' || kind === 'cup' || kind === 'cluster') {
-      const y0 = top, y1 = top + 4;
+      const y0 = top,
+        y1 = top + 4;
       for (let y = y0; y <= y1; y++) {
-        const w = kind === 'cup' ? (y >= y1 - 1 ? 3 : 2) : (y === y0 || y === y1 ? 1 : 2);
+        const w = kind === 'cup' ? (y >= y1 - 1 ? 3 : 2) : y === y0 || y === y1 ? 1 : 2;
         for (let x = 7 - w; x <= 8 + w; x++) {
           const edge = x === 7 - w || x === 8 + w || y === y0 || y === y1;
           p.set(x, y, jitter(edge ? light : petal, rng, 7));
@@ -201,7 +202,17 @@ function flowerPainter(
       p.set(7, top + 4, 0x8a6a3a);
       p.set(8, top + 4, 0x8a6a3a);
     } else if (kind === 'daisy') {
-      for (const [dx, dy] of [[0, 0], [-2, 1], [2, 1], [-1, -1], [1, -1], [-1, 2], [1, 2], [0, 3], [0, -2]]) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [-2, 1],
+        [2, 1],
+        [-1, -1],
+        [1, -1],
+        [-1, 2],
+        [1, 2],
+        [0, 3],
+        [0, -2],
+      ]) {
         p.set(8 + dx, top + 2 + dy, jitter(light, rng, 6));
       }
       for (let y = top + 1; y <= top + 2; y++) {
@@ -210,13 +221,20 @@ function flowerPainter(
     } else if (kind === 'sphere') {
       for (let y = top; y <= top + 5; y++) {
         for (let x = 5; x <= 10; x++) {
-          const dx = x - 7.5, dy = y - (top + 2.5);
+          const dx = x - 7.5,
+            dy = y - (top + 2.5);
           if (dx * dx + dy * dy > 7.5) continue;
           p.set(x, y, jitter(dx * dx + dy * dy > 4 ? petal : light, rng, 8));
         }
       }
     } else if (kind === 'bluet') {
-      for (const [dx, dy] of [[0, 0], [-2, 0], [2, 0], [0, -2], [0, 2]]) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [-2, 0],
+        [2, 0],
+        [0, -2],
+        [0, 2],
+      ]) {
         p.set(8 + dx, top + 2 + dy, jitter(light, rng, 5));
       }
       p.set(8, top + 2, center);
@@ -299,7 +317,6 @@ function saplingPainter(leafHex: number, lightHex: number, trunkHex = 0x6b4a2a):
     }
   };
 }
-
 
 /** 右 / 下与透明相邻的像素压暗，给像素小图一层体块阴影（左上受光） */
 const shadeEdges = (p: Px, factor = 0.82) => {
@@ -384,87 +401,101 @@ const glowingBloomPainter = (spec: BloomSpec, glow: number): Painter => {
 };
 
 /** 穗状花序：薰衣草 / 风信子那种沿茎密生小花，wide 控制花穗宽度 */
-const beadSpikePainter = (
-  petal: number, light: number, dark: number, top: number, wide: boolean,
-  stemHex = 0x3e7a22, leafHex = 0x4c8f2b,
-): Painter => (p, rng) => {
-  p.clear();
-  stem(p, 7, top + 3, 15, stemHex);
-  stem(p, 8, top + 5, 15, jitter(stemHex, rng, 8));
-  leaves(p, 7, 12, leafHex);
-  const rows = wide ? 8 : 7;
-  for (let row = 0; row < rows; row++) {
-    const y = top + row;
-    const t = row / rows;
-    const half = wide ? (t < 0.25 ? 1 : t < 0.7 ? 2 : 1) : (t < 0.3 ? 0 : t < 0.72 ? 1 : 0);
-    const shift = row % 2 === 0 ? 0 : 1;
-    for (let dx = -half; dx <= half; dx++) {
-      const edge = Math.abs(dx) === half;
-      p.set(7 + dx + shift, y, jitter(edge ? dark : y === top ? light : petal, rng, 7));
+const beadSpikePainter =
+  (
+    petal: number,
+    light: number,
+    dark: number,
+    top: number,
+    wide: boolean,
+    stemHex = 0x3e7a22,
+    leafHex = 0x4c8f2b,
+  ): Painter =>
+  (p, rng) => {
+    p.clear();
+    stem(p, 7, top + 3, 15, stemHex);
+    stem(p, 8, top + 5, 15, jitter(stemHex, rng, 8));
+    leaves(p, 7, 12, leafHex);
+    const rows = wide ? 8 : 7;
+    for (let row = 0; row < rows; row++) {
+      const y = top + row;
+      const t = row / rows;
+      const half = wide ? (t < 0.25 ? 1 : t < 0.7 ? 2 : 1) : t < 0.3 ? 0 : t < 0.72 ? 1 : 0;
+      const shift = row % 2 === 0 ? 0 : 1;
+      for (let dx = -half; dx <= half; dx++) {
+        const edge = Math.abs(dx) === half;
+        p.set(7 + dx + shift, y, jitter(edge ? dark : y === top ? light : petal, rng, 7));
+      }
+      if (row % 2 === 0) p.set(7 + shift, y, jitter(light, rng, 9));
     }
-    if (row % 2 === 0) p.set(7 + shift, y, jitter(light, rng, 9));
-  }
-  shadeEdges(p, 0.84);
-};
+    shadeEdges(p, 0.84);
+  };
 
 /** 伞形花序：勿忘我 / 野蒜的小碎花，三根花梗各顶一簇 */
-const umbelPainter = (
-  petal: number, light: number, center: number, stemHex = 0x3e7a22,
-): Painter => (p, rng) => {
-  p.clear();
-  stem(p, 7, 6, 15, stemHex);
-  leaves(p, 7, 13, 0x4c8f2b);
-  const tips: [number, number][] = [[4, 4], [8, 3], [11, 5]];
-  for (const [tx, ty] of tips) {
-    const steps = Math.max(Math.abs(tx - 7), Math.abs(ty - 6));
-    for (let s = 0; s <= steps; s++) {
-      p.set(
-        Math.round(7 + ((tx - 7) * s) / steps),
-        Math.round(6 + ((ty - 6) * s) / steps),
-        jitter(stemHex, rng, 6),
-      );
+const umbelPainter =
+  (petal: number, light: number, center: number, stemHex = 0x3e7a22): Painter =>
+  (p, rng) => {
+    p.clear();
+    stem(p, 7, 6, 15, stemHex);
+    leaves(p, 7, 13, 0x4c8f2b);
+    const tips: [number, number][] = [
+      [4, 4],
+      [8, 3],
+      [11, 5],
+    ];
+    for (const [tx, ty] of tips) {
+      const steps = Math.max(Math.abs(tx - 7), Math.abs(ty - 6));
+      for (let s = 0; s <= steps; s++) {
+        p.set(Math.round(7 + ((tx - 7) * s) / steps), Math.round(6 + ((ty - 6) * s) / steps), jitter(stemHex, rng, 6));
+      }
+      p.set(tx, ty - 1, light);
+      p.set(tx - 1, ty, light);
+      p.set(tx + 1, ty, light);
+      p.set(tx, ty + 1, petal);
+      p.set(tx, ty, center);
+      if (rng() < 0.5) p.set(tx - 1, ty - 1, petal);
+      if (rng() < 0.4) p.set(tx + 1, ty + 1, petal);
     }
-    p.set(tx, ty - 1, light);
-    p.set(tx - 1, ty, light);
-    p.set(tx + 1, ty, light);
-    p.set(tx, ty + 1, petal);
-    p.set(tx, ty, center);
-    if (rng() < 0.5) p.set(tx - 1, ty - 1, petal);
-    if (rng() < 0.4) p.set(tx + 1, ty + 1, petal);
-  }
-  shadeEdges(p, 0.86);
-};
+    shadeEdges(p, 0.86);
+  };
 
 /** 毛地黄：沿茎一侧垂挂一串钟形花 */
-const foxglovePainter = (petal: number, light: number, dark: number): Painter => (p, rng) => {
-  p.clear();
-  stem(p, 7, 2, 15, 0x3e7a22);
-  leaves(p, 7, 12, 0x4c8f2b);
-  leaves(p, 7, 9, 0x5aa236);
-  for (let i = 0; i < 5; i++) {
-    const y = 2 + i * 2;
-    const left = i % 2 === 0;
-    const bx = left ? 3 : 8;
-    for (let dy = 0; dy < 2; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
-        const edge = dx === 3 || dy === 1;
-        p.set(bx + dx, y + dy, jitter(edge ? dark : dy === 0 ? light : petal, rng, 6));
+const foxglovePainter =
+  (petal: number, light: number, dark: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    stem(p, 7, 2, 15, 0x3e7a22);
+    leaves(p, 7, 12, 0x4c8f2b);
+    leaves(p, 7, 9, 0x5aa236);
+    for (let i = 0; i < 5; i++) {
+      const y = 2 + i * 2;
+      const left = i % 2 === 0;
+      const bx = left ? 3 : 8;
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 4; dx++) {
+          const edge = dx === 3 || dy === 1;
+          p.set(bx + dx, y + dy, jitter(edge ? dark : dy === 0 ? light : petal, rng, 6));
+        }
       }
+      p.set(left ? bx + 3 : bx, y + 1, 0xf6d8e8);
     }
-    p.set(left ? bx + 3 : bx, y + 1, 0xf6d8e8);
-  }
-  shadeEdges(p, 0.86);
-};
+    shadeEdges(p, 0.86);
+  };
 
 /** 蜀葵：高茎 + 沿轴分布的大轮花 */
-const hollyhockPainter = (petal: number, light: number, dark: number, center: number): Painter =>
+const hollyhockPainter =
+  (petal: number, light: number, dark: number, center: number): Painter =>
   (p, rng) => {
     p.clear();
     stem(p, 7, 1, 15, 0x3f6a24);
     stem(p, 8, 2, 15, 0x4a7a2a);
     leaves(p, 7, 13, 0x4f8f2c);
     leaves(p, 7, 10, 0x5aa236);
-    for (const [bx, by] of [[3, 2], [9, 5], [2, 8]] as const) {
+    for (const [bx, by] of [
+      [3, 2],
+      [9, 5],
+      [2, 8],
+    ] as const) {
       for (let y = by; y < by + 3; y++) {
         for (let x = bx; x < bx + 4; x++) {
           const edge = x === bx || y === by + 2;
@@ -478,67 +509,81 @@ const hollyhockPainter = (petal: number, light: number, dark: number, center: nu
   };
 
 /** 常春藤：蜿蜒藤茎 + 交替的心形叶，适合垂挂成帘 */
-const ivyPainter = (leaf: number, light: number, dark: number): Painter => (p, rng) => {
-  p.clear();
-  let x = 7;
-  for (let y = 0; y < TILE; y++) {
-    p.set(x, y, jitter(y % 5 === 0 ? light : dark, rng, 6));
-    if (rng() < 0.28) x += rng() < 0.5 ? -1 : 1;
-    x = Math.max(2, Math.min(13, x));
-    if (y % 4 === 1) {
-      const side = y % 8 === 1 ? -1 : 1;
-      const lx = x + side * 2;
-      for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, 1], [-1, 1], [1, 1]] as const) {
-        p.set(lx + dx, y + dy, jitter(dx + dy <= 0 ? light : leaf, rng, 7));
+const ivyPainter =
+  (leaf: number, light: number, dark: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    let x = 7;
+    for (let y = 0; y < TILE; y++) {
+      p.set(x, y, jitter(y % 5 === 0 ? light : dark, rng, 6));
+      if (rng() < 0.28) x += rng() < 0.5 ? -1 : 1;
+      x = Math.max(2, Math.min(13, x));
+      if (y % 4 === 1) {
+        const side = y % 8 === 1 ? -1 : 1;
+        const lx = x + side * 2;
+        for (const [dx, dy] of [
+          [0, 0],
+          [-1, 0],
+          [1, 0],
+          [0, 1],
+          [-1, 1],
+          [1, 1],
+        ] as const) {
+          p.set(lx + dx, y + dy, jitter(dx + dy <= 0 ? light : leaf, rng, 7));
+        }
+        p.set(lx, y + 2, jitter(leaf, rng, 6));
       }
-      p.set(lx, y + 2, jitter(leaf, rng, 6));
     }
-  }
-  shadeEdges(p, 0.84);
-};
+    shadeEdges(p, 0.84);
+  };
 
 /** 雪滴花：拱形花茎末端垂一枚白色小铃 */
-const snowdropPainter = (petal: number, light: number, sepal: number): Painter => (p, rng) => {
-  p.clear();
-  let x = 7;
-  for (let y = 15; y >= 4; y--) {
-    p.set(x, y, 0x4a7a2a);
-    if (y < 8) x += 1;
-  }
-  for (let y = 2; y <= 5; y++) {
-    const w = y <= 3 ? 1 : 2;
-    for (let dx = -w; dx <= w; dx++) {
-      p.set(x + 1 + dx, y + 1, jitter(dx === -w ? light : petal, rng, 6));
+const snowdropPainter =
+  (petal: number, light: number, sepal: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    let x = 7;
+    for (let y = 15; y >= 4; y--) {
+      p.set(x, y, 0x4a7a2a);
+      if (y < 8) x += 1;
     }
-  }
-  p.set(x + 1, 2, sepal);
-  p.set(x, 2, sepal);
-  p.set(x + 2, 2, sepal);
-  leaves(p, 7, 12, 0x4c8f2b);
-  shadeEdges(p, 0.9);
-};
+    for (let y = 2; y <= 5; y++) {
+      const w = y <= 3 ? 1 : 2;
+      for (let dx = -w; dx <= w; dx++) {
+        p.set(x + 1 + dx, y + 1, jitter(dx === -w ? light : petal, rng, 6));
+      }
+    }
+    p.set(x + 1, 2, sepal);
+    p.set(x, 2, sepal);
+    p.set(x + 2, 2, sepal);
+    leaves(p, 7, 12, 0x4c8f2b);
+    shadeEdges(p, 0.9);
+  };
 
 /** 番红花：贴地小杯花，紫色花瓣 + 橙色花蕊 */
-const crocusPainter = (petal: number, light: number, dark: number): Painter => (p, rng) => {
-  p.clear();
-  stem(p, 7, 9, 15, 0x4f8f2c);
-  for (const x0 of [3, 11]) {
-    for (let k = 0; k < 6; k++) p.set(x0 + (x0 < 8 ? k * 0.4 : -k * 0.4) | 0, 14 - k, 0x5a9a3a);
-  }
-  for (let y = 5; y <= 11; y++) {
-    const w = y <= 6 ? 0 : y <= 8 ? 1 : 2;
-    for (let x = 7 - w; x <= 8 + w; x++) {
-      const edge = x === 7 - w || x === 8 + w;
-      p.set(x, y, jitter(edge ? dark : y <= 6 ? light : petal, rng, 7));
+const crocusPainter =
+  (petal: number, light: number, dark: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    stem(p, 7, 9, 15, 0x4f8f2c);
+    for (const x0 of [3, 11]) {
+      for (let k = 0; k < 6; k++) p.set((x0 + (x0 < 8 ? k * 0.4 : -k * 0.4)) | 0, 14 - k, 0x5a9a3a);
     }
-  }
-  p.set(7, 7, 0xf0a030);
-  p.set(8, 7, 0xf0c050);
-  shadeEdges(p, 0.86);
-};
+    for (let y = 5; y <= 11; y++) {
+      const w = y <= 6 ? 0 : y <= 8 ? 1 : 2;
+      for (let x = 7 - w; x <= 8 + w; x++) {
+        const edge = x === 7 - w || x === 8 + w;
+        p.set(x, y, jitter(edge ? dark : y <= 6 ? light : petal, rng, 7));
+      }
+    }
+    p.set(7, 7, 0xf0a030);
+    p.set(8, 7, 0xf0c050);
+    shadeEdges(p, 0.86);
+  };
 
 /** 丝兰：放射状硬叶莲座 + 中央高花穗 */
-const yuccaPainter = (leaf: number, light: number, sand: number, bloom: number): Painter =>
+const yuccaPainter =
+  (leaf: number, light: number, sand: number, bloom: number): Painter =>
   (p, rng) => {
     p.clear();
     for (let i = 0; i < 9; i++) {
@@ -560,127 +605,151 @@ const yuccaPainter = (leaf: number, light: number, sand: number, bloom: number):
   };
 
 /** 海石竹：低矮草垫上三团粉色球花 */
-const cushionPainter = (petal: number, light: number, leaf: number): Painter => (p, rng) => {
-  p.clear();
-  for (let x = 1; x <= 14; x++) {
-    const h = 3 + ((rng() * 3) | 0);
-    for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? 0x8fbe57 : leaf, rng, 7));
-  }
-  for (const [cx, cy] of [[4, 8], [8, 6], [11, 9]] as const) {
-    for (let y = cy - 1; y <= cy + 1; y++) {
-      for (let x = cx - 1; x <= cx + 1; x++) {
-        if (rng() < 0.12) continue;
-        p.set(x, y, jitter((x + y) % 3 === 0 ? light : petal, rng, 7));
-      }
+const cushionPainter =
+  (petal: number, light: number, leaf: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let x = 1; x <= 14; x++) {
+      const h = 3 + ((rng() * 3) | 0);
+      for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? 0x8fbe57 : leaf, rng, 7));
     }
-    p.set(cx, cy - 2, petal);
-  }
-  shadeEdges(p, 0.86);
-};
+    for (const [cx, cy] of [
+      [4, 8],
+      [8, 6],
+      [11, 9],
+    ] as const) {
+      for (let y = cy - 1; y <= cy + 1; y++) {
+        for (let x = cx - 1; x <= cx + 1; x++) {
+          if (rng() < 0.12) continue;
+          p.set(x, y, jitter((x + y) % 3 === 0 ? light : petal, rng, 7));
+        }
+      }
+      p.set(cx, cy - 2, petal);
+    }
+    shadeEdges(p, 0.86);
+  };
 
 /** 海滩草：偏黄绿的风吹草叶 + 麦穗状种子 */
-const beachGrassPainter = (blade: number, tip: number, head: number): Painter => (p, rng) => {
-  p.clear();
-  for (let i = 0; i < 6; i++) {
-    const x0 = 2 + i * 2;
-    const h = 7 + ((rng() * 7) | 0);
-    for (let k = 0; k < h; k++) {
-      const y = 15 - k;
-      const x = x0 + Math.round(Math.sin(k * 0.4 + i) * 1.1);
-      p.set(x, y, gray(k >= h - 2 ? tip : blade));
+const beachGrassPainter =
+  (blade: number, tip: number, head: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let i = 0; i < 6; i++) {
+      const x0 = 2 + i * 2;
+      const h = 7 + ((rng() * 7) | 0);
+      for (let k = 0; k < h; k++) {
+        const y = 15 - k;
+        const x = x0 + Math.round(Math.sin(k * 0.4 + i) * 1.1);
+        p.set(x, y, gray(k >= h - 2 ? tip : blade));
+      }
+      const tx = x0 + Math.round(Math.sin((h - 1) * 0.4 + i) * 1.1);
+      if (i % 2 === 0) for (let d = 0; d < 3; d++) p.set(tx, 14 - h - d, gray(head));
     }
-    const tx = x0 + Math.round(Math.sin((h - 1) * 0.4 + i) * 1.1);
-    if (i % 2 === 0) for (let d = 0; d < 3; d++) p.set(tx, 14 - h - d, gray(head));
-  }
-};
+  };
 
 /** 浮萍：几片小圆叶贴水面漂着，叶心一点深色 */
-const padPainter = (leaf: number, light: number, flower: number): Painter => (p, rng) => {
-  p.clear();
-  for (const [cx, cy] of [[4, 11], [9, 10], [7, 13], [12, 13], [2, 14]] as const) {
-    const r = 2 + (rng() < 0.35 ? 1 : 0);
-    for (let y = cy - r; y <= cy + r; y++) {
-      for (let x = cx - r; x <= cx + r; x++) {
-        const dx = (x - cx) / (r + 0.4);
-        const dy = (y - cy) / (r + 0.2);
-        if (dx * dx + dy * dy > 1) continue;
-        p.set(x, y, jitter((x + y) % 3 === 0 ? light : leaf, rng, 6));
+const padPainter =
+  (leaf: number, light: number, flower: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (const [cx, cy] of [
+      [4, 11],
+      [9, 10],
+      [7, 13],
+      [12, 13],
+      [2, 14],
+    ] as const) {
+      const r = 2 + (rng() < 0.35 ? 1 : 0);
+      for (let y = cy - r; y <= cy + r; y++) {
+        for (let x = cx - r; x <= cx + r; x++) {
+          const dx = (x - cx) / (r + 0.4);
+          const dy = (y - cy) / (r + 0.2);
+          if (dx * dx + dy * dy > 1) continue;
+          p.set(x, y, jitter((x + y) % 3 === 0 ? light : leaf, rng, 6));
+        }
       }
+      p.set(cx, cy, jitter(leaf, rng, 4));
     }
-    p.set(cx, cy, jitter(leaf, rng, 4));
-  }
-  p.set(8, 10, flower);
-  p.set(9, 11, flower);
-  shadeEdges(p, 0.9);
-};
+    p.set(8, 10, flower);
+    p.set(9, 11, flower);
+    shadeEdges(p, 0.9);
+  };
 
 /** 海葵：底座 + 向上放射的触手，触手顶端更亮 */
-const anemonePainter = (tentacle: number, light: number, base: number): Painter => (p, rng) => {
-  p.clear();
-  for (let x = 3; x <= 12; x++) p.set(x, 15, jitter(base, rng, 6));
-  for (let x = 5; x <= 10; x++) p.set(x, 14, jitter(base, rng, 6));
-  for (let i = 0; i < 9; i++) {
-    const ang = -Math.PI / 2 + (i - 4) * 0.3;
-    let x = 7.5;
-    const len = 7 + ((rng() * 4) | 0);
-    for (let k = 0; k < len; k++) {
-      p.set(Math.round(x), Math.round(13 - k), jitter(k > len - 3 ? light : tentacle, rng, 8));
-      x += Math.cos(ang) * 0.9;
-    }
-  }
-  shadeEdges(p, 0.9);
-};
-
-/** 红藻：分叉的红色藻体 */
-const algaePainter = (main: number, dark: number, light: number): Painter => (p, rng) => {
-  p.clear();
-  for (const x0 of [4, 8, 11]) {
-    let x = x0;
-    for (let y = 15; y >= 1; y--) {
-      p.set(x, y, jitter(y % 4 === 0 ? light : main, rng, 6));
-      if (rng() < 0.3) x += rng() < 0.5 ? -1 : 1;
-      if (y % 4 === 2) {
-        p.set(x - 1, y, dark);
-        p.set(x + 1, y, dark);
+const anemonePainter =
+  (tentacle: number, light: number, base: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let x = 3; x <= 12; x++) p.set(x, 15, jitter(base, rng, 6));
+    for (let x = 5; x <= 10; x++) p.set(x, 14, jitter(base, rng, 6));
+    for (let i = 0; i < 9; i++) {
+      const ang = -Math.PI / 2 + (i - 4) * 0.3;
+      let x = 7.5;
+      const len = 7 + ((rng() * 4) | 0);
+      for (let k = 0; k < len; k++) {
+        p.set(Math.round(x), Math.round(13 - k), jitter(k > len - 3 ? light : tentacle, rng, 8));
+        x += Math.cos(ang) * 0.9;
       }
     }
-  }
-  for (let i = 0; i < 6; i++) {
-    const x = 2 + ((rng() * 12) | 0);
-    const y = 3 + ((rng() * 11) | 0);
-    const dir = rng() < 0.5 ? 1 : -1;
-    for (let k = 0; k < 3; k++) p.set(x + k * dir, y - k, jitter(main, rng, 6));
-  }
-  shadeEdges(p, 0.86);
-};
+    shadeEdges(p, 0.9);
+  };
+
+/** 红藻：分叉的红色藻体 */
+const algaePainter =
+  (main: number, dark: number, light: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (const x0 of [4, 8, 11]) {
+      let x = x0;
+      for (let y = 15; y >= 1; y--) {
+        p.set(x, y, jitter(y % 4 === 0 ? light : main, rng, 6));
+        if (rng() < 0.3) x += rng() < 0.5 ? -1 : 1;
+        if (y % 4 === 2) {
+          p.set(x - 1, y, dark);
+          p.set(x + 1, y, dark);
+        }
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      const x = 2 + ((rng() * 12) | 0);
+      const y = 3 + ((rng() * 11) | 0);
+      const dir = rng() < 0.5 ? 1 : -1;
+      for (let k = 0; k < 3; k++) p.set(x + k * dir, y - k, jitter(main, rng, 6));
+    }
+    shadeEdges(p, 0.86);
+  };
 
 /** 荧光苔：贴地苔垫 + 青色发光孢子 */
-const glowMossPainter = (base: number, light: number, glow: number): Painter => (p, rng) => {
-  p.clear();
-  for (let x = 0; x < TILE; x++) {
-    const h = 3 + ((rng() * 4) | 0);
-    for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? light : base, rng, 8));
-  }
-  for (let i = 0; i < 12; i++) p.set(1 + ((rng() * 14) | 0), 9 + ((rng() * 7) | 0), jitter(glow, rng, 10));
-  shadeEdges(p, 0.9);
-};
+const glowMossPainter =
+  (base: number, light: number, glow: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let x = 0; x < TILE; x++) {
+      const h = 3 + ((rng() * 4) | 0);
+      for (let k = 0; k < h; k++) p.set(x, 15 - k, jitter(k === h - 1 ? light : base, rng, 8));
+    }
+    for (let i = 0; i < 12; i++) p.set(1 + ((rng() * 14) | 0), 9 + ((rng() * 7) | 0), jitter(glow, rng, 10));
+    shadeEdges(p, 0.9);
+  };
 
 /** 荧光蕨：蕨叶 + 沿叶脉的青色光点 */
-const glowFernPainter = (leaf: number, light: number, glow: number): Painter => (p, rng) => {
-  p.clear();
-  for (let i = 0; i < 5; i++) {
-    const x0 = 2 + i * 3;
-    const h = 8 + ((rng() * 7) | 0);
-    for (let k = 0; k < h; k++) {
-      const y = 15 - k;
-      const x = x0 + Math.round(Math.sin(k * 0.5 + i) * 1.2);
-      p.set(x, y, jitter(k === h - 1 ? glow : k % 3 === 0 ? light : leaf, rng, 7));
-      if (k > 2 && k % 2 === 0) p.set(x + 1, y, jitter(leaf, rng, 6));
+const glowFernPainter =
+  (leaf: number, light: number, glow: number): Painter =>
+  (p, rng) => {
+    p.clear();
+    for (let i = 0; i < 5; i++) {
+      const x0 = 2 + i * 3;
+      const h = 8 + ((rng() * 7) | 0);
+      for (let k = 0; k < h; k++) {
+        const y = 15 - k;
+        const x = x0 + Math.round(Math.sin(k * 0.5 + i) * 1.2);
+        p.set(x, y, jitter(k === h - 1 ? glow : k % 3 === 0 ? light : leaf, rng, 7));
+        if (k > 2 && k % 2 === 0) p.set(x + 1, y, jitter(leaf, rng, 6));
+      }
     }
-  }
-  for (let i = 0; i < 5; i++) p.set(2 + ((rng() * 12) | 0), 3 + ((rng() * 8) | 0), 0xbfffe0);
-  shadeEdges(p, 0.9);
-};
+    for (let i = 0; i < 5; i++) p.set(2 + ((rng() * 12) | 0), 3 + ((rng() * 8) | 0), 0xbfffe0);
+    shadeEdges(p, 0.9);
+  };
 
 function builtinPainters(): Record<string, Painter> {
   const dirt: Painter = (p, rng) => {
@@ -708,14 +777,16 @@ function builtinPainters(): Record<string, Painter> {
     blob(p, rng, 0xb83a14, 4, 4);
   };
   /** 恶地陶瓦：底色 + 暗斑 + 水平层理细纹 */
-  const terracotta = (hex: number, dark: number): Painter => (p, rng) => {
-    fillNoise(p, rng, hex, 7);
-    blob(p, rng, dark, 8, 4);
-    for (let i = 0; i < 4; i++) {
-      const y = 2 + ((rng() * 12) | 0);
-      for (let x = 0; x < TILE; x++) if (rng() < 0.55) p.set(x, y, jitter(dark, rng, 6));
-    }
-  };
+  const terracotta =
+    (hex: number, dark: number): Painter =>
+    (p, rng) => {
+      fillNoise(p, rng, hex, 7);
+      blob(p, rng, dark, 8, 4);
+      for (let i = 0; i < 4; i++) {
+        const y = 2 + ((rng() * 12) | 0);
+        for (let x = 0; x < TILE; x++) if (rng() < 0.55) p.set(x, y, jitter(dark, rng, 6));
+      }
+    };
   return {
     basketball: (p, rng) => {
       // 橙色底 + 深色经纬分格线：与 3D 球模型共用同一套像素语言，零外部资源
@@ -799,7 +870,7 @@ function builtinPainters(): Record<string, Painter> {
         for (let x = 0; x < TILE; x++) {
           const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
           if (d >= 6.5) p.set(x, y, jitter(0x554126, rng, 6));
-          else if (((d | 0) % 3) === 1) p.set(x, y, jitter(0x9c7f4e, rng, 5));
+          else if ((d | 0) % 3 === 1) p.set(x, y, jitter(0x9c7f4e, rng, 5));
         }
       }
       p.set(7, 7, 0x8a6c3e);
@@ -830,13 +901,12 @@ function builtinPainters(): Record<string, Painter> {
           for (let y = 0; y < 4; y++) {
             for (let x = 0; x < 4; x++) {
               const edge = x === 0 || y === 0 || x === 3 || y === 3;
-              if (edge && rng() < 0.10) continue;
+              if (edge && rng() < 0.1) continue;
               p.set(cx * 4 + x, cy * 4 + y, jitter(base, rng, 7));
             }
           }
           if (rng() < 0.55) {
-            p.set(cx * 4 + 1 + ((rng() * 2) | 0), cy * 4 + 1 + ((rng() * 2) | 0),
-              jitter(gray(0x6fb545), rng, 8));
+            p.set(cx * 4 + 1 + ((rng() * 2) | 0), cy * 4 + 1 + ((rng() * 2) | 0), jitter(gray(0x6fb545), rng, 8));
           }
         }
       }
@@ -957,7 +1027,10 @@ function builtinPainters(): Record<string, Painter> {
       p.set(6, 12, 0x4c8f2b);
       p.set(9, 11, 0x4c8f2b);
       for (let y = 3; y < 8; y++) for (let x = 5; x < 11; x++) p.set(x, y, jitter(0xd0342c, rng, 7));
-      p.set(5, 3, 0); p.set(10, 3, 0); p.set(5, 7, 0); p.set(10, 7, 0);
+      p.set(5, 3, 0);
+      p.set(10, 3, 0);
+      p.set(5, 7, 0);
+      p.set(10, 7, 0);
       p.set(7, 4, 0x7a1f1a);
       p.set(8, 4, 0x7a1f1a);
       p.set(7, 5, 0x2b1a12);
@@ -970,7 +1043,10 @@ function builtinPainters(): Record<string, Painter> {
       p.set(9, 12, 0x4c8f2b);
       p.set(5, 13, 0x4c8f2b);
       for (let y = 4; y < 8; y++) for (let x = 5; x < 10; x++) p.set(x, y, jitter(0xf7d442, rng, 6));
-      p.set(5, 4, 0); p.set(9, 4, 0); p.set(5, 7, 0); p.set(9, 7, 0);
+      p.set(5, 4, 0);
+      p.set(9, 4, 0);
+      p.set(5, 7, 0);
+      p.set(9, 7, 0);
       p.set(7, 5, 0xe0a828);
       p.set(6, 4, 0xffe873);
     },
@@ -979,7 +1055,8 @@ function builtinPainters(): Record<string, Painter> {
       p.clear();
       for (let y = 4; y < 16; y++) {
         for (let x = 3; x < 14; x++) {
-          const dx = x - 8, dy = (y - 10) * 0.92;
+          const dx = x - 8,
+            dy = (y - 10) * 0.92;
           const d = dx * dx + dy * dy;
           if (d > 22) continue;
           let hex = jitter(0xb5352c, rng, 10);
@@ -1001,7 +1078,7 @@ function builtinPainters(): Record<string, Painter> {
       p.clear();
       for (let y = 3; y < 16; y++) {
         for (let x = 3; x < 14; x++) {
-          if (Math.abs((y - 9) - (x - 8) * 0.22) > 5.2) continue;
+          if (Math.abs(y - 9 - (x - 8) * 0.22) > 5.2) continue;
           p.set(x, y, jitter(0xe79aa0, rng, 9));
         }
       }
@@ -1068,7 +1145,7 @@ function builtinPainters(): Record<string, Painter> {
         for (let x = 0; x < TILE; x++) {
           const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
           if (d > 6.5) p.set(x, y, jitter(0xa9530d, rng, 6));
-          else if (((d | 0) % 3) === 1) p.set(x, y, jitter(0xeb8b28, rng, 6));
+          else if ((d | 0) % 3 === 1) p.set(x, y, jitter(0xeb8b28, rng, 6));
         }
       }
       rect(p, 7, 6, 2, 3, 0x3f7a24);
@@ -1081,7 +1158,7 @@ function builtinPainters(): Record<string, Painter> {
         for (let x = 0; x < TILE; x++) {
           const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
           if (d > 6.5) p.set(x, y, jitter(0x9c4a0c, rng, 6));
-          else if (((d | 0) % 4) === 2) p.set(x, y, jitter(0xd97a1e, rng, 6));
+          else if ((d | 0) % 4 === 2) p.set(x, y, jitter(0xd97a1e, rng, 6));
         }
       }
     },
@@ -1119,8 +1196,11 @@ function builtinPainters(): Record<string, Painter> {
         for (let x = x0; x < x0 + w && x < TILE; x++) p.set(x, y0, jitter(0x8d8d91, rng, 5));
       };
       // 上下两行砖，竖缝错开
-      brickRect(0, 1, 7, 6); brickRect(9, 1, 7, 6);
-      brickRect(0, 9, 3, 6); brickRect(5, 9, 6, 6); brickRect(13, 9, 3, 6);
+      brickRect(0, 1, 7, 6);
+      brickRect(9, 1, 7, 6);
+      brickRect(0, 9, 3, 6);
+      brickRect(5, 9, 6, 6);
+      brickRect(13, 9, 3, 6);
     },
     mossy_cobblestone: (p, rng) => {
       // 先铺圆石，再盖苔藓
@@ -1174,7 +1254,10 @@ function builtinPainters(): Record<string, Painter> {
         const x = 1 + ((rng() * 13) | 0);
         const y = 1 + ((rng() * 13) | 0);
         const c = jitter(0x76705f, rng, 9);
-        p.set(x, y, c); p.set(x + 1, y, c); p.set(x, y + 1, c); p.set(x + 1, y + 1, c);
+        p.set(x, y, c);
+        p.set(x + 1, y, c);
+        p.set(x, y + 1, c);
+        p.set(x + 1, y + 1, c);
       }
     },
     sandstone: (p, rng) => {
@@ -1238,7 +1321,8 @@ function builtinPainters(): Record<string, Painter> {
       for (let i = 0; i < 5; i++) {
         const x = (rng() * 14) | 0;
         const y = (rng() * 14) | 0;
-        p.set(x, y, 0x6e6350); p.set(x + 1, y, 0x6e6350);
+        p.set(x, y, 0x6e6350);
+        p.set(x + 1, y, 0x6e6350);
       }
       for (let i = 0; i < 8; i++) p.set((rng() * TILE) | 0, (rng() * TILE) | 0, 0xefe6c6);
     },
@@ -1253,7 +1337,10 @@ function builtinPainters(): Record<string, Painter> {
       }
       for (const g of [6, 11]) {
         for (let i = 0; i < TILE; i++) {
-          if (rng() < 0.7) { p.set(g, i, 0x74592f); p.set(i, g, 0x74592f); }
+          if (rng() < 0.7) {
+            p.set(g, i, 0x74592f);
+            p.set(i, g, 0x74592f);
+          }
         }
       }
       // 每格内一点木纹
@@ -1288,7 +1375,8 @@ function builtinPainters(): Record<string, Painter> {
     red_mushroom: (p, rng) => {
       p.clear();
       for (let y = 9; y < 16; y++) {
-        p.set(7, y, 0xe8e2d2); p.set(8, y, 0xd8d2c0);
+        p.set(7, y, 0xe8e2d2);
+        p.set(8, y, 0xd8d2c0);
       }
       // 菌盖
       for (let y = 4; y <= 9; y++) {
@@ -1300,14 +1388,21 @@ function builtinPainters(): Record<string, Painter> {
       }
       for (let x = 3; x <= 12; x++) p.set(x, 9, 0xe8d8c8);
       // 白色斑点
-      for (const [x, y] of [[5, 6], [9, 5], [11, 7], [4, 8]]) {
-        p.set(x, y, 0xf2f0e8); p.set(x + 1, y, 0xf2f0e8);
+      for (const [x, y] of [
+        [5, 6],
+        [9, 5],
+        [11, 7],
+        [4, 8],
+      ]) {
+        p.set(x, y, 0xf2f0e8);
+        p.set(x + 1, y, 0xf2f0e8);
       }
     },
     brown_mushroom: (p, rng) => {
       p.clear();
       for (let y = 10; y < 16; y++) {
-        p.set(7, y, 0xe8e2d2); p.set(8, y, 0xd8d2c0);
+        p.set(7, y, 0xe8e2d2);
+        p.set(8, y, 0xd8d2c0);
       }
       for (let y = 5; y <= 10; y++) {
         const w = y >= 9 ? 5 : y >= 7 ? 4 : 3;
@@ -1318,7 +1413,12 @@ function builtinPainters(): Record<string, Painter> {
         }
       }
       for (let x = 4; x <= 11; x++) p.set(x, 10, 0xd8c8b0);
-      for (const [x, y] of [[6, 7], [10, 6], [8, 8]]) p.set(x, y, 0xb98a55);
+      for (const [x, y] of [
+        [6, 7],
+        [10, 6],
+        [8, 8],
+      ])
+        p.set(x, y, 0xb98a55);
     },
     dead_bush: (p, rng) => {
       p.clear();
@@ -1450,7 +1550,12 @@ function builtinPainters(): Record<string, Painter> {
         p.set(x, y, 0x3e7a22);
         if (y < 11 && y % 2 === 0) x += 1;
       }
-      for (const [bx, by] of [[5, 12], [7, 10], [9, 8], [11, 7]]) {
+      for (const [bx, by] of [
+        [5, 12],
+        [7, 10],
+        [9, 8],
+        [11, 7],
+      ]) {
         p.set(bx, by, 0xf2f5e8);
         p.set(bx + 1, by, 0xe0e8d0);
         p.set(bx, by + 1, 0xd8e0c8);
@@ -1472,7 +1577,8 @@ function builtinPainters(): Record<string, Painter> {
       // 花盘：外圈金黄花瓣 + 中央棕色籽盘
       for (let y = 1; y <= 8; y++) {
         for (let x = 3; x <= 12; x++) {
-          const dx = (x - 7.5) / 4.6, dy = (y - 4.5) / 4;
+          const dx = (x - 7.5) / 4.6,
+            dy = (y - 4.5) / 4;
           const d = dx * dx + dy * dy;
           if (d > 1) continue;
           p.set(x, y, jitter(d > 0.52 ? 0xf0c22a : 0x6b4220, rng, 9));
@@ -1521,7 +1627,8 @@ function builtinPainters(): Record<string, Painter> {
       // 扁圆叶片 + 右侧缺口
       for (let y = 8; y <= 14; y++) {
         for (let x = 1; x <= 14; x++) {
-          const dx = (x - 7.5) / 6.2, dy = (y - 11.5) / 2.9;
+          const dx = (x - 7.5) / 6.2,
+            dy = (y - 11.5) / 2.9;
           if (dx * dx + dy * dy > 1) continue;
           if (x >= 7 && x <= 8 && y >= 10) continue;
           p.set(x, y, jitter((x + y) % 3 === 0 ? 0x4f8f2c : 0x3f7a2f, rng, 6));
@@ -1540,8 +1647,7 @@ function builtinPainters(): Record<string, Painter> {
         const h = 7 + ((rng() * 6) | 0);
         for (let k = 0; k < h; k++) {
           const y = 15 - k;
-          p.set(x0 + Math.round(Math.sin(k * 0.4 + i) * 0.9), y,
-            jitter(k === h - 1 ? 0x6ad0a0 : 0x3f9a6a, rng, 7));
+          p.set(x0 + Math.round(Math.sin(k * 0.4 + i) * 0.9), y, jitter(k === h - 1 ? 0x6ad0a0 : 0x3f9a6a, rng, 7));
         }
       }
     },
@@ -1611,7 +1717,12 @@ function builtinPainters(): Record<string, Painter> {
     pumpkin_stem: (p, rng) => {
       p.clear();
       curlStem(p, 7, 3, 15, 0x4a7a2a, rng);
-      for (const [x, y] of [[5, 8], [9, 10], [4, 12], [10, 6]]) {
+      for (const [x, y] of [
+        [5, 8],
+        [9, 10],
+        [4, 12],
+        [10, 6],
+      ]) {
         p.set(x, y, 0x5aa236);
         p.set(x + 1, y, 0x3f7a24);
       }
@@ -1629,7 +1740,14 @@ function builtinPainters(): Record<string, Painter> {
     // ---- 种植物品 ----
     wheat_seeds: (p, rng) => {
       p.clear();
-      for (const [x, y] of [[4, 9], [8, 7], [11, 10], [6, 12], [9, 12], [5, 7]]) {
+      for (const [x, y] of [
+        [4, 9],
+        [8, 7],
+        [11, 10],
+        [6, 12],
+        [9, 12],
+        [5, 7],
+      ]) {
         p.set(x, y, jitter(0xc8a840, rng, 12));
         p.set(x + 1, y, jitter(0xe0c868, rng, 10));
         p.set(x, y + 1, 0xa88830);
@@ -1640,7 +1758,13 @@ function builtinPainters(): Record<string, Painter> {
       stem(p, 8, 2, 8, 0x4a6a2a);
       p.set(6, 4, 0x5aa236);
       p.set(10, 5, 0x5aa236);
-      for (const [x, y] of [[5, 8], [9, 9], [7, 12], [11, 12], [4, 12]]) {
+      for (const [x, y] of [
+        [5, 8],
+        [9, 9],
+        [7, 12],
+        [11, 12],
+        [4, 12],
+      ]) {
         const c = jitter(0xd03848, rng, 14);
         p.set(x, y, c);
         p.set(x + 1, y, c);
@@ -1730,24 +1854,48 @@ function builtinPainters(): Record<string, Painter> {
     // ---- v1.6.0 花海扩充：温带花甸 ----
     lavender: beadSpikePainter(0x9a6ad0, 0xcaa4f0, 0x6a3f9a, 2, false),
     buttercup: bloomPainter({
-      petal: 0xf2c92a, light: 0xffe873, dark: 0xc99a18, center: 0xd08a18,
-      petals: 5, radiusX: 3.4, radiusY: 3, top: 7,
+      petal: 0xf2c92a,
+      light: 0xffe873,
+      dark: 0xc99a18,
+      center: 0xd08a18,
+      petals: 5,
+      radiusX: 3.4,
+      radiusY: 3,
+      top: 7,
     }),
     forget_me_not: umbelPainter(0x6a8ae8, 0xa8c4ff, 0xfff0a8),
     marigold: bloomPainter({
-      petal: 0xe88a1a, light: 0xf8c05a, dark: 0xb85f10, center: 0x8a4a12,
-      petals: 8, radiusX: 4, radiusY: 3.6, top: 5,
+      petal: 0xe88a1a,
+      light: 0xf8c05a,
+      dark: 0xb85f10,
+      center: 0x8a4a12,
+      petals: 8,
+      radiusX: 4,
+      radiusY: 3.6,
+      top: 5,
     }),
     foxglove: foxglovePainter(0xd06aa8, 0xf0a8d0, 0x8f3f72),
     hollyhock: hollyhockPainter(0xd05a96, 0xf09ac0, 0x9a2f68, 0xffe08a),
     violet: bloomPainter({
-      petal: 0x7a4ac8, light: 0xa87ae8, dark: 0x4f2a8a, center: 0xf0e08a,
-      petals: 5, radiusX: 3, radiusY: 2.8, top: 7,
+      petal: 0x7a4ac8,
+      light: 0xa87ae8,
+      dark: 0x4f2a8a,
+      center: 0xf0e08a,
+      petals: 5,
+      radiusX: 3,
+      radiusY: 2.8,
+      top: 7,
     }),
     // ---- 林下阴湿 ----
     wood_anemone: bloomPainter({
-      petal: 0xf2f2ea, light: 0xffffff, dark: 0xc8c8bc, center: 0xf0c840,
-      petals: 6, radiusX: 3.6, radiusY: 3.2, top: 7,
+      petal: 0xf2f2ea,
+      light: 0xffffff,
+      dark: 0xc8c8bc,
+      center: 0xf0c840,
+      petals: 6,
+      radiusX: 3.6,
+      radiusY: 3.2,
+      top: 7,
     }),
     wild_garlic: umbelPainter(0xf2f5e8, 0xffffff, 0xd8e8c0),
     hyacinth: beadSpikePainter(0xd06aa8, 0xf0a8d0, 0x8f3f72, 1, true),
@@ -1757,38 +1905,83 @@ function builtinPainters(): Record<string, Painter> {
     lingonberry_bush: bushPainter(0x2f5a2a, 0x3f7a34, 0xd03848, 0xf06a70),
     snowdrop: snowdropPainter(0xf2f5e8, 0xffffff, 0x6aa84a),
     edelweiss: bloomPainter({
-      petal: 0xe8e8dc, light: 0xf8f8f0, dark: 0xbfbfb0, center: 0xe8c840,
-      petals: 8, radiusX: 4.6, radiusY: 4.2, top: 3,
+      petal: 0xe8e8dc,
+      light: 0xf8f8f0,
+      dark: 0xbfbfb0,
+      center: 0xe8c840,
+      petals: 8,
+      radiusX: 4.6,
+      radiusY: 4.2,
+      top: 3,
     }),
     snow_lily: bloomPainter({
-      petal: 0xe8f0f8, light: 0xffffff, dark: 0xa8c0d8, center: 0xf0e8a0,
-      petals: 6, radiusX: 4.4, radiusY: 4.6, top: 2,
+      petal: 0xe8f0f8,
+      light: 0xffffff,
+      dark: 0xa8c0d8,
+      center: 0xf0e8a0,
+      petals: 6,
+      radiusX: 4.4,
+      radiusY: 4.6,
+      top: 2,
     }),
     crocus: crocusPainter(0x8a5ad0, 0xb08ae8, 0x5a3a9a),
     gentian: bloomPainter({
-      petal: 0x2a4fc0, light: 0x5a86e8, dark: 0x1a3080, center: 0xc8d8ff,
-      petals: 5, radiusX: 4, radiusY: 3.4, top: 5,
+      petal: 0x2a4fc0,
+      light: 0x5a86e8,
+      dark: 0x1a3080,
+      center: 0xc8d8ff,
+      petals: 5,
+      radiusX: 4,
+      radiusY: 3.4,
+      top: 5,
     }),
     // ---- 沙漠 / 海岸 ----
     yucca: yuccaPainter(0x5a8a4a, 0x8fbe6a, 0x8a7a4a, 0xf2ead0),
     desert_marigold: bloomPainter({
-      petal: 0xe8a020, light: 0xffd260, dark: 0xb06a10, center: 0x8a4a12,
-      petals: 9, radiusX: 4.2, radiusY: 3.8, top: 4, leaf: 0x8a9a6a,
+      petal: 0xe8a020,
+      light: 0xffd260,
+      dark: 0xb06a10,
+      center: 0x8a4a12,
+      petals: 9,
+      radiusX: 4.2,
+      radiusY: 3.8,
+      top: 4,
+      leaf: 0x8a9a6a,
     }),
-    ghost_flower: glowingBloomPainter({
-      petal: 0xd8c8f0, light: 0xf0e8ff, dark: 0xa088c8, center: 0xc8ffe0,
-      petals: 6, radiusX: 4, radiusY: 3.6, top: 5,
-    }, 0xd6b0ff),
+    ghost_flower: glowingBloomPainter(
+      {
+        petal: 0xd8c8f0,
+        light: 0xf0e8ff,
+        dark: 0xa088c8,
+        center: 0xc8ffe0,
+        petals: 6,
+        radiusX: 4,
+        radiusY: 3.6,
+        top: 5,
+      },
+      0xd6b0ff,
+    ),
     beach_grass: beachGrassPainter(0x9aae5a, 0xc8d878, 0xe0d8a0),
     sea_thrift: cushionPainter(0xe08ab0, 0xf8bcd4, 0x5a8f3a),
     // ---- 水域 / 洞穴 ----
     duckweed: padPainter(0x5a9a3a, 0x8fc45e, 0xf0e8a0),
     sea_anemone: anemonePainter(0xd06aaa, 0xf0a8d0, 0x8a4a6a),
     red_algae: algaePainter(0xb03a48, 0x7a2534, 0xe06a78),
-    moonflower: glowingBloomPainter({
-      petal: 0xa8d8f0, light: 0xe8f8ff, dark: 0x6a98c0, center: 0xfff6b0,
-      petals: 6, radiusX: 4.2, radiusY: 4, top: 3, leaf: 0x3f7a52, stem: 0x4a6a5a,
-    }, 0xfff0a0),
+    moonflower: glowingBloomPainter(
+      {
+        petal: 0xa8d8f0,
+        light: 0xe8f8ff,
+        dark: 0x6a98c0,
+        center: 0xfff6b0,
+        petals: 6,
+        radiusX: 4.2,
+        radiusY: 4,
+        top: 3,
+        leaf: 0x3f7a52,
+        stem: 0x4a6a5a,
+      },
+      0xfff0a0,
+    ),
     glow_fern: glowFernPainter(0x356822, 0x7aa84a, 0x8ff0d0),
     // ---- v1.7.0 内容植物扩充 ----
     cotton_bush: bushPainter(0x3f6a2f, 0x4f8a3a, 0xe8e8e0, 0xffffff),
@@ -1796,16 +1989,35 @@ function builtinPainters(): Record<string, Painter> {
     grape_vine: bushPainter(0x35682a, 0x4f8a3a, 0x8a3ac8, 0xb06ae8),
     chili_bush: bushPainter(0x3f6a2f, 0x4f8a3a, 0xd03828, 0xf06a4a),
     lotus: bloomPainter({
-      petal: 0xf0a8c0, light: 0xf8d0dc, dark: 0xc87894, center: 0xf0d878,
-      petals: 7, radiusX: 4.2, radiusY: 3.6, top: 3, leaf: 0x3f7a52, stem: 0x4a6a5a,
+      petal: 0xf0a8c0,
+      light: 0xf8d0dc,
+      dark: 0xc87894,
+      center: 0xf0d878,
+      petals: 7,
+      radiusX: 4.2,
+      radiusY: 3.6,
+      top: 3,
+      leaf: 0x3f7a52,
+      stem: 0x4a6a5a,
     }),
     orchid: flowerPainter(0xb06ae8, 0xd8a0f8, 0xf0e060, 'cup'),
     sage: flowerPainter(0x6a8ac8, 0xa0b8e8, 0xe8e8f0, 'spike', 0x4a7a3a, 4),
     pitcher_plant: flowerPainter(0x8ac04a, 0xb8e070, 0x8a5a2a, 'bell', 0x4a7a3a, 3),
-    glow_cordyceps: glowingBloomPainter({
-      petal: 0x8fd0a8, light: 0xc0f0d0, dark: 0x5a9a70, center: 0xd8ffe8,
-      petals: 5, radiusX: 3.4, radiusY: 4.4, top: 4, leaf: 0x3f7a52, stem: 0x4a6a5a,
-    }, 0x9ff0d8),
+    glow_cordyceps: glowingBloomPainter(
+      {
+        petal: 0x8fd0a8,
+        light: 0xc0f0d0,
+        dark: 0x5a9a70,
+        center: 0xd8ffe8,
+        petals: 5,
+        radiusX: 3.4,
+        radiusY: 4.4,
+        top: 4,
+        leaf: 0x3f7a52,
+        stem: 0x4a6a5a,
+      },
+      0x9ff0d8,
+    ),
     cotton_block: ((p, rng) => {
       fillNoise(p, rng, 0xf0f0e8, 5);
       // 棉絮团块的柔和阴影，让建材面不至于一片白
@@ -1822,7 +2034,8 @@ function builtinPainters(): Record<string, Painter> {
       rect(p, 7, 6, 2, 10, 0x6a4a2a);
       for (let y = 1; y <= 5; y++) {
         for (let x = 5; x <= 10; x++) {
-          const dx = x - 7.5, dy = y - 3;
+          const dx = x - 7.5,
+            dy = y - 3;
           if (dx * dx + dy * dy * 1.4 > 8) continue;
           p.set(x, y, jitter(dx * dx + dy * dy > 3 ? 0x6ad0a8 : 0x9ff0d8, rng, 10));
         }
@@ -1862,7 +2075,10 @@ const bookshelfSidePainter: Painter = (p, rng) => {
   fillNoise(p, rng, 0x6b4f2e, 6);
   rect(p, 2, 2, 12, 12, 0x3a2a18); // 书架内格阴影
   const spines = [0x9c3b2e, 0x2f4f8a, 0x3f7a34, 0xb08028, 0x6a3f9e, 0xb0552a, 0x2f7a78, 0x8a2f44];
-  for (const [yBase, yTop] of [[13, 9], [6, 2]] as const) {
+  for (const [yBase, yTop] of [
+    [13, 9],
+    [6, 2],
+  ] as const) {
     let x = 2;
     while (x < 14) {
       const w = 2 + ((rng() * 2) | 0);
@@ -1881,8 +2097,7 @@ const bookshelfSidePainter: Painter = (p, rng) => {
   rect(p, 0, 14, TILE, 2, frame);
   rect(p, 0, 0, 2, TILE, frame);
   rect(p, 14, 0, 2, TILE, frame);
-  for (const y of [0, 7, 14])
-    for (let x = 2; x < 14; x++) if (rng() < 0.8) p.set(x, y, jitter(0x8a6a3e, rng, 5));
+  for (const y of [0, 7, 14]) for (let x = 2; x < 14; x++) if (rng() < 0.8) p.set(x, y, jitter(0x8a6a3e, rng, 5));
 };
 
 /** 木棍：合成产物，扁平精灵（透明底）。斜置木棒，棕色主体 + 左侧高光 + 两端切口 */
@@ -1910,7 +2125,12 @@ const fertilizerPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(0x6b4a2a, rng, 10));
     }
   }
-  for (const [x, y] of [[6, 7], [9, 8], [7, 10], [10, 6]] as const) {
+  for (const [x, y] of [
+    [6, 7],
+    [9, 8],
+    [7, 10],
+    [10, 6],
+  ] as const) {
     p.set(x, y, 0x5fbf52);
     p.set(x + 1, y, 0x82d862);
   }
@@ -1919,9 +2139,14 @@ const fertilizerPainter: Painter = (p, rng) => {
 /** 骨粉：白色骨粒，冷色调区分于有机肥 */
 const boneMealPainter: Painter = (p, rng) => {
   p.clear();
-  p.set(8, 3, 0xf2f2e8); p.set(7, 4, 0xd8d8cc); p.set(9, 4, 0xd8d8cc);
-  p.set(6, 6, 0xeaeae0); p.set(8, 6, 0xffffff); p.set(10, 6, 0xeaeae0);
-  p.set(7, 8, 0xd8d8cc); p.set(9, 8, 0xf2f2e8);
+  p.set(8, 3, 0xf2f2e8);
+  p.set(7, 4, 0xd8d8cc);
+  p.set(9, 4, 0xd8d8cc);
+  p.set(6, 6, 0xeaeae0);
+  p.set(8, 6, 0xffffff);
+  p.set(10, 6, 0xeaeae0);
+  p.set(7, 8, 0xd8d8cc);
+  p.set(9, 8, 0xf2f2e8);
   for (let i = 0; i < 4; i++) p.set(5 + ((rng() * 6) | 0), 10 + ((rng() * 3) | 0), 0xcfcfc4);
 };
 
@@ -1934,7 +2159,12 @@ const coalPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(0x24262c, rng, 12));
     }
   }
-  for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10]] as const) {
+  for (const [x, y] of [
+    [5, 5],
+    [9, 6],
+    [6, 9],
+    [10, 10],
+  ] as const) {
     p.set(x, y, 0x4d5058);
     p.set(x + 1, y, 0x363941);
   }
@@ -1964,7 +2194,13 @@ const beefPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(edge ? 0x8e2d33 : 0xc34a4d, rng, 10));
     }
   }
-  for (const [x, y] of [[5, 5], [6, 5], [7, 6], [9, 8], [10, 9]] as const) {
+  for (const [x, y] of [
+    [5, 5],
+    [6, 5],
+    [7, 6],
+    [9, 8],
+    [10, 9],
+  ] as const) {
     p.set(x, y, 0xf0d8cc);
   }
 };
@@ -2009,7 +2245,13 @@ const rabbitMeatPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(edge ? 0xb66771 : 0xe08f92, rng, 9));
     }
   }
-  for (const [x, y] of [[5, 6], [6, 6], [8, 8], [9, 9], [10, 7]] as const) {
+  for (const [x, y] of [
+    [5, 6],
+    [6, 6],
+    [8, 8],
+    [9, 9],
+    [10, 7],
+  ] as const) {
     p.set(x, y, 0xf6dbd6);
   }
 };
@@ -2023,7 +2265,13 @@ const cookedBeefPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(edge ? 0x5a2b1c : 0x8a4526, rng, 12));
     }
   }
-  for (const [x, y] of [[5, 5], [6, 5], [7, 6], [9, 8], [10, 9]] as const) {
+  for (const [x, y] of [
+    [5, 5],
+    [6, 5],
+    [7, 6],
+    [9, 8],
+    [10, 9],
+  ] as const) {
     p.set(x, y, 0xd8b48a);
   }
 };
@@ -2053,7 +2301,13 @@ const cookedRabbitPainter: Painter = (p, rng) => {
       p.set(x, y, jitter(edge ? 0x7a4020 : 0xb06a35, rng, 11));
     }
   }
-  for (const [x, y] of [[5, 6], [6, 6], [8, 8], [9, 9], [10, 7]] as const) {
+  for (const [x, y] of [
+    [5, 6],
+    [6, 6],
+    [8, 8],
+    [9, 9],
+    [10, 7],
+  ] as const) {
     p.set(x, y, 0xe0b088);
   }
 };
@@ -2073,9 +2327,10 @@ function composterTopPainter(ready: boolean): Painter {
   return (p, rng) => {
     p.clear();
     for (let x = 0; x < 16; x++) for (let y = 0; y < 16; y++) p.set(x, y, 0x6b4526);
-    for (let x = 2; x < 14; x++) for (let y = 2; y < 14; y++) {
-      p.set(x, y, ready ? jitter(0x5fbf52, rng, 12) : jitter(0x4a3420, rng, 14));
-    }
+    for (let x = 2; x < 14; x++)
+      for (let y = 2; y < 14; y++) {
+        p.set(x, y, ready ? jitter(0x5fbf52, rng, 12) : jitter(0x4a3420, rng, 14));
+      }
   };
 }
 
@@ -2088,11 +2343,22 @@ const campfireTopPainter: Painter = (p, rng) => {
   fillNoise(p, rng, 0x767676, 8);
   // 石圈
   for (let i = 0; i < TILE; i++) {
-    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+    for (const [x, y] of [
+      [i, 0],
+      [i, 15],
+      [0, i],
+      [15, i],
+    ] as const) {
       p.set(x, y, jitter(0x8a8a8a, rng, 8));
     }
   }
-  for (const [x, y] of [[0, 0], [15, 0], [0, 15], [15, 15]] as const) p.set(x, y, 0x4a4a4a);
+  for (const [x, y] of [
+    [0, 0],
+    [15, 0],
+    [0, 15],
+    [15, 15],
+  ] as const)
+    p.set(x, y, 0x4a4a4a);
   // 灰烬
   for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) p.set(x, y, jitter(0x3a322c, rng, 10));
   // 交叉木柴
@@ -2103,7 +2369,8 @@ const campfireTopPainter: Painter = (p, rng) => {
   // 火焰：外红 → 橙 → 黄白芯
   for (let y = 4; y < 12; y++) {
     for (let x = 4; x < 12; x++) {
-      const dx = x - 7.5, dy = y - 8.5;
+      const dx = x - 7.5,
+        dy = y - 8.5;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d > 4) continue;
       const hex = d > 3 ? 0xb82810 : d > 2 ? 0xe06818 : d > 1 ? 0xffa828 : 0xffe890;
@@ -2118,7 +2385,12 @@ const campfireTopPainter: Painter = (p, rng) => {
 const campfireBottomPainter: Painter = (p, rng) => {
   fillNoise(p, rng, 0x4a4038, 8);
   for (let i = 0; i < TILE; i++) {
-    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+    for (const [x, y] of [
+      [i, 0],
+      [i, 15],
+      [0, i],
+      [15, i],
+    ] as const) {
       p.set(x, y, jitter(0x5c5248, rng, 8));
     }
   }
@@ -2127,9 +2399,10 @@ const campfireBottomPainter: Painter = (p, rng) => {
 
 /** 营火侧面：半高板，自上而下火光 / 木柴 / 石底 */
 const campfireSidePainter: Painter = (p, rng) => {
-  for (let y = 0; y < 4; y++) for (let x = 0; x < TILE; x++) {
-    p.set(x, y, jitter(y < 2 ? 0xffc040 : 0xe07018, rng, 14));
-  }
+  for (let y = 0; y < 4; y++)
+    for (let x = 0; x < TILE; x++) {
+      p.set(x, y, jitter(y < 2 ? 0xffc040 : 0xe07018, rng, 14));
+    }
   for (let y = 4; y < 11; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x6e4a28, rng, 14));
   for (const y of [4, 7, 10]) for (let x = 0; x < TILE; x++) p.set(x, y, 0x4a3018);
   for (let y = 11; y < TILE; y++) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(0x767676, rng, 8));
@@ -2140,13 +2413,19 @@ const campfireSidePainter: Painter = (p, rng) => {
 const lanternTopPainter: Painter = (p, rng) => {
   fillNoise(p, rng, 0x3a3a42, 6);
   for (let i = 0; i < TILE; i++) {
-    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+    for (const [x, y] of [
+      [i, 0],
+      [i, 15],
+      [0, i],
+      [15, i],
+    ] as const) {
       p.set(x, y, jitter(0x8a8f9a, rng, 8));
     }
   }
   for (let y = 2; y < 14; y++) {
     for (let x = 2; x < 14; x++) {
-      const dx = x - 7.5, dy = y - 8.5;
+      const dx = x - 7.5,
+        dy = y - 8.5;
       const d = Math.sqrt(dx * dx + dy * dy);
       p.set(x, y, jitter(d > 4 ? 0xffb028 : 0xffe890, rng, 14));
     }
@@ -2161,7 +2440,12 @@ const lanternTopPainter: Painter = (p, rng) => {
 const lanternBottomPainter: Painter = (p, rng) => {
   fillNoise(p, rng, 0x33333a, 6);
   for (let i = 0; i < TILE; i++) {
-    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]] as const) {
+    for (const [x, y] of [
+      [i, 0],
+      [i, 15],
+      [0, i],
+      [15, i],
+    ] as const) {
       p.set(x, y, jitter(0x6a6f78, rng, 8));
     }
   }
@@ -2317,7 +2601,12 @@ const gunpowderPainter: Painter = (p, rng) => {
       if (rng() < 0.78) p.set(x, y, jitter(0x4a4a52, rng, 16));
     }
   }
-  for (const [x, y] of [[6, 7], [10, 9], [8, 11]] as const) p.set(x, y, 0x8a8a92);
+  for (const [x, y] of [
+    [6, 7],
+    [10, 9],
+    [8, 11],
+  ] as const)
+    p.set(x, y, 0x8a8a92);
 };
 
 const stringPainter: Painter = (p, rng) => {
@@ -2346,19 +2635,37 @@ const inkSacPainter: Painter = (p, rng) => {
 const flintPainter: Painter = (p, rng) => {
   p.clear();
   const shard = [
-    [7, 3], [8, 3], [9, 4], [10, 6], [11, 9], [10, 11], [8, 13], [6, 12], [4, 9], [5, 6],
+    [7, 3],
+    [8, 3],
+    [9, 4],
+    [10, 6],
+    [11, 9],
+    [10, 11],
+    [8, 13],
+    [6, 12],
+    [4, 9],
+    [5, 6],
   ] as const;
   for (const [x, y] of shard) p.set(x, y, jitter(0x6f7480, rng, 10));
-  for (let y = 6; y < 12; y++) for (let x = 6 + (y % 2); x < 10; x++) {
-    if (rng() < 0.7) p.set(x, y, jitter(0x525761, rng, 8));
-  }
+  for (let y = 6; y < 12; y++)
+    for (let x = 6 + (y % 2); x < 10; x++) {
+      if (rng() < 0.7) p.set(x, y, jitter(0x525761, rng, 8));
+    }
   p.set(7, 6, 0x9aa0ac);
 };
 
 const bowPainter: Painter = (p, rng) => {
   p.clear();
   // 弓臂：右弯的像素弧
-  const arc: [number, number][] = [[5, 2], [7, 3], [9, 5], [10, 8], [9, 11], [7, 13], [5, 14]];
+  const arc: [number, number][] = [
+    [5, 2],
+    [7, 3],
+    [9, 5],
+    [10, 8],
+    [9, 11],
+    [7, 13],
+    [5, 14],
+  ];
   for (const [x, y] of arc) {
     p.set(x, y, jitter(0x9a6b3a, rng, 8));
     p.set(x + 1, y, jitter(0x6b4520, rng, 6));
@@ -2379,11 +2686,16 @@ const arrowPainter: Painter = (p, rng) => {
     p.set(x, y + 1, jitter(0x7c5228, rng, 6));
   }
   // 箭头
-  p.set(14, 2, 0xb9c0cc); p.set(13, 2, 0xd8dee8); p.set(14, 3, 0x8b939f);
-  p.set(13, 4, 0xb9c0cc); p.set(12, 3, 0x8b939f);
+  p.set(14, 2, 0xb9c0cc);
+  p.set(13, 2, 0xd8dee8);
+  p.set(14, 3, 0x8b939f);
+  p.set(13, 4, 0xb9c0cc);
+  p.set(12, 3, 0x8b939f);
   // 尾羽
-  p.set(4, 12, 0xe9e4d6); p.set(3, 11, 0xc9c2b0);
-  p.set(5, 13, 0xe9e4d6); p.set(4, 14, 0xc9c2b0);
+  p.set(4, 12, 0xe9e4d6);
+  p.set(3, 11, 0xc9c2b0);
+  p.set(5, 13, 0xe9e4d6);
+  p.set(4, 14, 0xc9c2b0);
 };
 
 /**
@@ -2394,8 +2706,12 @@ const drawIsoBox = (
   ctx: CanvasRenderingContext2D,
   top: HTMLCanvasElement,
   side: HTMLCanvasElement,
-  w: number, h: number, hb: number,
-  cx: number, y0: number, u: number,
+  w: number,
+  h: number,
+  hb: number,
+  cx: number,
+  y0: number,
+  u: number,
 ) => {
   const d = 2 * u * hb;
   // 顶面
@@ -2448,10 +2764,15 @@ export class TextureAtlas {
     this.painters.set('cotton', (p, rng) => {
       p.clear();
       // 三团棉絮 + 两粒深色棉籽
-      for (const [cx, cy, r] of [[6, 9, 2.2], [10, 8, 2.4], [8, 12, 2.0]] as const) {
+      for (const [cx, cy, r] of [
+        [6, 9, 2.2],
+        [10, 8, 2.4],
+        [8, 12, 2.0],
+      ] as const) {
         for (let y = 0; y < 16; y++) {
           for (let x = 0; x < 16; x++) {
-            const dx = x - cx, dy = y - cy;
+            const dx = x - cx,
+              dy = y - cy;
             if (dx * dx + dy * dy > r * r) continue;
             p.set(x, y, jitter(dx * dx + dy * dy > 1 ? 0xf0f0e8 : 0xffffff, rng, 4));
           }
@@ -2463,7 +2784,15 @@ export class TextureAtlas {
     this.painters.set('rice', (p, rng) => {
       p.clear();
       // 一小把稻米粒：米白色椭圆粒叠放
-      for (const [x, y] of [[6, 7], [9, 6], [7, 10], [10, 9], [5, 11], [8, 12], [11, 11]]) {
+      for (const [x, y] of [
+        [6, 7],
+        [9, 6],
+        [7, 10],
+        [10, 9],
+        [5, 11],
+        [8, 12],
+        [11, 11],
+      ]) {
         p.set(x, y, jitter(0xf4f0e0, rng, 4));
         p.set(x + 1, y, jitter(0xe0d8c0, rng, 4));
       }
@@ -2475,12 +2804,23 @@ export class TextureAtlas {
       // 紫葡萄串：上宽下窄的三角簇 + 顶部短梗与叶
       stem(p, 8, 1, 3, 0x4a6a2a);
       p.set(10, 2, 0x5aa236);
-      for (const [x, y] of [[6, 5], [9, 5], [5, 8], [8, 8], [11, 8], [6, 11], [9, 11], [8, 13]]) {
+      for (const [x, y] of [
+        [6, 5],
+        [9, 5],
+        [5, 8],
+        [8, 8],
+        [11, 8],
+        [6, 11],
+        [9, 11],
+        [8, 13],
+      ]) {
         const c = jitter(0x8a3ac8, rng, 12);
-        p.set(x, y, c); p.set(x + 1, y, c);
+        p.set(x, y, c);
+        p.set(x + 1, y, c);
         p.set(x, y + 1, jitter(0x6a2a9a, rng, 10));
       }
-      p.set(6, 5, 0xb06ae8); p.set(9, 5, 0xb06ae8);
+      p.set(6, 5, 0xb06ae8);
+      p.set(9, 5, 0xb06ae8);
     });
     this.painters.set('chili', (p, rng) => {
       p.clear();
@@ -2500,7 +2840,8 @@ export class TextureAtlas {
       // 发光孢子团：青绿光斑 + 中心亮点，呼应荧光植物配色
       for (let y = 3; y <= 13; y++) {
         for (let x = 3; x <= 12; x++) {
-          const dx = x - 7.5, dy = y - 8;
+          const dx = x - 7.5,
+            dy = y - 8;
           if (dx * dx + dy * dy > 14) continue;
           const d = dx * dx + dy * dy;
           p.set(x, y, jitter(d > 7 ? 0x3f8f6a : d > 2.5 ? 0x6ad0a8 : 0x9ff0d8, rng, 10));
@@ -2518,17 +2859,24 @@ export class TextureAtlas {
     this.painters.set('rabbit_meat', rabbitMeatPainter);
     // ---- 矿物→材料→熔炼闭环物品纹理：追加在末尾，既有 tile 索引不变 ----
     // 原矿：不规则的粗矿团块
-    const rawOrePainter = (base: number, dark: number, light: number) =>
+    const rawOrePainter =
+      (base: number, dark: number, light: number) =>
       (p: { clear(): void; set(x: number, y: number, c: number): void }, rng: () => number) => {
         p.clear();
         for (let y = 4; y < 13; y++) {
           for (let x = 3; x < 13; x++) {
-            const dx = x - 8, dy = y - 8;
+            const dx = x - 8,
+              dy = y - 8;
             if (dx * dx + dy * dy * 1.6 > 22) continue;
             p.set(x, y, jitter(base, rng, 14));
           }
         }
-        for (const [x, y] of [[5, 6], [9, 5], [7, 9], [10, 10]] as const) {
+        for (const [x, y] of [
+          [5, 6],
+          [9, 5],
+          [7, 9],
+          [10, 10],
+        ] as const) {
           p.set(x, y, light);
           p.set(x, y + 1, dark);
         }
@@ -2537,17 +2885,20 @@ export class TextureAtlas {
     this.painters.set('raw_gold', rawOrePainter(0xd9b53c, 0x93722a, 0xf5e37a));
     this.painters.set('raw_copper', rawOrePainter(0xa85b3d, 0x6e3a26, 0xd88a64));
     // 锭：平行四边形金属条
-    const ingotPainter = (base: number, dark: number, light: number) =>
+    const ingotPainter =
+      (base: number, dark: number, light: number) =>
       (p: { clear(): void; set(x: number, y: number, c: number): void }, rng: () => number) => {
         p.clear();
         for (let y = 6; y < 11; y++) {
-          const in0 = y - 6, off = 2 - in0;
+          const in0 = y - 6,
+            off = 2 - in0;
           for (let x = 3 + off; x < 13 + off; x++) {
             p.set(x, y, jitter(x === 3 + off || y === 10 ? dark : base, rng, 8));
           }
         }
         for (let x = 5; x < 11; x++) p.set(x, 7, light);
-        p.set(3, 10, dark); p.set(4, 10, dark);
+        p.set(3, 10, dark);
+        p.set(4, 10, dark);
       };
     this.painters.set('iron_ingot', ingotPainter(0xd8bfa8, 0x9c8472, 0xf2e2d4));
     this.painters.set('gold_ingot', ingotPainter(0xe8c23c, 0xa8871e, 0xf8e88a));
@@ -2561,7 +2912,8 @@ export class TextureAtlas {
           p.set(x, y, jitter(x <= 8 - w + 1 || y > 10 ? 0x2fb8a8 : 0x4aedd9, rng, 10));
         }
       }
-      p.set(7, 5, 0xbdf8f0); p.set(8, 5, 0xbdf8f0);
+      p.set(7, 5, 0xbdf8f0);
+      p.set(8, 5, 0xbdf8f0);
     });
     // 青金石：深蓝石块 + 亮蓝斑点
     this.painters.set('lapis', (p, rng) => {
@@ -2572,7 +2924,13 @@ export class TextureAtlas {
           p.set(x, y, jitter(0x1e4bd8, rng, 16));
         }
       }
-      for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10], [8, 4]] as const) {
+      for (const [x, y] of [
+        [5, 5],
+        [9, 6],
+        [6, 9],
+        [10, 10],
+        [8, 4],
+      ] as const) {
         p.set(x, y, 0x6a9af0);
       }
     });
@@ -2595,7 +2953,8 @@ export class TextureAtlas {
           p.set(x, y, jitter(x <= 8 - w + 1 ? 0x0fa84a : 0x17dd62, rng, 10));
         }
       }
-      p.set(7, 4, 0xa8f8c8); p.set(7, 5, 0xa8f8c8);
+      p.set(7, 4, 0xa8f8c8);
+      p.set(7, 5, 0xa8f8c8);
     });
     // 木炭：与煤炭同形但带木纹焦痕
     this.painters.set('charcoal', (p, rng) => {
@@ -2606,7 +2965,11 @@ export class TextureAtlas {
           p.set(x, y, jitter(0x1c1a16, rng, 10));
         }
       }
-      for (const [x, y] of [[5, 6], [9, 8], [6, 10]] as const) {
+      for (const [x, y] of [
+        [5, 6],
+        [9, 8],
+        [6, 10],
+      ] as const) {
         p.set(x, y, 0x4a3c2c);
         p.set(x + 1, y, 0x6a563c);
       }
@@ -2620,7 +2983,13 @@ export class TextureAtlas {
           p.set(x, y, jitter(edge ? 0x5c3818 : 0x9c6430, rng, 10));
         }
       }
-      for (const [x, y] of [[5, 5], [6, 5], [9, 8], [10, 9], [7, 10]] as const) {
+      for (const [x, y] of [
+        [5, 5],
+        [6, 5],
+        [9, 8],
+        [10, 9],
+        [7, 10],
+      ] as const) {
         p.set(x, y, 0x6a4420);
       }
     };
@@ -2632,22 +3001,36 @@ export class TextureAtlas {
       // 一整头蒜：球形蒜瓣 + 顶部短茎
       for (let y = 5; y <= 13; y++) {
         for (let x = 4; x <= 11; x++) {
-          const dx = x - 7.5, dy = y - 9.5;
+          const dx = x - 7.5,
+            dy = y - 9.5;
           if (dx * dx + dy * dy * 1.3 > 12) continue;
           p.set(x, y, jitter(dx * dx + dy * dy > 6 ? 0xe8e0c8 : 0xfaf6e8, rng, 5));
         }
       }
-      for (const [x, y] of [[6, 3], [7, 2], [8, 3], [7, 4]]) p.set(x, y, jitter(0xb8c48a, rng, 8));
+      for (const [x, y] of [
+        [6, 3],
+        [7, 2],
+        [8, 3],
+        [7, 4],
+      ])
+        p.set(x, y, jitter(0xb8c48a, rng, 8));
       // 蒜瓣分界线
-      p.set(7, 8, 0xd8cfb4); p.set(8, 9, 0xd8cfb4); p.set(7, 11, 0xd8cfb4);
+      p.set(7, 8, 0xd8cfb4);
+      p.set(8, 9, 0xd8cfb4);
+      p.set(7, 11, 0xd8cfb4);
     });
     this.painters.set('rose_hips', (p, rng) => {
       p.clear();
       // 三枚橙红色玫瑰果，各带残留花萼
-      for (const [cx, cy, r] of [[5, 9, 1.8], [10, 7, 2.0], [8, 12, 1.6]] as const) {
+      for (const [cx, cy, r] of [
+        [5, 9, 1.8],
+        [10, 7, 2.0],
+        [8, 12, 1.6],
+      ] as const) {
         for (let y = 0; y < 16; y++) {
           for (let x = 0; x < 16; x++) {
-            const dx = x - cx, dy = y - cy;
+            const dx = x - cx,
+              dy = y - cy;
             if (dx * dx + dy * dy > r * r) continue;
             p.set(x, y, jitter(dx * dx + dy * dy > 1 ? 0xd06828 : 0xf08838, rng, 10));
           }
@@ -2661,11 +3044,17 @@ export class TextureAtlas {
       for (let y = 6; y <= 13; y++) {
         for (let x = 3; x <= 12; x++) {
           const dy = y - 10;
-          if ((x - 7.5) * (x - 7.5) / 36 + dy * dy / 16 > 1) continue;
+          if (((x - 7.5) * (x - 7.5)) / 36 + (dy * dy) / 16 > 1) continue;
           p.set(x, y, jitter(0xf4f0e0, rng, 5));
         }
       }
-      for (const [x, y] of [[5, 9], [8, 8], [10, 10], [6, 11], [9, 12]]) {
+      for (const [x, y] of [
+        [5, 9],
+        [8, 8],
+        [10, 10],
+        [6, 11],
+        [9, 12],
+      ]) {
         p.set(x, y, jitter(0xd8b860, rng, 12));
       }
     });
@@ -2678,14 +3067,17 @@ export class TextureAtlas {
         }
       }
       for (let x = 5; x <= 9; x++) p.set(x, 7, jitter(0xc04858, rng, 10));
-      p.set(11, 8, 0xe8e8f0); p.set(11, 9, 0xe8e8f0); p.set(10, 9, 0xd0d0dc);
+      p.set(11, 8, 0xe8e8f0);
+      p.set(11, 9, 0xe8e8f0);
+      p.set(10, 9, 0xd0d0dc);
       // 杯口飘出的热气与一朵小花瓣
       p.set(7, 3, 0xf0d8dc);
       p.set(6, 2, 0xc04858);
       p.set(8, 4, 0xf0f0f8);
     });
     // ---- 铜与宝石工艺扩展：新纹理全部追加在末尾，既有 tile 索引不变 ----
-    const contentPlank = (base: number, seam: number, highlight: number, joints: number[]): Painter =>
+    const contentPlank =
+      (base: number, seam: number, highlight: number, joints: number[]): Painter =>
       (p, rng) => {
         fillNoise(p, rng, base, 7);
         for (const y of [3, 7, 11, 15]) for (let x = 0; x < TILE; x++) p.set(x, y, jitter(seam, rng, 4));
@@ -2706,7 +3098,8 @@ export class TextureAtlas {
       for (const x of [0, 5, 10, 15]) for (let y = 0; y < TILE; y++) p.set(x, y, jitter(0x7a4526, rng, 5));
       for (let by = 0; by < 3; by++) {
         for (let bx = 0; bx < 3; bx++) {
-          const x0 = bx * 5 + 1, y0 = by * 5 + 1;
+          const x0 = bx * 5 + 1,
+            y0 = by * 5 + 1;
           rect(p, x0, y0, 2, 2, 0xe8a37e);
           rect(p, x0 + 2, y0 + 2, 2, 2, 0x8a4a26);
         }
@@ -2720,7 +3113,8 @@ export class TextureAtlas {
       p.clear();
       // 斜置木柄 + 铜制锄板
       for (let i = 0; i < 9; i++) {
-        const x = 3 + i, y = 13 - i;
+        const x = 3 + i,
+          y = 13 - i;
         p.set(x, y, jitter(0x8a5a2e, rng, 6));
         p.set(x + 1, y, 0x6b4426);
       }
@@ -2786,7 +3180,10 @@ export class TextureAtlas {
   }
 
   /** 扩展点：注册自定义纹理并重绘图集 */
-  registerTile(name: string, painter: (setPixel: (x: number, y: number, hexColor: number, alpha?: number) => void, rng: () => number) => void) {
+  registerTile(
+    name: string,
+    painter: (setPixel: (x: number, y: number, hexColor: number, alpha?: number) => void, rng: () => number) => void,
+  ) {
     if (!this.painters.has(name)) {
       if (this.indices.size >= GRID * GRID) {
         throw new Error(`纹理图集已满（${GRID * GRID} 格），无法注册 ${name}`);
@@ -2871,10 +3268,16 @@ export class TextureAtlas {
     if (v) return v;
     const ctx = this.tileCanvas(name).getContext('2d')!;
     const d = ctx.getImageData(0, 0, TILE, TILE).data;
-    let r = 0, g = 0, b = 0, n = 0;
+    let r = 0,
+      g = 0,
+      b = 0,
+      n = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] < 128) continue;
-      r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+      r += d[i];
+      g += d[i + 1];
+      b += d[i + 2];
+      n++;
     }
     n = Math.max(1, n);
     v = [r / n / 255, g / n / 255, b / n / 255];
@@ -2931,9 +3334,17 @@ export class TextureAtlas {
     const idx: number[] = [];
     const hw = 0.33;
     const zz = 0.02;
-    for (const [z, dir] of [[zz, 1], [-zz, -1]] as const) {
+    for (const [z, dir] of [
+      [zz, 1],
+      [-zz, -1],
+    ] as const) {
       const base = pos.length / 3;
-      const quad = [[-hw, -hw, u0, v0], [hw, -hw, u1, v0], [hw, hw, u1, v1], [-hw, hw, u0, v1]];
+      const quad = [
+        [-hw, -hw, u0, v0],
+        [hw, -hw, u1, v0],
+        [hw, hw, u1, v1],
+        [-hw, hw, u0, v1],
+      ];
       for (const [x, y, u, v] of quad) {
         pos.push(x, y, z);
         nor.push(0, 0, dir);
@@ -2964,14 +3375,29 @@ export class TextureAtlas {
       // 与放置后的十字面几何保持一致：手持矮花不会突然变成整格高
       const ch = Math.max(0.1, Math.min(1, def.crossHeight ?? 1));
       const quads = [
-        [[0.15, 0, 0.15], [0.85, 0, 0.85], [0.85, ch, 0.85], [0.15, ch, 0.15]],
-        [[0.85, 0, 0.15], [0.15, 0, 0.85], [0.15, ch, 0.85], [0.85, ch, 0.15]],
+        [
+          [0.15, 0, 0.15],
+          [0.85, 0, 0.85],
+          [0.85, ch, 0.85],
+          [0.15, ch, 0.15],
+        ],
+        [
+          [0.85, 0, 0.15],
+          [0.15, 0, 0.85],
+          [0.15, ch, 0.85],
+          [0.85, ch, 0.15],
+        ],
       ];
       for (const q of quads) {
         for (const dir of [1, -1]) {
           const base = pos.length / 3;
           const order = dir === 1 ? [0, 1, 2, 3] : [3, 2, 1, 0];
-          const uvs = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+          const uvs = [
+            [u0, v0],
+            [u1, v0],
+            [u1, v1],
+            [u0, v1],
+          ];
           order.forEach((k, i) => {
             pos.push(...q[k]);
             nor.push(0, 1, 0);
@@ -2983,9 +3409,7 @@ export class TextureAtlas {
       }
     } else if (def.shape === 'slab' || def.shape === 'candle') {
       // 子盒几何：按 bounds 缩放六个面，再整体居中（与 cube 的手持朝向一致）
-      const b = def.shape === 'slab'
-        ? [0, 0, 0, 1, 0.5, 1]
-        : [0.3125, 0, 0.3125, 0.6875, 0.5, 0.6875];
+      const b = def.shape === 'slab' ? [0, 0, 0, 1, 0.5, 1] : [0.3125, 0, 0.3125, 0.6875, 0.5, 0.6875];
       const ctr = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2];
       for (const face of FACES) {
         const tileName = face.axis === 1 ? (face.sign > 0 ? def.tiles.top : def.tiles.bottom) : def.tiles.side;

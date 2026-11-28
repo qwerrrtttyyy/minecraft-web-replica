@@ -1,5 +1,5 @@
 import type { EventService } from '../services/events';
-import { equipmentDef, type EquipSlot } from './equipment';
+import { type EquipSlot, equipmentDef } from './equipment';
 
 /** 装备事件的最小依赖（EventService 与插件 EventChannel 均满足） */
 export interface EquipmentEventTarget {
@@ -141,7 +141,7 @@ export class EquipmentState {
         const entry = data.slots[slot];
         if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
         const def = equipmentDef(entry[0]);
-        const dur = typeof entry[1] === 'number' ? entry[1] : def?.durability ?? 1;
+        const dur = typeof entry[1] === 'number' ? entry[1] : (def?.durability ?? 1);
         if (def && def.slot === slot && dur > 0) this.slots[slot] = { id: entry[0], durability: dur };
       }
     }

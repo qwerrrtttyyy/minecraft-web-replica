@@ -67,7 +67,7 @@ function makeWorldReader(gen, bedrockId) {
     return d;
   };
   return (x, y, z) => {
-    if (y < 0) return bedrockId;   // 与 World.getBlock 一致：世界底部之下为基岩
+    if (y < 0) return bedrockId; // 与 World.getBlock 一致：世界底部之下为基岩
     if (y >= H) return 0;
     const cx = Math.floor(x / CS);
     const cz = Math.floor(z / CS);
@@ -88,7 +88,7 @@ function buildSnapshot(read, cx, cz) {
   for (let lz = -1; lz <= CS; lz++)
     for (let lx = -1; lx <= CS; lx++)
       for (let y = 0; y < H; y++) {
-        const i = ((y * W) + (lz + 1)) * W + (lx + 1);
+        const i = (y * W + (lz + 1)) * W + (lx + 1);
         data[i] = read(x0 + lx, y, z0 + lz);
         // 确定性的假光照：让快照保真与 Greedy 光照一致性都被覆盖
         sky[i] = fakeSky(x0 + lx, y, z0 + lz);
@@ -103,7 +103,7 @@ function syntheticSnapshot(blocks, missing) {
   const sky = new Uint8Array(W * H * W).fill(15);
   const block = new Uint8Array(W * H * W);
   const known = new Uint8Array(W * H * W).fill(1);
-  const at = (lx, y, lz) => ((y * W) + (lz + 1)) * W + (lx + 1);
+  const at = (lx, y, lz) => (y * W + (lz + 1)) * W + (lx + 1);
   for (const [lx, y, lz, id] of blocks) data[at(lx, y, lz)] = id;
   for (const [lx, y, lz] of missing) known[at(lx, y, lz)] = 0;
   return { cx: 0, cz: 0, data, sky, block, known };
@@ -123,13 +123,19 @@ class DirectSource {
     this.x0 = x0;
     this.z0 = z0;
   }
-  getId(lx, y, lz) { return this.read(this.x0 + lx, y, this.z0 + lz); }
-  def(id) { return this.config.defs[id] ?? AIR_MESH_DEF; }
+  getId(lx, y, lz) {
+    return this.read(this.x0 + lx, y, this.z0 + lz);
+  }
+  def(id) {
+    return this.config.defs[id] ?? AIR_MESH_DEF;
+  }
   isOpaque(id) {
     const d = this.def(id);
     return !!d && d.opaque;
   }
-  uv(tile) { return this.config.uv[tile] ?? [0, 0, 0, 0]; }
+  uv(tile) {
+    return this.config.uv[tile] ?? [0, 0, 0, 0];
+  }
   getSkyLight(lx, y, lz) {
     if (y >= H) return 15;
     if (y < 0) return 0;
@@ -139,8 +145,12 @@ class DirectSource {
     if (y < 0 || y >= H) return 0;
     return fakeBlock(this.x0 + lx, y, this.z0 + lz);
   }
-  get greedy() { return this.config.greedy; }
-  get mergeEmissive() { return this.config.mergeEmissive; }
+  get greedy() {
+    return this.config.greedy;
+  }
+  get mergeEmissive() {
+    return this.config.mergeEmissive;
+  }
 }
 
 // ---------- 面覆盖提取 ----------
@@ -162,19 +172,11 @@ function coverage(mesh) {
     for (let q = 0; q < n; q++) {
       const p = [];
       for (let i = 0; i < 4; i++) {
-        p.push([
-          g.positions[q * 12 + i * 3],
-          g.positions[q * 12 + i * 3 + 1],
-          g.positions[q * 12 + i * 3 + 2],
-        ]);
+        p.push([g.positions[q * 12 + i * 3], g.positions[q * 12 + i * 3 + 1], g.positions[q * 12 + i * 3 + 2]]);
       }
       const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
       const e2 = [p[3][0] - p[0][0], p[3][1] - p[0][1], p[3][2] - p[0][2]];
-      const nrm = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-      ];
+      const nrm = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
       const abs = nrm.map(Math.abs);
       let axis = 0;
       if (abs[1] > abs[axis]) axis = 1;
@@ -183,14 +185,21 @@ function coverage(mesh) {
       const plane = Math.round(p[0][axis]);
       const axes = [0, 1, 2].filter((a) => a !== axis);
       const [a1, a2] = axes;
-      let lo1 = Infinity, hi1 = -Infinity, lo2 = Infinity, hi2 = -Infinity;
+      let lo1 = Infinity,
+        hi1 = -Infinity,
+        lo2 = Infinity,
+        hi2 = -Infinity;
       for (const v of p) {
-        lo1 = Math.min(lo1, v[a1]); hi1 = Math.max(hi1, v[a1]);
-        lo2 = Math.min(lo2, v[a2]); hi2 = Math.max(hi2, v[a2]);
+        lo1 = Math.min(lo1, v[a1]);
+        hi1 = Math.max(hi1, v[a1]);
+        lo2 = Math.min(lo2, v[a2]);
+        hi2 = Math.max(hi2, v[a2]);
       }
       maxSpan = Math.max(maxSpan, Math.round(hi1 - lo1) * Math.round(hi2 - lo2));
       const bright = (g.shade[q * 4] + g.shade[q * 4 + 1] + g.shade[q * 4 + 2] + g.shade[q * 4 + 3]) / 4;
-      const light = [0, 1, 2, 3].map((i) => `${g.lights[q * 8 + i * 2].toFixed(3)},${g.lights[q * 8 + i * 2 + 1].toFixed(3)}`);
+      const light = [0, 1, 2, 3].map(
+        (i) => `${g.lights[q * 8 + i * 2].toFixed(3)},${g.lights[q * 8 + i * 2 + 1].toFixed(3)}`,
+      );
       const lightKey = light.every((v) => v === light[0]) ? light[0] : light.join('|');
       // 角点光照不全等 → 该 quad 内部存在光照梯度（平滑光照生效的证据）
       if (lightKey.includes('|')) gradientQuads++;
@@ -215,7 +224,11 @@ function compareCoverage(a, b, label) {
   for (const k of a.keys()) if (!b.has(k)) missing.push(k);
   const extra = [];
   for (const k of b.keys()) if (!a.has(k)) extra.push(k);
-  assert.strictEqual(missing.length, 0, `${label}: 缺少 ${missing.length} 个面格，例如 ${missing.slice(0, 3).join(' / ')}`);
+  assert.strictEqual(
+    missing.length,
+    0,
+    `${label}: 缺少 ${missing.length} 个面格，例如 ${missing.slice(0, 3).join(' / ')}`,
+  );
   assert.strictEqual(extra.length, 0, `${label}: 多出 ${extra.length} 个面格，例如 ${extra.slice(0, 3).join(' / ')}`);
   let brightDiff = 0;
   let tileDiff = 0;
@@ -268,12 +281,18 @@ for (const seed of seeds) {
   const cfgGreedy = makeConfig(reg, true);
   assert.ok(cfgLegacy.defs.length > 1, '配置应包含方块定义');
 
-  for (const [cx, cz] of [[0, 0], [3, -2]]) {
+  for (const [cx, cz] of [
+    [0, 0],
+    [3, -2],
+  ]) {
     const snap = buildSnapshot(read, cx, cz);
     const tag = `seed=${seed} chunk=${cx},${cz}`;
 
     // 1) 快照保真：Worker 路径 == 主线程直读路径（两种 greedy 设置都测）
-    for (const [cfg, name] of [[cfgLegacy, '逐面'], [cfgGreedy, 'Greedy']]) {
+    for (const [cfg, name] of [
+      [cfgLegacy, '逐面'],
+      [cfgGreedy, 'Greedy'],
+    ]) {
       const viaSnap = meshChunk(new SnapshotMeshSource(cfg, snap));
       const viaDirect = meshChunk(new DirectSource(cfg, read, cx * CS, cz * CS));
       const same = CHANNELS.every((ch) => sameArrays(viaSnap[ch], viaDirect[ch]));
@@ -293,13 +312,18 @@ for (const seed of seeds) {
     // 干草原等高差区块）与 v1.6.0 花海（十字面占比上升）后，最差 seed 的合并
     // 收益收敛到 12.5%。阈值从 15% 放宽到 10%，仍能证明 Greedy 有效；
     // 「确有合并发生」与 diagnostics 的 mergeBudget 继续兜底。
-    ok(`quad 数下降（${tag}）`, covG.quads <= covL.quads * 0.90,
-      `${covL.quads} → ${covG.quads}（${((1 - covG.quads / covL.quads) * 100).toFixed(1)}%）`);
-    ok(`顶点数 = quad × 4（${tag}）`, greedy.stats.vertices === covG.quads * 4,
-      `${greedy.stats.vertices}`);
+    ok(
+      `quad 数下降（${tag}）`,
+      covG.quads <= covL.quads * 0.9,
+      `${covL.quads} → ${covG.quads}（${((1 - covG.quads / covL.quads) * 100).toFixed(1)}%）`,
+    );
+    ok(`顶点数 = quad × 4（${tag}）`, greedy.stats.vertices === covG.quads * 4, `${greedy.stats.vertices}`);
     const expectMerged = covL.quads - covG.quads;
-    ok(`merged 计数自洽（${tag}）`, Math.abs(greedy.stats.merged - expectMerged) <= 0,
-      `merged=${greedy.stats.merged} 差值=${expectMerged}`);
+    ok(
+      `merged 计数自洽（${tag}）`,
+      Math.abs(greedy.stats.merged - expectMerged) <= 0,
+      `merged=${greedy.stats.merged} 差值=${expectMerged}`,
+    );
     ok(`确有合并发生（${tag}）`, covG.maxSpan > 1, `最大合并面 ${covG.maxSpan} 格`);
 
     total.legacy += covL.quads;
@@ -319,15 +343,22 @@ for (const seed of seeds) {
 //    所以这里单独盯住「梯度确实存在」和「梯度没有吃掉整个网格」两端。
 {
   const ratio = grad.legacy / grad.quads;
-  ok('平滑光照生效（逐面输出存在角点光照梯度）', grad.legacy > 0,
-    `${grad.legacy} / ${grad.quads} 个 quad 有梯度（${(ratio * 100).toFixed(1)}%）`);
-  ok('角点光照梯度占比在合理区间（不是全平也不是全梯度）',
+  ok(
+    '平滑光照生效（逐面输出存在角点光照梯度）',
+    grad.legacy > 0,
+    `${grad.legacy} / ${grad.quads} 个 quad 有梯度（${(ratio * 100).toFixed(1)}%）`,
+  );
+  ok(
+    '角点光照梯度占比在合理区间（不是全平也不是全梯度）',
     ratio > 0.05 && ratio < 0.95,
-    `${(ratio * 100).toFixed(1)}%`);
+    `${(ratio * 100).toFixed(1)}%`,
+  );
   const gradRatio = grad.greedy / grad.greedyQuads;
-  ok('Greedy 与逐面的梯度面占比一致（合并不改变光照结构）',
+  ok(
+    'Greedy 与逐面的梯度面占比一致（合并不改变光照结构）',
     Math.abs(gradRatio - ratio) < 0.2,
-    `greedy ${(gradRatio * 100).toFixed(1)}% vs legacy ${(ratio * 100).toFixed(1)}%`);
+    `greedy ${(gradRatio * 100).toFixed(1)}% vs legacy ${(ratio * 100).toFixed(1)}%`,
+  );
 }
 
 /**
@@ -343,11 +374,16 @@ function quadsOf(g) {
     for (let i = 0; i < 4; i++) {
       const b = q * 4 + i;
       vals.push(
-        g.positions[b * 3], g.positions[b * 3 + 1], g.positions[b * 3 + 2],
-        g.uvs[b * 2], g.uvs[b * 2 + 1],
+        g.positions[b * 3],
+        g.positions[b * 3 + 1],
+        g.positions[b * 3 + 2],
+        g.uvs[b * 2],
+        g.uvs[b * 2 + 1],
         g.shade[b],
-        g.lights[b * 2], g.lights[b * 2 + 1],
-        g.tile[b * 2], g.tile[b * 2 + 1],
+        g.lights[b * 2],
+        g.lights[b * 2 + 1],
+        g.tile[b * 2],
+        g.tile[b * 2 + 1],
         g.tints[b],
       );
     }
@@ -376,20 +412,29 @@ function quadsOf(g) {
   const merged = meshChunk(new SnapshotMeshSource(makeConfig(reg, true, true), snap));
   const split = meshChunk(new SnapshotMeshSource(makeConfig(reg, true, false), snap));
 
-  ok('默认路径不自开 emissive 通道',
-    !merged.emissive || merged.emissive.indices.length === 0);
-  ok('对照路径保留 emissive 通道',
+  ok('默认路径不自开 emissive 通道', !merged.emissive || merged.emissive.indices.length === 0);
+  ok(
+    '对照路径保留 emissive 通道',
     !!split.emissive && split.emissive.indices.length > 0,
-    `${quadsOf(split.emissive).length} 个 quad`);
-  ok('默认路径的自发光面带 aTint=2 标记',
-    quadsOf(merged.opaque).some((q) => q.tint === 2));
-  ok('对照路径的 opaque 不含自发光顶点',
-    quadsOf(split.opaque).every((q) => q.tint !== 2));
-  const viaMerge = quadsOf(merged.opaque).filter((q) => q.tint === 2).map((q) => q.key);
+    `${quadsOf(split.emissive).length} 个 quad`,
+  );
+  ok(
+    '默认路径的自发光面带 aTint=2 标记',
+    quadsOf(merged.opaque).some((q) => q.tint === 2),
+  );
+  ok(
+    '对照路径的 opaque 不含自发光顶点',
+    quadsOf(split.opaque).every((q) => q.tint !== 2),
+  );
+  const viaMerge = quadsOf(merged.opaque)
+    .filter((q) => q.tint === 2)
+    .map((q) => q.key);
   const viaSplit = quadsOf(split.emissive).map((q) => q.key);
-  ok('自发光几何逐顶点一致（并入 vs 独立通道）',
+  ok(
+    '自发光几何逐顶点一致（并入 vs 独立通道）',
     viaMerge.length === viaSplit.length && viaMerge.every((k, i) => k === viaSplit[i]),
-    `${viaMerge.length} 个 quad`);
+    `${viaMerge.length} 个 quad`,
+  );
 }
 
 // 6) N4 回归：halo 来源未知时，液体面不朝缺失侧生成；非液体路径逐字节不受影响
@@ -399,7 +444,9 @@ function quadsOf(g) {
   const cfg = makeConfig(reg, false);
   const waterId = reg.byNameGet('water').id;
   const stoneId = reg.byNameGet('stone').id;
-  const y = 40, lx = CS - 1, lz = 8;
+  const y = 40,
+    lx = CS - 1,
+    lz = 8;
   const haloMissing = [[CS, y, lz]]; // +X 方向的 1 格 halo（区块外第一格）
 
   /**
@@ -412,18 +459,11 @@ function quadsOf(g) {
     if (!g || !g.positions.length) return set;
     for (let q = 0; q < g.positions.length / 12; q++) {
       const p = [];
-      for (let i = 0; i < 4; i++) p.push([
-        g.positions[q * 12 + i * 3],
-        g.positions[q * 12 + i * 3 + 1],
-        g.positions[q * 12 + i * 3 + 2],
-      ]);
+      for (let i = 0; i < 4; i++)
+        p.push([g.positions[q * 12 + i * 3], g.positions[q * 12 + i * 3 + 1], g.positions[q * 12 + i * 3 + 2]]);
       const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
       const e2 = [p[3][0] - p[0][0], p[3][1] - p[0][1], p[3][2] - p[0][2]];
-      const n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-      ];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
       const abs = n.map(Math.abs);
       let axis = 0;
       if (abs[1] > abs[axis]) axis = 1;
@@ -446,43 +486,74 @@ function quadsOf(g) {
   const facesMissing = waterFaces(meshMissing);
   const gone = [...facesKnown].filter((k) => !facesMissing.has(k));
   const added = [...facesMissing].filter((k) => !facesKnown.has(k));
-  ok('实验E：仅剔除朝未知侧(+X)的水面，其余五面逐面不变',
+  ok(
+    '实验E：仅剔除朝未知侧(+X)的水面，其余五面逐面不变',
     gone.length === 1 && gone[0] === `x+@${CS}` && added.length === 0,
-    `消失=${gone.join('/')} 新增=${added.join('/')}`);
+    `消失=${gone.join('/')} 新增=${added.join('/')}`,
+  );
 
   // 生产默认走 greedy（水是非 plain cube，经特殊方块逐面路径）；两处调用点必须都传 isKnown
   const cfgGreedy = makeConfig(reg, true);
   const gKnown = quadCount(meshChunk(new SnapshotMeshSource(cfgGreedy, airKnown)).water);
   const gMissingMesh = meshChunk(new SnapshotMeshSource(cfgGreedy, airMissing));
   const gGone = [...facesKnown].filter((k) => !waterFaces(gMissingMesh).has(k));
-  ok('Greedy 生产路径同样只剔除未知侧水面',
+  ok(
+    'Greedy 生产路径同样只剔除未知侧水面',
     gKnown === 6 && quadCount(gMissingMesh.water) === 5 && gGone.length === 1 && gGone[0] === `x+@${CS}`,
-    `quad=${gKnown}→${quadCount(gMissingMesh.water)} 消失=${gGone.join('/')}`);
+    `quad=${gKnown}→${quadCount(gMissingMesh.water)} 消失=${gGone.join('/')}`,
+  );
 
   // 实验C：已知下方石头时，只剔除朝下的水面（证明非边界方向的液体规则未回归）
-  const underStone = syntheticSnapshot([[lx, y, lz, waterId], [lx, y - 1, lz, stoneId]], []);
+  const underStone = syntheticSnapshot(
+    [
+      [lx, y, lz, waterId],
+      [lx, y - 1, lz, stoneId],
+    ],
+    [],
+  );
   const fC = waterFaces(meshChunk(new SnapshotMeshSource(cfg, underStone)));
-  ok('实验C：已知下方石头只剔除朝下水面',
+  ok(
+    '实验C：已知下方石头只剔除朝下水面',
     fC.size === 5 && !fC.has(`y-@${y}`) && fC.has(`y+@${y + 1}`),
-    `faces=${[...fC].sort().join('/')}`);
+    `faces=${[...fC].sort().join('/')}`,
+  );
 
   // 水-水内部面沿用 liquid 分支剔除，不受 known 改动影响（两块共 10 面）
-  const waterPair = syntheticSnapshot([[lx - 1, y, lz, waterId], [lx, y, lz, waterId]], []);
-  ok('水-水相邻内部面仍被剔除',
-    quadCount(meshChunk(new SnapshotMeshSource(cfg, waterPair)).water) === 10);
+  const waterPair = syntheticSnapshot(
+    [
+      [lx - 1, y, lz, waterId],
+      [lx, y, lz, waterId],
+    ],
+    [],
+  );
+  ok('水-水相邻内部面仍被剔除', quadCount(meshChunk(new SnapshotMeshSource(cfg, waterPair)).water) === 10);
 
   // y 越界是确定的基岩/空气边界而非来源未知：SnapshotMeshSource.isKnown 返回 true
   const topWater = syntheticSnapshot([[lx, H - 1, lz, waterId]], []);
   const fTop = waterFaces(meshChunk(new SnapshotMeshSource(cfg, topWater)));
-  ok('世界顶部水面的越界邻居视为已知，顶面不消失',
-    fTop.size === 6 && fTop.has(`y+@${H}`), `faces=${[...fTop].sort().join('/')}`);
+  ok(
+    '世界顶部水面的越界邻居视为已知，顶面不消失',
+    fTop.size === 6 && fTop.has(`y+@${H}`),
+    `faces=${[...fTop].sort().join('/')}`,
+  );
 
   // 邻居确实存在实心石头时同样剔除以避免共面；来源未知时保守剔除结果一致
-  const stoneKnown = syntheticSnapshot([[lx, y, lz, waterId], [CS, y, lz, stoneId]], []);
-  const stoneMissing = syntheticSnapshot([[lx, y, lz, waterId], [CS, y, lz, stoneId]], haloMissing);
+  const stoneKnown = syntheticSnapshot(
+    [
+      [lx, y, lz, waterId],
+      [CS, y, lz, stoneId],
+    ],
+    [],
+  );
+  const stoneMissing = syntheticSnapshot(
+    [
+      [lx, y, lz, waterId],
+      [CS, y, lz, stoneId],
+    ],
+    haloMissing,
+  );
   ok('已知石头邻居时水面剔除', quadCount(meshChunk(new SnapshotMeshSource(cfg, stoneKnown)).water) === 5);
-  ok('未知侧即便残留石头数据也保守剔除',
-    quadCount(meshChunk(new SnapshotMeshSource(cfg, stoneMissing)).water) === 5);
+  ok('未知侧即便残留石头数据也保守剔除', quadCount(meshChunk(new SnapshotMeshSource(cfg, stoneMissing)).water) === 5);
 
   // 非液体面可见性不得受 known 影响：石头在 +X 未知侧仍照常生成 6 面
   const rockKnown = syntheticSnapshot([[lx, y, lz, stoneId]], []);
@@ -516,7 +587,9 @@ function quadsOf(g) {
       if (!g) continue;
       const n = g.positions.length / 12;
       for (let q = 0; q < n; q++) {
-        const xs = [], ys = [], zs = [];
+        const xs = [],
+          ys = [],
+          zs = [];
         for (let i = 0; i < 4; i++) {
           xs.push(g.positions[q * 12 + i * 3]);
           ys.push(g.positions[q * 12 + i * 3 + 1]);
@@ -527,9 +600,12 @@ function quadsOf(g) {
         const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
         if (cx < x0 - 1 || cx > x0 + 2 || cy < y0 - 1 || cy > y0 + 2 || cz < z0 - 1 || cz > z0 + 2) continue;
         out.push({
-          minX: Math.min(...xs), maxX: Math.max(...xs),
-          minY: Math.min(...ys), maxY: Math.max(...ys),
-          minZ: Math.min(...zs), maxZ: Math.max(...zs),
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys),
+          minZ: Math.min(...zs),
+          maxZ: Math.max(...zs),
           tileU: g.tile[q * 8],
         });
       }
@@ -542,25 +618,43 @@ function quadsOf(g) {
     const slab = collect(mesh, 5, 10, 5);
     ok(`slab 六面齐全（greedy=${greedy}）`, slab.length === 6, `${slab.length}`);
     const slabBox = [
-      Math.min(...slab.map((q) => q.minX)), Math.max(...slab.map((q) => q.maxX)),
-      Math.min(...slab.map((q) => q.minY)), Math.max(...slab.map((q) => q.maxY)),
-      Math.min(...slab.map((q) => q.minZ)), Math.max(...slab.map((q) => q.maxZ)),
+      Math.min(...slab.map((q) => q.minX)),
+      Math.max(...slab.map((q) => q.maxX)),
+      Math.min(...slab.map((q) => q.minY)),
+      Math.max(...slab.map((q) => q.maxY)),
+      Math.min(...slab.map((q) => q.minZ)),
+      Math.max(...slab.map((q) => q.maxZ)),
     ];
-    ok(`slab 盒范围 x[5,6] y[10,10.5] z[5,6]（greedy=${greedy}）`,
-      slabBox[0] === 5 && slabBox[1] === 6 && slabBox[2] === 10 &&
-      slabBox[3] === 10.5 && slabBox[4] === 5 && slabBox[5] === 6,
-      slabBox.join(','));
+    ok(
+      `slab 盒范围 x[5,6] y[10,10.5] z[5,6]（greedy=${greedy}）`,
+      slabBox[0] === 5 &&
+        slabBox[1] === 6 &&
+        slabBox[2] === 10 &&
+        slabBox[3] === 10.5 &&
+        slabBox[4] === 5 &&
+        slabBox[5] === 6,
+      slabBox.join(','),
+    );
     const candle = collect(mesh, 8, 10, 8);
     ok(`candle 六面齐全（greedy=${greedy}）`, candle.length === 6, `${candle.length}`);
     const candleBox = [
-      Math.min(...candle.map((q) => q.minX)), Math.max(...candle.map((q) => q.maxX)),
-      Math.min(...candle.map((q) => q.minY)), Math.max(...candle.map((q) => q.maxY)),
-      Math.min(...candle.map((q) => q.minZ)), Math.max(...candle.map((q) => q.maxZ)),
+      Math.min(...candle.map((q) => q.minX)),
+      Math.max(...candle.map((q) => q.maxX)),
+      Math.min(...candle.map((q) => q.minY)),
+      Math.max(...candle.map((q) => q.maxY)),
+      Math.min(...candle.map((q) => q.minZ)),
+      Math.max(...candle.map((q) => q.maxZ)),
     ];
-    ok(`candle 盒范围 x/z[8.3125,8.6875] y[10,10.5]（greedy=${greedy}）`,
-      candleBox[0] === 8.3125 && candleBox[1] === 8.6875 && candleBox[2] === 10 &&
-      candleBox[3] === 10.5 && candleBox[4] === 8.3125 && candleBox[5] === 8.6875,
-      candleBox.join(','));
+    ok(
+      `candle 盒范围 x/z[8.3125,8.6875] y[10,10.5]（greedy=${greedy}）`,
+      candleBox[0] === 8.3125 &&
+        candleBox[1] === 8.6875 &&
+        candleBox[2] === 10 &&
+        candleBox[3] === 10.5 &&
+        candleBox[4] === 8.3125 &&
+        candleBox[5] === 8.6875,
+      candleBox.join(','),
+    );
   }
 
   // tile 映射：slab 顶面用 campfire_top，侧面用 campfire_side
@@ -568,10 +662,12 @@ function quadsOf(g) {
   const slab = collect(meshChunk(new SnapshotMeshSource(cfg, snap)), 5, 10, 5);
   const topU = cfg.uv['campfire_top'][0];
   const sideU = cfg.uv['campfire_side'][0];
-  ok('slab 顶面 / 侧面 tile 正确',
+  ok(
+    'slab 顶面 / 侧面 tile 正确',
     slab.some((q) => q.maxY === 10.5 && q.minY === 10.5 && q.tileU === topU) &&
-    slab.some((q) => q.minY === 10 && q.maxY === 10.5 && q.tileU === sideU),
-    `top=${topU} side=${sideU}`);
+      slab.some((q) => q.minY === 10 && q.maxY === 10.5 && q.tileU === sideU),
+    `top=${topU} side=${sideU}`,
+  );
 }
 
 // 8) 汇总基准

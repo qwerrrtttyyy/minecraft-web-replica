@@ -1,5 +1,5 @@
-import type { EntityManager, EntityType } from './entity';
 import { clamp, type Vec3Like } from '../core/types';
+import type { EntityManager, EntityType } from './entity';
 
 /**
  * 篮球物理常量与纯逻辑。
@@ -70,8 +70,9 @@ export function rollFriction(v: number, dt: number): number {
 
 /** 走近拾取判定：冷却结束 + 近静止 + 水平/竖直距离都在范围内 */
 export function canPickup(distXZ: number, distY: number, speed: number, cooldown: number): boolean {
-  return cooldown <= 0 && speed <= BALL.PICKUP_MAX_SPEED &&
-    distXZ <= BALL.PICKUP_RADIUS && distY >= -0.6 && distY <= 2.2;
+  return (
+    cooldown <= 0 && speed <= BALL.PICKUP_MAX_SPEED && distXZ <= BALL.PICKUP_RADIUS && distY >= -0.6 && distY <= 2.2
+  );
 }
 
 /**
@@ -79,10 +80,7 @@ export function canPickup(distXZ: number, distY: number, speed: number, cooldown
  * build 由调用方（models.ts）传入，本模块便无需运行时依赖 three.js，
  * 测试快照 require 本文件时不会连带加载渲染层。
  */
-export function registerBasketball(
-  entities: Pick<EntityManager, 'registerType'>,
-  build: EntityType['build'],
-): void {
+export function registerBasketball(entities: Pick<EntityManager, 'registerType'>, build: EntityType['build']): void {
   entities.registerType({
     id: 'basketball',
     label: '篮球',

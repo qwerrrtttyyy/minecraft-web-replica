@@ -15,6 +15,10 @@ export interface Vec3Like {
 export const CHUNK_SIZE = 16;
 export const WORLD_HEIGHT = 80;
 export const SEA_LEVEL = 30;
+/** 网格化 / 剔除的竖向分段高度：16³ section 是渲染粒度的基本单位 */
+export const SECTION_HEIGHT = 16;
+/** 每个区块列的 section 数（WORLD_HEIGHT 必须是 SECTION_HEIGHT 的整数倍） */
+export const SECTIONS = WORLD_HEIGHT / SECTION_HEIGHT;
 
 /** 引擎系统接口：任何实现 update 的对象都可挂入主循环（扩展点） */
 export interface System {
@@ -48,6 +52,17 @@ export const parseChunkKey = (key: string): [number, number] => {
   return [+key.slice(0, i), +key.slice(i + 1)];
 };
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
+
+/** 渲染网格的最小单位：区块列 + 竖向 section 索引（0..SECTIONS-1） */
+export const sectionKey = (cx: number, sy: number, cz: number) => `${cx},${sy},${cz}`;
+/** sectionKey 的逆向解析：同样避开 split，热路径只做 slice */
+export const parseSectionKey = (key: string): [number, number, number] => {
+  const i = key.indexOf(',');
+  const j = key.indexOf(',', i + 1);
+  return [+key.slice(0, i), +key.slice(i + 1, j), +key.slice(j + 1)];
+};
+/** 世界 y 坐标 → section 下标 */
+export const sectionOfY = (y: number) => Math.floor(y / SECTION_HEIGHT);
 
 /** N3：挖掘裂痕阶段数（0 = 无裂纹，1..9 逐层加深，与原版一致） */
 export const CRACK_STAGES = 10;

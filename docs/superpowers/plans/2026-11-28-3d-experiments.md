@@ -21,11 +21,13 @@
 ### Task 1: 设置模型与 URL 参数
 
 **Files:**
+
 - Modify: `src/core/options.ts`
 - Modify: `src/main.ts`
 - Test: `test/options-check.mjs`
 
 **Interfaces:**
+
 - Produces: `TexturePackId = 'classic' | 'warm' | 'cool' | 'contrast'`
 - Produces: `Options.densityTerrain: boolean`、`Options.packedLighting: boolean`、`Options.texturePack: TexturePackId`
 - Produces: `TEXTURE_PACK_IDS: readonly TexturePackId[]`
@@ -33,6 +35,7 @@
 - [ ] **Step 1: 写失败测试**
 
 在 `test/options-check.mjs` 增加：
+
 ```js
 assert.equal(loadOptions().densityTerrain, false);
 assert.equal(loadOptions().packedLighting, false);
@@ -59,12 +62,14 @@ Expected: PASS。
 ### Task 2: 3D 密度场地形
 
 **Files:**
+
 - Modify: `src/world/generator.ts`
 - Modify: `src/main.ts`
 - Test: `test/density-terrain-check.cjs`
 - Modify: `scripts/build-test-snapshot.mjs`
 
 **Interfaces:**
+
 - Consumes: `TerrainOptions.densityTerrain`
 - Produces: `DefaultGenerator` 在密度模式下生成悬挑 / 岩檐，同时保留每列顶面。
 - Produces: URL `?terrain=density`。
@@ -72,6 +77,7 @@ Expected: PASS。
 - [ ] **Step 1: 写失败测试**
 
 用固定 seed 生成 3×3 区块，断言：
+
 ```js
 assert.equal(deterministic(seed), true);
 assert.equal(everyColumnHasSurface(gen, data), true);
@@ -102,12 +108,14 @@ Expected: 全部 PASS。
 ### Task 3: 8 位打包顶点光照
 
 **Files:**
+
 - Modify: `src/world/chunkManager.ts`
 - Modify: `src/main.ts`
 - Test: `test/packed-light-check.cjs`
 - Modify: `scripts/build-test-snapshot.mjs`
 
 **Interfaces:**
+
 - Produces: `packLightVertex(sky: number, block: number): number`
 - Produces: `unpackLightVertex(packed: number): [number, number]`
 - Produces: `ChunkManager.setPackedLighting(v: boolean): void`
@@ -149,6 +157,7 @@ Expected: 全部 PASS。
 ### Task 4: 材质包加载器
 
 **Files:**
+
 - Create: `src/gfx/texturePack.ts`
 - Create: `src/gfx/zipReader.ts`
 - Modify: `src/gfx/atlas.ts`
@@ -157,6 +166,7 @@ Expected: 全部 PASS。
 - Test: `test/texture-pack-check.cjs`
 
 **Interfaces:**
+
 - Produces: `TexturePackId`、`BUILTIN_PACKS`
 - Produces: `applyBuiltinPack(atlas, id): void`
 - Produces: `loadTexturePackFiles(files): Promise<TexturePackLoadResult>`
@@ -199,18 +209,21 @@ Expected: PASS。
 ### Task 5: 前端状态与验收
 
 **Files:**
+
 - Modify: `src/ui/hud.ts`
 - Modify: `src/main.ts`
 - Modify: `src/world/world.ts`（如需要暴露实验状态）
 - Test: `test/smoke` 或手工截图
 
 **Interfaces:**
+
 - Consumes: 三个实验的运行时状态。
 - Produces: F3 实验状态行、设置页状态文本。
 
 - [ ] **Step 1: 增加状态显示**
 
 F3 追加：
+
 ```text
 实验: 地形 classic|density · 光照 float2|packed8 · 材质 classic|imported
 ```

@@ -29,9 +29,7 @@ export interface PenetrationResult extends Vec3Like {
 }
 
 /** 收集与 AABB 相交的实心方块坐标（扁平数组 [x,y,z, x,y,z, ...]） */
-export function overlappingBlocks(
-  pos: Vec3Like, width: number, height: number, isSolid: SolidPredicate,
-): number[] {
+export function overlappingBlocks(pos: Vec3Like, width: number, height: number, isSolid: SolidPredicate): number[] {
   const half = width / 2;
   const minX = Math.floor(pos.x - half);
   const maxX = Math.floor(pos.x + half - EPS);
@@ -54,16 +52,26 @@ export function isStuck(pos: Vec3Like, width: number, height: number, isSolid: S
   return overlappingBlocks(pos, width, height, isSolid).length > 0;
 }
 
-interface Candidate { dx: number; dy: number; dz: number; d2: number }
+interface Candidate {
+  dx: number;
+  dy: number;
+  dz: number;
+  d2: number;
+}
 
 /** 由相交方块集合生成 26 个轴向推出候选（每轴取 0 / + / -） */
 function candidates(blocks: number[], pos: Vec3Like, width: number, height: number): Candidate[] {
   const half = width / 2;
-  let maxXPlus = -Infinity, minXMinus = Infinity;
-  let maxYPlus = -Infinity, minYMinus = Infinity;
-  let maxZPlus = -Infinity, minZMinus = Infinity;
+  let maxXPlus = -Infinity,
+    minXMinus = Infinity;
+  let maxYPlus = -Infinity,
+    minYMinus = Infinity;
+  let maxZPlus = -Infinity,
+    minZMinus = Infinity;
   for (let i = 0; i < blocks.length; i += 3) {
-    const bx = blocks[i], by = blocks[i + 1], bz = blocks[i + 2];
+    const bx = blocks[i],
+      by = blocks[i + 1],
+      bz = blocks[i + 2];
     if (bx + 1 > maxXPlus) maxXPlus = bx + 1;
     if (bx < minXMinus) minXMinus = bx;
     if (by + 1 > maxYPlus) maxYPlus = by + 1;
@@ -76,10 +84,12 @@ function candidates(blocks: number[], pos: Vec3Like, width: number, height: numb
   const ys = [0, maxYPlus + EPS - pos.y, minYMinus - height - EPS - pos.y];
   const zs = [0, maxZPlus + half + EPS - pos.z, minZMinus - half - EPS - pos.z];
   const out: Candidate[] = [];
-  for (const dx of xs) for (const dy of ys) for (const dz of zs) {
-    if (dx === 0 && dy === 0 && dz === 0) continue;
-    out.push({ dx, dy, dz, d2: dx * dx + dy * dy + dz * dz });
-  }
+  for (const dx of xs)
+    for (const dy of ys)
+      for (const dz of zs) {
+        if (dx === 0 && dy === 0 && dz === 0) continue;
+        out.push({ dx, dy, dz, d2: dx * dx + dy * dy + dz * dz });
+      }
   out.sort((a, b) => a.d2 - b.d2);
   return out;
 }
@@ -89,11 +99,17 @@ function candidates(blocks: number[], pos: Vec3Like, width: number, height: numb
  * 有界：最多 maxIterations 轮、总位移不超过 maxDisplacement，避免病态地形下死循环。
  */
 export function resolvePenetration(
-  pos: Vec3Like, width: number, height: number, isSolid: SolidPredicate,
-  maxIterations = 10, maxDisplacement = 128,
+  pos: Vec3Like,
+  width: number,
+  height: number,
+  isSolid: SolidPredicate,
+  maxIterations = 10,
+  maxDisplacement = 128,
 ): PenetrationResult {
   const start = { x: pos.x, y: pos.y, z: pos.z };
-  let x = pos.x, y = pos.y, z = pos.z;
+  let x = pos.x,
+    y = pos.y,
+    z = pos.z;
   let iterations = 0;
   let travelled = 0;
   let blocks = overlappingBlocks(start, width, height, isSolid);
@@ -103,19 +119,28 @@ export function resolvePenetration(
     let chosen: Candidate | null = null;
     for (const c of cs) {
       const probe = { x: x + c.dx, y: y + c.dy, z: z + c.dz };
-      if (overlappingBlocks(probe, width, height, isSolid).length === 0) { chosen = c; break; }
+      if (overlappingBlocks(probe, width, height, isSolid).length === 0) {
+        chosen = c;
+        break;
+      }
     }
     const step = chosen ?? cs[0];
     if (!step) break;
-    x += step.dx; y += step.dy; z += step.dz;
+    x += step.dx;
+    y += step.dy;
+    z += step.dz;
     travelled += Math.sqrt(step.d2);
     iterations++;
     blocks = overlappingBlocks({ x, y, z }, width, height, isSolid);
   }
 
   return {
-    x, y, z,
-    dx: x - start.x, dy: y - start.y, dz: z - start.z,
+    x,
+    y,
+    z,
+    dx: x - start.x,
+    dy: y - start.y,
+    dz: z - start.z,
     moved: iterations > 0,
     iterations,
     resolved: blocks.length === 0,

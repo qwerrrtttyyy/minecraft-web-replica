@@ -1,11 +1,8 @@
-import { WORLD_HEIGHT, type BlockId, type GameMode } from '../core/types';
-import {
-  MAX_BREATH, MAX_HEALTH, MAX_HUNGER,
-  type Stack, type SurvivalSave,
-} from '../player/survival';
+import { type BlockId, type GameMode, WORLD_HEIGHT } from '../core/types';
 import { isKnownMaterial } from '../player/smelting';
-import { type PlantSaveV1, type PlantSaveV2 } from '../world/botany';
+import { MAX_BREATH, MAX_HEALTH, MAX_HUNGER, type Stack, type SurvivalSave } from '../player/survival';
 import { isPlainRecord } from '../services/plugins/saveBag';
+import type { PlantSaveV1, PlantSaveV2 } from '../world/botany';
 
 /**
  * 存档系统（扩展点：CraftAPI.setSaveProvider 可替换为云端/IndexedDB 实现）。
@@ -75,8 +72,7 @@ const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 const intIn = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 /** 有限数值 + 范围：挡住 1e308 这类能通过 finite 但会撑爆区块生成的值 */
-const inRange = (v: unknown, min: number, max: number): v is number =>
-  finite(v) && v >= min && v <= max;
+const inRange = (v: unknown, min: number, max: number): v is number => finite(v) && v >= min && v <= max;
 /** 玩家坐标允许的横向范围（远超正常探索距离，但远小于浮点极端值） */
 const MAX_COORD = 1e7;
 /** 纵向留一点余量，避免边界存档被误判 */
@@ -134,18 +130,20 @@ const isFurnaceSave = (v: unknown): boolean => {
   const slotOk = (s: unknown): boolean => {
     if (s === null) return true;
     if (!Array.isArray(s) || s.length !== 2) return false;
-    return (typeof s[0] === 'string' && s[0].length > 0 && s[0].length <= 64) &&
-      intIn(s[1], 1, 999) && isKnownMaterial(s[0]);
+    return (
+      typeof s[0] === 'string' && s[0].length > 0 && s[0].length <= 64 && intIn(s[1], 1, 999) && isKnownMaterial(s[0])
+    );
   };
   for (const c of f.cells) {
     if (!c || typeof c !== 'object') return false;
     const cell = c as Record<string, unknown>;
-    if (!Array.isArray(cell.pos) || cell.pos.length !== 3 ||
-        !cell.pos.every((n) => Number.isInteger(n))) return false;
+    if (!Array.isArray(cell.pos) || cell.pos.length !== 3 || !cell.pos.every((n) => Number.isInteger(n))) return false;
     const y = (cell.pos as number[])[1];
     if (y < 0 || y > WORLD_HEIGHT) return false;
     if (!slotOk(cell.input) || !slotOk(cell.fuel) || !slotOk(cell.output)) return false;
-    const burn = cell.burn, burnMax = cell.burnMax, progress = cell.progress;
+    const burn = cell.burn,
+      burnMax = cell.burnMax,
+      progress = cell.progress;
     if (!finite(burn) || (burn as number) < 0) return false;
     if (!finite(burnMax) || (burnMax as number) < 0) return false;
     if (!finite(progress) || (progress as number) < 0 || (progress as number) > 60) return false;
@@ -172,13 +170,26 @@ export function validateSave(data: unknown): data is SaveData {
     if (!intIn(e[1], 0, 255)) return false;
   }
   const p = d.player;
-  if (!p || !inRange(p.x, -MAX_COORD, MAX_COORD) || !inWorldY(p.y) ||
-      !inRange(p.z, -MAX_COORD, MAX_COORD) ||
-      !finite(p.yaw) || !finite(p.pitch) || typeof p.fly !== 'boolean') return false;
+  if (
+    !p ||
+    !inRange(p.x, -MAX_COORD, MAX_COORD) ||
+    !inWorldY(p.y) ||
+    !inRange(p.z, -MAX_COORD, MAX_COORD) ||
+    !finite(p.yaw) ||
+    !finite(p.pitch) ||
+    typeof p.fly !== 'boolean'
+  )
+    return false;
   const s = d.survival;
-  if (!s || !inRange(s.health, 0, MAX_HEALTH) || !inRange(s.hunger, 0, MAX_HUNGER) ||
-      !inRange(s.breath, 0, MAX_BREATH) ||
-      !Array.isArray(s.inventory) || !isVec3(s.spawn)) return false;
+  if (
+    !s ||
+    !inRange(s.health, 0, MAX_HEALTH) ||
+    !inRange(s.hunger, 0, MAX_HUNGER) ||
+    !inRange(s.breath, 0, MAX_BREATH) ||
+    !Array.isArray(s.inventory) ||
+    !isVec3(s.spawn)
+  )
+    return false;
   // v1.5.3 饱和度为可选字段：旧档缺省放行，存在时必须落在 0~20
   if (s.saturation !== undefined && !inRange(s.saturation, 0, MAX_HUNGER)) return false;
   // PR5 温暖值为可选字段：旧档缺省放行，存在时必须落在 0~100
@@ -189,18 +200,25 @@ export function validateSave(data: unknown): data is SaveData {
     if (!intIn(e[1], 1, 999)) return false;
     if (BLOCK_KEY_RE.test(e[0]) && !intIn(Number(e[0].slice(2)), 1, 255)) return false;
   }
-  if (!finite(d.dayTime) || d.dayTime < 0 || d.dayTime > 1 || !Array.isArray(d.hotbar) ||
-      d.hotbar.length !== 9 || !d.hotbar.every(isStack)) return false;
+  if (
+    !finite(d.dayTime) ||
+    d.dayTime < 0 ||
+    d.dayTime > 1 ||
+    !Array.isArray(d.hotbar) ||
+    d.hotbar.length !== 9 ||
+    !d.hotbar.every(isStack)
+  )
+    return false;
   // slot 用作 hotbar.slots 的数组下标：小数会读出 undefined 并清空手持物
   if (!intIn(d.slot, 0, 8)) return false;
   const st = d.settings;
-  if (!st || typeof st.sound !== 'boolean' || !finite(st.renderDistance) ||
-      !finite(st.sensitivity) || !finite(st.fov)) return false;
+  if (!st || typeof st.sound !== 'boolean' || !finite(st.renderDistance) || !finite(st.sensitivity) || !finite(st.fov))
+    return false;
   // 设置页新增字段为可选：旧档没有时按默认值处理，不影响校验通过
   if (st.volume !== undefined && !finite(st.volume)) return false;
   if (st.invertY !== undefined && typeof st.invertY !== 'boolean') return false;
   // v1.6 生态字段为可选，旧档缺省仍通过
-  if (d.dayCount !== undefined && (!intIn(d.dayCount, 0, Number.MAX_SAFE_INTEGER))) return false;
+  if (d.dayCount !== undefined && !intIn(d.dayCount, 0, Number.MAX_SAFE_INTEGER)) return false;
   if (d.botany !== undefined && !isBotanySave(d.botany)) return false;
   // 熔炉字段为可选，旧档缺省仍通过
   if (d.furnaces !== undefined && !isFurnaceSave(d.furnaces)) return false;
@@ -255,7 +273,12 @@ export function normalizeSave(raw: unknown): SaveData | null {
       edits: parsed.edits ?? [],
       player: parsed.player,
       survival: {
-        health: 20, hunger: 20, saturation: MAX_HUNGER, warmth: 0, breath: 15, inventory: [],
+        health: 20,
+        hunger: 20,
+        saturation: MAX_HUNGER,
+        warmth: 0,
+        breath: 15,
+        inventory: [],
         spawn: { x: parsed.player.x, y: parsed.player.y, z: parsed.player.z },
       },
       dayTime: parsed.dayTime ?? 0.32,
@@ -373,7 +396,9 @@ export class IndexedDBProvider implements ISaveProvider {
         const req = fn(t.objectStore(IDB_STORE));
         // H02：等 transaction.oncomplete（事务真正持久化）而不是 req.onsuccess，
         // 否则页面卸载阶段发起的写入可能未提交就被浏览器丢弃
-        req.onsuccess = () => { result = req.result; };
+        req.onsuccess = () => {
+          result = req.result;
+        };
         req.onerror = () => reject(req.error ?? new Error('IndexedDB 事务失败'));
         t.oncomplete = () => resolve(result);
         t.onabort = () => reject(t.error ?? new Error('IndexedDB 事务中止'));
@@ -494,15 +519,21 @@ export function pickSaveFile(): Promise<SaveData | null> {
     };
     input.addEventListener('change', () => {
       const file = input.files?.[0];
-      if (!file) { settle(() => resolve(null)); return; }
-      void file.text().then((text) => {
-        const data = parseSaveFile(text);
-        if (!data) {
-          settle(() => reject(new Error('存档文件格式校验失败')));
-          return;
-        }
-        settle(() => resolve(data));
-      }, (e) => settle(() => reject(e)));
+      if (!file) {
+        settle(() => resolve(null));
+        return;
+      }
+      void file.text().then(
+        (text) => {
+          const data = parseSaveFile(text);
+          if (!data) {
+            settle(() => reject(new Error('存档文件格式校验失败')));
+            return;
+          }
+          settle(() => resolve(data));
+        },
+        (e) => settle(() => reject(e)),
+      );
     });
     // 部分浏览器取消选择不触发 change：窗口重新获得焦点时按取消处理
     const onFocus = () => {

@@ -1,5 +1,5 @@
-import { clamp, type System, type Vec3Like } from '../core/types';
 import { WARMTH } from '../core/tuning';
+import { clamp, type System, type Vec3Like } from '../core/types';
 import type { SurvivalState } from '../player/survival';
 
 /**

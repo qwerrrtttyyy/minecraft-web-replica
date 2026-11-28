@@ -30,7 +30,9 @@ global.window = dom.window;
 global.document = dom.window.document;
 try {
   Object.defineProperty(global, 'navigator', { value: dom.window.navigator, configurable: true });
-} catch { /* Node 版本差异：某些版本 navigator 为只读内建 */ }
+} catch {
+  /* Node 版本差异：某些版本 navigator 为只读内建 */
+}
 
 let passed = 0;
 const ok = (name, cond, extra = '') => {
@@ -52,12 +54,20 @@ const mqls = ['(orientation: portrait)', '(pointer: coarse)', '(display-mode: st
     if (media.includes('display-mode: standalone')) return env.standalone;
     return false;
   },
-  addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+  addEventListener() {},
+  removeEventListener() {},
+  addListener() {},
+  removeListener() {},
 }));
-dom.window.matchMedia = (q) => mqls.find((m) => m.media === q) ?? {
-  media: q, matches: false,
-  addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
-};
+dom.window.matchMedia = (q) =>
+  mqls.find((m) => m.media === q) ?? {
+    media: q,
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  };
 
 function setEnv(next) {
   Object.assign(env, { standalone: false, ios: false }, next);
@@ -73,8 +83,10 @@ console.log('N1 旋转引导分支回归');
   setEnv({ portrait: true, coarse: true, standalone: false });
   const g = mount();
   ok('竖屏 + 粗指针 + 普通标签页：显示旋转引导', g.el.hidden === false);
-  ok('遮罩含旋转图标与「仍要游玩」按钮',
-    !!g.el.querySelector('svg.rotate-gate-icon') && !!g.el.querySelector('.rotate-gate-play'));
+  ok(
+    '遮罩含旋转图标与「仍要游玩」按钮',
+    !!g.el.querySelector('svg.rotate-gate-icon') && !!g.el.querySelector('.rotate-gate-play'),
+  );
   g.el.querySelector('.rotate-gate-play').dispatchEvent(new dom.window.MouseEvent('click'));
   ok('点击「仍要游玩」进入游戏（遮罩关闭）', g.dismissed === true && g.el.hidden === true);
   g.el.hidden = false;

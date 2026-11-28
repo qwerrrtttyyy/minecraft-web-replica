@@ -10,8 +10,14 @@ const assert = require('node:assert');
 const { PluginService } = require('./logic/services/plugins/PluginService.js');
 const { ExtensionRegistry, EXTENSION_POINTS } = require('./logic/services/plugins/extensions.js');
 const {
-  planGrants, assertWhitelistedImports, readUtf8, writeUtf8,
-  POINT_KINDS, EVENT_TO_POINT, payloadNumbers, HOST_PLUGIN_ABI,
+  planGrants,
+  assertWhitelistedImports,
+  readUtf8,
+  writeUtf8,
+  POINT_KINDS,
+  EVENT_TO_POINT,
+  payloadNumbers,
+  HOST_PLUGIN_ABI,
 } = require('./logic/services/plugins/carriers/hostABI.js');
 const { ServiceContainer } = require('./logic/services/ServiceContainer.js');
 const { EventService } = require('./logic/services/events/EventService.js');
@@ -19,16 +25,21 @@ const { MemoryPluginStorageProvider } = require('./logic/services/plugins/storag
 const { WasmRuntime } = require('./logic/wasm/runtime.js');
 const { VERSION } = require('./logic/core/version.js');
 const { KERNEL_BASE64 } = require('./logic/wasm/kernelBinary.js');
-const {
-  HOST_PLUGIN_BASE64, BAD_HOST_PLUGIN_BASE64,
-} = require('./logic/plugins/example/hostPluginFixtureBinary.js');
+const { HOST_PLUGIN_BASE64, BAD_HOST_PLUGIN_BASE64 } = require('./logic/plugins/example/hostPluginFixtureBinary.js');
 
 // 真实内核字节（从内联 base64 解码，走 WasmRuntime 内置加载）
 
-let passed = 0, failures = 0;
+let passed = 0,
+  failures = 0;
 const ok = async (name, fn) => {
-  try { await fn(); passed++; console.log(`  ✓ ${name}`); }
-  catch (e) { failures++; console.error(`  ✗ ${name} — ${e.stack || e.message}`); }
+  try {
+    await fn();
+    passed++;
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`  ✗ ${name} — ${e.stack || e.message}`);
+  }
 };
 const rejects = (fn, re) => assert.throws(fn, re);
 
@@ -42,7 +53,10 @@ function fakeApi() {
       seed: () => 2026,
       getBlock: () => 0,
       surfaceHeight: () => 40,
-      setBlock: (x, y, z, id) => { setCalls.push({ x, y, z, id }); return true; },
+      setBlock: (x, y, z, id) => {
+        setCalls.push({ x, y, z, id });
+        return true;
+      },
       decorate() {},
     },
     player: { teleport() {}, setFly() {}, break() {}, place() {} },
@@ -52,21 +66,47 @@ function fakeApi() {
     entities: { spawn() {}, list: () => [] },
     survival: { setMode() {}, respawn() {}, give() {}, damage() {}, heal() {} },
     botany: {
-      registerPlant() {}, unregisterPlant() {}, registerRule() {}, unregisterRules() {},
-      listRules: () => [], stats: () => ({}),
+      registerPlant() {},
+      unregisterPlant() {},
+      registerRule() {},
+      unregisterRules() {},
+      listRules: () => [],
+      stats: () => ({}),
     },
     plugins: {
-      register() {}, enable() {}, disable() {}, unload() {}, list: () => [], get() {},
-      reload() {}, enableAll() {}, stats() {}, install() {}, findByCapability() {},
+      register() {},
+      enable() {},
+      disable() {},
+      unload() {},
+      list: () => [],
+      get() {},
+      reload() {},
+      enableAll() {},
+      stats() {},
+      install() {},
+      findByCapability() {},
     },
     wasm: {
-      status: () => 'ready', stats: () => ({}), benchmark: () => null,
-      setEnabled: () => 'ready', listModules: () => [], call: () => 1,
-      callModule: () => 1, registerModule: () => ({}), unregisterModule: () => true,
+      status: () => 'ready',
+      stats: () => ({}),
+      benchmark: () => null,
+      setEnabled: () => 'ready',
+      listModules: () => [],
+      call: () => 1,
+      callModule: () => 1,
+      registerModule: () => ({}),
+      unregisterModule: () => true,
     },
     extensions: { points: () => [], stats: () => ({}), has: () => false, list: () => [] },
-    registerBlock() {}, registerTile() {}, registerEntity() {}, setGenerator() {},
-    on() { return () => {}; }, off() {}, emit() {},
+    registerBlock() {},
+    registerTile() {},
+    registerEntity() {},
+    setGenerator() {},
+    on() {
+      return () => {};
+    },
+    off() {},
+    emit() {},
   };
 }
 
@@ -85,7 +125,9 @@ function make(_opts = {}) {
     callKernel: (name, args) => rt.callKernel(name, args),
   };
   const ps = new PluginService(ev, container, () => base, {
-    storage: storageProvider, extensions, wasmHost,
+    storage: storageProvider,
+    extensions,
+    wasmHost,
   });
   return { ev, container, base, extensions, storageProvider, rt, ps };
 }
@@ -97,7 +139,14 @@ async function main() {
     const order = [];
     const offLow = reg.register('p:test', 'own:a', () => order.push('low'), 0);
     reg.register('p:test', 'own:b', () => order.push('high'), 10);
-    reg.register('p:test', 'own:c', () => { throw new Error('boom'); }, 5);
+    reg.register(
+      'p:test',
+      'own:c',
+      () => {
+        throw new Error('boom');
+      },
+      5,
+    );
     const r = reg.emit('p:test', {});
     assert.deepStrictEqual(order, ['high', 'low']);
     assert.strictEqual(r.called, 2);
@@ -148,9 +197,7 @@ async function main() {
   });
 
   await ok('assertWhitelistedImports：拒绝非 env 模块 / 未列举名字 / 非函数', () => {
-    assert.doesNotThrow(() => assertWhitelistedImports([
-      { module: 'env', name: 'mc_log', kind: 'function' },
-    ]));
+    assert.doesNotThrow(() => assertWhitelistedImports([{ module: 'env', name: 'mc_log', kind: 'function' }]));
     rejects(() => assertWhitelistedImports([{ module: 'foo', name: 'mc_log', kind: 'function' }]), /不允许的宿主导入/);
     rejects(() => assertWhitelistedImports([{ module: 'env', name: 'mc_evil', kind: 'function' }]), /不允许的宿主导入/);
     rejects(() => assertWhitelistedImports([{ module: 'env', name: 'mc_log', kind: 'memory' }]), /必须是函数/);
@@ -168,7 +215,12 @@ async function main() {
   await ok('JS 载体 setup 仍可用（v1.5 插件零改动）', async () => {
     const { ps } = make();
     let ran = false;
-    ps.register({ manifest: { id: 'js:legacy' }, setup() { ran = true; } });
+    ps.register({
+      manifest: { id: 'js:legacy' },
+      setup() {
+        ran = true;
+      },
+    });
     await ps.enable('js:legacy');
     assert.strictEqual(ran, true);
     assert.strictEqual(ps.get('js:legacy').state, 'enabled');
@@ -197,12 +249,16 @@ async function main() {
     const { ps, extensions } = make();
     const logs = [];
     const origLog = console.log;
-    console.log = (...a) => { logs.push(a.join(' ')); };
+    console.log = (...a) => {
+      logs.push(a.join(' '));
+    };
     try {
       ps.register({
         manifest: { id: 'host:demo', permissions: ['world:write', 'wasm:use'] },
         carrier: {
-          kind: 'wasm:host', bytes: HOST_PLUGIN_BASE64, abi: 1,
+          kind: 'wasm:host',
+          bytes: HOST_PLUGIN_BASE64,
+          abi: 1,
           hostImports: ['mc_log', 'mc_ext_register', 'mc_world_set', 'mc_rand', 'mc_storage_set'],
         },
       });
@@ -214,7 +270,10 @@ async function main() {
     assert.strictEqual(rec.state, 'enabled', rec.error || '');
     assert.strictEqual(rec.carrier.kind, 'wasm:host');
     assert.strictEqual(rec.carrier.abi, 1);
-    assert.ok(logs.some((l) => l.includes('host:init')), '应记录 host:init');
+    assert.ok(
+      logs.some((l) => l.includes('host:init')),
+      '应记录 host:init',
+    );
     assert.ok(extensions.has('worldgen:column'));
     assert.ok(extensions.has('gameplay:tick'));
   });
@@ -228,8 +287,11 @@ async function main() {
     await ps.enable('host:gen');
     assert.strictEqual(ps.get('host:gen').state, 'enabled', ps.get('host:gen').error || '');
     const payload = {
-      cx: 1, cz: 2, data: new Uint8Array(16),
-      get: () => 0, set: () => {},
+      cx: 1,
+      cz: 2,
+      data: new Uint8Array(16),
+      get: () => 0,
+      set: () => {},
     };
     const r = extensions.emit('worldgen:column', payload);
     assert.strictEqual(r.called, 1, JSON.stringify(r.errors));
@@ -302,10 +364,14 @@ async function main() {
     const ev = new EventService();
     const container = new ServiceContainer();
     const ps = new PluginService(ev, container, () => fakeApi());
-    rejects(() => ps.register({
-      manifest: { id: 'wasm:nobridge' },
-      carrier: { kind: 'wasm:module', bytes: HOST_PLUGIN_BASE64 },
-    }), /宿主桥接未接线/);
+    rejects(
+      () =>
+        ps.register({
+          manifest: { id: 'wasm:nobridge' },
+          carrier: { kind: 'wasm:module', bytes: HOST_PLUGIN_BASE64 },
+        }),
+      /宿主桥接未接线/,
+    );
   });
 
   console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'} 插件载体回归：${passed} 项断言，失败 ${failures} 项`);
