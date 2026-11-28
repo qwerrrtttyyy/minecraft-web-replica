@@ -163,4 +163,21 @@ ok('玩家自己占用时也不可写', canWritePlayerCamera('player') === false
   ok('ACTION_LABELS.photo 为 摄影模式', ACTION_LABELS.photo === '摄影模式', `label=${ACTION_LABELS.photo}`);
 }
 
+// 10) 摄影模式存档快照：dayCount 与 dayTime 一样取进入前值（0 是合法天数，显式判 null）
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const modeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'photo', 'PhotoMode.ts'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.ts'), 'utf8');
+  const apiSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'CraftAPI.ts'), 'utf8');
+  ok('PhotoMode 快照并清空 savedDayCount',
+    /savedDayCount\s*:\s*number\s*\|\s*null\s*=\s*null/.test(modeSource) &&
+    /this\.savedDayCount\s*=\s*sky\.dayCount/.test(modeSource) &&
+    /this\.savedDayCount\s*=\s*null/.test(modeSource));
+  ok('PhotoAPI 暴露 savedDayCount', /readonly savedDayCount\s*:\s*number\s*\|\s*null;/.test(apiSource));
+  ok('collectSave 的 dayCount / dayTime 均取摄影前快照',
+    /dayCount:\s*photo\?\.active\s*&&\s*photo\.savedDayCount\s*!==\s*null\s*\?\s*photo\.savedDayCount\s*:\s*sky\.dayCount/.test(mainSource) &&
+    /dayTime:\s*photo\?\.active\s*&&\s*photo\.savedDayTime\s*!==\s*null\s*\?\s*photo\.savedDayTime\s*:\s*sky\.dayTime/.test(mainSource));
+}
+
 console.log(`\n${passed} 项通过`);

@@ -41,6 +41,7 @@ import type { PlantRule, PlantRuleInfo } from '../world/plantRules';
 export interface PhotoAPI {
   readonly active: boolean;
   readonly savedDayTime: number | null;
+  readonly savedDayCount: number | null;
   lastDataUrl: string;
   enter(): boolean;
   exit(): void;

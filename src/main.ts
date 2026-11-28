@@ -523,7 +523,8 @@ async function boot() {
     hotbar: [...hotbar.slots],
     slot: hotbar.index,
     settings: { ...settings },
-    dayCount: sky.dayCount,
+    // sky.update 即使冻结 dayTime 也会推进 localTime；跨日时存档天数同样取进入前快照
+    dayCount: photo?.active && photo.savedDayCount !== null ? photo.savedDayCount : sky.dayCount,
     botany: botany.serializeEcology(),
     furnaces: { v: 1, cells: smelting.serialize() },
     // 标题界面尚未进入世界，数据袋未 load：沿用已读入存档的插件数据，避免导出丢失

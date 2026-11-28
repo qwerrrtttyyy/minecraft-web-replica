@@ -75,6 +75,11 @@ export class PhotoMode implements System {
   active = false;
   /** 进入前的 dayTime；摄影模式期间存档序列化取此值而非预览值 */
   savedDayTime: number | null = null;
+  /**
+   * 进入前的 dayCount；sky.update 即使 advanceTime=false 也会推进 localTime，
+   * 长时间取景可能跨日，存档天数同样必须取快照（0 是合法天数，故显式判 null）。
+   */
+  savedDayCount: number | null = null;
   /** 最近一次导出的 data URL（供控制台 / 自动化测试读取，不写 localStorage） */
   lastDataUrl = '';
 
@@ -89,7 +94,6 @@ export class PhotoMode implements System {
   private readonly savedQuat = new Quaternion();
   private savedFov = 72;
   private savedOrder: EulerOrder = 'YXZ';
-  private savedDayCount = 0;
   private savedAdvanceTime = true;
   private savedForced: WeatherKind | null = null;
   private savedHudHidden = false;
@@ -227,7 +231,7 @@ export class PhotoMode implements System {
 
     sky.advanceTime = this.savedAdvanceTime;
     // setTime 同时恢复 localTime，避免摄影期间 sky.update 推进 dayCount 造成跨日漂移
-    sky.setTime(this.savedDayTime ?? sky.dayTime, this.savedDayCount);
+    sky.setTime(this.savedDayTime ?? sky.dayTime, this.savedDayCount ?? sky.dayCount);
     weather.forced = this.savedForced;
     if (hud.hudHidden !== this.savedHudHidden) hud.toggleHudHidden();
     camera.position.copy(this.savedPos);
@@ -240,6 +244,7 @@ export class PhotoMode implements System {
     this.pendingCapture = null;
     this.swallowLockPause = false;
     this.savedDayTime = null;
+    this.savedDayCount = null;
     this.dragging = false;
     input.reset();
     if (restoreLock && this.savedLocked) input.requestLock();

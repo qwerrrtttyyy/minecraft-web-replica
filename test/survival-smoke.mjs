@@ -411,6 +411,7 @@ try {
 
   const beforePhoto = await page.evaluate(() => ({
     dayTime: window.__mc.sky.dayTime,
+    dayCount: window.__mc.sky.dayCount,
     pos: { ...window.__mc.player.pos },
     cam: { ...window.__mc.engine.camera.position },
   }));
@@ -445,6 +446,26 @@ try {
   ok('摄影模式冻结玩家坐标', photoMove.player < 1e-6, `位移 ${photoMove.player}`);
   ok('摄影模式自由相机可平移', photoMove.camera > 0.5, `位移 ${photoMove.camera.toFixed(2)}`);
 
+  // sky.update 无条件推进 localTime：即使 dayTime 冻结，dayCount 也会跨日。
+  // 手动推进超过一整天，验证 collectSave 暴露的 dayCount/dayTime 仍是进入前快照。
+  const savePreview = await page.evaluate((before) => {
+    const sky = window.__mc.sky;
+    sky.update(sky.dayLength + 1, 0);
+    const data = CraftAPI.save.export();
+    return {
+      liveDayCount: sky.dayCount,
+      savedDayCount: data.dayCount,
+      savedDayTime: data.dayTime,
+      beforeDayCount: before.dayCount,
+      beforeDayTime: before.dayTime,
+    };
+  }, beforePhoto);
+  ok('摄影跨日后 collectSave 的 dayCount/dayTime 仍取进入前快照',
+    savePreview.liveDayCount === savePreview.beforeDayCount + 1 &&
+      savePreview.savedDayCount === savePreview.beforeDayCount &&
+      Math.abs(savePreview.savedDayTime - savePreview.beforeDayTime) < 1e-9,
+    JSON.stringify(savePreview));
+
   await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
   await page.keyboard.press('Enter');
   await page.waitForFunction('CraftAPI.photo.lastDataUrl.length > 0', { timeout: 10000 }).catch(() => {});
@@ -475,6 +496,7 @@ try {
     owner: window.__mc.engine.cameraOwner,
     hudHidden: document.querySelector('.game-hud').classList.contains('hud-hidden'),
     timeDelta: Math.abs(window.__mc.sky.dayTime - before.dayTime),
+    dayCountDelta: window.__mc.sky.dayCount - before.dayCount,
     posDelta: Math.hypot(
       window.__mc.player.pos.x - before.pos.x,
       window.__mc.player.pos.z - before.pos.z,
@@ -483,9 +505,9 @@ try {
   ok('按 P 退出摄影模式：覆盖层隐藏 / 相机与 HUD 恢复',
     !afterPhoto.active && afterPhoto.display === 'none' && afterPhoto.owner === null &&
       !afterPhoto.hudHidden, JSON.stringify(afterPhoto));
-  ok('摄影预览未污染时刻与玩家坐标',
-    afterPhoto.timeDelta < 0.01 && afterPhoto.posDelta < 1e-6,
-    `dt=${afterPhoto.timeDelta} dp=${afterPhoto.posDelta}`);
+  ok('摄影预览未污染时刻、天数与玩家坐标',
+    afterPhoto.timeDelta < 0.01 && afterPhoto.dayCountDelta === 0 && afterPhoto.posDelta < 1e-6,
+    `dt=${afterPhoto.timeDelta} dd=${afterPhoto.dayCountDelta} dp=${afterPhoto.posDelta}`);
   await page.evaluate(() => { CraftAPI.photo.lastDataUrl = ''; });
 
   // ---- 挖掘：在正前方 3 格处强制放一块石头并瞄准 ----
