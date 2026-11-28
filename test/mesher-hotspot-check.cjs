@@ -76,7 +76,12 @@ console.log(`  集合 hash : ${hash}`);
 console.log(`  8 轮平均  : ${msPerChunk.toFixed(3)} ms/段（${set.length} 块 × ${ROUNDS} 轮）`);
 
 if (record) {
+  // 合并写入：保留历史验证元数据（toVerify.p95Ms / verification 等），只更新本轮实测值。
+  // 整文件覆盖会让任务卡契约校验丢失 p95 待验证目标（validate.py 的 mesher baseline 检查）。
+  let previous = {};
+  if (fs.existsSync(BASELINE_PATH)) previous = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
   const baseline = {
+    ...previous,
     seed: 2026,
     chunks: set.length,
     rounds: ROUNDS,
@@ -86,6 +91,10 @@ if (record) {
     hash,
     msPerChunk,
   };
+  if (baseline.optimized && typeof baseline.optimized === 'object') {
+    baseline.optimized.hash = hash;
+    baseline.optimized.msPerChunk = msPerChunk;
+  }
   fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`);
   console.log(`  已写入基线 ${path.relative(process.cwd(), BASELINE_PATH)}`);
 } else {
