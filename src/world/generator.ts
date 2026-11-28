@@ -623,6 +623,8 @@ export class DefaultGenerator implements IWorldGenerator {
       diamond: id('diamond_ore'), glowstone: id('glowstone'),
       copper: id('copper_ore'), emerald: id('emerald_ore'), lapis: id('lapis_ore'),
       redstone: id('redstone_ore'), granite: id('granite'),
+      // 矿产扩充：银 / 锡走常规矿脉，紫水晶用于地下晶洞
+      silver: id('silver_ore'), tin: id('tin_ore'), amethyst: id('amethyst_ore'),
       clay: id('clay'), cactus: id('cactus'), cane: id('sugar_cane'),
       seagrass: id('seagrass'), kelp: id('kelp'), lilyPad: id('lily_pad'),
       pumpkin: id('pumpkin'),
@@ -835,7 +837,7 @@ export class DefaultGenerator implements IWorldGenerator {
   private runStage(stage: TerrainStage, ctx: GenContext, data: Uint8Array): void {
     switch (stage) {
       case 'columns': this.stageColumns(ctx, data); break;
-      case 'ores': this.stageOres(ctx, data); break;
+      case 'ores': this.stageOres(ctx, data); this.stageGeodes(ctx, data); break;
       case 'trees': this.stageTrees(ctx, data); break;
       case 'decorate': this.stageDecorate(ctx, data); break;
       case 'structures': this.stageStructures(ctx, data); break;
@@ -997,6 +999,9 @@ export class DefaultGenerator implements IWorldGenerator {
       { id: I.lapis, min: 6, max: 32, count: 4, size: 5, salt: 0x88b },
       { id: I.emerald, min: 8, max: 42, count: 6, size: 4, salt: 0x99c, biome: 'alpine' },
       { id: I.granite, min: 5, max: 44, count: 8, size: 8, salt: 0xaad },
+      // 矿产扩充：银偏中深层、锡偏浅中层，均受 oreRichness 统一控制
+      { id: I.silver, min: 6, max: 30, count: 6, size: 5, salt: 0xbbe },
+      { id: I.tin, min: 10, max: 46, count: 9, size: 7, salt: 0xccd },
     ];
     for (const v of veins) {
       if (v.id === 0) continue; // 自定义注册表缺少该方块时静默跳过
@@ -1029,6 +1034,59 @@ export class DefaultGenerator implements IWorldGenerator {
           px += ((rng() * 3) | 0) - 1;
           py += ((rng() * 3) | 0) - 1;
           pz += ((rng() * 3) | 0) - 1;
+        }
+      }
+    }
+  }
+
+  /**
+   * 地下晶洞（矿产扩充）：球形空腔 + 内壁镶嵌紫水晶 + 中心萤石照明。
+   * 作为矿脉阶段的附属结构，不新增 TERRAIN_STAGES 阶段、不动静态结构三件套契约。
+   * 完全区块局部：中心限制在本区块内，半径不超过 3，跨区块边界不参与，
+   * 因而无需邻块扫描且天然满足「生成顺序无关」。只替换石头，不碰地表 / 水 / 基岩。
+   */
+  private stageGeodes(ctx: GenContext, data: Uint8Array): void {
+    const I = this.ids;
+    if (!I.amethyst || !I.glowstone || this.opt.oreRichness <= 0) return;
+    // 逐区块判定：约 12% 的区块藏一座晶洞，保持地下探索的稀有感
+    if (this.hash2i(ctx.cx, ctx.cz, 0xd3e) >= 0.12) return;
+    const rng = mulberry32(this.hashInt(ctx.cx, ctx.cz, 0xd4f, 0));
+    // 球心固定在区块中部（≥4、≤11），半径 3，保证整个球在 [1,14] 内不跨界
+    const cxl = 4 + ((rng() * 8) | 0);
+    const czl = 4 + ((rng() * 8) | 0);
+    const cy = 10 + ((rng() * 17) | 0); // 10~26 的地下深度
+    const R = 3;
+    const minY = Math.max(4, cy - R);
+    const maxY = Math.min(H - 2, cy + R);
+    // 第一遍：统计可替换石头数；不足则整座跳过，避免晶洞落在洞穴里只剩零星几格
+    let stoneCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      const dy = y - cy;
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          if (dx * dx + dy * dy + dz * dz > R * R) continue;
+          const lx = cxl + dx, lz = czl + dz;
+          if (lx < 1 || lx >= CS - 1 || lz < 1 || lz >= CS - 1) continue;
+          if (data[ctx.idx(lx, y, lz)] === I.stone) stoneCount++;
+        }
+      }
+    }
+    if (stoneCount < 24) return;
+    // 第二遍：外壳一圈紫水晶，内部掏空成晶洞；中心放萤石提供光源
+    for (let y = minY; y <= maxY; y++) {
+      const dy = y - cy;
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 > R * R) continue;
+          const lx = cxl + dx;
+          const lz = czl + dz;
+          if (lx < 1 || lx >= CS - 1 || lz < 1 || lz >= CS - 1) continue;
+          const j = ctx.idx(lx, y, lz);
+          if (data[j] !== I.stone) continue; // 只吃石头，保留洞穴 / 水 / 其他矿脉
+          if (d2 >= (R - 1) * (R - 1)) data[j] = I.amethyst;
+          else if (d2 === 0) data[j] = I.glowstone;
+          else data[j] = 0;
         }
       }
     }

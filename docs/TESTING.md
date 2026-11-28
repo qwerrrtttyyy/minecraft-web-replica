@@ -36,7 +36,7 @@ npm run verify
 | 22 | `npm run test:worker-pool` | Worker 池 ACK / busy 计数 / 运行时配置同步 | ✓ |
 | 23 | `npm run test:unstuck` | AABB 脱困纯逻辑回归 | ✓ |
 | 24 | `npm run test:edits` | 世界编辑差分回归 | ✓ |
-| 25 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177，总数 165）+ 阶段管线 + 18 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 繁殖与植物特性 104 组 | ✓ |
+| 25 | `npm run test:terrain-system` | 方块扩充（id 45~147 + 火光地基 174~177 + 矿产扩充 178~180，总数 168）+ 阶段管线 + 18 群系配置表 + 堆肥桶 / 肥料 / 煤矿石掉落 + 新矿脉与紫水晶晶洞 + 繁殖与植物特性 108 组 | ✓ |
 | 26 | `npm run test:feel` | 手感：跳跃输入缓冲（按下沿 / 120ms 窗口 / 消费 / 按住）+ 挖掘裂痕阶段 | ✓ |
 | 27 | `npm run test:botany` | 植物随机刻：生长 / 蔓延 / 枯萎 / 树苗长树 34 组 | ✓ |
 | 28 | `npm run test:plant-energy` | 植物内在能量：代谢 / 蓄能 / 开花 / 采集 / 根系共享 / 季节天气 / 土壤养分 54 组 | ✓ |
@@ -63,11 +63,11 @@ npm run verify
 
 | 项目 | 当前值 | 断言出处 |
 |---|---|---|
-| 内置方块总数 | 157（141 基线 + 内容植物扩充 11 + 铜 / 树种方块 5） | `test:terrain-system` |
-| 方块 id 上限 | 173（165~169 铜 / 树种、170~173 砂岩家族末位追加；159~164 留给插件植物，id 未动） | `test:terrain-system` |
+| 内置方块总数 | 168（141 基线 + 内容植物扩充 11 + 铜 / 树种方块 5 + 砂岩家族 4 + 火光地基 4 + 矿产扩充 3） | `test:terrain-system` |
+| 方块 id 上限 | 180（165~169 铜 / 树种、170~173 砂岩家族、174~177 火光地基、178~180 矿产扩充末位追加；159~164 留给插件植物，id 未动） | `test:terrain-system` |
 | 合成配方 | 58（新增 9 条：铜工具模板 4 + 铜锄 1 + 铜块⇄铜锭 2 + 金合欢/樱花木板 2） | `test:crafting` |
 | 装备配方 | 41（新增 copper 档 5 件，攻击 5 / 挖掘 5 / 耐久 190，介于石与铁之间） | `test:crafting` |
-| 熔炼配方 | 12（新增 `cobblestone → stone`；`clay → brick` / 熟兔肉 / 熟鸡肉因物品 id 不存在未实现） | `test:smelting` |
+| 熔炼配方 | 16（含 `cobblestone → stone`、矿产扩充 `raw_silver → silver_ingot` / `raw_tin → tin_ingot`；`clay → brick` / 熟鸡肉因物品 id 不存在未实现） | `test:smelting` |
 
 ## 快照机制
 
@@ -95,7 +95,8 @@ Node 测试跑在最新 TS 源码上，杜绝「测试通过但源码已改」�
   新花卉（草甸 / 森林 / 针叶林）、白桦 / 云杉 / 金合欢 / 樱花（对应群系）、
   恶地彩色陶瓦层（`strata`）、沼泥、海草 / 海带 / 睡莲（海洋）与南瓜（草甸 / 森林）
   的生成位置约束；另断言煤矿石掉落 `item:coal`（1~2）、35 种植物 id 57~91、
-  28 种花 id 120~147，且方块总数为 165（141 基线 + 内容植物扩充 11 + 火光地基 4）。
+  28 种花 id 120~147，且方块总数为 168（141 基线 + 内容植物扩充 11 + 火光地基 4 + 矿产扩充 3）。
+  另断言银 / 锡 / 紫水晶矿脉自然生成（受 oreRichness 控制）与紫水晶晶洞成簇。
 | 15a | `npm run test:retention` | 区块驻留三层策略与配置竞态 | ✓ |
 | 16a | `node test/content-update-check.cjs` | 生物 / 弓箭 / 砂岩家族内容回归 | ✓ |
 | 37 | `npm run test:crossbreed` | 植物杂交品系 17 项 | ✓ |

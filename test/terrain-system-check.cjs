@@ -51,6 +51,8 @@ const NEW_BLOCKS = [
   'copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'clay',
   'podzol', 'cactus', 'sugar_cane', 'fern', 'granite',
 ];
+// 矿产扩充：银 / 锡矿脉 + 紫水晶晶洞
+const ORE_BLOCKS = ['silver_ore', 'tin_ore', 'amethyst_ore'];
 
 // v1.4.1 植物大扩充：id 57 起末位追加（35 种）
 const PLANT_BLOCKS = [
@@ -102,8 +104,11 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('内置方块总数 165 种（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）',
-    all.length === 165, `${all.length}`);
+  ok('内置方块总数 168 种（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4 + 矿产扩充 3）',
+    all.length === 168, `${all.length}`);
+  ok('3 种矿产扩充方块 id 178~180 末位追加（旧存档差分有效）',
+    ORE_BLOCKS.every((n, i) => reg.byNameGet(n)?.id === 178 + i),
+    ORE_BLOCKS.map((n) => `${n}=${reg.byNameGet(n)?.id}`).join(' '));
   ok('黑色羊毛仍为 id 44（旧存档差分有效）', reg.byNameGet('black_wool').id === 44);
   ok('两种新方块 id 55~56 末位追加',
     reg.byNameGet('pumpkin')?.id === 55 && reg.byNameGet('bookshelf')?.id === 56,
@@ -602,12 +607,13 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 // 4) 新矿脉同样受 oreRichness 统一控制
 {
   const { reg, gen } = make(777, { oreRichness: 0 });
-  const oreIds = new Set(['copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'granite']
+  const oreIds = new Set(['copper_ore', 'emerald_ore', 'lapis_ore', 'redstone_ore', 'granite',
+    'silver_ore', 'tin_ore', 'amethyst_ore']
     .map((n) => reg.byNameGet(n).id));
   const data = chunk(gen, 0, 0);
   let n = 0;
   for (const v of data) if (oreIds.has(v)) n++;
-  ok('oreRichness=0 同时关闭 5 种新矿脉', n === 0, `${n}`);
+  ok('oreRichness=0 同时关闭 8 种矿脉（含 3 种矿产扩充）', n === 0, `${n}`);
   ok('默认参数未被破坏', DEFAULT_TERRAIN.oreRichness === 1 && DEFAULT_TERRAIN.warp > 0);
 }
 
@@ -628,7 +634,7 @@ log('地形体系回归（方块扩充 + 生成管线 + 群系配置表）');
 {
   const { reg } = make(1);
   const all = reg.all();
-  ok('方块总数增至 165（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）', all.length === 165, `${all.length}`);
+  ok('方块总数增至 168（141 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4 + 矿产扩充 3）', all.length === 168, `${all.length}`);
   ok('堆肥桶方块 id 110~118 连续且末位追加',
     reg.byNameGet('composter')?.id === 110 &&
     reg.byNameGet('composter_7')?.id === 117 &&
@@ -759,7 +765,12 @@ ok('煤矿石掉落煤炭（item:coal，1~2）',
   reg.byNameGet('coal_ore').drops[0].name === 'item:coal' &&
   reg.byNameGet('coal_ore').drops[0].min === 1 &&
   reg.byNameGet('coal_ore').drops[0].max === 2);
-ok('方块总数 165（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4）', reg.all().length === 165);
+ok('方块总数 168（141 基线 + 内容植物扩充 11 + 铜 / 树种 5 + 砂岩家族 4 + 矿产扩充 3）', reg.all().length === 168);
+// 矿产扩充掉落闭环：银 / 锡粗矿、紫水晶宝石
+ok('银 / 锡矿石掉粗矿、紫水晶掉宝石',
+  reg.byNameGet('silver_ore').drops[0].name === 'item:raw_silver' &&
+  reg.byNameGet('tin_ore').drops[0].name === 'item:raw_tin' &&
+  reg.byNameGet('amethyst_ore').drops[0].name === 'item:amethyst');
 
 // C02：三种新动物 + 按权重生成
 ok('五种被动动物全部注册', ['pig', 'sheep', 'cow', 'chicken', 'rabbit']
@@ -942,6 +953,37 @@ ok('新动物掉落名带 item: 前缀',
     PLANT_TRAITS.sage.shareRadius === 4 &&
     PLANT_TRAITS.wild_garlic.harvest?.item === 'item:garlic' &&
     PLANT_TRAITS.rose_bush.harvest?.item === 'item:rose_hips');
+}
+
+// 14) 矿产扩充：新矿脉与晶洞在世界中自然生成、确定性、深度受控
+{
+  const { reg, gen } = make(4242);
+  const ids = Object.fromEntries(ORE_BLOCKS.map((n) => [n, reg.byNameGet(n).id]));
+  const counts = Object.fromEntries(ORE_BLOCKS.map((n) => [n, 0]));
+  for (let cx = -6; cx <= 6; cx++) {
+    for (let cz = -6; cz <= 6; cz++) {
+      const data = chunk(gen, cx, cz);
+      for (let i = 0; i < data.length; i++) {
+        for (const n of ORE_BLOCKS) if (data[i] === ids[n]) counts[n]++;
+      }
+    }
+  }
+  ok('银 / 锡 / 紫水晶在世界中自然生成',
+    ORE_BLOCKS.every((n) => counts[n] > 0),
+    ORE_BLOCKS.map((n) => `${n}×${counts[n]}`).join(' '));
+  // 晶洞：紫水晶应成簇出现（单区块内 ≥6 格），而非零星散点
+  const cellCounts = [];
+  for (let cx = -6; cx <= 6; cx++) {
+    for (let cz = -6; cz <= 6; cz++) {
+      const data = chunk(gen, cx, cz);
+      let n = 0;
+      for (let i = 0; i < data.length; i++) if (data[i] === ids.amethyst_ore) n++;
+      if (n > 0) cellCounts.push(n);
+    }
+  }
+  ok('紫水晶以晶洞形态成簇生成（含晶洞的区块 ≥6 格）',
+    cellCounts.length > 0 && cellCounts.every((n) => n >= 6),
+    `晶洞区块=${cellCounts.length} 最小=${cellCounts.length ? Math.min(...cellCounts) : 0}`);
 }
 
 log(`\nPASS 地形体系回归：${passed} 组断言全部通过`);

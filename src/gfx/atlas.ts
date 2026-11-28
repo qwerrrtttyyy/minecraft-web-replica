@@ -2757,6 +2757,44 @@ export class TextureAtlas {
     this.painters.set('cooked_beef', cookedBeefPainter);
     this.painters.set('cooked_porkchop', cookedPorkchopPainter);
     this.painters.set('cooked_rabbit', cookedRabbitPainter);
+    // ---- 矿产扩充纹理（8 张）：全部追加在末尾，既有 tile 索引保持不变 ----
+    // 矿石方块：石头底纹 + 彩色矿斑（stoneBase 为 builtinPainters 局部函数，此处用模块级 helper 复刻）
+    const oreBase: Painter = (p, rng) => {
+      fillNoise(p, rng, 0x7c7f82, 9);
+      blob(p, rng, 0x6a6d70, 7, 9);
+      blob(p, rng, 0x8c8f92, 4, 5);
+    };
+    this.painters.set('silver_ore', (p, rng) => {
+      oreBase(p, rng);
+      blob(p, rng, 0xb9bec6, 6, 5);
+      blob(p, rng, 0xe3e8ef, 4, 3);
+    });
+    this.painters.set('tin_ore', (p, rng) => {
+      oreBase(p, rng);
+      blob(p, rng, 0x8f9aa8, 6, 5);
+      blob(p, rng, 0xc3cdd9, 4, 3);
+    });
+    this.painters.set('amethyst_ore', (p, rng) => {
+      oreBase(p, rng);
+      blob(p, rng, 0x7b4bbd, 6, 5);
+      blob(p, rng, 0xc08bf0, 4, 3);
+    });
+    // 原矿 / 锭物品：复用构造函数内的 rawOrePainter / ingotPainter
+    this.painters.set('raw_silver', rawOrePainter(0xb9bec6, 0x7d848e, 0xeef2f7));
+    this.painters.set('raw_tin', rawOrePainter(0xa9b4c0, 0x707c8a, 0xdfe8f0));
+    this.painters.set('silver_ingot', ingotPainter(0xcdd2d9, 0x9098a3, 0xf4f7fa));
+    this.painters.set('tin_ingot', ingotPainter(0xbcc6d1, 0x838f9d, 0xe8eff6));
+    // 紫水晶宝石：紫色菱形（仿 diamond painter）
+    this.painters.set('amethyst', (p, rng) => {
+      p.clear();
+      for (let y = 3; y < 13; y++) {
+        const w = y < 8 ? y - 3 : 12 - y;
+        for (let x = 8 - w; x <= 8 + w; x++) {
+          p.set(x, y, jitter(x <= 8 - w + 1 || y > 10 ? 0x7b3fbf : 0xb57be8, rng, 10));
+        }
+      }
+      p.set(7, 5, 0xe6c4ff); p.set(8, 5, 0xe6c4ff);
+    });
     let i = 0;
     for (const name of this.painters.keys()) this.indices.set(name, i++);
 

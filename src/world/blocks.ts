@@ -579,4 +579,9 @@ export function registerBuiltinBlocks(reg: BlockRegistry) {
     liquid: false, transparentPass: false, lightEmission: 15, hardness: Infinity, sound: 'dirt',
     tiles: { top: 'fire', bottom: 'fire', side: 'fire' }, drops: [],
   });
+  // ---- 矿产扩充（id 178~180 末位追加，旧存档 edits 差分保持有效） ----
+  // 银 / 锡 / 紫水晶：粗矿走熔炼闭环，紫水晶直接掉宝石；深度与群系分布由 stageOres 配置表控制。
+  cube('silver_ore', '银矿石', {}, { hardness: 3, drops: [{ name: 'item:raw_silver' }] });
+  cube('tin_ore', '锡矿石', {}, { hardness: 2.2, drops: [{ name: 'item:raw_tin' }] });
+  cube('amethyst_ore', '紫水晶矿石', {}, { hardness: 3.2, drops: [{ name: 'item:amethyst', min: 1, max: 2 }] });
 }

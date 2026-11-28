@@ -33,6 +33,9 @@ ok('原矿→锭配方齐全',
   smeltOutputOf('raw_iron') === 'iron_ingot' &&
   smeltOutputOf('raw_gold') === 'gold_ingot' &&
   smeltOutputOf('raw_copper') === 'copper_ingot');
+ok('矿产扩充原矿→锭配方齐全（银 / 锡）',
+  smeltOutputOf('raw_silver') === 'silver_ingot' &&
+  smeltOutputOf('raw_tin') === 'tin_ingot');
 ok('熟肉配方齐全',
   smeltOutputOf('porkchop') === 'cooked_porkchop' &&
   smeltOutputOf('beef') === 'cooked_beef' &&
